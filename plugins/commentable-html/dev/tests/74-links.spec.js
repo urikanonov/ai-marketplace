@@ -111,6 +111,53 @@ async function stagePadded(page, head = null, init = null) {
   await ready(page);
 }
 
+// Hrefs the URL parser cannot parse AT ALL, so `new URL()` throws and the classifier falls through
+// to its fallback reading. Every shape here is absolute-with-an-authority, which is the only way to
+// make the parser fail: an invalid IPv6 host (`[` with no `]`), a forbidden host code point (`%`),
+// and an empty host for a special scheme. The first four name a DOCUMENT scheme, so a click really
+// does replace the review page and they MUST be stamped; the last two are the controls - an
+// unparseable href whose scheme is not a document scheme must stay unstamped, exactly as its
+// parseable spelling would. Two carry an author-set `target="_self"`, the spelling that stands
+// (and navigates the reviewer away from their comments) when the stamp does not apply.
+const BAD_URL_CONTENT = `
+<h2 id="bad-lead">Unparseable hrefs</h2>
+<p id="bad-p"><a id="badbracket" href="http://[" target="_self">bracket host</a>
+<a id="badpercent" href="http://%" target="_self">percent host</a>
+<a id="badfile" href="file://[">file bracket host</a>
+<a id="badempty" href="https://?">empty host</a>
+<a id="badmail" href="mailto://[">mailto bracket host</a>
+<a id="badjs" href="javascript://[">javascript bracket host</a></p>`;
+
+async function stageBadUrls(page) {
+  const { html } = stageContent(BAD_URL_CONTENT, { key: KEY + "-bad" });
+  await page.goto(fileUrl(html));
+  await ready(page);
+}
+
+// The OTHER population that reaches the same fallback, and the everyday one: perfectly ordinary
+// relative references in a document whose base URL has an OPAQUE path. There is nothing to resolve
+// them against, so `new URL()` throws for each - the shape of the href is not what is wrong. The
+// `mailto:` link is the control: it carries its own scheme, so it parses under any base and never
+// reaches the fallback.
+const OPAQUE_BASE_CONTENT = `
+<h2 id="ob-lead">Opaque base</h2>
+<p id="ob-p"><a id="obrel" href="guide.html" target="_self">relative</a>
+<a id="obroot" href="/abs.html">root relative</a>
+<a id="obproto" href="//host/x">protocol relative</a>
+<a id="obmail" href="mailto:x@example.com">email</a></p>`;
+
+async function stageOpaqueBase(page) {
+  const { html } = stageContent(OPAQUE_BASE_CONTENT, { key: KEY + "-opaque" });
+  const src = fs.readFileSync(html, "utf8");
+  // The staged document is the fully inlined SHAREABLE build, so re-pointing the base cannot break
+  // an asset reference - there are none.
+  const injected = src.replace("<head>", '<head>\n<base href="about:blank">');
+  if (injected === src) throw new Error("stageOpaqueBase: no <head> to inject into");
+  fs.writeFileSync(html, injected);
+  await page.goto(fileUrl(html));
+  await ready(page);
+}
+
 // The `<base>` shapes a browser never applies. Shared with the validator's own parked-base test
 // (`tests/test_validate_kql.py` - `PARKED_BASES`), pinned to it as TEXT by
 // `tests/test_vendored_libs.py` so the two readers can never be checked against different corpora.
@@ -399,6 +446,77 @@ test.describe("link handling", () => {
     await stagePadded(page, '<base href="test-doc.html">');
     expect(await page.locator("#cfrag").getAttribute("target"), "cfrag with a no-op base").toBe("_self");
     await expect(page.locator("#cfrag")).not.toHaveClass(/cm-link-commentable/);
+  });
+
+  test("an href the URL parser cannot parse is classified the way the validator classifies it (CMH-LINK-01)", async ({ page }) => {
+    await stageBadUrls(page);
+    // Prove these samples really do take the FALLBACK branch, asking it of the operand the
+    // classifier itself parses (`a.href`, not the raw attribute - the two differ for any href whose
+    // URL record is NOT null, so proving it of the attribute would prove the wrong thing). Without
+    // this the test would pass through the ordinary `new URL()` reading and pin nothing about the
+    // fallback at all.
+    const threw = await page.evaluate(() => {
+      const out = {};
+      document.querySelectorAll("#bad-p a").forEach((a) => {
+        try { new URL(a.href, document.baseURI); out[a.id] = false; }
+        catch (e) { out[a.id] = true; }
+      });
+      return out;
+    });
+    // ...of exactly the samples the assertions below name, so a fixture that stopped rendering
+    // (or a selector that matched nothing) fails here rather than passing an empty loop.
+    expect(Object.keys(threw).sort()).toEqual(
+      ["badbracket", "badempty", "badfile", "badjs", "badmail", "badpercent"]);
+    for (const id of Object.keys(threw)) {
+      expect(threw[id], id + " must be unparseable for this test to exercise the fallback").toBe(true);
+    }
+    // A document scheme is a document reference however unparseable the rest of the URL is, so the
+    // stamp and the secure rel apply - and an author-set target="_self" is overridden like any
+    // other. Reading `a.protocol` here answered ":" (Chromium's value for an anchor whose URL
+    // record is null), which matched none of the three schemes and left the link to navigate the
+    // reviewer's own tab away from the report and their comments (#1183).
+    for (const id of ["badbracket", "badpercent", "badfile", "badempty"]) {
+      await expect(page.locator("#" + id), id + " target").toHaveAttribute("target", "_blank");
+      const tokens = await relTokens(page, id);
+      expect(tokens, id + " rel").toContain("noopener");
+      expect(tokens, id + " rel").toContain("noreferrer");
+      await expect(page.locator("#" + id), id + " commentable").toHaveClass(/cm-link-commentable/);
+    }
+    // The controls: an unparseable NON-document scheme is exempt exactly as its parseable spelling
+    // is, so the fallback cannot be a blanket "stamp everything the parser rejected".
+    for (const id of ["badmail", "badjs"]) {
+      expect(await page.locator("#" + id).getAttribute("target"), id + " target").toBeNull();
+      expect(await relTokens(page, id), id + " rel").toEqual([]);
+      await expect(page.locator("#" + id), id + " commentable").not.toHaveClass(/cm-link-commentable/);
+    }
+  });
+
+  test("a relative link under an opaque base URL is stamped like any other document reference (CMH-LINK-01)", async ({ page }) => {
+    await stageOpaqueBase(page);
+    // Same proof as above, of the same operand: these hrefs are ordinary, it is the BASE that makes
+    // them unresolvable, so they take the classifier's fallback too.
+    const threw = await page.evaluate(() => {
+      const out = { baseURI: document.baseURI };
+      document.querySelectorAll("#ob-p a").forEach((a) => {
+        try { new URL(a.href, document.baseURI); out[a.id] = false; }
+        catch (e) { out[a.id] = true; }
+      });
+      return out;
+    });
+    expect(threw.baseURI).toBe("about:blank");
+    for (const id of ["obrel", "obroot", "obproto"]) {
+      expect(threw[id], id + " must be unresolvable for this test to exercise the fallback").toBe(true);
+      const a = page.locator("#" + id);
+      await expect(a, id + " target").toHaveAttribute("target", "_blank");
+      const tokens = await relTokens(page, id);
+      expect(tokens, id + " rel").toContain("noopener");
+      expect(tokens, id + " rel").toContain("noreferrer");
+      await expect(a, id + " commentable").toHaveClass(/cm-link-commentable/);
+    }
+    // The control carries its own scheme, so it resolves under any base and stays exempt.
+    expect(threw.obmail, "obmail resolves").toBe(false);
+    expect(await page.locator("#obmail").getAttribute("target"), "obmail target").toBeNull();
+    expect(await relTokens(page, "obmail"), "obmail rel").toEqual([]);
   });
 
   test("an author-set target=_blank without rel gains the secure rel regardless of scheme (CMH-LINK-01)", async ({ page }) => {

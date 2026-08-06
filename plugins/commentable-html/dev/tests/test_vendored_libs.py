@@ -28,6 +28,7 @@ import _paths  # noqa: E402
 sys.path.insert(0, _paths.TOOLS)
 import vendored_libs  # noqa: E402
 import new_document  # noqa: E402
+from checks import links as links_check  # noqa: E402
 from checks import parsing  # noqa: E402
 from checks import resources  # noqa: E402
 
@@ -2599,6 +2600,244 @@ class RuntimeParityTests(unittest.TestCase):
                 "them empties, or only one of them leaves starting with '#', is a link the stamper "
                 "and the authoring gate disagree about opening in a new tab."
                 % (value, js_says, py_says))
+
+    # (href, base URL) rows the runtime's `new URL(a.href, document.baseURI)` cannot RESOLVE, so its
+    # classifier falls through to the string reading this pins to `_is_document_reference`. Two
+    # populations, not one: an href the parser REJECTS (only an absolute reference with an authority
+    # can fail that way, and only three ways - an unterminated IPv6 host, a forbidden host code point
+    # `%`, and an empty host for a special scheme), and any RELATIVE reference in a document whose
+    # base URL has an opaque path, which has no base to resolve against. Every row is checked to be
+    # genuinely unresolvable before its verdict is compared, so the corpus can never quietly stop
+    # exercising the fallback branch it exists for.
+    #
+    # The base matters only to that check - the validator classifies an href with no base at all -
+    # but it must be the base the row really fails under: a space in a host (`http://a b`) makes
+    # node throw and Chromium PERCENT-ENCODE, so such a row would assert a fallback the real runtime
+    # never takes. Rows here are ones both engines refuse.
+    _OPAQUE_BASE = "about:blank"
+    _FILE_BASE = "file:///report.html"
+    _UNPARSEABLE_HREF_CORPUS = [
+        # Document schemes: unparseable or not, a click on one leaves the report.
+        ("http://[", _FILE_BASE), ("https://[", _FILE_BASE), ("file://[", _FILE_BASE),
+        ("http://%", _FILE_BASE), ("file://%", _FILE_BASE), ("https://?", _FILE_BASE),
+        ("http://[/x", _FILE_BASE), ("http://[]", _FILE_BASE),
+        # No scheme at all - it inherits the document's, so it is a document reference too.
+        ("//[", _FILE_BASE),
+        # Non-document schemes: exempt here exactly as their parseable spellings are.
+        ("mailto://[", _FILE_BASE), ("javascript://[", _FILE_BASE), ("data://[", _FILE_BASE),
+        ("tel://[", _FILE_BASE), ("foo://[", _FILE_BASE), ("blob://[", _FILE_BASE),
+        # The paddings the parser's own input cleanup removes. Both cleanups are load-bearing: with
+        # no END TRIM `<SP>foo://[` reads as scheme-less (a document reference) instead of `foo:`,
+        # and with no INNER STRIP `ja<TAB>vascript://[` does the same.
+        (" foo://[", _FILE_BASE), ("\u0001foo://[", _FILE_BASE), ("foo://[ ", _FILE_BASE),
+        ("foo://[\u0001", _FILE_BASE), ("ja\tvascript://[", _FILE_BASE),
+        ("h\ttp://[", _FILE_BASE), ("\rhttp://[\n", _FILE_BASE), ("\u0001//[", _FILE_BASE),
+        # The second population: an ordinary relative reference under an OPAQUE base. Nothing is
+        # wrong with these hrefs - they are the everyday links of a report - and the fallback is the
+        # only reading they get, so the widened contract is pinned rather than incidental.
+        ("guide.html", _OPAQUE_BASE), ("/abs.html", _OPAQUE_BASE), ("//host/x", _OPAQUE_BASE),
+        ("x?q", _OPAQUE_BASE),
+        # The other two opaque-base shapes the comment, the spec row and the changelog all name, so
+        # the prose is pinned rather than asserted.
+        ("guide.html", "blob:https://example.com/1234"), ("//host/x", "blob:https://example.com/1234"),
+        ("guide.html", "data:text/html,x"), ("/abs.html", "data:text/html,x"),
+    ]
+
+    # The rest of the reading, which the corpus above structurally CANNOT reach: every row there
+    # must make `new URL()` fail, and the empty href, a `#fragment` and an ordinary `path/to:x` all
+    # resolve fine. Their verdicts are still part of the mirror - the `""`/`#` short-circuit, the
+    # ASCII case fold, and the scheme regex's exclusion of `/`, `?` and `#` - so they are pinned
+    # here against the same validator function, without the unresolvable precondition.
+    _HREF_READING_CORPUS = [
+        "", " ", "\u0001", "\t", "#", "#frag", " #frag", "\u0001#frag", "\u00a0#frag",
+        "path/to:x", "a?b:c", "x#y:z", "./rel", "/root", "//host/x", "guide.html",
+        "HTTP://x", "HtTpS://x", "FILE:///x", "MAILTO:x", "JavaScript:void(0)",
+        "http:", "https:", "file:", "mailto:x", "tel:+1", "data:text/html,x", "blob:x",
+        "h\ttp://x", "ja\tvascript:void(0)", " mailto:x", "\u0001mailto:x", "mailto:x ",
+    ]
+
+    def _runtime_document_reference_source(self):
+        """The runtime's whole unparseable-href reading, as JS source, for evaluation in node.
+
+        Extracted as one contiguous region - the character classes, the scheme list and both
+        functions - for the same reason the effective-target extraction is: reading only the classes
+        would keep passing after the reading that uses them drifted.
+        """
+        source = self._read("31-links.js")
+        self.assertEqual(source.count("const _CMH_URL_ENDS_TRIM_RE"), 1,
+                         "the runtime declares _CMH_URL_ENDS_TRIM_RE more than once, so this "
+                         "extraction may read a copy the bundle never uses (and a duplicate "
+                         "top-level const is a bundle-wide SyntaxError)")
+        start = source.find("const _CMH_URL_ENDS_TRIM_RE")
+        self.assertNotEqual(start, -1,
+                            "the runtime no longer declares _CMH_URL_ENDS_TRIM_RE; the parity "
+                            "extraction is stale and must be re-pointed at what reads an href now")
+        m = re.compile(r"function _cmhHrefIsDocumentReference\(href\) \{.*?\n\}", re.S).search(source, start)
+        self.assertIsNotNone(m, "the runtime no longer declares _cmhHrefIsDocumentReference after "
+                                "the URL classes; the parity extraction is stale")
+        region = source[start:m.end()]
+        self.assertEqual(region.count("{") - region.count("}"), 0,
+                         "the extracted document-reference region has unbalanced braces, so it was "
+                         "cut mid-function and the parity check would evaluate a truncated copy")
+        return region
+
+    def test_the_python_and_js_href_reading_classes_are_textually_identical(self):
+        """The three hand-copied character sets behind the href reading, pinned as TEXT.
+
+        A corpus cannot see a class that drifted on a character the corpus does not carry, and one
+        of these is structurally UNREACHABLE by the corpus: to reach the fallback a row must make a
+        real `new URL()` fail, which needs a valid scheme, so a character that would discriminate an
+        inner-strip broadening (`[\\t\\n\\r]` -> `\\s`) has to sit BEFORE the scheme colon - where it
+        stops the scheme parsing and the href resolves instead of throwing. The text pin is the only
+        guard there, and it is the same guard the sibling `rel`-token and target-coercion classes
+        already carry.
+        """
+        source = self._read("31-links.js")
+        inner = re.search(r"const _CMH_URL_INNER_STRIP_RE = /(.*?)/g;", source)
+        self.assertIsNotNone(inner, "the runtime no longer declares _CMH_URL_INNER_STRIP_RE as a "
+                                    "global regex literal; the parity pin must be re-pointed")
+        self.assertEqual(inner.group(1), links_check._URL_STRIP_RE.pattern,
+                         "the runtime strips /%s/ from inside an href while the validator strips "
+                         "/%s/; a character only one of them removes makes one side read an "
+                         "obfuscated scheme the other does not"
+                         % (inner.group(1), links_check._URL_STRIP_RE.pattern))
+        scheme = re.search(r"const _CMH_HREF_SCHEME_RE = /\^(.*?)/;", source)
+        self.assertIsNotNone(scheme, "the runtime no longer declares _CMH_HREF_SCHEME_RE as an "
+                                     "anchored regex literal; the parity pin must be re-pointed")
+        self.assertEqual(scheme.group(1), links_check._SCHEME_RE.pattern,
+                         "the runtime matches a scheme with /%s/ while the validator matches /%s/; "
+                         "the validator's is applied with re.match, so the runtime's must be the "
+                         "same pattern anchored at the start and nothing more"
+                         % (scheme.group(1), links_check._SCHEME_RE.pattern))
+        ends = re.search(r"const _CMH_URL_ENDS_TRIM_RE = /(.*?)/g;", source)
+        self.assertIsNotNone(ends, "the runtime no longer declares _CMH_URL_ENDS_TRIM_RE as a "
+                                   "global regex literal; the parity pin must be re-pointed")
+        low, high = ord(parsing._URL_ENDS_TRIM[0]), ord(parsing._URL_ENDS_TRIM[-1])
+        self.assertEqual(parsing._URL_ENDS_TRIM, "".join(chr(c) for c in range(low, high + 1)),
+                         "the validator's end trim is no longer one contiguous range, so the JS "
+                         "class below cannot be derived from its endpoints; pin the two directly")
+        self.assertEqual(ends.group(1),
+                         "^[\\u%04x-\\u%04x]+|[\\u%04x-\\u%04x]+$" % (low, high, low, high),
+                         "the runtime trims an href's ends with /%s/ while the validator trims "
+                         "U+%04X-U+%04X and nothing else" % (ends.group(1), low, high))
+        doc = re.search(r"const _CMH_DOC_SCHEMES = \[(.*?)\];", source)
+        self.assertIsNotNone(doc, "the runtime no longer declares _CMH_DOC_SCHEMES as a single-line "
+                                  "array literal; the parity pin must be re-pointed at whatever "
+                                  "names the document schemes now")
+        self.assertEqual(doc.group(1), ", ".join('"%s"' % s for s in links_check._DOC_SCHEMES),
+                         "the runtime's document-scheme set (order included) has drifted from the "
+                         "validator's %r"
+                         % (links_check._DOC_SCHEMES,))
+
+    def test_the_unparseable_href_fallback_is_the_one_the_classifier_uses(self):
+        """The classifier's `catch` branch must RETURN the shared reading, and there must be exactly
+        ONE classifier to return it from.
+
+        The corpus check below evaluates `_cmhHrefIsDocumentReference` on its own, so it would stay
+        green if the `catch` went back to reading `a.protocol` and left the function unused - which
+        is exactly the state #1183 fixed. The declaration COUNT is pinned beside it because a
+        redeclared function is legal JS: a second copy shipped into every artifact once, the LATER
+        one is what runs, and a text pin that reads the first would then guard dead code.
+        """
+        source = self._read("31-links.js")
+        decls = re.findall(r"function _cmhCommentableLink\(a\) \{.*?\n\}", source, re.S)
+        self.assertEqual(len(decls), 1,
+                         "the runtime declares _cmhCommentableLink %d times; a redeclaration is "
+                         "legal JS and the LAST one is what runs, so the pin below would read a "
+                         "copy the browser never executes" % len(decls))
+        self.assertRegex(
+            decls[0],
+            r'catch \(e\) \{\s*return _cmhHrefIsDocumentReference\(a\.getAttribute\("href"\)\);',
+            "the link classifier's unparseable-href branch no longer returns the shared string "
+            "reading of the anchor's own href attribute. `a.protocol` is \":\" for an anchor whose "
+            "URL record is null, so reading it leaves `http://[` unstamped while the CMH-LINK-05 "
+            "gate calls the same href a document reference (#1183).")
+
+    def test_the_python_and_js_unparseable_href_verdicts_agree(self):
+        """The render-time link classifier (JS) and the new-tab gate (Python) must agree about an
+        href the URL parser cannot resolve.
+
+        This is the divergence #1183 exists because of: the gate classifies `http://[` on the string
+        and calls it a document reference, while the runtime's fallback read `a.protocol`, got ":",
+        and left the link unstamped - so the gate warned about a same-tab link the runtime never
+        actually protected. Run in node rather than re-implemented here, for the same reason the
+        effective-target pair is: the two engines disagree about whitespace and about what their own
+        URL parser rejects, and an engine difference is exactly what this pins. Skipped when node is
+        absent, like the other node-gated checks.
+        """
+        expected = [links_check._is_document_reference(href)
+                    for href, _base in self._UNPARSEABLE_HREF_CORPUS]
+        # A corpus that answered one way for every row would pin nothing while staying green.
+        self.assertIn(True, expected, "no corpus row is a document reference")
+        self.assertIn(False, expected, "no corpus row is a non-document reference")
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        script = (
+            self._runtime_document_reference_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);process.stdout.write(JSON.stringify(p.corpus.map(r=>{"
+            "let threw=false;try{new URL(r[0],r[1]);}catch(e){threw=true;}"
+            "return [threw,_cmhHrefIsDocumentReference(r[0])];})));});"
+        )
+        proc = subprocess.run(
+            [node, "-e", script],
+            input=json.dumps({"corpus": [list(r) for r in self._UNPARSEABLE_HREF_CORPUS]}),
+            capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the document-reference reading: %s" % proc.stderr)
+        verdicts = json.loads(proc.stdout)
+        self.assertEqual(len(verdicts), len(self._UNPARSEABLE_HREF_CORPUS),
+                         "node returned %d verdicts for %d samples"
+                         % (len(verdicts), len(self._UNPARSEABLE_HREF_CORPUS)))
+        for (href, base), (threw, js_says), py_says in zip(self._UNPARSEABLE_HREF_CORPUS,
+                                                           verdicts, expected):
+            self.assertTrue(threw,
+                            "href %r now RESOLVES against base %r, so it no longer reaches the "
+                            "classifier's fallback branch and this row pins nothing; replace it "
+                            "with one the URL parser still refuses" % (href, base))
+            self.assertEqual(
+                js_says, py_says,
+                "unresolvable href %r is %s a document reference in the runtime and %s one in the "
+                "validator. A link only one of them stamps is either a same-tab navigation the "
+                "gate warns about and the runtime never prevents, or a non-document link the "
+                "runtime newly opens in a dead tab."
+                % (href, "" if js_says else "not", "" if py_says else "not"))
+
+    def test_the_python_and_js_href_readings_agree_beyond_the_unresolvable_corpus(self):
+        """The mirror holds for the hrefs the unresolvable corpus cannot carry.
+
+        Its rows must all make `new URL()` fail, so the `""`/`#fragment` short-circuit, the ASCII
+        case fold on the scheme, and the scheme regex's exclusion of `/`, `?` and `#` are asserted
+        by prose alone otherwise - drop the `.toLowerCase()` and every other new test stays green.
+        Same node evaluation, same extracted region, no resolvability precondition.
+        """
+        expected = [links_check._is_document_reference(href) for href in self._HREF_READING_CORPUS]
+        self.assertIn(True, expected, "no corpus row is a document reference")
+        self.assertIn(False, expected, "no corpus row is a non-document reference")
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        script = (
+            self._runtime_document_reference_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);process.stdout.write(JSON.stringify("
+            "p.corpus.map(v=>_cmhHrefIsDocumentReference(v))));});"
+        )
+        proc = subprocess.run([node, "-e", script],
+                              input=json.dumps({"corpus": self._HREF_READING_CORPUS}),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the document-reference reading: %s" % proc.stderr)
+        verdicts = json.loads(proc.stdout)
+        self.assertEqual(len(verdicts), len(self._HREF_READING_CORPUS),
+                         "node returned %d verdicts for %d samples"
+                         % (len(verdicts), len(self._HREF_READING_CORPUS)))
+        for href, js_says, py_says in zip(self._HREF_READING_CORPUS, verdicts, expected):
+            self.assertEqual(js_says, py_says,
+                             "href %r is %s a document reference in the runtime and %s one in the "
+                             "validator" % (href, "" if js_says else "not",
+                                            "" if py_says else "not"))
 
     def test_the_python_and_js_parked_base_corpora_are_identical(self):
         """The two readers' parked-`<base>` corpora are hand-copied markup lists, so pin their TEXT.
