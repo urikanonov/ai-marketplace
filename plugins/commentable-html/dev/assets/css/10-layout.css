@@ -33,16 +33,22 @@ body.sidebar-open .app { padding-right: 1.5rem; }
    that absorbs the header's shrink, and it scrolls rather than pushing the list off the bottom.
    The negative inline margin plus matching padding pushes the clip edge out to the header's own
    padding box, so a control's focus ring is not shaved off at the region's edge and its scrollbar
-   sits flush with the pane exactly as the comment list's does. `overflow-x: clip` is explicit
-   because `overflow-y: auto` alone would compute the other axis to `auto`, and a long localized
-   "Generated on" line (`.cm-side-info > span` is `nowrap`) would then grow a horizontal scrollbar
-   INSIDE the header, spending the very vertical budget this region exists to protect. The
-   `min-height` keeps the region from being squeezed below the 44px control it has to reveal when a
-   host document's root font inflates the pinned chrome. */
+   sits flush with the pane exactly as the comment list's does, and `scrollbar-gutter: stable`
+   reserves that gutter on classic-scrollbar platforms so the rows do not shift inline when the
+   region starts scrolling. `overflow-x` is pinned because `overflow-y: auto` alone would compute
+   the other axis to `auto`, and a long localized "Generated on" line would then grow a horizontal
+   scrollbar INSIDE the header, spending the very vertical budget this region exists to protect;
+   `hidden` rather than `clip` because a browser without `clip` support drops the declaration
+   entirely and falls straight back into that scrollbar, and the two compute identically here.
+   `box-sizing` is explicit because the `border-box` reset lives in the document theme rather than
+   the layer (the same reason CMH-RESP-14's controls carry it): under a reset-free host the padding
+   would otherwise be ADDED to every floor below and the region would overlap the list. It takes no
+   `min-height` on purpose - see the list's floor in `20-chrome.css` for the ordering. */
 .cm-sidebar .head-aux {
+  box-sizing: border-box;
   display: flex; flex-direction: column; gap: var(--cp-chrome-gap);
-  flex: 0 1 auto; min-height: min(48px, 15vh); overflow-y: auto; overflow-x: clip;
-  overscroll-behavior: contain;
+  flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain; scrollbar-gutter: stable;
   margin-inline: calc(-1 * var(--cp-chrome-header-x));
   padding-inline: var(--cp-chrome-header-x);
 }
@@ -309,12 +315,16 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
   .cm-sidebar .head-primary > button,
   .cm-sidebar .head-primary .cm-sidebar-export-toggle { min-height: 44px; }
   /* At this width the `set name` link wears an OVERLAID 44px tap target (CMH-RESP-14) that
-     overhangs its ~12px box by about 16px. The identity row is the LAST child of the bounded
-     `.head-aux` region, so without room for that overhang the region would clip the bottom of the
-     target - and, on a viewport with space to spare, carry ~14px of scrollable overflow for a
-     region that has nothing to scroll. Reserving it inside the scrollport costs no header height
-     (the region's own height is decided by the flex layout, not by its content). */
-  .cm-sidebar .head-aux { padding-bottom: 16px; }
+     overhangs its box by `(44px - link height) / 2`, about 16px at a browser-default root font and
+     ~17px at a very small one. The identity row is the LAST child of the bounded `.head-aux`
+     region, so without room for that overhang the region would clip the bottom of the target -
+     and, on a viewport with space to spare, carry ~14px of scrollable overflow for a region that
+     has nothing to scroll. The room is reserved INSIDE the scrollport, and the header's own bottom
+     padding is handed over to it so a portrait phone pays nothing for it: the 18px lands where the
+     header's padding used to be, the border below it does not move, and on a landscape phone -
+     where the region scrolls - the header gets that padding back as list. */
+  .cm-sidebar header { padding-bottom: 0; }
+  .cm-sidebar .head-aux { padding-bottom: 18px; }
 }
 /* A landscape phone is the one viewport where the header's own padding is worth more than its
    breathing room: it is charged twice over, and what it costs is the scroll window `.head-aux`
@@ -324,4 +334,9 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
     padding-top: var(--cp-chrome-button-y);
     padding-bottom: var(--cp-chrome-button-y);
   }
+}
+/* ...but at phone WIDTH the region owns the header's bottom padding (above), and this rule follows
+   the height trim so the handover wins in the overlap - a landscape phone is both. */
+@media (max-width: 640px) {
+  .cm-sidebar header { padding-bottom: 0; }
 }

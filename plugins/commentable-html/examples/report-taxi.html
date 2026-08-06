@@ -515,16 +515,22 @@ body.sidebar-open .app { padding-right: 1.5rem; }
    that absorbs the header's shrink, and it scrolls rather than pushing the list off the bottom.
    The negative inline margin plus matching padding pushes the clip edge out to the header's own
    padding box, so a control's focus ring is not shaved off at the region's edge and its scrollbar
-   sits flush with the pane exactly as the comment list's does. `overflow-x: clip` is explicit
-   because `overflow-y: auto` alone would compute the other axis to `auto`, and a long localized
-   "Generated on" line (`.cm-side-info > span` is `nowrap`) would then grow a horizontal scrollbar
-   INSIDE the header, spending the very vertical budget this region exists to protect. The
-   `min-height` keeps the region from being squeezed below the 44px control it has to reveal when a
-   host document's root font inflates the pinned chrome. */
+   sits flush with the pane exactly as the comment list's does, and `scrollbar-gutter: stable`
+   reserves that gutter on classic-scrollbar platforms so the rows do not shift inline when the
+   region starts scrolling. `overflow-x` is pinned because `overflow-y: auto` alone would compute
+   the other axis to `auto`, and a long localized "Generated on" line would then grow a horizontal
+   scrollbar INSIDE the header, spending the very vertical budget this region exists to protect;
+   `hidden` rather than `clip` because a browser without `clip` support drops the declaration
+   entirely and falls straight back into that scrollbar, and the two compute identically here.
+   `box-sizing` is explicit because the `border-box` reset lives in the document theme rather than
+   the layer (the same reason CMH-RESP-14's controls carry it): under a reset-free host the padding
+   would otherwise be ADDED to every floor below and the region would overlap the list. It takes no
+   `min-height` on purpose - see the list's floor in `20-chrome.css` for the ordering. */
 .cm-sidebar .head-aux {
+  box-sizing: border-box;
   display: flex; flex-direction: column; gap: var(--cp-chrome-gap);
-  flex: 0 1 auto; min-height: min(48px, 15vh); overflow-y: auto; overflow-x: clip;
-  overscroll-behavior: contain;
+  flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain; scrollbar-gutter: stable;
   margin-inline: calc(-1 * var(--cp-chrome-header-x));
   padding-inline: var(--cp-chrome-header-x);
 }
@@ -791,12 +797,16 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
   .cm-sidebar .head-primary > button,
   .cm-sidebar .head-primary .cm-sidebar-export-toggle { min-height: 44px; }
   /* At this width the `set name` link wears an OVERLAID 44px tap target (CMH-RESP-14) that
-     overhangs its ~12px box by about 16px. The identity row is the LAST child of the bounded
-     `.head-aux` region, so without room for that overhang the region would clip the bottom of the
-     target - and, on a viewport with space to spare, carry ~14px of scrollable overflow for a
-     region that has nothing to scroll. Reserving it inside the scrollport costs no header height
-     (the region's own height is decided by the flex layout, not by its content). */
-  .cm-sidebar .head-aux { padding-bottom: 16px; }
+     overhangs its box by `(44px - link height) / 2`, about 16px at a browser-default root font and
+     ~17px at a very small one. The identity row is the LAST child of the bounded `.head-aux`
+     region, so without room for that overhang the region would clip the bottom of the target -
+     and, on a viewport with space to spare, carry ~14px of scrollable overflow for a region that
+     has nothing to scroll. The room is reserved INSIDE the scrollport, and the header's own bottom
+     padding is handed over to it so a portrait phone pays nothing for it: the 18px lands where the
+     header's padding used to be, the border below it does not move, and on a landscape phone -
+     where the region scrolls - the header gets that padding back as list. */
+  .cm-sidebar header { padding-bottom: 0; }
+  .cm-sidebar .head-aux { padding-bottom: 18px; }
 }
 /* A landscape phone is the one viewport where the header's own padding is worth more than its
    breathing room: it is charged twice over, and what it costs is the scroll window `.head-aux`
@@ -806,6 +816,11 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
     padding-top: var(--cp-chrome-button-y);
     padding-bottom: var(--cp-chrome-button-y);
   }
+}
+/* ...but at phone WIDTH the region owns the header's bottom padding (above), and this rule follows
+   the height trim so the handover wins in the overlap - a landscape phone is both. */
+@media (max-width: 640px) {
+  .cm-sidebar header { padding-bottom: 0; }
 }
 /* Attribution footer (runtime-generated, cm-skip) - appears whenever the layer is
    active, and is correctly absent from a Plain HTML export where the layer is removed.
@@ -898,8 +913,13 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
    no header can promise at 320px since a rendered card is ~250px tall. It is capped at 30vh so it
    YIELDS on a viewport shorter than the 320px this targets (30vh is exactly 96px at 320px, so the
    shipped guarantee is unchanged): a fixed floor there would leave the pinned chrome no room and
-   it would paint over the list instead. */
-.cm-sidebar .list { flex: 1; min-height: min(96px, 30vh); overflow-y: auto; padding: var(--cp-chrome-card-y); display: flex; flex-direction: column; gap: var(--cp-chrome-gap); }
+   it would paint over the list instead. `box-sizing` is explicit because the `border-box` reset
+   lives in the document theme rather than the layer, and under a reset-free host the card padding
+   would otherwise be ADDED to the floor and re-create the overlap this exists to prevent. The
+   ORDERING under pressure is deliberate: the chrome is pinned, this floor is next, and the region
+   absorbs whatever is left - it carries no floor of its own, because one would only ever bind when
+   the header cannot fit anyway, and there it would force the chrome to overlap the cards. */
+.cm-sidebar .list { box-sizing: border-box; flex: 1; min-height: min(96px, 30vh); overflow-y: auto; padding: var(--cp-chrome-card-y); display: flex; flex-direction: column; gap: var(--cp-chrome-gap); }
 .cm-empty { text-align: center; padding: 2rem 1rem; color: var(--cp-text-muted); font-size: var(--cp-chrome-font); line-height: 1.55; }
 .cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: var(--cp-chrome-body-font); color: var(--cp-text); }
 
@@ -2150,6 +2170,17 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code
    (issue #897), so the landing has to look intentional. Inset, since an outset ring on a
    full-height scroll container is clipped by the panel edge. */
 #commentList:focus-visible {
+  outline: 2px solid var(--cp-accent);
+  outline-offset: -2px;
+}
+
+/* The sidebar header's bounded region (CMH-RESP-16) takes a keyboard tab stop WHILE it scrolls, so
+   it needs the same treatment: without it the landing falls back to the UA ring, whose contrast on
+   these surfaces this file exists to fix. Inset for the same reason as the list - the region spans
+   the pane's whole padding box, so an outset ring's end segment lands on the viewport edge and is
+   never painted. Keyed off the attribute the stamping writes, so it only ever applies while the
+   region is genuinely focusable. */
+.cm-sidebar .head-aux[data-cmh-scroll-a11y]:focus-visible {
   outline: 2px solid var(--cp-accent);
   outline-offset: -2px;
 }
@@ -12463,11 +12494,16 @@ function saveComposerElementInner(el) {
   const A11Y = [
     ["tabindex", "0"],
     ["role", "group"],
-    ["aria-label", "Panel details: search, document info and your name"],
+    // Named for what is ALWAYS in it. The search row and the identity editor are both hidden most
+    // of the time, so enumerating them would announce a "search" that is not there.
+    ["aria-label", "Panel details"],
     ["aria-description", "Scrollable region. Use the arrow keys to scroll."],
   ];
   let on = null;
   function sync() {
+    // Observe any row added since the last pass; `observe` on an already-observed element is a
+    // no-op, so this stays idempotent.
+    if (ro) Array.prototype.forEach.call(aux.children, function (row) { ro.observe(row); });
     const scrolls = aux.scrollHeight > aux.clientHeight + 1;
     if (scrolls === on) return;
     on = scrolls;
@@ -12478,19 +12514,20 @@ function saveComposerElementInner(el) {
     if (scrolls) aux.setAttribute("data-cmh-scroll-a11y", "");
     else aux.removeAttribute("data-cmh-scroll-a11y");
   }
-  sync();
   // The region scrolls when its own box shrinks (a short viewport) OR when a transient row opens
   // and grows its content, so watch both the region and each row it holds.
-  if (typeof ResizeObserver === "function") {
-    const ro = new ResizeObserver(sync);
-    ro.observe(aux);
-    Array.prototype.forEach.call(aux.children, function (row) { ro.observe(row); });
-  }
+  const ro = typeof ResizeObserver === "function" ? new ResizeObserver(sync) : null;
+  if (ro) ro.observe(aux);
+  sync();
   window.addEventListener("resize", sync);
   // A row is shown/hidden with the `hidden` attribute, which a ResizeObserver reports only once the
   // box actually changes; observing the attribute too makes the toggle synchronous with the click.
+  // `childList` covers a row added or removed later, which neither observer would otherwise see.
   if (typeof MutationObserver === "function") {
-    new MutationObserver(sync).observe(aux, { attributes: true, subtree: true, attributeFilter: ["hidden", "style", "class"] });
+    new MutationObserver(sync).observe(aux, {
+      attributes: true, subtree: true, childList: true,
+      attributeFilter: ["hidden", "style", "class"],
+    });
   }
 })();
 /* ---------- Sidebar rendering ---------- */

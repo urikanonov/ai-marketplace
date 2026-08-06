@@ -496,7 +496,7 @@ test.describe("visual-audit follow-ups", () => {
     // The `field < 44` assertion below is unchanged and remains the exact, binary guard against
     // CMH-RESP-15's gate being DELETED (as opposed to moved); the THRESHOLD itself is pinned by
     // the 359/360 boundary pass in the CMH-RESP-15 test.
-    const BUDGET = { layout: 95.5, visible: 95.5, overflow: 1 };
+    const BUDGET = { layout: 95, visible: 95, overflow: 1 };
     // One 44px control plus its overlaid tap target: below this the identity editor cannot be
     // shown, which is the same starvation one step downstream of the cards, and it is where a
     // later control bump is paid now that the list has a structural floor.
@@ -606,7 +606,7 @@ test.describe("visual-audit follow-ups", () => {
     // (`comfortable`, both transient rows open) still overflowed by 14px - and CMH-RESP-16
     // tightens it the same way: with the header bounded, ALL six cells hold the whole list with no
     // pane overflow at 640x360 as well, so the residual and the table describing it are gone.
-    const THRESHOLD = { visible: 95.5, overflow: 1 };
+    const THRESHOLD = { visible: 95, overflow: 1 };
     await page.setViewportSize({ width: 640, height: 360 });
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     for (const density of DENSITIES) {
@@ -876,7 +876,7 @@ test.describe("visual-audit follow-ups", () => {
     // stays a usable scroll window - a card's meta line plus the start of its body. The CSS floor
     // is `min(96px, 30vh)`, exactly 96px here, and the assertion sits just under it so genuine
     // cross-platform font metrics cannot flake it while a real regression still fails.
-    const VISIBLE_FLOOR = 95.5;
+    const VISIBLE_FLOOR = 95;
     await page.setViewportSize({ width: 640, height: 320 });
     await page.goto(fileUrl(INLINE));
     await ready(page);
@@ -898,6 +898,8 @@ test.describe("visual-audit follow-ups", () => {
           const at = `[empty, density=${density || "default"}, search=${search}, editing=${editing}]`;
           expect(m.visible, `${at}: the empty comment list keeps a visible window`).toBeGreaterThanOrEqual(VISIBLE_FLOOR);
           expect(m.paneOverflowY, `${at}: the side pane does not overflow vertically`).toBeLessThanOrEqual(1);
+          expect(m.headOverflowY, `${at}: the header's pinned chrome fits the header box`).toBeLessThanOrEqual(1);
+          expect(m.chromeOverlap, `${at}: the pinned chrome does not paint over the comment list`).toBeLessThanOrEqual(1);
         }
       }
     }
@@ -937,23 +939,22 @@ test.describe("visual-audit follow-ups", () => {
     await setIdentityEditor(page, false);
     await setDensity(page, "");
 
-    // Shorter than the viewport this targets, the floor must YIELD rather than let the pinned
-    // chrome overrun the list: `min(96px, 30vh)` on the list and `min(48px, 15vh)` on the region
-    // are what make that graceful. What is promised BELOW 320px is bounded degradation, not the
-    // full guarantee - at 280px everything still fits, and by 240px (well under any phone, and
-    // less than the pinned chrome plus one control) the transient region starts to overlap the
-    // list, while the chrome a reviewer actually presses stays clear of it either way.
-    await page.setViewportSize({ width: 640, height: 280 });
-    let short = await measureList(page);
-    expect(short.visible, "[640x280]: the comment list still has a window").toBeGreaterThan(0);
-    expect(short.chromeOverlap, "[640x280]: the pinned chrome does not paint over the comment list").toBeLessThanOrEqual(1);
-    expect(short.headOverflowY, "[640x280]: the header still fits its box").toBeLessThanOrEqual(1);
-    await page.setViewportSize({ width: 640, height: 240 });
-    short = await measureList(page);
-    expect(short.visible, "[640x240]: the comment list still has a window").toBeGreaterThan(0);
-    expect(short.chromeOverlap, "[640x240]: the pinned chrome does not paint over the comment list").toBeLessThanOrEqual(1);
-    // Bounded, not zero: the residual is recorded so it cannot silently grow back into #1180.
-    expect(short.headOverflowY, "[640x240]: the header's spill stays bounded").toBeLessThanOrEqual(24);
+    // Shorter than the viewport this targets, the floors must YIELD rather than let the pinned
+    // chrome overrun the list: the list's `min(96px, 30vh)` cap, and the region carrying no floor
+    // of its own, are what make that graceful. Measured, the full containment guarantee holds all
+    // the way down to 640x240 - well under any device, and less than the pinned chrome plus one
+    // control - so it is asserted rather than merely bounded. What is NOT promised below 320px is
+    // the 96px window itself; it scales with the viewport instead, which is what the `30vh` cap is.
+    for (const height of [280, 240]) {
+      await page.setViewportSize({ width: 640, height });
+      const short = await measureList(page);
+      const at = `[640x${height}]`;
+      expect(short.visible, `${at}: the window scales with the viewport instead of vanishing`)
+        .toBeGreaterThanOrEqual(height * 0.3 - 1);
+      expect(short.chromeOverlap, `${at}: the pinned chrome does not paint over the comment list`).toBeLessThanOrEqual(1);
+      expect(short.headOverflowY, `${at}: the header still fits its box`).toBeLessThanOrEqual(1);
+      expect(short.paneOverflowY, `${at}: the side pane does not overflow vertically`).toBeLessThanOrEqual(1);
+    }
     await page.setViewportSize({ width: 640, height: 320 });
   });
 
@@ -1038,7 +1039,52 @@ test.describe("visual-audit follow-ups", () => {
     await expect(aux, "a scrolling region is keyboard reachable").toHaveAttribute("tabindex", "0");
     await expect(aux, "a scrolling region is a named group").toHaveAttribute("role", "group");
     await expect(aux, "a scrolling region carries an accessible name").toHaveAttribute("aria-label", /\S/);
+    // A tab stop the layer adds must land visibly: the UA ring is what `assets/css/80-focus.css`
+    // exists to replace, and an OUTSET ring on this box is clipped by the pane edge, so it takes
+    // the same inset accent ring the comment list does. The ring is `:focus-visible`, which a
+    // PROGRAMMATIC focus does not match on a non-input, so walk into it with the keyboard.
+    await page.locator("#cmSearchInput").focus();
+    await page.keyboard.press("Shift+Tab");
+    const ring = await page.evaluate(() => {
+      const el = document.querySelector(".cm-sidebar .head-aux");
+      const cs = getComputedStyle(el);
+      return {
+        focused: document.activeElement === el,
+        matches: el.matches(":focus-visible"),
+        style: cs.outlineStyle, width: cs.outlineWidth, offset: cs.outlineOffset,
+      };
+    });
+    expect(ring.focused, "Shift+Tab from the search field reaches the scrolling region").toBe(true);
+    expect(ring.matches, "the region's focus is a visible one").toBe(true);
+    expect(ring.style, "the region's focus ring is themed, not the UA default").toBe("solid");
+    expect(parseFloat(ring.width), "the region's focus ring is visible").toBeGreaterThanOrEqual(2);
+    expect(parseFloat(ring.offset), "the region's focus ring is inset so the pane edge cannot clip it")
+      .toBeLessThanOrEqual(0);
     await setSearchRow(page, false);
+
+    // A long localized metadata line must WRAP rather than turn the header into a horizontal
+    // scroller: `overflow-y: auto` computes the inline axis to `auto` on its own, and a scrollbar
+    // there would eat the vertical budget this region exists to protect. Two things carry that -
+    // the wrap, which stops the overflow existing, and the pinned `hidden`, which is what a browser
+    // falls back to safely - so pin both.
+    const wide = await page.evaluate(() => {
+      const el = document.getElementById("cmGenerated");
+      const before = el.textContent;
+      el.textContent = "Erstellt am Donnerstag, 6. August 2026 um 14:32:07 Mitteleuropaeische Sommerzeit "
+        + "(automatisch erzeugt durch den Pruefbericht-Generator, Revision 2026-08-06T14:32:07Z)";
+      const aux2 = document.querySelector(".cm-sidebar .head-aux");
+      const pane = document.querySelector(".cm-sidebar");
+      const out = {
+        auxX: aux2.scrollWidth - aux2.clientWidth,
+        paneX: pane.scrollWidth - pane.clientWidth,
+        overflowX: getComputedStyle(aux2).overflowX,
+      };
+      el.textContent = before;
+      return out;
+    });
+    expect(wide.overflowX, "the region pins its inline axis rather than inheriting a scroller").toBe("hidden");
+    expect(wide.auxX, "a long metadata line wraps instead of scrolling the header sideways").toBeLessThanOrEqual(1);
+    expect(wide.paneX, "a long metadata line does not scroll the pane sideways either").toBeLessThanOrEqual(1);
 
     // On a tall viewport it must NOT scroll at all - neither a leftover tab stop nor the 44px
     // identity tap target's overhang may turn the header into a scroller with nothing to scroll.

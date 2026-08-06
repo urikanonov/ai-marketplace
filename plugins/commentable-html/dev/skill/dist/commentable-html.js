@@ -7935,11 +7935,16 @@ function saveComposerElementInner(el) {
   const A11Y = [
     ["tabindex", "0"],
     ["role", "group"],
-    ["aria-label", "Panel details: search, document info and your name"],
+    // Named for what is ALWAYS in it. The search row and the identity editor are both hidden most
+    // of the time, so enumerating them would announce a "search" that is not there.
+    ["aria-label", "Panel details"],
     ["aria-description", "Scrollable region. Use the arrow keys to scroll."],
   ];
   let on = null;
   function sync() {
+    // Observe any row added since the last pass; `observe` on an already-observed element is a
+    // no-op, so this stays idempotent.
+    if (ro) Array.prototype.forEach.call(aux.children, function (row) { ro.observe(row); });
     const scrolls = aux.scrollHeight > aux.clientHeight + 1;
     if (scrolls === on) return;
     on = scrolls;
@@ -7950,19 +7955,20 @@ function saveComposerElementInner(el) {
     if (scrolls) aux.setAttribute("data-cmh-scroll-a11y", "");
     else aux.removeAttribute("data-cmh-scroll-a11y");
   }
-  sync();
   // The region scrolls when its own box shrinks (a short viewport) OR when a transient row opens
   // and grows its content, so watch both the region and each row it holds.
-  if (typeof ResizeObserver === "function") {
-    const ro = new ResizeObserver(sync);
-    ro.observe(aux);
-    Array.prototype.forEach.call(aux.children, function (row) { ro.observe(row); });
-  }
+  const ro = typeof ResizeObserver === "function" ? new ResizeObserver(sync) : null;
+  if (ro) ro.observe(aux);
+  sync();
   window.addEventListener("resize", sync);
   // A row is shown/hidden with the `hidden` attribute, which a ResizeObserver reports only once the
   // box actually changes; observing the attribute too makes the toggle synchronous with the click.
+  // `childList` covers a row added or removed later, which neither observer would otherwise see.
   if (typeof MutationObserver === "function") {
-    new MutationObserver(sync).observe(aux, { attributes: true, subtree: true, attributeFilter: ["hidden", "style", "class"] });
+    new MutationObserver(sync).observe(aux, {
+      attributes: true, subtree: true, childList: true,
+      attributeFilter: ["hidden", "style", "class"],
+    });
   }
 })();
 /* ---------- Sidebar rendering ---------- */

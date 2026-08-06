@@ -24,14 +24,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   states now keep the whole list on screen with no pane overflow, and opening either transient row
   scrolls its field fully into view - including the identity NUDGE, the first way a reviewer meets
   the editor, which opens it for them without focus and so had to learn to scroll itself. Bounding
-  a region has consequences, and they are handled rather than left: the inline axis is clipped
-  explicitly (so a long localized "Generated on" line wraps instead of growing a horizontal
-  scrollbar inside the header), the region's clip edge is pushed out to the header's padding box
-  (so a focus ring is not shaved off and the scrollbar sits flush with the pane), the `set name`
-  link's overlaid 44px tap target gets its overhang reserved inside the scrollport, and the region
-  takes a keyboard tab stop, `role="group"` and an accessible name while - and only while - it
-  actually scrolls. Below 320px both floors yield rather than let the pinned chrome overrun the
-  list. The desktop layout is unchanged.
+  a region has consequences, and they are handled rather than left: the inline axis is pinned to
+  `hidden` (so a long localized "Generated on" line wraps instead of growing a horizontal scrollbar
+  inside the header, and a browser without `overflow: clip` support cannot fall back into one), the
+  region's clip edge is pushed out to the header's padding box with a reserved scrollbar gutter (so
+  a focus ring is not shaved off, the scrollbar sits flush with the pane, and the rows do not shift
+  when it starts scrolling), the `set name` link's overlaid 44px tap target gets its overhang reserved inside the
+  scrollport with the header handing over its own bottom padding so a portrait phone pays nothing
+  for it, both floors carry an explicit `box-sizing` because the `border-box` reset lives in the
+  document theme rather than the layer, and the region takes a keyboard tab stop, `role="group"`, an
+  accessible name and the layer's own inset focus ring while - and only while - it actually scrolls.
+  Below 320px the list floor scales with the viewport, so the whole guarantee still holds at 640x240.
+  The desktop layout is unchanged.
 
 ## [1.790.0] - 2026-08-06
 

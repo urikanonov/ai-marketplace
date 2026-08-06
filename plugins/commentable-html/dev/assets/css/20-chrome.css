@@ -89,8 +89,13 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
    no header can promise at 320px since a rendered card is ~250px tall. It is capped at 30vh so it
    YIELDS on a viewport shorter than the 320px this targets (30vh is exactly 96px at 320px, so the
    shipped guarantee is unchanged): a fixed floor there would leave the pinned chrome no room and
-   it would paint over the list instead. */
-.cm-sidebar .list { flex: 1; min-height: min(96px, 30vh); overflow-y: auto; padding: var(--cp-chrome-card-y); display: flex; flex-direction: column; gap: var(--cp-chrome-gap); }
+   it would paint over the list instead. `box-sizing` is explicit because the `border-box` reset
+   lives in the document theme rather than the layer, and under a reset-free host the card padding
+   would otherwise be ADDED to the floor and re-create the overlap this exists to prevent. The
+   ORDERING under pressure is deliberate: the chrome is pinned, this floor is next, and the region
+   absorbs whatever is left - it carries no floor of its own, because one would only ever bind when
+   the header cannot fit anyway, and there it would force the chrome to overlap the cards. */
+.cm-sidebar .list { box-sizing: border-box; flex: 1; min-height: min(96px, 30vh); overflow-y: auto; padding: var(--cp-chrome-card-y); display: flex; flex-direction: column; gap: var(--cp-chrome-gap); }
 .cm-empty { text-align: center; padding: 2rem 1rem; color: var(--cp-text-muted); font-size: var(--cp-chrome-font); line-height: 1.55; }
 .cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: var(--cp-chrome-body-font); color: var(--cp-text); }
 
