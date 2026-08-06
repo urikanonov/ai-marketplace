@@ -2171,8 +2171,12 @@ test("CMH-VAL-08: a browser requests exactly the script shapes the gate calls a 
   const probe = FETCH_PROBE_SHAPES.map(([slug, tpl, expected]) => ({ slug, tpl, expected }));
   const script = [
     "import json, sys",
-    "sys.path.insert(0, r'" + path.join(SKILL, "tools") + "')",
-    "from validate.checks import parsing",
+    // `tools/validate` (not `tools`), then `from checks import parsing`: `checks` is a real package
+    // with an `__init__.py`, while `validate` has none - importing through it relies on namespace
+    // packages resolving the same way on every host, which they do not (CI failed where a local run
+    // passed). This is the same path the plugin's own Python tests take through `_paths.TOOLS`.
+    "sys.path.insert(0, r'" + path.join(SKILL, "tools", "validate") + "')",
+    "from checks import parsing",
     "shapes = json.loads(sys.stdin.read())",
     "out = {}",
     "for s in shapes:",
