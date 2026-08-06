@@ -562,6 +562,206 @@ class NonShareableTests(unittest.TestCase):
                 self.assertEqual(errors, [], "errors: %r" % errors)
                 self.assertFalse(any("bootstrap watchdog" in w for w in warnings), warnings)
 
+    # -- CMH-VAL-28: a companion reference a browser would not run is not the runtime ------- #
+    # `_nonshareable_js_refs` counted any `<script src="commentable-html.js">` by NAME and `src`
+    # alone, so an inert TYPE (or `nomodule`) satisfied "the runtime is here" while the layer
+    # never loaded and the document validated clean - the same fail-OPEN class the loader search
+    # in `charts.py` already closed with `_is_executable_js`.
+    def test_an_inert_typed_companion_script_does_not_satisfy_the_runtime(self):
+        for attr in ('type="application/json"', 'type="text/plain"', "nomodule"):
+            with self.subTest(attr=attr):
+                doc = self._in_layer(
+                    build_nonshareable(runtime=False),
+                    '<script %s src="commentable-html.js"></script>' % attr)
+                self.assertEqual(validate._nonshareable_js_refs(doc),
+                                 ["commentable-html.assets.js"])
+                self.assertNonShareableError(doc, "no commentable-html runtime")
+
+    def test_a_runnable_typed_companion_script_still_satisfies_the_runtime(self):
+        # The controls that keep the rule the BROWSER's rule rather than "only a bare tag counts":
+        # an explicit JS type, a legacy runnable type, an EMPTY type (which HTML reads as classic),
+        # a `language` naming JavaScript, and a MODULE script - on which `nomodule` has no effect
+        # at all, since the spec tests it on the CLASSIC branch only.
+        for attr in ('type="text/javascript"', 'type="TEXT/JavaScript"', 'type="text/jscript"',
+                     'type=""', 'language="JavaScript"', 'type="module"', 'nomodule type="module"'):
+            with self.subTest(attr=attr):
+                doc = self._in_layer(
+                    build_nonshareable(runtime=False),
+                    '<script %s src="commentable-html.js"></script>' % attr)
+                errors, _ = self._validate(doc)
+                self.assertEqual([e for e in errors if "no commentable-html runtime" in e], [],
+                                 errors)
+
+    def test_a_companion_script_type_must_be_a_whole_essence_match(self):
+        # HTML matches the type string as a WHOLE against the JavaScript MIME type essences, so a
+        # MIME PARAMETER defeats the match and a whitespace-only value is not "absent" - neither
+        # executes in any modern browser, so neither is the runtime. (`_is_executable_js`, the
+        # type test the offline strips share with the exporter, deliberately splits at `;` because
+        # over-inclusion is the safe direction THERE; here it would be fail-OPEN.)
+        for attr in ('type="text/javascript; charset=utf-8"', 'type="module; charset=utf-8"',
+                     'type=" "', 'language="vbscript"'):
+            with self.subTest(attr=attr):
+                doc = self._in_layer(
+                    build_nonshareable(runtime=False),
+                    '<script %s src="commentable-html.js"></script>' % attr)
+                self.assertNonShareableError(doc, "no commentable-html runtime")
+
+    def test_an_inert_typed_remote_companion_is_still_refused_as_a_network_load(self):
+        # Dropping a reference from this list must not drop it from the EGRESS gate. The
+        # self-contained scan reads the shared tag index and is deliberately type- and
+        # namespace-blind, so the remote URL is still an error - the narrowing above changes which
+        # message names the document, never whether it is refused.
+        doc = self._in_layer(
+            build_nonshareable(),
+            '<script type="application/json" src="https://evil.example/commentable-html.x.js">'
+            "</script>")
+        errors, _ = self._validate(doc)
+        self.assertTrue(any("evil.example" in e for e in errors), errors)
+
+    def test_a_companion_stylesheet_link_must_really_be_a_stylesheet(self):
+        # The CSS half of the same question: a browser applies a stylesheet only because the `rel`
+        # list says `stylesheet`, so a preload/no-rel link leaves the layer unstyled - and neither
+        # does a `disabled` one, whose whole meaning is "not applied" and which nothing in the
+        # runtime ever enables.
+        for attrs in ('rel="preload" as="style"', 'rel="modulepreload"', "",
+                      'rel="stylesheet" disabled', 'rel="stylesheet" type="text/plain"'):
+            with self.subTest(attrs=attrs):
+                doc = self._in_layer(
+                    build_nonshareable(link=False),
+                    '<link %s href="commentable-html.css">' % attrs)
+                self.assertEqual(validate._nonshareable_css_refs(doc), [])
+                self.assertNonShareableError(doc, "no commentable-html stylesheet")
+
+    def test_a_companion_reference_a_browser_ignores_still_reports_a_leaked_path(self):
+        # The narrowing above changed only the CLASSIFICATION. Whether a baked absolute path leaks
+        # a local directory is a property of the ref STRING and is true whether or not a browser
+        # runs or applies the element - the disclosure is in the shipped bytes either way - and
+        # nothing else in the validator reports a local path on a script or link.
+        for markup in ('<script type="application/json" src="/srv/priv/commentable-html.js">'
+                       "</script>",
+                       '<link rel="preload" as="style" href="/srv/priv/commentable-html.css">'):
+            with self.subTest(markup=markup[:40]):
+                doc = self._in_layer(build_nonshareable(), markup)
+                _errors, warnings = self._validate(doc)
+                self.assertTrue(any("is an absolute path" in w for w in warnings), warnings)
+
+    def test_a_document_whose_every_companion_is_unusable_is_not_nonshareable_at_all(self):
+        # The BOUNDARY of the test above, pinned so it is a decision rather than an accident.
+        # These are NonShareable-mode diagnostics, and a file whose EVERY companion reference is
+        # one a browser cannot use never enters that mode: it is a Shareable document carrying a
+        # stray inert reference, so it must not be judged - or reported - against a companion
+        # contract it never entered. That is exactly the misclassification CMH-VAL-28 fixes.
+        doc = self._in_layer(
+            build(),
+            '<script type="application/json" src="/srv/priv/commentable-html.js"></script>\n'
+            '<link rel="preload" as="style" href="/srv/priv/commentable-html.css">')
+        self.assertFalse(validate._is_nonshareable(doc))
+        errors, warnings = self._validate(doc)
+        self.assertEqual([m for m in errors + warnings if "nonshareable mode:" in m], [],
+                         errors + warnings)
+
+    def test_a_real_stylesheet_rel_still_satisfies_the_stylesheet(self):
+        for rel in ('rel="stylesheet"', 'rel="STYLESHEET"', 'rel="stylesheet preload"',
+                    'rel="stylesheet" type="text/css"', 'rel="stylesheet" type=" TEXT/CSS "'):
+            with self.subTest(rel=rel):
+                doc = self._in_layer(
+                    build_nonshareable(link=False),
+                    '<link %s href="commentable-html.css">' % rel)
+                errors, _ = self._validate(doc)
+                self.assertEqual([e for e in errors if "no commentable-html stylesheet" in e], [],
+                                 errors)
+
+    def test_an_inert_typed_companion_script_does_not_make_a_document_nonshareable(self):
+        # The mode determination reads the same list, so a Shareable document that carries an
+        # inert-typed companion tag must not be judged by the NonShareable rule set.
+        doc = self._in_layer(build(), '<script type="application/json" '
+                                      'src="commentable-html.js"></script>')
+        self.assertEqual(validate._nonshareable_js_refs(doc), [])
+        self.assertFalse(validate._is_nonshareable(doc))
+
+    # -- CMH-VAL-29: an SVG script body written as a CDATA section really executes ---------- #
+    def test_an_svg_cdata_watchdog_still_satisfies_the_bootstrap(self):
+        # Inside foreign content `<![CDATA[` opens a REAL section and its content is character
+        # data, so this is the same DOM - and the same running script - as writing the body
+        # directly. The payload never reached the capture, so a watchdog that really does arm was
+        # reported missing: a false positive on a valid document.
+        doc = self._in_layer(build_nonshareable(watchdog=False),
+                             "<svg><script><![CDATA[%s]]></script></svg>" % self._WATCHDOG_JS)
+        errors, warnings = self._validate(doc)
+        self.assertEqual(errors, [], "svg CDATA watchdog errors: %r" % errors)
+        self.assertFalse(any("bootstrap watchdog" in w for w in warnings), warnings)
+
+    def test_a_mathml_cdata_watchdog_does_not_count(self):
+        # The MathML control: a section is real there too (MathML is foreign content), so the body
+        # is captured - but a browser runs no MathML script, so it still does not arm the watchdog.
+        doc = self._in_layer(build_nonshareable(watchdog=False),
+                             "<math><script><![CDATA[%s]]></script></math>" % self._WATCHDOG_JS)
+        self.assertNonShareableWarn(doc, "bootstrap watchdog")
+
+    def test_a_cdata_spelling_in_an_html_script_is_just_more_script_text(self):
+        # The HTML control the routing must not disturb: in HTML content `<![CDATA[` opens no
+        # section at all, and inside a raw-text `<script>` body it is simply more text - which is
+        # also what a browser runs, so this one DOES arm the watchdog.
+        doc = self._in_layer(build_nonshareable(watchdog=False),
+                             "<script><![CDATA[%s]]></script>" % self._WATCHDOG_JS)
+        errors, warnings = self._validate(doc)
+        self.assertEqual(errors, [], "errors: %r" % errors)
+        self.assertFalse(any("bootstrap watchdog" in w for w in warnings), warnings)
+
+    def test_a_watchdog_token_split_across_two_chunks_still_counts(self):
+        # A browser runs the element's whole text; this parser delivers it in as many pieces as the
+        # source has. A section is a piece of its own, and foreign content splits at every child,
+        # so a per-chunk match reported a watchdog that really does arm as missing.
+        head, tail = "window.__commentable", "HtmlReady = window.__commentableHtmlReady;"
+        for body in ("<![CDATA[%s]]><![CDATA[%s]]>" % (head, tail),
+                     "<![CDATA[%s]]>%s" % (head, tail),
+                     "%s<g/>%s" % (head, tail)):
+            with self.subTest(body=body[:40]):
+                doc = self._in_layer(build_nonshareable(watchdog=False),
+                                     "<svg><script>%s</script></svg>" % body)
+                errors, warnings = self._validate(doc)
+                self.assertEqual(errors, [], "errors: %r" % errors)
+                self.assertFalse(any("bootstrap watchdog" in w for w in warnings), warnings)
+
+    def test_an_svg_script_ignores_nomodule(self):
+        # `nomodule` is an HTMLScriptElement attribute; SVG defines none, so a browser runs an SVG
+        # script that carries one. Applying the skip in every executing namespace would have been a
+        # new false positive on a document that really works - the exact direction CMH-VAL-19's
+        # per-namespace rule exists to avoid.
+        doc = self._in_layer(build_nonshareable(watchdog=False),
+                             "<svg><script nomodule>%s</script></svg>" % self._WATCHDOG_JS)
+        errors, warnings = self._validate(doc)
+        self.assertEqual(errors, [], "errors: %r" % errors)
+        self.assertFalse(any("bootstrap watchdog" in w for w in warnings), warnings)
+
+    def test_an_html_script_honors_nomodule(self):
+        doc = self._in_layer(build_nonshareable(watchdog=False),
+                             "<script nomodule>%s</script>" % self._WATCHDOG_JS)
+        self.assertNonShareableWarn(doc, "bootstrap watchdog")
+
+    def test_an_svg_script_ignores_the_legacy_language_attribute(self):
+        # `language` is an HTMLScriptElement attribute too, so an SVG script carrying one is still
+        # a classic script a browser runs. Applying the HTML fallback in every namespace would
+        # have refused a document that works.
+        doc = self._in_layer(build_nonshareable(watchdog=False),
+                             '<svg><script language="vbscript">%s</script></svg>'
+                             % self._WATCHDOG_JS)
+        errors, warnings = self._validate(doc)
+        self.assertEqual(errors, [], "errors: %r" % errors)
+        self.assertFalse(any("bootstrap watchdog" in w for w in warnings), warnings)
+
+    def test_an_html_script_honors_the_legacy_event_for_pair(self):
+        # HTML skips a CLASSIC script carrying both `event` and `for` unless they name the window
+        # load handler, so a watchdog written that way never arms.
+        doc = self._in_layer(build_nonshareable(watchdog=False),
+                             '<script event="y" for="x">%s</script>' % self._WATCHDOG_JS)
+        self.assertNonShareableWarn(doc, "bootstrap watchdog")
+        ok = self._in_layer(build_nonshareable(watchdog=False),
+                            '<script event="onload" for="window">%s</script>' % self._WATCHDOG_JS)
+        errors, warnings = self._validate(ok)
+        self.assertEqual(errors, [], "errors: %r" % errors)
+        self.assertFalse(any("bootstrap watchdog" in w for w in warnings), warnings)
+
     # -- a region that does not PARSE where it reads is refused ------------- #
     def test_a_content_end_marker_swallowed_by_a_style_body_errors(self):
         # The layer view is derived from the parse, so a region that does not open and close where

@@ -206,8 +206,12 @@ def _check_self_contained(html, parser):
     # approximation is the drift this row exists to prevent. The cost is that an inert `href` on an
     # HTML <script> is reported too - a shape no real document uses, and one that becomes a live
     # loader the moment the same bytes are parsed as XHTML. The Chart.js CDN exemption stays bound
-    # to `src`, since `check_charts` only validates a `src` loader's version and SRI: exempting an
-    # `href` would wave through a remote script nothing else checks.
+    # to `src` as a deliberate NARROWING: `check_charts` does now audit an SVG `href`/`xlink:href`
+    # loader's version pin and SRI (CMH-VAL-27), so the old "nothing else checks it" reason no
+    # longer holds - but the exemption is a hole punched in the self-contained guarantee for ONE
+    # documented opt-in, and widening it to a spelling no real document writes would give up a real
+    # guarantee for nothing. The consequence is recorded rather than implied: an SVG-`href` CDN tag
+    # IS a loader to `check_charts` and is still REFUSED here.
     # Parsed once per TAG (not once per tag/attribute pair): `_find_tag_attrs_egress` runs a full
     # pure-Python tokenizer pass over the whole document, and the widened script set would
     # otherwise triple that cost for scripts alone.

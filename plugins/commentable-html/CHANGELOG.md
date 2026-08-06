@@ -4,6 +4,58 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.758.0] - 2026-08-06
+
+### Fixed
+
+- Outside the layer views, the validator's "will a browser execute this?" question is no longer
+  answered by tag NAME. `_flush_raw_captures()` dropped the capture's insertion NAMESPACE when it
+  finalized a `<script>`/`<style>` into `parser.scripts`, so three consumers judged execution by
+  the tag name and `type` alone and each failed in a way a browser does not:
+  - `<math><script src="chart.js">` was accepted as the Chart.js loader (a browser loads nothing
+    there, and an SVG script would not load from `src` either - it uses `href`/`xlink:href`), so a
+    document whose canvas has no renderer validated as complete. The same held for the inline
+    scan: a `new Chart(` init, a `typeof Chart === "undefined"` guard, or a `getContext` draw
+    written inside `<math>` counted as executable, and so did one a browser skips because it
+    carries `nomodule` or a MIME-parameter `type`. The mermaid loader search is the same question
+    and now reads the same rule.
+  - `_nonshareable_js_refs` counted any `<script src="commentable-html.js">` regardless of `type`,
+    so an `application/json` (or `nomodule`) tag satisfied "the runtime is here" and decided the
+    document mode while the layer never loaded. Its CSS twin `_nonshareable_css_refs` counted any
+    `<link href="commentable-html.css">` regardless of `rel`, `disabled` or `type`, so a `preload`,
+    no-`rel`, disabled or `type="text/plain"` link left the layer unstyled while satisfying the
+    same check. Both lists are narrowed; the STRUCTURAL checks on a reference string (a baked
+    absolute path that leaks a local directory, a temp path, a non-file scheme) keep walking every
+    reference the document NAMES, because those are true whether or not a browser runs or applies
+    the element.
+  - An SVG `<script>` whose body is written as a `<![CDATA[ ... ]]>` section really executes - in
+    foreign content a section opens for real and its content is the script text - but the payload
+    went to `unknown_decl` and was dropped. That cost twice: the validator reported `no bootstrap
+    watchdog` for a watchdog that does arm, and the offline egress scan, which reads the same
+    captured body, never saw a network `import()` written inside such a section, so `--strict`
+    certified real egress as offline-clean.
+
+  The finalized records now carry `ns`, three shared predicates (`script_code_runs()`,
+  `script_runs_inline_body()` and `script_external_load()`) answer the execution question once for
+  every consumer that asks it, and a CDATA payload is routed - from the SHARED parser base, so the
+  TOC generator and the other tools see it too - as the character data a browser makes of it.
+  `script_code_runs()` implements HTML's "prepare the script element" rather than approximating
+  it: an absent or empty `type` is classic, a non-empty `language` decides the block type when
+  there is no `type`, the type string must be a whole essence match (so a MIME parameter or a
+  whitespace-only value does not execute), and `nomodule`, `language` and the legacy `event`+`for`
+  pair are all HTMLScriptElement behavior, so all three are honored only for a CLASSIC script in
+  the HTML namespace - SVG defines none of them, so a browser runs an SVG script that carries one.
+  The rule stays the BROWSER's rule per namespace rather than "reject every foreign namespace": an
+  SVG `<script>` still runs its inline body, and an SVG `<script href>` really is a loader. The
+  bootstrap-watchdog token is now matched across chunk boundaries too, so a body split by a
+  section or a child element still arms it.
+
+  The consumers whose question is NOT execution stay deliberately blind, and say so: the layer
+  descriptor and the chart-data / state JSON blocks are read through
+  `getElementById(...).textContent`, the offline egress scan is over-inclusive on purpose because
+  a browser really does apply SVG CSS, and the CSP-predecessor rule keeps the wider test because a
+  predecessor it missed would bless a policy that really is too late.
+
 ## [1.756.0] - 2026-08-06
 
 ### Fixed

@@ -3,7 +3,7 @@ chart-data JSON validity."""
 
 import re
 import json
-from .parsing import LAYER_JSON_IDS, _is_executable_js, _is_json_attrs, _js_scan, _region_marker_matches
+from .parsing import LAYER_JSON_IDS, _HTML_WHITESPACE, _ascii_lower, _is_json_attrs, _js_scan, _region_marker_matches, script_external_load, script_runs_inline_body
 from .resources import CHARTJS_SRC_RE
 
 
@@ -61,17 +61,18 @@ def check_charts(html, parser, marker_provenance=True):
     has_layer = parser.has_comment_root or marker_pos is not None
 
     # Executable (classic/module JS) scripts: where `new Chart(` may run, and the
-    # guard. A script with a `src` has its inline body ignored by the browser, so
-    # do not scan it. Comments and string literals are blanked so they cannot
+    # guard. Whether a browser runs THIS element's own child text is a per-namespace
+    # question, not a tag-name one (CMH-VAL-27): a `<script>` under `<math>` is an
+    # ordinary unknown foreign element a browser never runs, a script with a source
+    # attribute has its inline body ignored, and an inert `type` (or `nomodule`) never
+    # runs at all. Comments and string literals are blanked so they cannot
     # false-trigger.
     new_chart_positions = []
     guard_present = False
     inline_canvas_render = False
     for s in parser.scripts:
-        if not _is_executable_js(s["attrs"]):
+        if not script_runs_inline_body(s["attrs"], s["ns"]):
             continue
-        if s["attrs"].get("src") is not None:
-            continue  # <script src=...> inline content is dead code in the browser
         guard_src, init_src = _js_scan(s["body"])
         if NEW_CHART_RE.search(init_src):
             new_chart_positions.append(s["pos"])
@@ -83,13 +84,15 @@ def check_charts(html, parser, marker_provenance=True):
         if GUARD_RE.search(guard_src):
             guard_present = True
 
-    # The first executable Chart.js loader tag (by document position). A
-    # non-executable script (e.g. type="application/json") with a chart.js src
-    # does not load Chart, so it is not a loader.
+    # The first executable Chart.js loader tag (by document position). `script_external_load`
+    # answers what a browser really FETCHES and runs: a non-executable script (e.g.
+    # type="application/json", or a skipped `nomodule`) does not load Chart, and neither does a
+    # `src` written on an SVG script (which loads from `href`/`xlink:href`) or on a MathML one
+    # (which loads nothing at all) - so none of those is a loader.
     loader_attrs, loader_src, loader_pos = None, None, None
     for s in parser.scripts:
-        src = s["attrs"].get("src")
-        if src and CHARTJS_SRC_RE.search(src) and _is_executable_js(s["attrs"]):
+        src = script_external_load(s["attrs"], s["ns"])
+        if src and CHARTJS_SRC_RE.search(src):
             loader_attrs, loader_src, loader_pos = s["attrs"], src, s["pos"]
             break
 
@@ -150,7 +153,7 @@ def check_charts(html, parser, marker_provenance=True):
                           "marker - place chart scripts after it so Save-as-plain preserves the chart")
     if loader_pos is not None:
         if any(pos < loader_pos for pos in new_chart_positions):
-            errors.append("chart init (`new Chart(`) appears before the Chart.js `<script src>` loader - "
+            errors.append("chart init (`new Chart(`) appears before the Chart.js loader - "
                           "load Chart.js first, or Chart is undefined when the init runs")
 
     # ---- warnings ----
@@ -160,7 +163,7 @@ def check_charts(html, parser, marker_provenance=True):
         if not (integ and integ.strip()) or not has_cross:
             warnings.append("the Chart.js CDN tag has no (non-empty) Subresource Integrity hash + crossorigin - "
                             'add integrity="sha384-..." crossorigin="anonymous" for a shareable artifact')
-        typ = (loader_attrs.get("type") or "").lower()
+        typ = _ascii_lower((loader_attrs.get("type") or "").strip(_HTML_WHITESPACE))
         if "defer" in loader_attrs or "async" in loader_attrs or typ == "module":
             warnings.append("the Chart.js CDN tag is deferred/async/module - the inline init can run before "
                             "Chart is defined; load it synchronously before the init")

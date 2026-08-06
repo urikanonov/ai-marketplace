@@ -1055,6 +1055,173 @@ class DocParserCdataTests(unittest.TestCase):
         html = '<svg><p><![CDATA[><div id="real"></div>]]></p></svg>'
         self.assertEqual(_ids(html), ["real"])
 
+    def test_a_cdata_section_payload_is_character_data(self):
+        # CMH-VAL-29. A real section emits CHARACTER tokens, which a browser inserts into the
+        # current node exactly as it inserts ordinary text - so `<svg><script><![CDATA[..]]>` is
+        # the same DOM as `<svg><script>..`, and the script really runs. The payload was dropped
+        # on the floor (`unknown_decl` is a no-op), so a bootstrap watchdog written that way was
+        # reported MISSING on a document whose watchdog does arm.
+        p = parsing._parse_document(
+            '<svg><script><![CDATA[var a = 1;]]></script>'
+            '<style><![CDATA[.x { color: red; }]]></style></svg>')
+        self.assertEqual([s["body"] for s in p.scripts], ["var a = 1;"])
+        self.assertEqual([s["body"] for s in p.styles], [".x { color: red; }"])
+
+    def test_a_cdata_payload_is_not_decoded_and_holds_no_markup(self):
+        # A section's content is RAW: no character reference resolves inside it, and a `<` in it
+        # opens no tag. Routing it as character data must not undo either.
+        p = parsing._parse_document(
+            '<svg><script><![CDATA[if (a &amp;& b) c = "<div id=\'x\'>";]]></script></svg>')
+        self.assertEqual([s["body"] for s in p.scripts],
+                         ["if (a &amp;& b) c = \"<div id='x'>\";"])
+        self.assertEqual(p.all_ids, [])
+
+    def test_a_cdata_marker_is_still_not_a_comment_boundary(self):
+        # Character data, NOT a comment node: a region marker written inside a section still
+        # builds no boundary a browser reads, which is the premise `marker_comment_spans` rests on.
+        p = parsing._parse_document(
+            '<svg><![CDATA[<!-- END: commentable-html - JS -->]]></svg>')
+        self.assertEqual(p.marker_comment_spans, [])
+        self.assertIsNone(p.js_end_marker_pos)
+
+
+class DocParserScriptNamespaceTests(unittest.TestCase):
+    """CMH-VAL-27: a finalized `<script>`/`<style>` record carries its insertion NAMESPACE, so a
+    consumer whose question is EXECUTION can apply the browser's per-namespace rule."""
+
+    def test_every_script_and_style_record_carries_its_namespace(self):
+        p = parsing._parse_document(
+            '<script>a</script><style>b {}</style>'
+            '<svg><script>c</script><style>d {}</style></svg>'
+            '<math><script>e</script><style>f {}</style></math>')
+        self.assertEqual([(s["ns"], s["body"]) for s in p.scripts],
+                         [("html", "a"), ("svg", "c"), ("math", "e")])
+        self.assertEqual([(s["ns"], s["body"]) for s in p.styles],
+                         [("html", "b {}"), ("svg", "d {}"), ("math", "f {}")])
+
+    def test_the_inline_body_predicate_follows_the_browser_per_namespace(self):
+        runs = parsing.script_runs_inline_body
+        self.assertTrue(runs({}, "html"))
+        self.assertTrue(runs({}, "svg"))          # SVG defines <script> and runs an inline one
+        self.assertFalse(runs({}, "math"))        # MathML defines none: an unknown foreign element
+        self.assertFalse(runs({"src": "x.js"}, "html"))     # the child text is dead code
+        self.assertTrue(runs({"src": "x.js"}, "svg"))       # an SVG script has no `src` at all
+        self.assertFalse(runs({"href": "x.js"}, "svg"))
+        self.assertFalse(runs({"xlink:href": "x.js"}, "svg"))
+        self.assertFalse(runs({"type": "application/json"}, "html"))
+        self.assertFalse(runs({"nomodule": ""}, "html"))
+        self.assertTrue(runs({"nomodule": "", "type": "module"}, "html"))
+        # `nomodule` is an HTMLScriptElement attribute; SVG defines none, so a browser runs an SVG
+        # script carrying one. This is the arm that keeps the rule PER NAMESPACE in both
+        # directions rather than "every executing namespace behaves like HTML".
+        self.assertTrue(runs({"nomodule": ""}, "svg"))
+
+    def test_the_legacy_event_for_pair_is_html_only_and_classic_only(self):
+        runs = parsing.script_code_runs
+        # HTML skips a CLASSIC script carrying BOTH `event` and `for` unless they name the window
+        # load handler. Omitting it left `<script src="chart.js" for="x" event="y">` accepted as a
+        # loader no browser runs - the same fail-OPEN class one spelling further out.
+        self.assertFalse(runs({"event": "y", "for": "x"}))
+        self.assertTrue(runs({"event": "onload", "for": "window"}))
+        self.assertTrue(runs({"event": " ONLOAD() ", "for": " Window "}))
+        self.assertTrue(runs({"event": "y"}))            # only one of the pair: no early return
+        self.assertTrue(runs({"for": "x"}))
+        self.assertTrue(runs({"event": "y", "for": "x", "type": "module"}))   # classic-only
+        self.assertTrue(runs({"event": "y", "for": "x"}, "svg"))              # HTML-only
+
+    def test_the_language_fallback_is_html_only(self):
+        runs = parsing.script_code_runs
+        # `language` is an HTMLScriptElement attribute; SVG defines none, so an SVG script
+        # carrying one is still a classic script. Applying the fallback there would REFUSE a
+        # document that works - the same false-rejection direction as `nomodule` above.
+        self.assertFalse(runs({"language": "vbscript"}, "html"))
+        self.assertTrue(runs({"language": "vbscript"}, "svg"))
+
+    def test_an_empty_source_attribute_still_silences_the_inline_body(self):
+        runs = parsing.script_runs_inline_body
+        # The presence rule `script_external_load`'s docstring claims agreement with: a browser
+        # handed an empty source attribute fires an error event and never runs the child text.
+        self.assertFalse(runs({"src": ""}, "html"))
+        self.assertFalse(runs({"href": ""}, "svg"))
+        self.assertFalse(runs({"xlink:href": ""}, "svg"))
+
+    def test_the_type_test_is_a_whole_essence_match(self):
+        runs = parsing.script_code_runs
+        self.assertTrue(runs({}))                             # absent -> classic
+        self.assertTrue(runs({"type": ""}))                   # explicitly empty -> classic
+        self.assertTrue(runs({"type": "  text/JavaScript  "}))  # ASCII whitespace is stripped
+        self.assertTrue(runs({"type": "text/jscript"}))       # a legacy runnable type
+        # A MIME PARAMETER defeats the essence match, and a whitespace-only value is not "absent".
+        self.assertFalse(runs({"type": "text/javascript; charset=utf-8"}))
+        self.assertFalse(runs({"type": "module; charset=utf-8"}))
+        self.assertFalse(runs({"type": " "}))
+        self.assertFalse(runs({"type": "application/json"}))
+        # With no `type`, a non-empty `language` decides the block type.
+        self.assertTrue(runs({"language": "JavaScript"}))
+        self.assertTrue(runs({"language": "javascript1.5"}))
+        self.assertFalse(runs({"language": "vbscript"}))
+        self.assertTrue(runs({"type": "text/javascript", "language": "vbscript"}))
+        # An ASCII fold, not a Unicode one: U+212A lowercases to "k" under `str.lower()`, and a
+        # type a browser never matches must not be accepted here.
+        self.assertFalse(runs({"type": "text/javascript\u212a"}))
+
+    def test_the_external_load_predicate_returns_the_url_a_browser_fetches(self):
+        load = parsing.script_external_load
+        self.assertEqual(load({"src": "x.js"}, "html"), "x.js")
+        self.assertEqual(load({"href": "x.js"}, "svg"), "x.js")
+        self.assertEqual(load({"xlink:href": "x.js"}, "svg"), "x.js")
+        self.assertIsNone(load({"src": "x.js"}, "svg"))     # SVG does not load from `src`
+        self.assertIsNone(load({"src": "x.js"}, "math"))    # MathML loads nothing at all
+        self.assertIsNone(load({"src": ""}, "html"))        # an empty value fetches nothing
+        self.assertIsNone(load({"src": "x.js", "type": "application/json"}, "html"))
+        self.assertIsNone(load({"src": "x.js", "nomodule": ""}, "html"))
+        self.assertEqual(load({"src": "x.js", "nomodule": "", "type": "module"}, "html"), "x.js")
+        self.assertEqual(load({"href": "x.js", "nomodule": ""}, "svg"), "x.js")
+        # SVG 2 gives `href` PRECEDENCE over the legacy `xlink:href`, so an empty `href` is the
+        # one a browser resolves and `xlink:href` is never fetched. Falling through to the second
+        # attribute read this element as carrying a loader a browser never runs.
+        self.assertIsNone(load({"href": "", "xlink:href": "x.js"}, "svg"))
+        self.assertEqual(load({"xlink:href": "x.js", "href": "y.js"}, "svg"), "y.js")
+
+
+class BrowserBoundariesCdataAgreementTests(unittest.TestCase):
+    """CMH-VAL-29 + CMH-VAL-21: a CDATA payload reaches every view text reaches, in EVERY tool
+    that draws its element boundaries on the shared base - not just in the validator."""
+
+    _HTML = ('<main id="commentRoot" data-cmh-content-root>'
+             '<h2 id="s1"><svg><![CDATA[Alpha]]></svg></h2></main>')
+
+    def test_a_cdata_heading_is_seen_by_the_validator_and_the_toc_generator_alike(self):
+        # The override lives on `_BrowserBoundaries`, the class every tool beside the validator
+        # shares, so the two agree by construction. Installed one class lower (on `_DocParser`),
+        # the validator would collect a heading the TOC generator drops, and the generated TOC
+        # would be missing a heading the validator counts - the cross-tool drift CMH-VAL-21 exists
+        # to prevent.
+        doc = parsing._parse_document(self._HTML)
+        self.assertEqual([h["text"] for h in doc.headings], ["Alpha"])
+        self.assertIn('<a href="#s1">Alpha</a>', generate_toc.build_toc(self._HTML))
+
+    def test_a_cdata_payload_reaches_prose_the_way_inline_text_does(self):
+        cdata = parsing._parse_document(
+            '<main id="commentRoot" data-cmh-content-root><p><svg><![CDATA[Beta]]></svg></p></main>')
+        plain = parsing._parse_document(
+            '<main id="commentRoot" data-cmh-content-root><p><svg>Beta</svg></p></main>')
+        self.assertEqual("".join(cdata.commentroot_prose), "".join(plain.commentroot_prose))
+        self.assertIn("Beta", "".join(cdata.commentroot_prose))
+
+    def test_a_cdata_payload_reaches_the_section_hasher_too(self):
+        # A second tool on the shared base, so the "every tool" claim is not pinned by the TOC
+        # alone: the document content hash is computed from the text a reader sees, so a CDATA
+        # payload must change it exactly as the same text written inline does - and a payload that
+        # contributed nothing would hash identically to an empty element.
+        shape = ('<main id="commentRoot" data-cmh-content-root>'
+                 '<h2>H</h2><p><svg>%s</svg></p></main>')
+        self.assertEqual(section_hash.document_content_hash(shape % "<![CDATA[Gamma]]>"),
+                         section_hash.document_content_hash(shape % "Gamma"))
+        self.assertNotEqual(section_hash.document_content_hash(shape % "<![CDATA[Gamma]]>"),
+                            section_hash.document_content_hash(shape % ""))
+
+
 
 class _CountingStack(list):
     """A list that counts every ELEMENT inspection, so a stack RESCAN is visible without a clock.

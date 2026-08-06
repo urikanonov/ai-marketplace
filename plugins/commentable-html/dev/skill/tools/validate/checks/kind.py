@@ -2,7 +2,7 @@
 
 import re
 
-from .parsing import link_href_is_set, visible_text
+from .parsing import link_href_is_set, script_runs_inline_body, visible_text
 
 # Document kind. Every commentable-html document declares its kind in a
 # <meta name="commentable-html-kind" content="..."> so per-type rules can apply and
@@ -164,6 +164,11 @@ def check_mermaid_renders(parser):
         return []
     loader = None
     for s in parser.scripts:
+        # Whether a browser RUNS this body is a per-namespace question (CMH-VAL-27): a mermaid
+        # loader written inside `<math>`, given a source attribute, or typed inert never runs, so
+        # the diagrams stay as source text - exactly the failure this warning exists to name.
+        if not script_runs_inline_body(s["attrs"], s["ns"]):
+            continue
         body = s.get("body") or ""
         if re.search(r"mermaid", body, re.I) and (
                 "import(" in body or re.search(r"mermaid\.(?:esm|min)", body, re.I)
