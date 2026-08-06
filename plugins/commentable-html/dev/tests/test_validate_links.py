@@ -16,6 +16,13 @@ class LinkTargetTests(unittest.TestCase):
         self.assertEqual(errors, [], errors)
         return any("same tab" in w for w in warnings)
 
+    def _sample(self, content):
+        """The emitted same-tab warning text, which carries the deduped href samples."""
+        errors, warnings = _validate_text(
+            build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), self._main(content), JS_REGION]))
+        self.assertEqual(errors, [], errors)
+        return "".join(w for w in warnings if "same tab" in w)
+
     def test_relative_document_link_with_self_target_warns_cmh_link_05(self):
         self.assertTrue(self._warns('<p><a href="page.html" target="_self">x</a></p>'))
 
@@ -101,6 +108,55 @@ class LinkTargetTests(unittest.TestCase):
                      '<math><annotation-xml encoding="text/html">'
                      '<a href="page.html" target="_self">x</a></annotation-xml></math>'):
             self.assertTrue(self._warns("<p>" + frag + "</p>"), frag)
+
+    def test_an_href_is_classified_the_way_a_browser_classifies_it(self):
+        # #1156: the URL parser trims only C0 controls and space (U+0000-U+0020) from a URL's
+        # ends. Python's argument-less `str.strip()` reaches past ASCII and also takes NBSP,
+        # U+2028, U+3000 and U+0085, which the parser KEEPS - so the scheme regex matched at
+        # position 0 for the validator, saw a non-document scheme, and skipped the check. A
+        # browser keeps the character, finds no scheme there, and reads a RELATIVE reference:
+        # the click navigates the reviewer's own tab away from the report and their comments,
+        # which is exactly what this check exists to prevent.
+        for pad in ("\u00a0", "\u2028", "\u3000", "\u0085"):
+            for href in ("mailto:x@example.com", "tel:+15551234", "javascript:void(0)"):
+                frag = '<p><a href="%s%s" target="_self">x</a></p>' % (pad, href)
+                self.assertTrue(self._warns(frag), frag)
+        # The true controls: a character Python's `str.strip()` removes TOO, so the verdict is
+        # unchanged and the fix invents no warning about a link a browser reads as mailto:.
+        for pad in ("", " ", "\t", "\u001f"):
+            frag = '<p><a href="%smailto:x@example.com" target="_self">x</a></p>' % pad
+            self.assertFalse(self._warns(frag), frag)
+        # The OTHER direction of the same differential, which also changes: Python's `str.strip()`
+        # does NOT remove a non-whitespace C0 control, so `href="&#x1;mailto:x"` used to read as a
+        # relative document reference and WARN. The URL parser removes every C0 control from a
+        # URL's ends, so a browser reads `mailto:` and the link is exempt - the warning was a false
+        # positive, and the same goes for a padded fragment or an href made only of such controls.
+        for href in ("\u0001mailto:x@example.com", "\u0008tel:+15551234",
+                     "\u0001#section-2", "\u0001", "\t#section-2"):
+            frag = '<p><a href="%s" target="_self">x</a></p>' % href
+            self.assertFalse(self._warns(frag), frag)
+
+    def test_the_reported_sample_is_deduped_by_the_same_reading(self):
+        # The dedupe key that groups the reported samples applies the same cleanup the
+        # classification does, so two spellings the cleanup makes identical are ONE entry ...
+        one = self._sample('<p><a href="&#9;page.html" target="_self">x</a>'
+                           '<a href="page.html&#13;" target="_self">y</a></p>')
+        self.assertEqual(one.count("page.html"), 1, one)
+        # ... and two that differ by a character the URL parser KEEPS stay separate, because a
+        # browser really does resolve them to different documents.
+        two = self._sample('<p><a href="&#xa0;page.html" target="_self">x</a>'
+                           '<a href="page.html" target="_self">y</a></p>')
+        self.assertEqual(two.count("page.html"), 2, two)
+
+    def test_an_nbsp_padded_fragment_is_not_a_same_page_fragment(self):
+        # #1156, the other half of the same trim: `href="&#xa0;#frag"` is NOT a same-page fragment.
+        # The URL parser keeps the NBSP, so the reference resolves to a DIFFERENT document
+        # (`%C2%A0#frag`) and an author-set `target="_self"` navigates the reviewer's own tab away
+        # from the report and their comments. Python's `str.strip()` removed the NBSP, so the
+        # `raw[0] == "#"` test exempted it as a same-page fragment.
+        for pad in ("\u00a0", "\u2028", "\u3000", "\u0085"):
+            frag = '<p><a href="%s#section-2" target="_self">x</a></p>' % pad
+            self.assertTrue(self._warns(frag), frag)
 
     def test_a_padded_annotation_xml_encoding_anchor_is_exempt(self):
         # `encoding=" text/html"` is NOT an integration point (a browser matches the value

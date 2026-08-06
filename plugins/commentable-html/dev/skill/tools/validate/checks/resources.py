@@ -10,7 +10,8 @@ from html.parser import HTMLParser
 from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
 from .parsing import (REGIONS, FETCHING_LINK_RELS, SPECULATIVE_LINK_RELS, _DocParser, _HTML_WHITESPACE,
-                      _ascii_lower, _parse_document, link_rel_tokens, script_code_runs)
+                      _ascii_lower, _parse_document, link_rel_tokens, script_code_runs,
+                      url_ends_trim)
 
 # A Chart.js loader filename, as a whole path segment: chart(.umd)?(.min)?.js,
 # optionally followed by a query string / fragment; OR the bare pinned form
@@ -274,22 +275,22 @@ NETWORK_URL_RE = re.compile(
     re.IGNORECASE | re.ASCII)
 
 # Every character a URL parser removes from its input before it parses: leading and trailing C0
-# controls or spaces (U+0000-U+0020), and ASCII tab, LF and CR ANYWHERE inside the value.
-_URL_LEADING_TRAILING_STRIP = "".join(chr(c) for c in range(0x21))
+# controls or spaces (U+0000-U+0020, the shared `url_ends_trim`), and ASCII tab, LF and CR ANYWHERE
+# inside the value.
 _URL_INNER_REMOVE_RE = re.compile(r"[\t\n\r]")
 
 
 def normalize_url_value(value):
     """A reference as the URL PARSER sees it, so a literal test reads what a browser will fetch.
 
-    Three cleanups, all of them the parser's own: strip leading and trailing C0-or-space, remove
-    ASCII tab/LF/CR from anywhere, and map every backslash onto a slash (for a special scheme the
-    parser's relative and authority-slash states treat the two alike, so `https:/\\host/x.js` and
-    `\\\\host/x.js` both open an authority). Mirrored byte-for-byte in the exporter's
-    `_offlineNormalizeUrlValue`; `tests/test_vendored_libs.py` pins the pair through the real JS
-    engine.
+    Three cleanups, all of them the parser's own: strip leading and trailing C0-or-space (through
+    the shared `url_ends_trim`, the one definition of that trim), remove ASCII tab/LF/CR from
+    anywhere, and map every backslash onto a slash (for a special scheme the parser's relative and
+    authority-slash states treat the two alike, so `https:/\\host/x.js` and `\\\\host/x.js` both
+    open an authority). Mirrored byte-for-byte in the exporter's `_offlineNormalizeUrlValue`;
+    `tests/test_vendored_libs.py` pins the pair through the real JS engine.
     """
-    return _URL_INNER_REMOVE_RE.sub("", str(value or "")).strip(_URL_LEADING_TRAILING_STRIP).replace("\\", "/")
+    return url_ends_trim(_URL_INNER_REMOVE_RE.sub("", str(value or ""))).replace("\\", "/")
 
 
 def is_network_url(value):
@@ -1565,18 +1566,42 @@ _ADX_RUN_HOST = "dataexplorer.azure.com"
 
 
 def _is_adx_run_href(href):
-    """True only for an https URL whose host is exactly the ADX web UX host.
+    """True only for an https URL on the ADX web UX ORIGIN: host exactly the ADX host, default port.
 
     The href is already HTML-entity-decoded by the parser, so an encoded scheme
     (&#106;avascript:) is caught. Parsing the URL (not a substring match) means a
     javascript:/data: scheme or a look-alike host (dataexplorer.azure.com.evil.example)
-    cannot pass."""
+    cannot pass.
+
+    Three separate readings had to be the browser's here, and only the first is the `str.strip()`
+    differential this predicate was fixed for (#1156):
+
+    - The INPUT CLEANUP is `normalize_url_value`, not `str.strip()`. Python's argument-less strip
+      reaches past ASCII and removes an NBSP / U+2028 / U+3000 / U+0085 the URL parser KEEPS, so
+      `urlparse` reported the https scheme and the exact ADX host for an href a browser resolves
+      RELATIVE to the document.
+    - The AUTHORITY is decided after that cleanup's backslash-to-slash mapping, which a special
+      scheme applies. `urlparse` keeps a backslash inside the netloc and then takes the host from
+      AFTER an `@`, so `https://evil.example\\@dataexplorer.azure.com/x` named the exact ADX host
+      while a browser reads the authority as `evil.example`.
+    - The PORT is read, because `urlparse` reports a hostname without ever looking at one. An
+      invalid or out-of-range port (`:abc`, `:65536`) is a URL the parser FAILS on, so a browser
+      opens nothing; a valid but non-default port (`:444`) is a DIFFERENT origin that does not
+      serve the ADX web UX. Both used to name the exact ADX host and pass.
+
+    What is deliberately NOT modelled: WHATWG host canonicalization (percent-decoding, IDNA dot
+    mapping, so `dataexplorer%2eazure.com` and a U+3002 dot are rejected) and the parser's
+    authority-slash tolerance (`https:/host`, `https:///host`). Both gaps can only REJECT a link a
+    browser would open, never clear one, so they cost a false positive rather than a bypass. Do
+    not read this predicate as a general browser-exact URL parse.
+    """
     try:
-        u = urlparse((href or "").strip())
+        u = urlparse(normalize_url_value(href))
         host = (u.hostname or "").lower()
+        port = u.port  # the accessor that VALIDATES the port; `.hostname` never looks at one
     except ValueError:
         return False
-    return u.scheme == "https" and host == _ADX_RUN_HOST
+    return u.scheme == "https" and host == _ADX_RUN_HOST and port in (None, 443)
 
 
 def _link_loads(attrs):

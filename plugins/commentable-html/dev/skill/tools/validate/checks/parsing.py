@@ -399,6 +399,23 @@ _HTML_WHITESPACE = "\t\n\f\r "
 _URL_ENDS_TRIM = "".join(chr(c) for c in range(0x21))
 
 
+def url_ends_trim(value):
+    """`value` with the ends a URL parser removes before it parses the URL taken off.
+
+    The single reading every Python side of a URL DECISION goes through - the favicon emptiness
+    test below, the new-tab classification in `checks/links.py`, and `normalize_url_value` in
+    `checks/resources.py` (which layers the parser's inner tab/LF/CR removal and its
+    backslash-to-slash mapping on top) - so one href cannot be classified one way by a gate and
+    another way by the gate beside it.
+
+    The trim is `_URL_ENDS_TRIM` and nothing else. Python's argument-less `str.strip()` reaches
+    past ASCII and takes U+00A0, U+2028, U+3000 and U+0085, which the URL parser KEEPS: a
+    `<a href="&#xa0;mailto:x">` is a RELATIVE reference a browser navigates the current tab to,
+    and stripping the NBSP made it a `mailto:` the new-tab check let through (#1156).
+    """
+    return (value or "").strip(_URL_ENDS_TRIM)
+
+
 def link_href_is_set(value):
     """True when an `href` attribute still names something once a browser trims its ends.
 
@@ -424,7 +441,7 @@ def link_href_is_set(value):
     unset. This measures EMPTINESS only - it says nothing about whether the URL is reachable,
     same-origin, or inert, so a gate where over-counting is unsafe needs its own predicate.
     """
-    return bool((value or "").strip(_URL_ENDS_TRIM))
+    return bool(url_ends_trim(value))
 
 # A start tag that implicitly closes an open <p> (a pragmatic HTML5 subset).
 P_CLOSERS = {
