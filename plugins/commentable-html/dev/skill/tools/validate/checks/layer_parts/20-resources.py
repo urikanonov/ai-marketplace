@@ -138,8 +138,8 @@ def _srcdoc_network_findings(value, depth=1):
                 continue
             # The nested verdict is the top-level one element for element, so an inert data
             # block's `src` is no more a load in here than out there (CMH-VAL-08, #1144), and a
-            # script a browser does not RUN is no more a loader in here either (#1171).
-            if tag == "script" and attr == "src" and not script_code_runs(el, "html"):
+            # script a browser never REQUESTS is no more a loader in here either (#1171).
+            if tag == "script" and attr == "src" and not script_src_fetches(el):
                 continue
             val = el.get(attr, "")
             if not val:
@@ -287,19 +287,22 @@ def _check_self_contained(html, parser):
             return
         # A `<script>` whose type makes it a DATA BLOCK never fetches its `src` (CMH-VAL-08,
         # #1144): HTML's "prepare the script element" returns before the fetch step, so
-        # reporting one refused a document for a request no browser makes. The predicate is the
-        # spec-exact `script_code_runs` (CMH-VAL-27) rather than the over-inclusive
-        # `_is_executable_js` (issue #1171): a MIME PARAMETER, `nomodule`, the legacy `event`+`for`
-        # pair, a whitespace-only `type` and the `language` fallback each name a script no modern
-        # browser runs, so reporting its `src` refused a document over a dead attribute AND the
-        # offline strip deleted the element behind it. The exporter's `_offlineScriptCodeRuns` moved
-        # with this in the same change, so the gate and the strip still call the same scripts
-        # loaders (CMH-OFFLINE-04), pinned over a shared attribute-set corpus in a real JS engine.
-        # `"html"` is the right namespace and not a guess: `src` loads on an HTML script only - an
-        # SVG one has no `src` at all - so the HTML-only rules are exactly the rules for this arm.
-        # `href` / `xlink:href` are NOT gated on type at all - this tokenizer has no namespace to
-        # consult, and an SVG <script> has no data-block concept to read instead.
-        if tag == "script" and attr == "src" and not script_code_runs(attrs, "html"):
+        # reporting one refused a document for a request no browser makes. WHICH shapes those are
+        # is decided by `script_src_fetches` (issue #1171), the predicate MEASURED against a real
+        # engine rather than reasoned from the execution algorithm - a MIME PARAMETER, `nomodule`,
+        # a whitespace-only `type` and a non-JavaScript `language` each stop the request, and the
+        # offline strip stopped deleting exactly those elements in the same change, so the gate and
+        # the strip still call the same scripts loaders (CMH-OFFLINE-04).
+        #
+        # It is deliberately NOT `script_code_runs`: the legacy `event`+`for` pair stops EXECUTION
+        # but not the REQUEST (Chromium's preload scanner does not read it), so reading this arm
+        # through the execution predicate blessed a document that really does reach the network.
+        # The same measurement is why no namespace is passed: the scanner applies the HTML
+        # type/`language`/`nomodule` rules whatever the namespace, which is exactly what this flat,
+        # namespace-less tokenizer can answer.
+        # `href` / `xlink:href` are NOT gated on type at all - a browser fetches an SVG script's
+        # load attribute unconditionally, and an SVG <script> has no data-block concept to read.
+        if tag == "script" and attr == "src" and not script_src_fetches(attrs):
             return
         val = attrs.get(attr, "")
         if not val:

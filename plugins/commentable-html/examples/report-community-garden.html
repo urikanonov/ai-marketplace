@@ -19661,33 +19661,15 @@ function _offlineAsciiLower(value) {
 function _offlineTrimHtmlWs(value) {
   return String(value == null ? "" : value).replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "");
 }
-// Whether a browser would run THIS `<script>` element's code at all - HTML's "prepare the script
-// element" reduced to the questions a static reader can answer, and the exporter half of a pair
-// pinned to the strict validator's `script_code_runs` by
-// `test_the_python_and_js_script_code_runs_predicates_agree`, which evaluates THIS function in a
-// real JS engine over a shared corpus of ATTRIBUTE SETS.
-//
-// It is deliberately NARROWER than `_offlineIsRunnableScriptType` above, and the split is by what
-// the caller does with the answer (issue #1171). A caller that DELETES an element, or that decides
-// whether a `src` is a real load, must be exact: the type string has to be a whole essence match, so
-// a MIME PARAMETER defeats it (`type="text/javascript; charset=utf-8"` executes in no modern
-// browser), and `nomodule`, the legacy `event`+`for` pair, a whitespace-only `type` and the
-// `language` fallback all decide it too. Calling one of those runnable cost an author the whole
-// element and its body for code no browser ran. A caller that only SCANS an inline body for egress
-// keeps the broader predicate, where over-inclusion is the safe direction - a body it skips is a
-// network import nobody looked at.
-//
-// The branches are HTML's, not a simplification of them:
-// - an ABSENT `type` takes the `language` fallback (HTML only, and NOT trimmed: the block type is
-//   the concatenation of `text/` with the raw attribute value), an explicitly EMPTY one is classic,
-//   and any other value is trimmed of ASCII whitespace and must be a whole essence match. The
-//   asymmetry between `type=""` and `type=" "` is the algorithm's own: the raw value is tested
-//   against the empty string BEFORE it is stripped, so only a literally empty one is classic.
-// - `nomodule`, and the legacy `event`+`for` pair, are HTMLScriptElement attributes and only apply
-//   on the CLASSIC branch in the HTML namespace. An SVG script carrying one still runs, so reading
-//   them there would delete a script that works.
-function _offlineScriptCodeRuns(s) {
-  const htmlNs = !s.namespaceURI || s.namespaceURI === _OFFLINE_HTML_NS;
+// HTML's "script block type" for this element when it names JavaScript, else null. The half of
+// "prepare the script element" that BOTH questions below agree on, factored out so they can never
+// disagree about which strings name JavaScript while they deliberately disagree about the
+// element-level rules layered on top. An ABSENT `type` takes the `language` fallback (an
+// HTMLScriptElement attribute, so only when `htmlNs`), an explicitly EMPTY one is classic, and any
+// other value is trimmed of ASCII whitespace and must be a WHOLE essence match. The asymmetry
+// between `type=""` and `type=" "` is the algorithm's own: the raw value is tested against the
+// empty string BEFORE it is stripped. Mirrors the validator's `_script_block_type`.
+function _offlineScriptBlockType(s, htmlNs) {
   const raw = s.getAttribute("type");
   let block;
   if (raw === null || raw === undefined) {
@@ -19697,9 +19679,34 @@ function _offlineScriptCodeRuns(s) {
     block = "";
   } else {
     block = _offlineAsciiLower(_offlineTrimHtmlWs(raw));
-    if (!block) return false;
+    if (!block) return null;
   }
-  if (!_offlineIsJsTypeEssence(block)) return false;
+  return _offlineIsJsTypeEssence(block) ? block : null;
+}
+// Whether a browser would run THIS `<script>` element's code at all - HTML's "prepare the script
+// element" reduced to the questions a static reader can answer, and the exporter half of a pair
+// pinned to the strict validator's `script_code_runs` by
+// `test_the_python_and_js_script_code_runs_predicates_agree`, which evaluates THIS function in a
+// real JS engine over a shared corpus of ATTRIBUTE SETS.
+//
+// This is the EXECUTION question. Ask it about an inline BODY, never about whether a `src` is
+// requested - that is `_offlineScriptSrcFetches` below, and the two genuinely differ (issue #1171).
+// It is deliberately narrower than `_offlineIsRunnableScriptType` above, and the split is by what
+// the caller does with the answer: a caller that DELETES an element must be exact, because a MIME
+// PARAMETER, `nomodule`, the legacy `event`+`for` pair, a whitespace-only `type` or a
+// non-JavaScript `language` each mean no code ran and deleting the element cost the author their
+// content for nothing. A caller that only SCANS an inline body for egress keeps the broader
+// predicate, where over-inclusion is the safe direction - a body it skips is a network import
+// nobody looked at.
+//
+// `nomodule` and the legacy `event`+`for` pair are HTMLScriptElement rules that apply on the
+// CLASSIC branch in the HTML namespace only. That scoping is measured, not assumed: an SVG
+// `<script nomodule>` with an inline body DOES run in Chromium, so reading `nomodule` there would
+// delete a script that works.
+function _offlineScriptCodeRuns(s) {
+  const htmlNs = !s.namespaceURI || s.namespaceURI === _OFFLINE_HTML_NS;
+  const block = _offlineScriptBlockType(s, htmlNs);
+  if (block === null) return false;
   if (block === "module" || !htmlNs) return true;
   if (s.hasAttribute("nomodule")) return false;
   if (s.hasAttribute("event") && s.hasAttribute("for")) {
@@ -19708,6 +19715,26 @@ function _offlineScriptCodeRuns(s) {
     return target === "window" && (evt === "onload" || evt === "onload()");
   }
   return true;
+}
+// Whether a browser really REQUESTS this `<script>`'s `src`. A DIFFERENT question from execution
+// above, and the difference is MEASURED rather than reasoned: Chromium issues the request from its
+// speculative PRELOAD SCANNER, which reads the tag soup ahead of the parser under a rule of its
+// own. Driving a page of every shape through Chromium 149 gives exactly this predicate:
+//
+// - the legacy `event`+`for` pair does NOT stop the fetch (`for="x" event="y"` with a `src` is
+//   requested and then never run), so a strip that skipped it would leave a live network reference
+//   in a file that promises zero network, and
+// - it is namespace-BLIND in both directions: `<svg><script src>` IS requested even though SVG
+//   ignores `src` for loading, while `<svg><script nomodule src>` is NOT - the scanner applies the
+//   HTML type/`language`/`nomodule` rules whatever the namespace.
+//
+// Mirrors the validator's `script_src_fetches`, which is namespace-less for the same reason, pinned
+// by `test_the_python_and_js_script_src_fetches_predicates_agree`.
+function _offlineScriptSrcIsFetched(s) {
+  const block = _offlineScriptBlockType(s, true);
+  if (block === null) return false;
+  if (block === "module") return true;
+  return !s.hasAttribute("nomodule");
 }
 // Two script types that are ACTIVE without being JavaScript, so the predicate above never looked at
 // either. They get DIFFERENT rules because their risk is not the same shape.
@@ -21084,31 +21111,28 @@ function _offlinePingTargets(value) {
   return (value || "").split(/[\t\n\f\r ]+/).filter(function (t) { return t !== ""; }).length;
 }
 // Whether this `<script>`'s `src` is a reference a browser would really request. The strict
-// validator's self-contained `src` arm asks the same question with `script_code_runs`, pinned to
-// `_offlineScriptCodeRuns` over a shared corpus of ATTRIBUTE SETS - the whitespace class and every
-// residual shape included - by `test_the_python_and_js_script_code_runs_predicates_agree`, which
-// evaluates that function in a real JS engine.
-// HTML decides it by TYPE, and the answer is exactly the set of scripts a browser RUNS: "prepare the
-// script element" makes a script whose type is not a JavaScript MIME type, `module`, `importmap` or
-// `speculationrules` a DATA BLOCK and returns BEFORE the fetch step, and for the last two keyword
-// types the `src` step fires an `error` event and returns, because external import maps and external
-// speculation rule sets are not supported (a ruleset arrives inline or through the
-// `Speculation-Rules` response header, never through `src`). So only a classic or module script
-// fetches. It reads the whole ELEMENT rather than the type string alone (issue #1171): a MIME
-// PARAMETER, `nomodule`, the legacy `event`+`for` pair, a whitespace-only `type` and the `language`
-// fallback each make a script a browser never runs, so its `src` is a dead attribute and deleting
-// the element over it cost the author their content for a request nobody makes. Named separately
-// from the runnable-type predicate because it answers a DIFFERENT question - would a browser FETCH
-// this, not would it RUN this - and a future HTML change adding an external path for either keyword
-// type lands here. The `neutralized` branch has no validator counterpart on purpose: the gate reads
-// the document as AUTHORED, where such a block is still a runnable script, so both sides call it a
-// loader.
+// validator's self-contained `src` arm asks the same question with `script_src_fetches`, pinned to
+// `_offlineScriptSrcIsFetched` over a shared corpus of ATTRIBUTE SETS - both namespaces, the
+// whitespace class and every residual shape - by
+// `test_the_python_and_js_script_src_fetches_predicates_agree`, which evaluates that function in a
+// real JS engine.
+// HTML decides most of it by TYPE: "prepare the script element" makes a script whose type is not a
+// JavaScript MIME type, `module`, `importmap` or `speculationrules` a DATA BLOCK and returns BEFORE
+// the fetch step, and for the last two keyword types the `src` step fires an `error` event and
+// returns, because external import maps and external speculation rule sets are not supported (a
+// ruleset arrives inline or through the `Speculation-Rules` response header, never through `src`).
+// But the REQUEST is issued by the preload scanner, not by that algorithm, so the two questions are
+// not the same one (issue #1171) - see `_offlineScriptSrcIsFetched` for the measured difference.
+// Asking through the EXECUTION predicate instead would have left a live network reference in the
+// export for a classic script carrying the legacy `event`+`for` pair, which Chromium requests.
+// The `neutralized` branch has no validator counterpart on purpose: the gate reads the document as
+// AUTHORED, where such a block is still a runnable script, so both sides call it a loader.
 function _offlineScriptSrcFetches(s, neutralized) {
   // A block the exporter itself neutralized was RUNNABLE as authored, so its `src` was a real load
   // and the element goes - a decoy that borrowed a reserved layer id must not buy itself the
   // data-block treatment with a type this very export just rewrote.
   if (neutralized && neutralized.has(s)) return true;
-  return _offlineScriptCodeRuns(s);
+  return _offlineScriptSrcIsFetched(s);
 }
 // Take the load away, and take no more than that. `src` loads on a script a browser RUNS, and an
 // `href` / `xlink:href` loads on an SVG one, so those elements go (dropping just the attribute from
@@ -21866,7 +21890,10 @@ function _offlineHoistChartScripts(doc) {
     // EXECUTING code the source document never ran. (The chart EVIDENCE scan is left alone: a false
     // positive there only costs bytes, which is the trade that row already documents.)
     if (_offlineInHtmlNoscript(s)) return false;
-    if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return false;
+    // The EXACT predicate, because this pass MOVES an element (issue #1171). Hoisting exists to
+    // order code relative to the inlined library, which is meaningless for a block that never
+    // runs, and relocating one shifts an author's content and the comment anchors around it.
+    if (!_offlineScriptCodeRuns(s)) return false;
     const text = s.textContent || "";
     if (_OFFLINE_LAYER_DECL_RE.test(text)) return false;
     if (_OFFLINE_CHART_CTOR_RE.test(text)) return true;

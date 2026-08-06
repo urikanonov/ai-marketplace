@@ -1670,21 +1670,23 @@ class NewCheckTests(unittest.TestCase):
                     self.assertEqual([w for w in warnings if not validate.is_advisory(w)], [],
                                      warnings)
 
-    # The control for the rule above, in the direction that matters: a script a browser RUNS still
-    # fetches its `src`, so widening nothing here is what keeps the guarantee real. Since #1171 the
-    # predicate is the spec-exact `script_code_runs` (CMH-VAL-27) rather than the over-inclusive
-    # `_is_executable_js`, so the shapes below are exactly the ones HTML says a browser executes -
-    # including the two that only the exact reading gets right: the legacy `event`+`for` pair
-    # spelled the way HTML still honours, and `nomodule` on a MODULE script (the skip is on the
-    # classic branch only, so it does nothing here).
+    # The control for the rule above, in the direction that matters: a script whose `src` a browser
+    # really REQUESTS is still reported, so widening nothing here is what keeps the guarantee real.
+    # Since #1171 the predicate is `script_src_fetches`, which is MEASURED against a real engine
+    # rather than reasoned from the execution algorithm - which is why the last two rows are here
+    # and not in the sibling test below. `nomodule` does nothing to a MODULE script, and the legacy
+    # `event`+`for` pair does not stop the REQUEST at all: Chromium's preload scanner issues it and
+    # the code then never runs, so a gate that skipped it would bless a document that really does
+    # reach the network.
     def test_an_executable_scripts_src_is_still_a_network_load(self):
         markups = ['<script%s src="https://evil.example/x.js"></script>' % attrs for attrs in (
             "", ' type=""', ' type="module"', ' type="text/javascript"',
             ' type="application/ecmascript"', ' type="text/javascript1.5"',
             ' type="TEXT/JavaScript"', ' type="\ttext/javascript "',
             ' language="javascript"', ' language="JavaScript"',
-            ' type="module" nomodule', ' for="window" event="onload"',
-            ' for=" WINDOW " event="ONLOAD()"',
+            ' type="module" nomodule',
+            ' for="window" event="onload"', ' for=" WINDOW " event="ONLOAD()"',
+            ' for="x" event="y"', ' type="text/javascript" for="x" event="y"',
         )]
         for markup in markups:
             with self.subTest(markup=markup):
@@ -1693,23 +1695,23 @@ class NewCheckTests(unittest.TestCase):
                                     for e in errors), (markup, errors))
 
     # CMH-VAL-08 / CMH-OFFLINE-04 (#1171): the residual of the #1144 rule, closed. `_is_executable_js`
-    # reads a type's MIME ESSENCE and looks at nothing else, so five shapes a browser does NOT run
-    # were still reported as network loads - and the offline strip, which shared that predicate,
-    # DELETED the whole element and its body behind the same verdict. HTML says otherwise for every
-    # one of them: the type string must be a WHOLE essence match (a MIME PARAMETER defeats it, and a
-    # whitespace-only `type` is not the empty-string classic branch), `nomodule` makes every
-    # module-supporting browser skip a classic script, the legacy `event`+`for` pair is honoured
-    # unless it names `window`/`onload`, and with no `type` at all a non-empty `language` sets the
-    # block type. So none of these fetches anything, and refusing a document over one is the
-    # false-positive direction a gate that withholds the validated stamp cannot afford. Checked in
+    # reads a type's MIME ESSENCE and looks at nothing else, so four shapes a browser does NOT
+    # request were still reported as network loads - and the offline strip, which shared that
+    # predicate, DELETED the whole element and its body behind the same verdict. Each was measured
+    # in a real engine (see the browser-evidence spec named on the CMH-VAL-08 row): the type string
+    # must be a WHOLE essence match, so a MIME PARAMETER stops the request and a whitespace-only
+    # `type` is not the empty-string classic branch; `nomodule` stops it on a classic script; and
+    # with no `type` at all a non-JavaScript `language` sets the block type. So none of these
+    # fetches anything, and refusing a document over one is the false-positive direction a gate that
+    # withholds the validated stamp cannot afford. The legacy `event`+`for` pair is deliberately NOT
+    # in this list - it stops execution but not the request, so it stays reported above. Checked in
     # BOTH modes, because offline mode reads the same loader rule.
-    def test_a_script_no_browser_runs_is_not_a_network_load(self):
+    def test_a_script_no_browser_requests_is_not_a_network_load(self):
         for label, attrs in (
                 ("mime parameter", ' type="text/javascript; charset=utf-8"'),
                 ("mime parameter, no space", ' type="text/javascript;charset=utf-8"'),
                 ("nomodule classic", ' type="text/javascript" nomodule'),
                 ("nomodule untyped classic", " nomodule"),
-                ("legacy event+for", ' type="text/javascript" for="x" event="y"'),
                 ("whitespace-only type", ' type=" "'),
                 ("language fallback", ' language="vbscript"'),
         ):
@@ -1727,9 +1729,9 @@ class NewCheckTests(unittest.TestCase):
                                      warnings)
 
     # The nested read inherits the #1171 verdict element for element too (CMH-VAL-25), so a shape a
-    # browser does not run is no more a loader inside a `srcdoc` than outside one - and its runnable
-    # twin still is.
-    def test_the_nested_read_inherits_the_unrunnable_script_verdict(self):
+    # browser does not request is no more a loader inside a `srcdoc` than outside one - and its
+    # requested twin still is.
+    def test_the_nested_read_inherits_the_unrequested_script_verdict(self):
         inert = ('&lt;script type=&quot;text/javascript; charset=utf-8&quot; '
                  'src=&quot;https://evil.example/inert.js&quot;&gt;&lt;/script&gt;')
         live = ('&lt;script type=&quot;text/javascript&quot; '

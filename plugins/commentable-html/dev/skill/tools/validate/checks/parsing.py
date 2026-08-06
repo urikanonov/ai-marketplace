@@ -3185,6 +3185,35 @@ def _is_executable_js(ad):
     return (ad.get("type", "") or "").split(";")[0].strip(_HTML_WHITESPACE).lower() in _JS_TYPES
 
 
+def _script_block_type(ad, html_ns):
+    """HTML's "script block type" for this element when it names JavaScript, else None.
+
+    The half of "prepare the script element" that BOTH `script_code_runs` (execution) and
+    `script_src_fetches` (the preload scanner's request) agree on, factored out so the two can
+    never disagree about which strings name JavaScript while they deliberately disagree about the
+    element-level rules layered on top.
+
+    - An ABSENT `type` takes the `language` fallback, which makes the block type `text/<language>`
+      - so `language="javascript"` names JavaScript and `language="vbscript"` does not. It is an
+      HTMLScriptElement attribute, so it is read only when `html_ns`.
+    - An explicitly EMPTY `type` is classic. A value that merely STRIPS to empty is not: the
+      algorithm tests the raw value against the empty string BEFORE stripping, so `type=" "` falls
+      through to the essence match and fails it. Do not "simplify" the two branches together.
+    - Any other value is trimmed of ASCII whitespace and must be an ESSENCE MATCH - the whole
+      string, ASCII case-insensitively - so a MIME PARAMETER defeats it."""
+    typ = ad.get("type")
+    if typ is None:
+        lang = (ad.get("language") or "") if html_ns else ""
+        block = ("text/" + _ascii_lower(lang)) if lang else ""
+    elif typ == "":
+        block = ""
+    else:
+        block = _ascii_lower(typ.strip(_HTML_WHITESPACE))
+        if not block:
+            return None
+    return block if block in _JS_TYPES else None
+
+
 def script_code_runs(ad, ns="html"):
     """Whether a browser would run this `<script>`'s CODE at all (CMH-VAL-27).
 
@@ -3236,20 +3265,10 @@ def script_code_runs(ad, ns="html"):
 
     `_ascii_lower`, not `str.lower()`: HTML folds ASCII only, and a Unicode fold that mapped a
     look-alike onto an ASCII letter would accept a type a browser never matches - fail-OPEN."""
-    html_ns = ns == "html"
-    typ = ad.get("type")
-    if typ is None:
-        lang = (ad.get("language") or "") if html_ns else ""
-        block = ("text/" + _ascii_lower(lang)) if lang else ""
-    elif typ == "":
-        block = ""
-    else:
-        block = _ascii_lower(typ.strip(_HTML_WHITESPACE))
-        if not block:
-            return False
-    if block not in _JS_TYPES:
+    block = _script_block_type(ad, ns == "html")
+    if block is None:
         return False
-    if block == "module" or not html_ns:
+    if block == "module" or ns != "html":
         return True
     if "nomodule" in ad:
         return False
@@ -3258,6 +3277,44 @@ def script_code_runs(ad, ns="html"):
                 and _ascii_lower((ad.get("event") or "").strip(_HTML_WHITESPACE))
                 in ("onload", "onload()"))
     return True
+
+
+def script_src_fetches(ad):
+    """Whether a browser really REQUESTS this `<script>`'s `src` (CMH-VAL-08, issue #1171).
+
+    A DIFFERENT question from `script_code_runs` above, and the difference is measured rather than
+    reasoned. Chromium issues the `src` request from its speculative PRELOAD SCANNER, which reads
+    the tag soup ahead of the parser, so the request goes out under a rule of its own. Driving a
+    page of every shape through Chromium 149 (both directions recorded, request observed at the
+    server) gives exactly this predicate, and it differs from execution in two ways:
+
+    - The legacy `event`+`for` pair does NOT stop the fetch.
+      `<script type="text/javascript" for="x" event="y" src="x.js">` is REQUESTED and then never
+      run. Reading this question through `script_code_runs` therefore blessed a document that
+      really does reach the network - the one direction a self-contained gate must never get
+      wrong - so that shape stays reported.
+    - It is namespace-BLIND, in both directions. `<svg><script src="x.js">` is requested (SVG
+      ignores `src` for LOADING, but the scanner does not), while `<svg><script nomodule src=...>`
+      is NOT requested even though `nomodule` is an HTMLScriptElement rule an SVG script ignores
+      when it comes to EXECUTION - and an SVG `<script nomodule>` with an inline body does run.
+      So the scanner applies the HTML type/`language`/`nomodule` rules whatever the namespace.
+
+    That blindness is what lets the flat, namespace-less tokenizer answer this question exactly,
+    and it is why this predicate takes no `ns` at all: there is no namespace to consult, by
+    construction rather than by omission. The exporter's `_offlineScriptSrcFetches` mirrors it,
+    pinned by `test_the_python_and_js_script_src_fetches_predicates_agree`, and the browser fact
+    itself is pinned by the `CMH-VAL-08: a browser requests exactly the script shapes the gate
+    calls a load` spec, which re-measures the corpus in a real engine.
+
+    `href` / `xlink:href` are not this predicate's business: an SVG script loads through those and
+    a browser fetches them unconditionally (measured: both requested AND executed), so the gate
+    reads them with no type test at all."""
+    block = _script_block_type(ad, True)
+    if block is None:
+        return False
+    if block == "module":
+        return True
+    return "nomodule" not in ad
 
 
 def script_runs_inline_body(ad, ns):
