@@ -34,29 +34,64 @@ function _cmhCommentableLink(a) {
   catch (e) { proto = (a.protocol || "").toLowerCase(); }
   return proto === "http:" || proto === "https:" || proto === "file:";
 }
+// The EFFECTIVE target a browser resolves for a hyperlink (HTML's "get an element's target"), which
+// is not the raw `target` attribute. `own` is the anchor's own attribute value or null; `base` is the
+// value of the document's FIRST `<base target>` or null. Two rules the raw read does not model:
+//   1. `<base target>` INHERITANCE - an anchor with no target of its own inherits it, so in a
+//      `<base target="_blank">` document a link whose attribute is absent still opens an auxiliary
+//      context with a live `window.opener`.
+//   2. The `<`-COERCION - a name carrying BOTH an ASCII tab-or-newline and a U+003C is what a
+//      dangling-markup injection produces, so HTML replaces it with `_blank`. It runs AFTER the base
+//      lookup, so an inherited value is coerced too, and BOTH characters are required.
+// This is the bundle's single copy of the validator's `effective_link_target`, pinned to it as TEXT
+// and over a corpus by the parity test, so the render-time stamp and the `cmh-kql-run` gate cannot
+// disagree about which links open a new tab. HTML's "ASCII tab or newline" (Infra) is exactly
+// U+0009/U+000A/U+000D, written out as a literal class for the same reason `_OFFLINE_REL_WS_RE` is:
+// neither engine's own `\s` is this set.
+const _CMH_TARGET_COERCE_WS_RE = /[\t\n\r]/;
+function _cmhEffectiveTarget(own, base) {
+  const target = own !== null ? own : base;
+  if (target === null) return "";
+  if (_CMH_TARGET_COERCE_WS_RE.test(target) && target.indexOf("<") !== -1) return "_blank";
+  return target;
+}
+function _cmhBaseTarget(doc) {
+  const b = (doc || document).querySelector("base[target]");
+  return b ? b.getAttribute("target") : null;
+}
 // Render-time defaults. Two independent concerns:
 // - NEW-TAB stamping: open author-facing document references (http/https/file only) in a new
 //   tab, ALWAYS (never fragments, UI chrome, or non-document schemes like mailto:/tel:). An
 //   author-set target on a document reference (target="_self"/"_top"/a named frame) is OVERRIDDEN
 //   to _blank: navigating a document reference in the same tab would strand the reviewer away from
 //   the report and their comments, so a new tab is enforced, not merely defaulted.
-// - rel ENFORCEMENT (reverse-tabnabbing defense): whenever the effective target is _blank
+// - rel ENFORCEMENT (reverse-tabnabbing defense): whenever the EFFECTIVE target is _blank
 //   (case-insensitively) on ANY author link - even a data:/blob: link an author pre-set - ensure
-//   rel="noopener noreferrer" is present. This is decoupled from commentability on purpose so a
-//   pre-targeted non-reference link is not left without the secure rel.
+//   rel="noopener noreferrer" is present. Effective, not raw: the link may inherit the document's
+//   `<base target>`, or carry a name HTML coerces to _blank (#1141), and a `#fragment`, a mailto:
+//   or a tel: link is never given a target of its own by the branch above, so those two rules are
+//   the only thing that makes them a new tab. This is decoupled from commentability on purpose so
+//   a pre-targeted non-reference link is not left without the secure rel. It stays on the `_blank`
+//   KEYWORD rather than the gate's broader "opens an auxiliary context": the gate only warns, but
+//   this MUTATES the document, and adding `noopener` to a link the author targeted by NAME would
+//   stop it reusing the context it named and open a new tab instead.
 function stampLinkTargets() {
+  const baseTarget = _cmhBaseTarget(document);
   root.querySelectorAll("a[href]").forEach((a) => {
     if (a.closest(".cm-skip")) return; // never touch runtime UI chrome
     if (_cmhCommentableLink(a)) a.setAttribute("target", "_blank");
-    if ((a.getAttribute("target") || "").trim().toLowerCase() === "_blank") {
+    const effective = _cmhEffectiveTarget(
+      a.hasAttribute("target") ? a.getAttribute("target") : null, baseTarget);
+    if (effective.trim().toLowerCase() === "_blank") {
       // HTML tokenizes a `rel` list on ASCII whitespace ONLY, so read it through the bundle's one
       // reading (`_offlineLinkRelTokens`, pinned to the validator's `link_rel_tokens`) rather than
       // a JS `\s` split, which also takes the vertical tab, NBSP and U+FEFF: `rel="noopener<VT>x
       // noreferrer<VT>y"` looked like it already named both, so nothing was stamped and the browser
       // - which reads TWO opaque relations - honored neither and left `window.opener` exposed
       // (#1120). The RAW tokens are what is written back, so an author's casing and any relation
-      // they authored survive. The `.trim()` above is deliberately left as the JS one, which is
-      // BROADER than HTML whitespace: it only makes this stamp MORE links, never fewer.
+      // they authored survive. The `.trim()` applied to the effective target is deliberately left as
+      // the JS one, which is BROADER than HTML whitespace: it only makes this stamp MORE links,
+      // never fewer.
       const attr = a.getAttribute("rel");
       const raw = String(attr || "").split(_OFFLINE_REL_WS_RE).filter(Boolean);
       const have = _offlineLinkRelTokens(attr);

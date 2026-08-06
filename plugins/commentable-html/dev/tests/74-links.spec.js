@@ -40,6 +40,34 @@ async function stage(page, { init } = {}) {
   return html;
 }
 
+// Links whose EFFECTIVE target a browser resolves from something other than the anchor's own
+// attribute. All are NON-commentable (a fragment, a mailto:), because the runtime hands every
+// commentable document reference an explicit target="_blank" of its own - so only these can show
+// whether the stamper reads the raw attribute or the target a browser actually resolves.
+const BASE_CONTENT = `
+<h2 id="base-lead">Base target</h2>
+<p id="base-p"><a id="binherit" href="#base-section">inherits</a>
+<a id="bmail" href="mailto:x@example.com">email</a>
+<a id="bself" href="#base-section" target="_self">explicit self</a>
+<a id="bcoerce" href="#base-section" target="x&#10;&lt;">coerced to blank</a>
+<a id="bname" href="#base-section" target="x&lt;">plain name</a></p>
+<h2 id="base-section">Base section</h2>`;
+
+// Stage BASE_CONTENT with (or, for the control, without) a `<base target>` in the head.
+async function stageBase(page, baseTarget) {
+  const { html } = stageContent(BASE_CONTENT, { key: KEY + "-base" });
+  if (baseTarget !== null) {
+    const src = fs.readFileSync(html, "utf8")
+      .replace("<head>", '<head>\n<base target="' + baseTarget + '">');
+    fs.writeFileSync(html, src);
+  }
+  await page.goto(fileUrl(html));
+  await ready(page);
+}
+
+const relTokens = async (page, id) =>
+  ((await page.locator("#" + id).getAttribute("rel")) || "").split(/[\t\n\f\r ]+/).filter(Boolean);
+
 async function hoverLink(page, id) {
   await page.evaluate((sel) => {
     const a = document.querySelector(sel);
@@ -126,6 +154,49 @@ test.describe("link handling", () => {
     }
     // The data: link is still NOT commentable (rel enforcement is decoupled from commentability).
     await expect(page.locator("#data")).not.toHaveClass(/cm-link-commentable/);
+  });
+
+  test("a link that inherits the document's <base target> is stamped like a targeted one (CMH-LINK-01)", async ({ page }) => {
+    // The stamper must read the target a BROWSER resolves, not the raw attribute. An anchor with no
+    // `target` of its own inherits the document's first `<base target>`, so in a
+    // `<base target="_blank">` document these links open an auxiliary context with a live
+    // `window.opener` - and the raw read saw `null` and stamped nothing.
+    await stageBase(page, "_blank");
+    for (const id of ["binherit", "bmail"]) {
+      const tokens = await relTokens(page, id);
+      expect(tokens, id).toContain("noopener");
+      expect(tokens, id).toContain("noreferrer");
+    }
+    // Proof this really is a new tab, not a theory: clicking the inheriting fragment link opens one.
+    const [popup] = await Promise.all([
+      page.context().waitForEvent("page"),
+      page.locator("#binherit").click(),
+    ]);
+    await popup.waitForLoadState("domcontentloaded").catch(() => {});
+    expect(popup.url()).toContain("#base-section");
+    await popup.close();
+    // An explicit same-context target on the link WINS over the base, so it stays unstamped.
+    expect(await relTokens(page, "bself"), "bself").toEqual([]);
+
+    // The control: the same document with NO `<base target>` navigates all of these in the current
+    // tab, so none of them may gain the rel - the stamp follows the effective target, it is not a
+    // blanket rewrite of every non-commentable link.
+    await stageBase(page, null);
+    for (const id of ["binherit", "bmail", "bself"]) {
+      expect(await relTokens(page, id), id).toEqual([]);
+    }
+  });
+
+  test("a target HTML coerces to _blank is stamped like the keyword (CMH-LINK-01)", async ({ page }) => {
+    // HTML replaces a target name containing BOTH an ASCII tab-or-newline and a U+003C with
+    // `_blank`, so `x&#10;<` opens a new tab that a raw string compare against `_blank` misses.
+    await stageBase(page, null);
+    const coerced = await relTokens(page, "bcoerce");
+    expect(coerced, "bcoerce").toContain("noopener");
+    expect(coerced, "bcoerce").toContain("noreferrer");
+    // The coercion needs BOTH characters: `x<` alone is an ordinary name that navigates a named
+    // context, so stamping it would newly break an author's targeting.
+    expect(await relTokens(page, "bname"), "bname").toEqual([]);
   });
 
   test("hovering a link reveals the add button and comments the link (CMH-LINK-02)", async ({ page }) => {

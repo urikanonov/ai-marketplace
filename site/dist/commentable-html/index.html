@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.759.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.760.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.760.0] - 2026-08-06</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The render-time link stamper (<code>assets/js/31-links.js</code>, CMH-LINK-01) now decides whether to enforce <code>rel=&quot;noopener noreferrer&quot;</code> from the EFFECTIVE target a browser resolves, not the anchor&#x27;s raw <code>target</code> attribute, and reads it through ONE shared reading the <code>cmh-kql-run</code> validator gate (CMH-KQL-05) uses too (<code>effective_link_target</code> / <code>_cmhEffectiveTarget</code>, pinned to each other as text and over a corpus). It modelled neither of HTML&#x27;s two &quot;get an element&#x27;s target&quot; rules: an anchor with no <code>target</code> of its own inherits the document&#x27;s first <code>&lt;base target&gt;</code>, so in a <code>&lt;base target=&quot;_blank&quot;&gt;</code> document a <code>#fragment</code> or <code>mailto:</code> link - which the stamper never gives a target of its own - opened an auxiliary browsing context with a live <code>window.opener</code> and was never stamped; and a target name carrying both an ASCII tab-or-newline and a <code>&lt;</code> is replaced by <code>_blank</code>, so <code>target=&quot;x&amp;#10;&lt;&quot;</code> opened a new tab the raw string compare did not recognize. The gate had the same gap for an inherited target. The stamp deliberately stays on the <code>_blank</code> keyword rather than the gate&#x27;s broader &quot;opens an auxiliary context&quot;: the gate only warns, while the stamp mutates the document, and adding <code>noopener</code> to a link the author targeted by NAME would stop it reusing the context it named.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.759.0] - 2026-08-06</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -506,6 +513,8 @@
               <li>A class token is now matched by EXACT code points wherever it is a CSS SELECTOR (<code>cm-skip</code>, <code>cmh-kql</code>, <code>cmh-diff</code>, <code>cmh-lede</code>, <code>mermaid</code>, <code>slide</code>, ...), which is how a standards-mode document matches a class selector and how the runtime&#x27;s own <code>classList</code> reads one. The two shared helpers were the only case-insensitive class readers left; every other one already matched exactly, so this is what makes the validator, the tools beside it and the browser give one answer. The visible consequence is that an uppercase or look-alike spelling stops being read as the class: a <code>&lt;figure class=&quot;CMH-KQL&quot;&gt;</code> is no longer treated as a framed KQL figure, so CMH-KQL-08 reports the block inside it as unframed - what a reader actually sees - instead of demanding a Run in Azure Data Explorer link on a frame that is never rendered, and a <code>&lt;pre class=&quot;CMH-DIFF&quot;&gt;</code> is no longer an authored diff block, so the escaped-diff-text requirement does not apply to it. A <code>language-XXX</code> LABEL is deliberately NOT in that set: it is read as a label rather than matched as a selector, so it keeps an ASCII-only fold, matching the highlighter that consumes it and the runtime&#x27;s own <code>language-</code> pattern - <code>class=&quot;language-KUSTO&quot;</code> is still a Kusto block. That label is also read first-wins in author order again: reading it out of a set had made a <code>class=&quot;language-csharp language-text&quot;</code> block&#x27;s verdict depend on the process hash seed.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.758.0] - 2026-08-06</h3></div>
             <div class="group-label">Fixed</div>
@@ -513,8 +522,6 @@
               <li>Outside the layer views, the validator&#x27;s &quot;will a browser execute this?&quot; question is no longer answered by tag NAME. <code>_flush_raw_captures()</code> dropped the capture&#x27;s insertion NAMESPACE when it finalized a <code>&lt;script&gt;</code>/<code>&lt;style&gt;</code> into <code>parser.scripts</code>, so three consumers judged execution by the tag name and <code>type</code> alone and each failed in a way a browser does not: - <code>&lt;math&gt;&lt;script src=&quot;chart.js&quot;&gt;</code> was accepted as the Chart.js loader (a browser loads nothing there, and an SVG script would not load from <code>src</code> either - it uses <code>href</code>/<code>xlink:href</code>), so a document whose canvas has no renderer validated as complete. The same held for the inline scan: a <code>new Chart(</code> init, a <code>typeof Chart === &quot;undefined&quot;</code> guard, or a <code>getContext</code> draw written inside <code>&lt;math&gt;</code> counted as executable, and so did one a browser skips because it carries <code>nomodule</code> or a MIME-parameter <code>type</code>. The mermaid loader search is the same question and now reads the same rule. - <code>_nonshareable_js_refs</code> counted any <code>&lt;script src=&quot;commentable-html.js&quot;&gt;</code> regardless of <code>type</code>, so an <code>application/json</code> (or <code>nomodule</code>) tag satisfied &quot;the runtime is here&quot; and decided the document mode while the layer never loaded. Its CSS twin <code>_nonshareable_css_refs</code> counted any <code>&lt;link href=&quot;commentable-html.css&quot;&gt;</code> regardless of <code>rel</code>, <code>disabled</code> or <code>type</code>, so a <code>preload</code>, no-<code>rel</code>, disabled or <code>type=&quot;text/plain&quot;</code> link left the layer unstyled while satisfying the same check. Both lists are narrowed; the STRUCTURAL checks on a reference string (a baked absolute path that leaks a local directory, a temp path, a non-file scheme) keep walking every reference the document NAMES, because those are true whether or not a browser runs or applies the element. - An SVG <code>&lt;script&gt;</code> whose body is written as a <code>&lt;![CDATA[ ... ]]&gt;</code> section really executes - in foreign content a section opens for real and its content is the script text - but the payload went to <code>unknown_decl</code> and was dropped. That cost twice: the validator reported <code>no bootstrap watchdog</code> for a watchdog that does arm, and the offline egress scan, which reads the same captured body, never saw a network <code>import()</code> written inside such a section, so <code>--strict</code> certified real egress as offline-clean.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.756.0] - 2026-08-06</h3></div>
             <div class="group-label">Fixed</div>
@@ -545,14 +552,7 @@
               <li>Both CSS reads also run over a copy of the deck body with the parser-removed controls normalized away, which the URL parser does in two different ways: it removes ASCII tab from ANYWHERE, but every other C0 control only from the LEADING run of a reference. So <code>url(&quot;//&lt;TAB&gt;host/x.png&quot;)</code> and <code>url(&quot;&lt;VT&gt;//host/x.png&quot;)</code> really load <code>//host/x.png</code> and are now reported, while the mid-token <code>url(&quot;/&lt;SOH&gt;/host/x.png&quot;)</code> stays local and is not. LF and CR are kept in both readings (a newline in a CSS string drops the declaration, so nothing loads). This is a deck-local compensation - the strict validator and the offline strip still read those spellings with the shared patterns alone.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.750.0] - 2026-08-05</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The comment COMPOSERS&#x27; action buttons are now a <code>&gt;=44px</code> touch target on a phone viewport (<code>max-width: 640px</code>), matching every other control the layer already enlarged there. The floating composer&#x27;s <code>Cancel</code> / <code>Save comment</code> row (<code>.cm-composer .row</code>) and the side pane&#x27;s reply / edit actions (<code>.cm-reply-compose-actions</code>) had been left at the compact ~33px control height while only their formatting toolbars (CMH-RICH-17, CMH-RICH-22) and the in-document dialog&#x27;s row (CMH-CORE-23) were enlarged - even though the composer is the surface a reviewer touches FIRST. With the shipped labels each row still fits ONE line at a 320px viewport in every density preset, so nothing about the desktop layout changes; the gap between the buttons is widened to match the enlarged targets, on both axes and as an absolute FLOOR, so a thumb aimed at <code>Save comment</code> does not land on the <code>Cancel</code> that discards the draft and a large-root host keeps the roomier gap it already had. A row that no longer fits (a localized label set, or a host document with a larger root font) WRAPS rather than dragging a button past its surface&#x27;s edge (CMH-RESP-13).</li>
-            </ul>
-          </div>
-            <p class="changelog-more">352 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">353 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

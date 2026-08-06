@@ -40,7 +40,10 @@ Conventions for these partials (they share ONE closure scope after concatenation
   authored `rel` list through `_offlineLinkRelTokens` / `_OFFLINE_REL_WS_RE` (68-export-offline),
   the bundle's single HTML-accurate `rel` tokenizer (pinned as TEXT to the validator's
   `link_rel_tokens`), so the render-time stamp and the export strip can never disagree about what
-  relations a `rel` attribute names.
+  relations a `rel` attribute names. 31-links owns the matching reading of the other operand:
+  `_cmhEffectiveTarget` / `_CMH_TARGET_COERCE_WS_RE` is the bundle's single copy of HTML's "get an
+  element's target" (`<base target>` inheritance plus the `<`-coercion), pinned as TEXT and over a
+  corpus to the validator's `effective_link_target`.
 
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |

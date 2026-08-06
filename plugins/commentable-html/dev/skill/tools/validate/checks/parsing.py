@@ -331,6 +331,49 @@ def class_tokens(value):
     return set(html_ws_tokens(value))
 
 
+# HTML's "ASCII tab or newline" (Infra): U+0009 TAB, U+000A LF, U+000D CR - and nothing else. It is
+# the first half of the `<`-coercion below, written out as a literal class for the same reason the
+# `rel` separator class is: neither engine's own whitespace idea is this set (a Python `\s` and a JS
+# `\s` both take more, and Python's also takes U+001C-U+001F), so a shared rule cannot be spelled
+# with either. The JS twin is `_CMH_TARGET_COERCE_WS_RE` in `assets/js/31-links.js`, pinned to this
+# pattern as TEXT by the parity test.
+TARGET_COERCE_WS_RE = re.compile(r"[\t\n\r]")
+
+
+def effective_link_target(own, base):
+    """HTML's "get an element's target" - the target a BROWSER resolves for a hyperlink.
+
+    `own` is the anchor's own `target` attribute value or None when it has none; `base` is the value
+    of the document's FIRST `<base target>` or None. Returns the effective target, with the absent
+    value spelled as `""` (which HTML navigates the same as `_self`).
+
+    Two rules that reading the raw attribute does not model, and each is reachable here:
+
+    1. `<base target>` INHERITANCE. An anchor with no `target` of its own inherits the document's
+       first `<base target>`, so in a `<base target="_blank">` document a link whose `target`
+       attribute is absent still opens an auxiliary browsing context with a live `window.opener`.
+       A `<base>` is legal in a commentable document - the offline gate deliberately preserves its
+       `target` while acting on its `href` - so this is reachable rather than theoretical.
+    2. The `<`-COERCION. A target containing BOTH an ASCII tab-or-newline and a U+003C LESS-THAN SIGN
+       is not a usable navigable target name (it is what a dangling-markup injection produces), so
+       HTML replaces it with `_blank`. It applies AFTER the base lookup, so an inherited value is
+       coerced too. Both characters are required: `x<` on its own is an ordinary name.
+
+    The RUNTIME reader is the bundle's `_cmhEffectiveTarget` (`assets/js/31-links.js`), pinned to
+    this function as TEXT and over a corpus by the parity test, so the render-time
+    `rel="noopener noreferrer"` stamper and this gate cannot disagree about which links open a new
+    tab. What each side DOES with the answer still differs on purpose: the gate only WARNS, so it may
+    call an unresolvable NAME an auxiliary context, while the stamper MUTATES the document and stays
+    on the `_blank` keyword - adding `noopener` to a named target would stop it reusing the context
+    the author named and open a new tab instead.
+    """
+    target = own if own is not None else base
+    if target is None:
+        return ""
+    if TARGET_COERCE_WS_RE.search(target) and "<" in target:
+        return "_blank"
+    return target
+
 # The head-content set for the CSP view. `_HEAD_TAGS` above deliberately mirrors
 # `tools/authoring/_favicon.py`, so the three obsolete elements the "in head" insertion mode also
 # holds are added here rather than there: without them a `<basefont>`/`<bgsound>`/`<noframes>`

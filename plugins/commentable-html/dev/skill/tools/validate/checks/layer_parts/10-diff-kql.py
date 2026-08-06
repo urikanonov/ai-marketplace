@@ -63,9 +63,22 @@ def _named_browsing_contexts(html):
     return names
 
 
+def _first_base_target(html):
+    """The value of this document's FIRST `<base target>`, or None when it declares none.
+
+    That is what an anchor with no `target` of its own inherits (HTML's "get an element's target"):
+    every later `<base target>` is ignored, exactly as HTML ignores all but the first.
+    """
+    for el in _find_tag_attrs(html, "base"):
+        if el.get("target") is not None:
+            return el["target"]
+    return None
+
+
 def _check_kql_blocks(html):
     errors, warnings = [], []
     named_contexts = _named_browsing_contexts(html)
+    base_target = _first_base_target(html)
     # 11c) "Run in Azure Data Explorer" links (class cmh-kql-run) must point at the ADX web UX over
     #      https and open safely. This fires ONLY on the explicit run-link class, so
     #      it never false-positives on a plain KQL code block or a syntax example.
@@ -77,21 +90,26 @@ def _check_kql_blocks(html):
             warnings.append('a "cmh-kql-run" link does not point at https://dataexplorer.azure.com/ '
                             "(build it with tools/kusto_link.py): " + (href[:80] or "(empty href)"))
         # The condition is the one a BROWSER actually applies: does this target CREATE an auxiliary
-        # browsing context, whose `window.opener` points back at this document? HTML matches the
-        # four keywords ASCII case-insensitively and does NOT trim the value, so `_BLANK` is the
-        # keyword, a padded ` _blank` is a NAME, and a name that resolves to nothing in this
-        # document creates a new auxiliary context just as `_blank` does. A Python `==` against the
-        # literal `_blank` saw none of those, so a run link carrying no `rel` at all passed in
-        # silence (#1120). A name that DOES resolve - an `<iframe name="win1">` written in the same
-        # document - navigates a context that already exists and gets no opener, so it is exempt:
-        # warning there would be a false positive, and taking the advice would CHANGE behavior
-        # (`noopener` makes a named target stop reusing the frame and open a new tab instead).
+        # browsing context, whose `window.opener` points back at this document? The operand is the
+        # EFFECTIVE target HTML resolves (`effective_link_target`, the one reading the render-time
+        # stamper shares), not the raw attribute: an anchor with no `target` of its own inherits the
+        # document's first `<base target>`, and a name carrying both an ASCII tab-or-newline and a
+        # U+003C is coerced to `_blank`. HTML then matches the four keywords ASCII case-insensitively
+        # and does NOT trim the value, so `_BLANK` is the keyword, a padded ` _blank` is a NAME, and a
+        # name that resolves to nothing in this document creates a new auxiliary context just as
+        # `_blank` does. A Python `==` against the literal `_blank` saw none of those, so a run link
+        # carrying no `rel` at all passed in silence (#1120), and reading the raw attribute missed the
+        # two effective-target rules entirely (#1141). A name that DOES resolve - an
+        # `<iframe name="win1">` written in the same document - navigates a context that already
+        # exists and gets no opener, so it is exempt: warning there would be a false positive, and
+        # taking the advice would CHANGE behavior (`noopener` makes a named target stop reusing the
+        # frame and open a new tab instead).
         #
         # This gate is the ONLY reverse-tabnabbing control on a `cmh-kql-run` link: CMH-KQL-01 puts
         # the run link inside `figcaption.cm-skip`, and BOTH the render-time stamper
         # (`assets/js/31-links.js` returns early on `.cm-skip`) and `checks/links.py` (which skips a
         # skip-marked anchor) pass it by.
-        raw_target = a.get("target") or ""
+        raw_target = effective_link_target(a.get("target"), base_target)
         target = _ascii_lower(raw_target)
         opens_auxiliary = (target not in _SAME_CONTEXT_TARGETS
                            and (target == "_blank" or raw_target not in named_contexts))

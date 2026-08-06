@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.760.0] - 2026-08-06
+
+### Fixed
+
+- The render-time link stamper (`assets/js/31-links.js`, CMH-LINK-01) now decides whether to enforce
+  `rel="noopener noreferrer"` from the EFFECTIVE target a browser resolves, not the anchor's raw
+  `target` attribute, and reads it through ONE shared reading the `cmh-kql-run` validator gate
+  (CMH-KQL-05) uses too (`effective_link_target` / `_cmhEffectiveTarget`, pinned to each other as
+  text and over a corpus). It modelled neither of HTML's two "get an element's target" rules: an
+  anchor with no `target` of its own inherits the document's first `<base target>`, so in a
+  `<base target="_blank">` document a `#fragment` or `mailto:` link - which the stamper never gives
+  a target of its own - opened an auxiliary browsing context with a live `window.opener` and was
+  never stamped; and a target name carrying both an ASCII tab-or-newline and a `<` is replaced by
+  `_blank`, so `target="x&#10;<"` opened a new tab the raw string compare did not recognize. The
+  gate had the same gap for an inherited target. The stamp deliberately stays on the `_blank`
+  keyword rather than the gate's broader "opens an auxiliary context": the gate only warns, while
+  the stamp mutates the document, and adding `noopener` to a link the author targeted by NAME would
+  stop it reusing the context it named.
 ## [1.759.0] - 2026-08-06
 
 ### Fixed

@@ -187,6 +187,71 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION]))
         self.assertTrue(any('without rel="noopener"' in w for w in warnings), warnings)
 
+    def test_kusto_run_link_target_is_the_effective_one_a_browser_resolves(self):
+        # CMH-KQL-05: the operand is HTML's "get an element's target" - the EFFECTIVE target - not the
+        # raw attribute. Two rules the raw read does not model, both shared with the runtime stamper
+        # (CMH-LINK-01) through one reading:
+        #   1. `<base target>` INHERITANCE: a run link with NO target of its own inherits the
+        #      document's first `<base target>`, so in a `<base target="_blank">` document it opens an
+        #      auxiliary context with a live `window.opener` while the raw read saw the absent value
+        #      and stayed silent.
+        #   2. The `<`-COERCION: a target containing BOTH an ASCII tab-or-newline and a U+003C is
+        #      replaced by `_blank`, so `x\n<` is the keyword rather than a name.
+        base = '<base target="%s">'
+        run = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x"%s>Run</a>')
+
+        def warnings_for(head_extra, link_extra, tail=""):
+            main = MAIN.replace("<p>content</p>",
+                                head_extra + "<p>content</p>" + (run % link_extra) + tail)
+            _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                                                     main, JS_REGION]))
+            return warnings
+
+        # 1. Inherited from `<base target>`: the link carries no target at all and still opens a new tab.
+        for inherited in ("_blank", "_BLANK", "win-that-does-not-exist"):
+            warnings = warnings_for(base % inherited, "")
+            self.assertTrue(any('without rel="noopener"' in w for w in warnings),
+                            "%r: %r" % (inherited, warnings))
+        # The link's OWN target wins over the base, in both directions: an explicit same-context
+        # keyword is not overridden by a `_blank` base...
+        warnings = warnings_for(base % "_blank", ' target="_self"')
+        self.assertFalse(any('without rel="noopener"' in w for w in warnings), warnings)
+        # ...and a same-context base does not excuse an explicit `_blank`.
+        warnings = warnings_for(base % "_self", ' target="_blank"')
+        self.assertTrue(any('without rel="noopener"' in w for w in warnings), warnings)
+        # A base naming a context this document DECLARES navigates a frame that already exists, which
+        # gets no opener - the same exemption an explicit name earns.
+        warnings = warnings_for(base % "win1", "", '<iframe name="win1" title="f"></iframe>')
+        self.assertFalse(any('without rel="noopener"' in w for w in warnings), warnings)
+        # A same-context base keyword is inherited as such, so an untargeted link stays clean.
+        for inherited in ("_self", "_parent", "_TOP", ""):
+            warnings = warnings_for(base % inherited, "")
+            self.assertFalse(any('without rel="noopener"' in w for w in warnings),
+                             "%r: %r" % (inherited, warnings))
+        # Only the FIRST `<base target>` is inherited; a later one is ignored, as HTML ignores it.
+        warnings = warnings_for((base % "_self") + (base % "_blank"), "")
+        self.assertFalse(any('without rel="noopener"' in w for w in warnings), warnings)
+
+        # 2. The `<`-coercion. `x&#10;<` carries both an ASCII newline and a U+003C, so HTML replaces
+        #    the name with `_blank` - and a coerced `_blank` is the KEYWORD, so a frame claiming the
+        #    literal name cannot exempt it.
+        for spelling in ("x&#10;&lt;", "&lt;&#9;x", "a&#13;b&lt;c"):
+            warnings = warnings_for("", ' target="%s"' % spelling)
+            self.assertTrue(any('without rel="noopener"' in w for w in warnings),
+                            "%r: %r" % (spelling, warnings))
+        warnings = warnings_for("", ' target="x&#10;&lt;"', '<iframe name="x&#10;&lt;" title="f"></iframe>')
+        self.assertTrue(any('without rel="noopener"' in w for w in warnings), warnings)
+        # The coercion needs BOTH characters: a `<` with no tab/newline is an ordinary name, and a
+        # newline with no `<` likewise - each stays subject to the named-context exemption.
+        for spelling, frame in (("x&lt;", '<iframe name="x&lt;" title="f"></iframe>'),
+                                ("x&#10;y", '<iframe name="x&#10;y" title="f"></iframe>')):
+            warnings = warnings_for("", ' target="%s"' % spelling, frame)
+            self.assertFalse(any('without rel="noopener"' in w for w in warnings),
+                             "%r: %r" % (spelling, warnings))
+        # The coercion applies to an INHERITED target too - HTML runs it after the base lookup.
+        warnings = warnings_for(base % "x&#10;&lt;", "", '<iframe name="x&#10;&lt;" title="f"></iframe>')
+        self.assertTrue(any('without rel="noopener"' in w for w in warnings), warnings)
+
     def test_bare_kusto_without_no_cluster_marker_errors(self):
         # CMH-KQL-08: a bare KQL code block that is neither framed in a figure.cmh-kql (with a Run in
         # Azure Data Explorer link) nor explicitly marked data-cmh-kql-no-cluster is a hard error -
