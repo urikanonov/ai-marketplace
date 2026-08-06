@@ -14,7 +14,9 @@ versioning.
   breakage, data loss, or a security issue reachable under the declared threat model. Incidental
   pre-existing findings were 47 percent of the issues filed in one two-day window and were what held
   the issue branching factor at 1.52 - above the 1.0 at which a backlog stops growing - so a panel
-  was manufacturing work faster than it could be done.
+  was manufacturing work faster than it could be done. The boundary is drawn carefully: a defect the
+  change newly makes REACHABLE, triggers, or relocates stays in scope even when the defective line
+  itself is untouched, so a latent fault that only a newly added caller can reach is still reported.
 
 ## [1.2.0] - 2026-08-04
 

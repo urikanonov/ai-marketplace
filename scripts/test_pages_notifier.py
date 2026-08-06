@@ -34,15 +34,32 @@ class PagesNotifierTests(unittest.TestCase):
         self.text = _read(PAGES_WF)
         self.job = _notify_job(self.text)
 
-    def test_a_cancelled_run_does_not_file_an_issue(self):
-        # SITE-NOTIFY-01: a cancelled `pages` run is almost always a concurrency-superseded run - the
-        # normal result of pushing twice - not a failure. Filing an issue for it is pure noise.
-        cond = re.search(r"if: \$\{\{(.*?)\}\}", self.job, re.S)
-        self.assertIsNotNone(cond, "the notify job has no `if:` condition")
-        self.assertNotIn(
-            "cancelled", cond.group(1),
-            "the notify job must not treat a CANCELLED run as a failure: a superseded run is normal"
-            " and filing an issue for it produced pure noise (#1190).",
+    def test_a_timed_out_deploy_still_alerts_because_main_never_supersedes(self):
+        # SITE-NOTIFY-01: `cancelled` must NOT be dismissed as noise on main. `cancel-in-progress` is
+        # false for refs/heads/main, so a main run is never superseded - a cancellation there means
+        # the job hit `timeout-minutes` or a human cancelled it. GitHub reports a TIMED-OUT job as
+        # `cancelled`, not `failure` (run 31111831920's deploy ran 14:45:07-14:55:09, exactly the
+        # configured 10 minutes), so treating cancellations as benign would silence a stale site.
+        self.assertRegex(
+            self.job,
+            r'const bad = \["failure", "cancelled"\]',
+            "a cancelled job on main is a timeout or a manual cancel, never a supersede, so it must"
+            " still open the alert - dropping it would hide a genuinely undeployed site.",
+        )
+        self.assertRegex(
+            self.job,
+            r"const failed = bad\.includes\(siteResult\) \|\| bad\.includes\(deployResult\)",
+            "the alert must fire when EITHER job is failed or cancelled",
+        )
+
+    def test_the_main_branch_never_cancels_a_run_in_progress(self):
+        # The premise the rule above rests on. If `cancel-in-progress` ever became true for main,
+        # cancellations would once again be routine supersedes and SITE-NOTIFY-01's reasoning would
+        # be wrong, so pin the concurrency setting that makes a main cancellation meaningful.
+        self.assertIn(
+            "cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}", self.text,
+            "SITE-NOTIFY-01 treats a cancelled main run as a real failure precisely because main"
+            " does not cancel in-progress runs; changing that invalidates the rule.",
         )
 
     def test_a_recovered_run_closes_the_open_failure_issue(self):
@@ -58,6 +75,17 @@ class PagesNotifierTests(unittest.TestCase):
             "state_reason", self.job,
             "closing should record a state_reason so a recovered-not-planned close is auditable",
         )
+
+    def test_the_close_is_gated_on_a_full_recovery_not_merely_on_not_failing(self):
+        # SITE-NOTIFY-02, the correctness-critical half: closing must require BOTH jobs to have
+        # SUCCEEDED. `deploy` is skipped whenever `site` did not succeed, so a laxer gate (anything
+        # that is not `failure`) would retire the alert on a cancelled or skipped run - marking the
+        # site recovered while it was never actually rebuilt or republished.
+        close = re.search(r"if \(existing && (.*?)\) \{", self.job, re.S)
+        self.assertIsNotNone(close, "could not find the close guard in the notify script")
+        guard = close.group(1)
+        self.assertIn('siteResult === "success"', guard)
+        self.assertIn('deployResult === "success"', guard)
 
     def test_the_notifier_still_runs_on_a_real_failure(self):
         # SITE-NOTIFY-03: the gate above must not silence genuine breakage - a failed site build or a
