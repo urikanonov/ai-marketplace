@@ -34,13 +34,53 @@ def _report_value(value):
     return out
 
 
+# Every (tag, attr) pair a browser fetches to RENDER the document, beyond the five load-bearing
+# groups (`img`, `script`, `iframe`, a loading `link`, `base`) the shareable rules always read.
+# Each is an AUTOMATIC subresource load: it happens on open, with no user action, which is exactly
+# what the `commentable-html-validated` stamp tells a recipient does not happen. They used to be
+# checked in OFFLINE mode only (#1145), so a shareable document carrying `<video
+# src="https://...">` validated STRICT-CLEAN and was stamped. Shared with `_SRCDOC_LOAD_ATTRS`
+# below so the nested read cannot drift from the top-level set. The third field says whether the
+# value is a `srcset` LIST rather than a single URL.
+_MEDIA_LOAD_ATTRS = (
+    ("video", "src", False), ("video", "poster", False),
+    ("audio", "src", False), ("source", "src", False), ("source", "srcset", True),
+    ("object", "data", False), ("embed", "src", False), ("track", "src", False),
+    ("image", "href", False), ("image", "xlink:href", False),
+    ("use", "href", False), ("use", "xlink:href", False),
+    # An SVG filter primitive fetches exactly like an `<image>` or a `<use>`, but was in
+    # neither this list nor the export strip, so a document carrying one rode into a
+    # zero-network export and `--strict` certified it clean (#992). `HTMLParser` lowercases
+    # the tag, so the lookup key is `feimage` while the export selector spells it `feImage`:
+    # CSS compares a type selector case-SENSITIVELY for an SVG-namespaced element and
+    # case-INSENSITIVELY for an HTML one, so that one portable spelling reaches both and the
+    # two sides stay namespace-blind together (a current Chromium is laxer still and matches
+    # any casing, which is an implementation detail neither side relies on).
+    ("feimage", "href", False), ("feimage", "xlink:href", False),
+)
+
+# The legacy presentational `background` attribute, which fetches an image. NOT a tag list: the
+# offline export's own strip selects the universal `[background]`, and a hand-maintained list was
+# NARROWER than it - it named `body`, `table`, `td`, `th`, `div` and so missed the table PARTS
+# (`tr`, `tbody`, `thead`, `tfoot`), where the attribute really is a presentation hint that fetches.
+# Asking the attribute question instead of the tag question (`_find_attr_egress`) makes the two
+# sides agree by construction and removes the list as a maintenance surface. The over-detection that
+# comes with it - `div`, and now any other element where a browser ignores the attribute - is the
+# same over-detection the strip already has, so neither side can reject what the other leaves.
+_BACKGROUND_ATTR = "background"
+
 # The (tag, attr) pairs whose value a browser FETCHES, applied INSIDE a nested `srcdoc` document:
 # exactly the set the element-level rules below enforce on the top-level document in a mode that
 # makes no zero-network promise. A `<base href>` is not itself a load and is handled beside this on
-# the stricter `offline_is_non_local_ref`, the way the top-level rule handles it.
+# the stricter `offline_is_non_local_ref`, the way the top-level rule handles it. An
+# `<input type=image>`, the legacy `background` attribute and a `meta` refresh are handled beside it
+# too, since none of them is keyed on the TAG alone.
 _SRCDOC_LOAD_ATTRS = ((("img", "src", False), ("img", "srcset", True), ("iframe", "src", False),
                        ("link", "href", False))
-                      + tuple(("script", attr, False) for attr in SCRIPT_LOAD_ATTRS))
+                      + tuple(("script", attr, False) for attr in SCRIPT_LOAD_ATTRS)
+                      + _MEDIA_LOAD_ATTRS)
+
+
 
 # A nested document is entity-escaped once per level of nesting, so each level costs the level
 # outside it about twice its own size and a real document bottoms out after one or two (a `srcdoc`
@@ -71,9 +111,11 @@ def _srcdoc_network_findings(value, depth=1):
     The total work is bounded by the DOCUMENT, not by the branching factor: a frame's content is
     physically contained in its parent's attribute value (and shrinks by one round of entity
     escaping per level), so the nested text summed over every frame at every depth cannot exceed
-    the document size times the depth cap. Each distinct value is tokenized ONCE - the per-tag
-    lookups below all hit `_tag_attr_index`'s cache - so a wide or deep nest costs linear work in
-    the text it actually carries.
+    the document size times the depth cap. Each distinct value costs a FIXED TWO passes, not one:
+    the per-tag lookups below all hit `_tag_attr_index`'s cache, and `_find_fragment_styles` adds
+    one uncached scripting-disabled pass for the `<style>` bodies that index deliberately does not
+    buffer. Two is a constant, so a wide or deep nest still costs work linear in the text it
+    actually carries.
     """
     text = value or ""
     out = []
@@ -96,6 +138,49 @@ def _srcdoc_network_findings(value, depth=1):
                 # the spelling.
                 if is_network_url(item):
                     out.append(("load", tag, attr, item))
+    # An `<input>` fetches only when its TYPE says so, so it cannot ride the flat pair list above.
+    for el in _find_tag_attrs_egress(text, "input"):
+        if (el.get("type") or "").lower() != "image":
+            continue
+        val = el.get("src", "")
+        if val and is_network_url(val):
+            out.append(("load", "input", "src", val))
+    # The legacy `background` attribute, asked as an ATTRIBUTE question for the reason
+    # `_BACKGROUND_ATTR` records - the strip's selector is the universal `[background]`.
+    for el in _find_attr_egress(text, _BACKGROUND_ATTR):
+        val = el.get("value", "")
+        if val and is_network_url(val):
+            out.append(("load", el.get("tag", "element"), _BACKGROUND_ATTR, val))
+    # A refresh inside a frame navigates THAT frame automatically, on open, with no user action -
+    # the same reason the top-level rule reports one. Only a NETWORK target: a relative refresh
+    # inside a nested document reaches no network, and this mode has no strip to keep parity with.
+    for el in _find_tag_attrs_egress(text, "meta"):
+        if (el.get("http-equiv") or "").lower() != "refresh":
+            continue
+        if meta_refresh_navigates_to_network(el.get("content", "")):
+            out.append(("refresh", "meta", "content", el.get("content", "")))
+    # CSS egress carried in a nested `style=` attribute or a nested `<style>` BODY. The style
+    # bodies need their own fallback parse (`_find_fragment_styles`) because the shared attribute
+    # index deliberately does not buffer ordinary style bodies; scanning the raw nested TEXT for a
+    # `url(...)` instead is the false-rejection trade CMH-VAL-25 rejected.
+    for style in _find_inline_styles_egress(text):
+        if CSS_NETWORK_URL_RE.search(style.get("value", "")):
+            out.append(("style", style.get("tag", "element"), "style", style.get("value", "")))
+    fragment_styles, styles_failed = _find_fragment_styles(text)
+    if styles_failed:
+        out.append(("parse", None, None, None))
+    for style in fragment_styles:
+        for m in CSS_NETWORK_IMPORT_RE.finditer(style.get("body", "")):
+            out.append(("import", "style", "@import", m.group(1)))
+        if CSS_NETWORK_URL_RE.search(style.get("body", "")):
+            out.append(("sheet", "style", "url", ""))
+    # A speculation ruleset inside a frame prefetches exactly as one at the top level does, and the
+    # nested read is not allowed to be narrower than the top-level rule. PRESENCE is the test here
+    # too - a document-source ruleset names no URL at all - so only the `type` is read and the
+    # nested body is never parsed as JSON.
+    for el in _find_tag_attrs_egress(text, "script"):
+        if offline_active_data_script_type(el) == "speculationrules":
+            out.append(("rules", "script", "type", "speculationrules"))
     for el in _find_tag_attrs_egress(text, "base"):
         val = el.get("href", "")
         if val and offline_is_non_local_ref(val):
@@ -155,7 +240,7 @@ def _check_self_contained(html, parser):
             return srcset_candidate_urls(value)
         return [value or ""]
     def _network_error(tag, attr, val):
-        label = "<%s %s=\"%s\">" % (tag, attr, val[:80])
+        label = "<%s %s=\"%s\">" % (_report_value(tag), attr, _report_value(val))
         if offline_mode:
             if tag == "script" and attr == "src" and CHARTJS_SRC_RE.search(val):
                 return "offline mode: %s loads Chart.js over the network - inline it or export offline after rendering" % label
@@ -176,12 +261,12 @@ def _check_self_contained(html, parser):
                 continue
             if tag == "script" and attr == "src" and CHARTJS_SRC_RE.search(item):
                 continue
-            if tag == "link":
+            if tag == "link" and attr == "href":
                 warnings.append('<link %s="%s"> loads over the network and breaks the self-contained '
-                                "guarantee - inline or remove it" % (attr, item[:80]))
+                                "guarantee - inline or remove it" % (attr, _report_value(item)))
             else:
                 errors.append('<%s %s="%s"> loads over the network and breaks the self-contained guarantee - '
-                              "inline or remove it" % (tag, attr, item[:80]))
+                              "inline or remove it" % (_report_value(tag), attr, _report_value(item)))
     for img in _find_tag_attrs_egress(html, "img"):
         src = img.get("src", "")
         if src and not src.startswith("data:"):
@@ -192,10 +277,10 @@ def _check_self_contained(html, parser):
                 else:
                     errors.append('<img src="%s"> loads over the network - inline it with '
                                   "tools/inline_images.py (external images break self-contained use and shareability)"
-                                  % src[:80])
+                                  % _report_value(src))
             elif not re.match(r"[a-z][a-z0-9+.\-]*:", src, re.I):
                 warnings.append('<img src="%s"> is a local path - run tools/inline_images.py to embed '
-                                "it as a data: URI so the image travels with the file" % src[:80])
+                                "it as a data: URI so the image travels with the file" % _report_value(src))
         _check_network_attr("img", img, "srcset", srcset=True)
     # An SVG <script> never uses `src`: it loads through `href` (SVG2) or the legacy `xlink:href`,
     # and its body is empty, so neither this loader check nor the inline egress scan below saw it
@@ -254,7 +339,7 @@ def _check_self_contained(html, parser):
     for el in _find_tag_attrs_egress(html, "base"):
         val = el.get("href", "")
         if val and offline_is_non_local_ref(val):
-            label = '<base href="%s">' % val[:80]
+            label = '<base href="%s">' % _report_value(val)
             if offline_mode:
                 errors.append("offline mode: %s rebases every relative reference in the document "
                               "onto a base the file cannot resolve on its own - remove it" % label)
@@ -263,34 +348,120 @@ def _check_self_contained(html, parser):
                               "file cannot resolve on its own and breaks the self-contained "
                               "guarantee - make the base relative, or drop it and write the "
                               "affected href/src values out in full" % label)
+    # The rest of the AUTOMATIC-SUBRESOURCE set, in EVERY mode (#1145). Until this moved out of the
+    # `offline_mode` branch below, the shareable half of the self-contained guarantee was enforced
+    # on five element/attribute groups only, so `<video src="https://evil.example/v.mp4">`,
+    # `<object data=...>`, `<embed src=...>`, `<input type=image src=...>`, an SVG `image`/`use`/
+    # `feImage`, a legacy `background=`, and CSS `@import` / `url(...)` all validated STRICT-CLEAN
+    # and were STAMPED - the one promise the stamp makes to a recipient who did not author the file.
+    # Offline has a zero-network CSP behind it; a shareable file has nothing, so this gate is the
+    # only layer. What an offline report SAYS is unchanged - `_check_network_attr` and `_css_error`
+    # both pick their wording off `offline_mode`, and no offline error is added or removed - but the
+    # ORDER shifts: these findings now precede the offline-only ones (the CSP, `srcdoc`, form, ping,
+    # meta refresh, `on*`) instead of being interleaved with them. Nothing consumes the order (the
+    # report is printed as a list and the tests match by content), so that is the whole delta.
+    #
+    # What is DELIBERATELY not widened is USER-INITIATED egress: `<a href>` (already exempt),
+    # `form action` / `formaction`, and `a`/`area` `ping`. Each needs a click, so none of them
+    # happens when a recipient merely OPENS the file, and the offline rules that reject them serve
+    # the zero-network promise (and the export strips they are pinned to), not the self-contained
+    # one. A `meta http-equiv=refresh` is NOT in that group and IS reported here - it fires with no
+    # user action at all - which is the correction the review panel made to the first cut of this
+    # rule; see the network-target check below. The speculative link rels need nothing here either:
+    # `preconnect` and `dns-prefetch` are in `FETCHING_LINK_RELS`, so a NETWORK href on one is
+    # already the ordinary shareable `link` warning above, and the offline-only extra is the
+    # PRESENCE rule (#1076), which a relative hint - reaching no network at all - gives this
+    # guarantee no reason to copy.
+    #
+    # Two deliberate OVER-detections ride along, kept because this gate fails closed and because
+    # narrowing either would need the parent chain a flat tag index does not have: a `<source src>`
+    # parked under a `<picture>` (where `src` is ignored) and a `<track src>` (which loads when a
+    # text track is enabled rather than on open) are both reported. A third joins them with the
+    # refresh rule below: a `<meta http-equiv=refresh>` parked in a `<template>` never fires (a
+    # refresh is a PARSE-TIME pragma, so adopting the fragment later does not navigate), unlike a
+    # template-parked `<img>`, which really does fetch the moment a script inserts it - so the
+    # template-inclusion argument that carries the element rules does not carry this one, and it is
+    # named here rather than glossed. Removing a reference that reaches no network costs an author
+    # nothing; missing one costs the recipient the guarantee.
+    for tag, attr, is_srcset in _MEDIA_LOAD_ATTRS:
+        for el in _find_tag_attrs_egress(html, tag):
+            _check_network_attr(tag, el, attr, srcset=is_srcset)
+    # An `<input>` fetches only when its TYPE says so, so it is checked beside the flat pair list.
+    for el in _find_tag_attrs_egress(html, "input"):
+        if (el.get("type") or "").lower() == "image":
+            _check_network_attr("input", el, "src")
+    for el in _find_attr_egress(html, _BACKGROUND_ATTR):
+        _check_network_attr(el.get("tag", "element"),
+                            {_BACKGROUND_ATTR: el.get("value", "")}, _BACKGROUND_ATTR)
+    # A meta refresh to a NETWORK target is not navigation a reader chose: `content="0;url=https://"`
+    # fires the instant the document is parsed, with no click, so opening the file really does reach
+    # the network - the one thing the validated stamp tells a recipient will not happen. That is what
+    # separates it from `<a href>`, `form action`/`formaction` and `a ping`, which stay out of scope
+    # because they need a user action. Only a NETWORK target here: a relative refresh reaches no
+    # network at all, and shareable mode has no export strip to keep unconditional parity with, which
+    # is why offline (which does, and rejects every refresh) keeps its own stricter rule below rather
+    # than sharing this one. Gated on `not offline_mode` so one refresh is never reported twice.
+    if not offline_mode:
+        for el in _find_tag_attrs_egress(html, "meta"):
+            if (el.get("http-equiv") or "").lower() != "refresh":
+                continue
+            if meta_refresh_navigates_to_network(el.get("content", "")):
+                errors.append('<meta http-equiv="refresh" content="%s"> navigates to a network URL '
+                              "the moment the document opens, with no user action, and breaks the "
+                              "self-contained guarantee - remove it, or point it at a target inside "
+                              "this file" % _report_value(el.get("content", "")))
+    # CSS egress. The `@import` gate and the `url(...)` one are mirrored by the exporter's own CSS
+    # strips, so the two sides were widened TOGETHER (issue #961, spec row CMH-VAL-08): both read
+    # the slash run after a special scheme rather than requiring two, so the scheme-only
+    # `@import "https:host/t.css"` a browser resolves to the same host is caught, and both require a
+    # non-empty host so neither reports a parse failure the strip leaves behind. Running them in
+    # shareable mode too adds no drift, because shareable mode runs no strip pass at all: the strips
+    # are an OFFLINE-export step, so there is no second implementation to stay in step with here.
+    def _css_error(offline_text, shareable_text):
+        errors.append(("offline mode: " + offline_text) if offline_mode else shareable_text)
+    for style in parser.styles + parser.template_styles + _find_noscript_styles(html):
+        for m in CSS_NETWORK_IMPORT_RE.finditer(style.get("body", "")):
+            _css_error('@import "%s" loads over the network - inline or remove it'
+                       % _report_value(m.group(1)),
+                       '@import "%s" loads over the network and breaks the self-contained '
+                       "guarantee - inline or remove it" % _report_value(m.group(1)))
+        if CSS_NETWORK_URL_RE.search(style.get("body", "")):
+            _css_error("style block contains a network url(...) - inline or remove it",
+                       "style block contains a network url(...) and breaks the self-contained "
+                       "guarantee - inline or remove it")
+    for style in (parser.inline_styles + parser.template_inline_styles
+                  + _find_noscript_inline_styles(html)):
+        if CSS_NETWORK_URL_RE.search(style.get("value", "")):
+            _css_error("inline style on <%s> contains a network url(...) - inline or remove it"
+                       % _report_value(style.get("tag", "element")),
+                       "inline style on <%s> contains a network url(...) and breaks the "
+                       "self-contained guarantee - inline or remove it"
+                       % _report_value(style.get("tag", "element")))
+    # A `<script type="speculationrules">` is the one ACTIVE-DATA block that reaches the network by
+    # itself, with no user action and no code running: the browser reads the ruleset and prefetches
+    # or prerenders. That is the same test every element rule above is drawn on, so it belongs in
+    # shareable mode too - the review panel measured a stamped shareable file carrying one. It is
+    # rejected whatever the ruleset SAYS, exactly as offline rejects it: a `"source": "document"`
+    # ruleset names no URL at all and turns the document's own `<a href>` links - which this
+    # guarantee deliberately exempts, because a reader has to CLICK them - into automatic fetches,
+    # so there is no body that can be read as safe. An IMPORT MAP is deliberately NOT reported here:
+    # it re-points where a bare specifier resolves and fetches nothing on its own, so it only
+    # matters through a module load that the script rules would have to catch anyway; offline keeps
+    # its stricter rule on it for export-strip parity. Gated on `not offline_mode` so one block is
+    # never reported twice.
+    if not offline_mode:
+        for script in parser.scripts + parser.template_scripts:
+            if offline_active_data_script_type(script["attrs"]) == "speculationrules":
+                errors.append('<script type="speculationrules"> makes the browser prefetch or '
+                              "prerender on its own the moment the document opens, with no user "
+                              "action, and breaks the self-contained guarantee - remove the "
+                              "ruleset (a document-source ruleset needs no URL of its own, so "
+                              "there is no body that keeps the file self-contained)")
     if offline_mode:
         # A parse that could not be built was already reported at the top of this function, so the
         # lookups below are best-effort on a PARTIAL index rather than gated on it - they can only
         # add to a report that already says the document could not be read.
         errors.extend(_offline_csp_errors(parser))
-        media_attrs = (
-            ("video", "src", False), ("video", "poster", False),
-            ("audio", "src", False), ("source", "src", False), ("source", "srcset", True),
-            ("object", "data", False), ("embed", "src", False), ("track", "src", False),
-            ("image", "href", False), ("image", "xlink:href", False),
-            ("use", "href", False), ("use", "xlink:href", False),
-            # An SVG filter primitive fetches exactly like an `<image>` or a `<use>`, but was in
-            # neither this list nor the export strip, so a document carrying one rode into a
-            # zero-network export and `--strict` certified it clean (#992). `HTMLParser` lowercases
-            # the tag, so the lookup key is `feimage` while the export selector spells it
-            # `feImage`: CSS compares a type selector case-SENSITIVELY for an SVG-namespaced
-            # element and case-INSENSITIVELY for an HTML one, so that one portable spelling reaches
-            # both and the two sides stay namespace-blind together (a current Chromium is laxer
-            # still and matches any casing, which is an implementation detail neither side relies
-            # on).
-            ("feimage", "href", False), ("feimage", "xlink:href", False),
-        )
-        for tag, attr, is_srcset in media_attrs:
-            for el in _find_tag_attrs_egress(html, tag):
-                _check_network_attr(tag, el, attr, srcset=is_srcset)
-        for el in _find_tag_attrs_egress(html, "input"):
-            if (el.get("type") or "").lower() == "image":
-                _check_network_attr("input", el, "src")
         # An `<iframe srcdoc>` carries a WHOLE NESTED DOCUMENT as an attribute VALUE, which neither
         # side of the offline contract can see into: the export's strips walk ELEMENTS, so nothing
         # descends into the string, and this gate's tag index tokenizes the document, so that markup
@@ -365,10 +536,10 @@ def _check_self_contained(html, parser):
                 if not targets:
                     continue
                 beacon = next((u for u in targets if _is_network(u)), "")
-                label = '<%s ping="%s">' % (tag, (el.get("ping") or "")[:80])
+                label = '<%s ping="%s">' % (tag, _report_value(el.get("ping")))
                 if beacon:
                     errors.append("offline mode: %s POSTs to a network URL (%s) on every click - "
-                                  "remove the attribute" % (label, beacon[:80]))
+                                  "remove the attribute" % (label, _report_value(beacon)))
                 else:
                     errors.append("offline mode: %s audits every click by POSTing to the URLs it "
                                   "names, which a single-file export can neither need nor show the "
@@ -456,9 +627,6 @@ def _check_self_contained(html, parser):
                 errors.append("offline mode: a meta refresh declaration is removed by the export "
                               "whatever its target, and one that does navigate is a top-level "
                               "navigation no meta-delivered CSP can restrict - remove it")
-        for tag in ("body", "table", "td", "th", "div"):
-            for el in _find_tag_attrs_egress(html, tag):
-                _check_network_attr(tag, el, "background")
         # The exporter removes EVERY `on*` attribute, template content included, so a gate that did
         # not look would certify a hand-authored offline file the export would have changed - and an
         # inline handler is exactly the channel the CSP cannot close, since `script-src
@@ -472,23 +640,8 @@ def _check_self_contained(html, parser):
                           "inline handler runs with the document's own privileges, and the offline "
                           "CSP allows inline script and cannot stop a navigation, so remove or "
                           "rename the attribute here too"
-                          % (handler.get("tag", "element"), handler.get("attr", "on...")))
-        for style in parser.styles + parser.template_styles + _find_noscript_styles(html):
-            # The `@import` gate and the `url(...)` one below are mirrored by the exporter's own
-            # CSS strips, so the two sides were widened TOGETHER (issue #961, spec row CMH-VAL-08):
-            # both now read the slash run after a special scheme rather than requiring two, so the
-            # scheme-only `@import "https:host/t.css"` a browser resolves to the same host is
-            # caught, and both require a non-empty host so neither reports a parse failure the
-            # strip leaves behind.
-            for m in CSS_NETWORK_IMPORT_RE.finditer(style.get("body", "")):
-                errors.append('offline mode: @import "%s" loads over the network - inline or remove it' % m.group(1)[:80])
-            if CSS_NETWORK_URL_RE.search(style.get("body", "")):
-                errors.append("offline mode: style block contains a network url(...) - inline or remove it")
-        for style in (parser.inline_styles + parser.template_inline_styles
-                      + _find_noscript_inline_styles(html)):
-            if CSS_NETWORK_URL_RE.search(style.get("value", "")):
-                errors.append("offline mode: inline style on <%s> contains a network url(...) - inline or remove it"
-                              % style.get("tag", "element"))
+                          % (_report_value(handler.get("tag", "element")),
+                             _report_value(handler.get("attr", "on..."))))
         # Template-parked content is inert until a script adopts the fragment and inserts it, at
         # which point a parked script runs and a parked reference loads - so the offline strips walk
         # into templates and this gate reads what they read. Every other check keeps ignoring
@@ -595,14 +748,37 @@ def _check_self_contained(html, parser):
                                   "and breaks the self-contained guarantee - a load written inside "
                                   "a nested document is the same load written as an element; make "
                                   "the reference local (inline it as a data: URI), or remove the "
-                                  "frame" % (label, tag, attr, _report_value(val)))
-                        (warnings if tag == "link" else errors).append(report)
+                                  "frame" % (label, _report_value(tag), attr, _report_value(val)))
+                        (warnings if (tag == "link" and attr == "href") else errors).append(report)
                     elif kind == "base":
                         errors.append('%s carries a nested <base href="%s"> that rebases every '
                                       "relative reference in the nested document onto a base the "
                                       "file cannot resolve on its own and breaks the "
                                       "self-contained guarantee - make the base relative, or "
                                       "remove the frame" % (label, _report_value(val)))
+                    elif kind == "style":
+                        errors.append("%s carries a nested inline style on <%s> that contains a "
+                                      "network url(...) and breaks the self-contained guarantee - "
+                                      "inline the reference as a data: URI, or remove the frame"
+                                      % (label, _report_value(tag)))
+                    elif kind == "import":
+                        errors.append('%s carries a nested @import "%s" that loads over the network '
+                                      "and breaks the self-contained guarantee - inline or remove "
+                                      "the rule, or remove the frame" % (label, _report_value(val)))
+                    elif kind == "sheet":
+                        errors.append("%s carries a nested <style> block with a network url(...) "
+                                      "that breaks the self-contained guarantee - inline the "
+                                      "reference as a data: URI, or remove the frame" % label)
+                    elif kind == "refresh":
+                        errors.append('%s carries a nested meta refresh to a network URL ("%s") '
+                                      "that navigates the frame off this file the moment it opens "
+                                      "and breaks the self-contained guarantee - remove it, or "
+                                      "remove the frame" % (label, _report_value(val)))
+                    elif kind == "rules":
+                        errors.append('%s carries a nested <script type="speculationrules"> that '
+                                      "makes the browser prefetch or prerender on its own the "
+                                      "moment the document opens and breaks the self-contained "
+                                      "guarantee - remove the ruleset, or remove the frame" % label)
                     elif kind == "parse":
                         errors.append("%s carries a nested document that could not be parsed for "
                                       "the self-contained resource checks - fix the nested markup "

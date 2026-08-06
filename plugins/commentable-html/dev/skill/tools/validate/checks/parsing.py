@@ -3704,6 +3704,77 @@ def _find_noscript_inline_styles(html):
             for tag, ads in noscript_found.items() for ad in ads if "style" in ad]
 
 
+def _find_inline_styles_egress(html):
+    """EVERY `style=` attribute in `html`, as [{"tag", "value"}] - the FRAGMENT view.
+
+    The two lookups above split the document view (`_DocParser.inline_styles`) from its
+    `<noscript>` complement, because a whole-document check already has the first half. A
+    FRAGMENT - the nested document an `<iframe srcdoc>` carries - has no `_DocParser` at all, so
+    the CSS egress rule there needs both halves off the shared index in one lookup, the way
+    `_find_tag_attrs_egress` serves the element rules. Like every other egress lookup it reads the
+    SHARED index, so a caller must already have consulted `_tag_attrs_failed(html)`.
+    """
+    return _find_attr_egress(html, "style")
+
+
+def _find_attr_egress(html, attr):
+    """Every element carrying `attr`, whatever its tag, as [{"tag", "value"}].
+
+    The tag-INDEPENDENT egress lookup. `_find_tag_attrs_egress` answers "which `<video>` elements
+    are there?", which needs a list of tag names to ask about; this answers "which elements carry
+    `background`?", which is the question the offline export's own strip asks (its selector is the
+    universal `[background]`). Asking it the same way is what keeps the gate from being NARROWER
+    than the strip on a tag nobody remembered to list - `background` really is a presentation hint
+    on the table PARTS (`tr`, `tbody`, `thead`, `tfoot`), which a hand-maintained tag list missed.
+    Reads the SAME two halves of the shared index every other egress lookup reads, so a caller must
+    already have consulted `_tag_attrs_failed(html)`.
+    """
+    idx = _tag_attr_index(html or "")
+    return [{"tag": tag, "value": ad.get(attr, "")}
+            for source in (idx.found, idx.noscript_found)
+            for tag, ads in source.items() for ad in ads if attr in ad]
+
+
+def _find_fragment_styles(html):
+    """The `<style>` bodies a FRAGMENT declares, as ([{"attrs", "body"}], failed).
+
+    For a nested `srcdoc` document only. The shared index deliberately does NOT collect ordinary
+    `<style>` bodies (it would hold a second copy of the whole layer stylesheet for every cached
+    document), and a whole document does not need it to - `_DocParser.styles` already has them.
+    A nested document has no `_DocParser`, so without this its `@import` and `url(...)` were
+    invisible to the self-contained gate while a browser really did fetch them.
+
+    Read through the SCRIPTING-DISABLED pass (`_fallback=True`), which is the pass that buffers
+    style bodies at all, and which is also the right EGRESS view: it parses a `<noscript>` body as
+    the markup a scripting-disabled reader gets, exactly as `_find_tag_attrs_egress` merges the
+    `noscript` half. Deliberately its own parse rather than the cached index: the cache holds the
+    ATTRIBUTE view, and teaching it to buffer every document's style bodies is the memory cost the
+    fallback gate exists to avoid. The work stays bounded by the nested text, which is physically
+    contained in its parent's attribute value.
+
+    `failed` is returned BESIDE the styles rather than swallowed: the caller's `_tag_attrs_failed`
+    guard covers the ATTRIBUTE parse of the same text, and this is a SECOND, independently-failing
+    parse, so an empty list from a parse that blew up must mean "could not look", never "this
+    fragment has no stylesheet". It covers a RAISED parse only, and says so rather than implying
+    more: `_TagAttrParser` sets its own `failed` flag only from `_flush_noscript`, which a
+    `_fallback=True` pass never reaches (scripting is off in that pass, so `<noscript>` holds
+    markup rather than raw text and no fallback buffer is ever opened). The `noscript_styles` term
+    in the concatenation below is empty for the same reason; it is included so that a later change
+    which DOES buffer a nested fallback cannot silently drop those sheets, and a nested
+    `<noscript><style>` test pins that it does not double-count today.
+    """
+    text = html or ""
+    p, failed = None, False
+    try:
+        p = _TagAttrParser(text, _fallback=True)
+        p.parse_document(text)
+    except Exception:
+        failed = True
+    styles = (list(p.styles) + list(p.noscript_styles)) if p is not None else []
+    failed = failed or (p is not None and p.failed)
+    return ([{"attrs": dict(s["attrs"]), "body": s["body"]} for s in styles], failed)
+
+
 def _is_event_handler_attr(name):
     """Whether an attribute name is an inline event handler, by the EXPORTER's literal `^on` test.
 

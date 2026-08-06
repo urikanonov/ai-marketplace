@@ -4,6 +4,52 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.762.0] - 2026-08-06
+
+### Changed
+
+- BREAKING for some documents: the SHAREABLE half of the self-contained guarantee now covers every
+  network reach the DECLARATIVE markup makes when a reader merely OPENS the file, not just the five
+  load-bearing element groups it checked before (CMH-VAL-08). A document that validated clean and
+  was STAMPED yesterday may now FAIL `--strict`, be refused the `commentable-html-validated` stamp,
+  and be refused outright by the fail-closed tools that validate first (`retrofit` and `upgrade`
+  leave the target unchanged on any validator error), if it carries a network reference in
+  `<video src|poster>`, `<audio src>`, `<source src|srcset>`, `<track src>`, `<object data>`,
+  `<embed src>`, `<input type="image" src>`, an SVG `<image>`/`<use>`/`<feImage>` `href` or
+  `xlink:href`, a legacy `background=` attribute (on ANY element now, matching the export strip's
+  own universal `[background]` selector - the previous tag list missed `tr`/`tbody`/`thead`/`tfoot`,
+  where the attribute really does fetch), CSS egress (an `@import` or a `url(...)` in a `<style>`
+  block or a `style=` attribute), a `<meta http-equiv="refresh">` whose target is a network URL, or
+  a `<script type="speculationrules">` (which makes the browser prefetch or prerender on its own).
+  Those checks used to run in OFFLINE mode only, so a shareable file carrying
+  `<video src="https://evil.example/v.mp4">` validated STRICT-CLEAN and was stamped - while the
+  stamp tells a recipient that opening the file does not reach the network, and unlike offline there
+  is no zero-network CSP behind a shareable file, so this gate is the only layer. Fix such a document
+  by inlining the reference (a `data:` URI) or removing it; a relative or `data:` reference is
+  untouched, and no shipped example or fixture gains a finding (they are regenerated in this release
+  only because every build re-stamps the version).
+- The same shapes are now reported inside an `<iframe srcdoc>` too (CMH-VAL-25), at the same
+  severity the byte-identical top-level element draws, including CSS egress carried in a nested
+  `style=` attribute AND in a nested `<style>` block, a nested network `meta` refresh, and a nested
+  speculation ruleset.
+- The scope DECISION is recorded rather than implied: USER-INITIATED egress stays out of the
+  shareable guarantee - `<a href>` (already exempt), `form action` / `formaction`, and `a`/`area`
+  `ping` - because each needs a CLICK, so none of them happens when a recipient merely opens the
+  file, and the offline rules that do reject them serve the zero-network promise and the export
+  strips they are pinned to. A `meta refresh` and a speculation ruleset are deliberately NOT in
+  that group: both fire with no user action at all. An import map IS left alone in shareable mode,
+  because it fetches nothing by itself. The speculative link rels needed no widening: a network
+  `href` on a `preconnect` / `dns-prefetch` was already the ordinary shareable `link` warning.
+  Three residuals are recorded on CMH-VAL-08 rather than left implied, all of them shapes that can
+  still reach the network from a stamped shareable file: CSS spellings the shared literal patterns
+  miss (`image-set(...)`, CSS escapes, comment-hidden URLs, and a `preload` `imagesrcset`; #1166),
+  `<image src|srcset>` (#1165), and egress a SCRIPT performs at runtime, which is undecidable and
+  which the offline best-effort scans approximate only for export-strip parity.
+- OFFLINE reports keep the exact wording of every check that moved, and no moved check reports
+  twice. Two things do change for an offline document, and a test pins both: the moved findings now
+  precede the offline-only ones instead of being interleaved with them, and the universal
+  `background` read ADDS findings for `tr`/`tbody`/`thead`/`tfoot`, which the old tag list missed.
+
 ## [1.761.0] - 2026-08-06
 
 ### Fixed

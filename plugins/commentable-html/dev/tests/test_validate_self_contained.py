@@ -1884,6 +1884,354 @@ class NewCheckTests(unittest.TestCase):
                 self.assertEqual(errors, [], (base, errors))
                 self.assertEqual(warnings, [], (base, warnings))
 
+    # -- the shareable self-contained guarantee covers every automatic subresource load ------ #
+    # CMH-VAL-08 (#1145). The gate used to report a network reference in SHAREABLE mode on five
+    # element/attribute groups only (`img`, `script`, `iframe`, a loading `link`, and `base`); the
+    # whole media/CSS/background set sat inside the `offline_mode` branch, so a stamped shareable
+    # file could still carry `<video src="https://...">` and fetch on open. Unlike offline there is
+    # no zero-network CSP behind a shareable file, so this gate is the only layer.
+    def test_shareable_mode_rejects_a_network_media_load(self):
+        for markup, needle in (
+                ('<video src="https://evil.example/v.mp4"></video>', "<video src"),
+                ('<video poster="https://evil.example/p.png"></video>', "<video poster"),
+                ('<audio src="https://evil.example/a.mp3"></audio>', "<audio src"),
+                ('<video><source src="https://evil.example/v.webm"></video>', "<source src"),
+                ('<picture><source srcset="https://evil.example/x.png 1x"></picture>',
+                 "<source srcset"),
+                ('<video><track src="https://evil.example/c.vtt"></video>', "<track src"),
+                ('<object data="https://evil.example/x.swf"></object>', "<object data"),
+                ('<embed src="https://evil.example/x.swf">', "<embed src"),
+                ('<input type="image" src="https://evil.example/x.png">', "<input src"),
+                ('<svg><image href="https://evil.example/x.png"/></svg>', "<image href"),
+                ('<svg><image xlink:href="https://evil.example/x.png"/></svg>',
+                 "<image xlink:href"),
+                ('<svg><use href="https://evil.example/x.svg#i"/></svg>', "<use href"),
+                ('<svg><use xlink:href="https://evil.example/x.svg#i"/></svg>', "<use xlink:href"),
+                ('<svg><filter id="f"><feImage href="https://evil.example/x.png"/></filter></svg>',
+                 "<feimage href"),
+                ('<svg><filter id="f"><feImage xlink:href="https://evil.example/x.png"/></filter>'
+                 "</svg>", "<feimage xlink:href")):
+            with self.subTest(markup=markup):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("self-contained guarantee" in e and needle in e
+                                    for e in errors), (markup, errors))
+
+    def test_shareable_mode_rejects_a_network_background_attribute(self):
+        # Asked as an ATTRIBUTE question, not a tag question, so it matches the export strip's own
+        # universal `[background]` selector. The hand-maintained tag list it replaced named
+        # `body`/`table`/`td`/`th`/`div` and so MISSED the table parts, where `background` really is
+        # a presentation hint that fetches - `<tr background="https://...">` validated clean.
+        for tag in ("body", "table", "td", "th", "div", "tr", "tbody", "thead", "tfoot"):
+            with self.subTest(tag=tag):
+                inner = '<%s background="https://evil.example/bg.png"></%s>' % (tag, tag)
+                markup = ("<table><tr>%s</tr></table>" % inner if tag in ("td", "th") else
+                          "<table>%s</table>" % inner if tag in ("tr", "tbody", "thead", "tfoot")
+                          else inner)
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("self-contained guarantee" in e and "<%s background" % tag in e
+                                    for e in errors), (markup, errors))
+
+    def test_shareable_mode_rejects_network_css_egress(self):
+        css = CSS_REGION.replace(
+            ":root { --cp-bg: #ffffff; --cp-text: #000000; }",
+            '@import "https://evil.example/theme.css";\n'
+            ":root { --cp-bg: #ffffff; --cp-text: #000000; "
+            "background-image: url(https://evil.example/bg.png); }")
+        main = MAIN.replace("<p>content</p>",
+                            '<p style="background: url(//evil.example/inline.png)">content</p>')
+        errors, _ = self._errs_warns(build(css=css, body=self._body(main)))
+        for needle in ("@import", "style block", "inline style"):
+            self.assertTrue(any("self-contained guarantee" in e and needle in e for e in errors),
+                            "expected a shareable CSS error for %s, got %r" % (needle, errors))
+        self.assertFalse(any("offline mode" in e for e in errors), errors)
+
+    # The control that makes the widening safe: a relative or `data:` reference resolves inside the
+    # file and reaches no network, so none of the newly covered shapes may start rejecting a
+    # document that has no egress at all.
+    def test_shareable_mode_accepts_local_and_data_media_references(self):
+        css = CSS_REGION.replace(
+            ":root { --cp-bg: #ffffff; --cp-text: #000000; }",
+            '@import "local-theme.css";\n'
+            ":root { --cp-bg: #ffffff; --cp-text: #000000; "
+            "background-image: url(data:image/gif;base64,R0lGODlhAQABAAAAACw=); }")
+        main = MAIN.replace("<p>content</p>",
+                            '<p style="background: url(local-tile.png)">content</p>')
+        extras = [
+            '<video src="local-clip.mp4" poster="local-poster.png">'
+            '<source src="local-clip.webm"><track src="local-captions.vtt"></video>',
+            '<audio src="data:audio/mpeg;base64,AAAA"></audio>',
+            '<picture><source srcset="local-1x.png 1x, data:image/gif;base64,R0lGODlhAQABAAAAACw= 2x">'
+            '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="x"></picture>',
+            '<object data="local.pdf"></object>',
+            '<embed src="local.svg">',
+            '<div background="local-bg.png"></div>',
+            '<table><tr background="local-bg.png"><td background="local-bg.png"></td></tr></table>',
+            '<svg><image href="local-a.png"/><image xlink:href="local-b.png"/>'
+            '<use href="#local-symbol"/><use xlink:href="#local-symbol"/>'
+            '<filter id="f1"><feImage href="local-c.png"/></filter>'
+            '<filter id="f2"><feImage xlink:href="data:image/gif;base64,R0lGODlhAQABAAAAACw="/>'
+            "</filter></svg>",
+            # An `<input>` fetches only for `type="image"`, so a network `src` on any other type is
+            # inert and must not be reported - the gate must read the TYPE, not just the attribute.
+            '<input type="text" src="https://evil.example/x.png">',
+            '<input type="image" src="local-button.png">',
+        ]
+        errors, warnings = self._errs_warns(build(css=css, body=self._body(main, *extras)))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    # The scope DECISION, pinned as a test so it cannot drift into a silent widening: the guarantee
+    # covers what a browser reaches the network for when a reader merely OPENS the file. Egress that
+    # needs a CLICK is deliberately out of scope in shareable mode - the top-level rules already
+    # exempt `<a href>` for exactly that reason - and stays offline-only. A `meta refresh` is NOT in
+    # this group (it fires with no user action); its own test is below.
+    def test_shareable_mode_leaves_user_initiated_egress_alone(self):
+        for markup in ('<form action="https://evil.example/collect"><button>go</button></form>',
+                       '<form><button formaction="https://evil.example/collect">go</button></form>',
+                       '<a href="#s" ping="https://evil.example/audit">x</a>',
+                       '<a href="https://evil.example/away">x</a>'):
+            with self.subTest(markup=markup):
+                errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertEqual(errors, [], (markup, errors))
+                self.assertEqual(warnings, [], (markup, warnings))
+
+    # The correction the review panel made to the first cut of the scope rule (#1145): a meta
+    # refresh was filed with `<a href>` / `form` / `ping` as "navigation", but those three need a
+    # CLICK and `content="0;url=https://..."` fires the instant the document is parsed. So a
+    # stamped shareable file carrying one really does reach the network on open - the one thing the
+    # stamp tells a recipient will not happen - and it is an error like any other automatic load.
+    def test_shareable_mode_rejects_a_meta_refresh_to_a_network_url(self):
+        for content in ("0;url=https://evil.example/", "0; url=https://evil.example/",
+                        "5;https://evil.example/", "0;url=//evil.example/",
+                        "0;url=https:evil.example/"):
+            with self.subTest(content=content):
+                markup = '<meta http-equiv="refresh" content="%s">' % content
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("self-contained guarantee" in e and "refresh" in e
+                                    and "no user action" in e for e in errors), (content, errors))
+
+    # The control: a refresh that reaches no network is left alone in shareable mode. Offline is
+    # stricter and rejects EVERY refresh for export-strip parity, which this must not copy - a
+    # relative refresh is legitimate content in a file that makes no zero-network promise.
+    def test_shareable_mode_accepts_a_local_meta_refresh(self):
+        for content in ("0;url=#top", "5;url=./other.html", "30", "0;url=data:text/html,x"):
+            with self.subTest(content=content):
+                markup = '<meta http-equiv="refresh" content="%s">' % content
+                errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertEqual(errors, [], (content, errors))
+                self.assertEqual(warnings, [], (content, warnings))
+
+    # Offline keeps its own unconditional rule, and the two must never double-report one refresh.
+    def test_an_offline_meta_refresh_is_reported_once_by_the_offline_rule(self):
+        markup = '<meta http-equiv="refresh" content="0;url=https://evil.example/">'
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, markup))))
+        refresh = [e for e in errors if "refresh" in e]
+        self.assertEqual(refresh, ["offline mode: meta refresh points at a network URL - remove it"],
+                         errors)
+
+    # A speculative hint needs no rule of its own here, and this pins why: `preconnect` and
+    # `dns-prefetch` are already in `FETCHING_LINK_RELS`, so a NETWORK href on one is already the
+    # ordinary shareable `link` warning. The offline-only extra is the PRESENCE rule (#1076), and a
+    # relative hint reaches no network at all, so it is moot for the self-contained question. Both
+    # rels are checked against both href classes, so one token dropping out of the set is caught.
+    def test_a_speculative_hint_is_already_covered_by_the_shareable_link_rule(self):
+        for rel in ("preconnect", "dns-prefetch"):
+            with self.subTest(rel=rel, href="network"):
+                errors, warnings = self._errs_warns(build(body=self._body(
+                    MAIN, '<link rel="%s" href="https://evil.example">' % rel)))
+                self.assertEqual(errors, [], errors)
+                self.assertTrue(any("self-contained guarantee" in w and "evil.example" in w
+                                    for w in warnings), (rel, warnings))
+            with self.subTest(rel=rel, href="local"):
+                errors, warnings = self._errs_warns(build(body=self._body(
+                    MAIN, '<link rel="%s" href="local-hint.html">' % rel)))
+                self.assertEqual(errors, [], (rel, errors))
+                self.assertEqual(warnings, [], (rel, warnings))
+
+    # A network `background` on a `<link>` must stay an ERROR: the shareable `link` rule reports a
+    # network `href` as a WARNING, and the severity routing keys on the TAG, so a finding from the
+    # universal `background` read would have been downgraded to a warning without an attribute test.
+    def test_a_background_on_a_link_is_an_error_not_the_link_warning(self):
+        for markup in ('<link background="https://evil.example/bg.png">',
+                       '<iframe srcdoc="&lt;link background=&quot;https://evil.example/bg.png'
+                       '&quot;&gt;"></iframe>'):
+            with self.subTest(markup=markup):
+                errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("background" in e and "evil.example" in e for e in errors),
+                                (markup, errors))
+                # The `srcdoc` content-loss ADVISORY echoes the nested markup, so it names the
+                # attribute too; it is not a severity ruling and is excluded here.
+                blocking = [w for w in warnings
+                            if not w.startswith(validate.SRCDOC_ADVISORY_PREFIX)]
+                self.assertFalse(any("background" in w and "evil.example" in w for w in blocking),
+                                 (markup, blocking))
+
+    # A speculation ruleset reaches the network by ITSELF, with no user action and no code running,
+    # so it is in scope for the shareable guarantee (the review panel measured a stamped shareable
+    # file carrying one). Rejected whatever the ruleset says: a `"source": "document"` ruleset names
+    # no URL and turns the document's own exempt `<a href>` links into automatic fetches.
+    def test_shareable_mode_rejects_a_speculation_ruleset(self):
+        for body in ('{"prerender": [{"urls": ["https://evil.example/"]}]}',
+                     '{"prefetch": [{"source": "document"}]}',
+                     '{"prefetch": [{"urls": ["./local.html"]}]}'):
+            with self.subTest(body=body):
+                markup = '<script type="speculationrules">%s</script>' % body
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("self-contained guarantee" in e and "speculationrules" in e
+                                    for e in errors), (body, errors))
+
+    # An import map fetches nothing on its own - it only re-points where a bare module specifier
+    # resolves - so it must NOT be reported in shareable mode. Offline keeps its stricter rule for
+    # export-strip parity, and this is the control that the shareable rule did not copy it.
+    def test_shareable_mode_accepts_an_import_map(self):
+        markup = ('<script type="importmap">{"imports": {"x": "./local-x.js"}}</script>')
+        errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    # A nested `<noscript><style>` must be reported exactly ONCE. `_find_fragment_styles` reads a
+    # scripting-DISABLED pass, where `<noscript>` holds markup rather than raw text, so the parser
+    # never opens a fallback buffer and its `noscript_styles` list stays empty - which is why
+    # concatenating both lists cannot double-count. That invariant lives three hundred lines away
+    # in `_enter_raw_text`, so it is pinned here rather than left to a reader to rediscover.
+    def test_a_nested_noscript_stylesheet_is_reported_once(self):
+        nested = ("&lt;noscript&gt;&lt;style&gt;@import "
+                  "&quot;https://evil.example/t.css&quot;;&lt;/style&gt;&lt;/noscript&gt;")
+        markup = '<iframe srcdoc="%s"></iframe>' % nested
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        hits = [e for e in errors if "carries a nested @import" in e]
+        self.assertEqual(len(hits), 1, errors)
+
+    # The fail-closed half of the nested style read: an empty answer from a parse that BLEW UP must
+    # mean "could not look", never "this frame carries no stylesheet". Only a RAISED parse can set
+    # it (a fallback pass cannot set the parser's own `failed` flag), so the raise is forced here.
+    def test_a_nested_stylesheet_parse_that_blows_up_fails_closed(self):
+        from checks import parsing as _parsing
+        markup = ('<iframe srcdoc="&lt;style&gt;body{color:red}&lt;/style&gt;"></iframe>')
+        doc = build(body=self._body(MAIN, markup))
+        real = _parsing._TagAttrParser.parse_document
+
+        def _boom(self, text):
+            if getattr(self, "_fallback", False):
+                raise RuntimeError("boom")
+            return real(self, text)
+
+        _parsing._tag_attr_index.cache_clear()
+        self.addCleanup(_parsing._tag_attr_index.cache_clear)
+        with mock.patch.object(_parsing._TagAttrParser, "parse_document", _boom):
+            errors, _ = self._errs_warns(doc)
+        self.assertTrue(any("could not be parsed for the self-contained resource checks" in e
+                            for e in errors), errors)
+
+    def test_a_shareable_media_load_fails_strict_and_is_not_stamped(self):
+        # End to end, the whole point of the widening: a recipient must not be handed a stamped
+        # file that fetches from a host. The `video` measured in #1145 validated STRICT-CLEAN and
+        # received the `commentable-html-validated` stamp.
+        content = build(body=self._body(MAIN, '<video src="https://evil.example/v.mp4"></video>'))
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "doc.html")
+            with open(p, "w", encoding="utf-8", newline="") as fh:
+                fh.write(content)
+            r = subprocess.run([sys.executable, VALIDATE_PY, "--strict", p],
+                               capture_output=True, text=True)
+            self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("evil.example", r.stdout)
+            with open(p, "r", encoding="utf-8", newline="") as fh:
+                stamped = fh.read()
+        self.assertNotIn('name="commentable-html-validated"', stamped,
+                         "a network media load must withhold the validated stamp")
+
+    # CMH-VAL-25 inherits the widening: the nested read mirrors the top-level set element for
+    # element, so every shape added above is reported inside an `<iframe srcdoc>` too.
+    def test_a_nested_media_load_inside_a_srcdoc_is_an_error(self):
+        for nested, clause in (
+                ("&lt;video src=&quot;https://evil.example/v.mp4&quot;&gt;&lt;/video&gt;",
+                 'carries a nested <video src="https://evil.example/v.mp4">'),
+                ("&lt;object data=&quot;https://evil.example/x.swf&quot;&gt;&lt;/object&gt;",
+                 'carries a nested <object data="https://evil.example/x.swf">'),
+                ("&lt;embed src=&quot;https://evil.example/x.swf&quot;&gt;",
+                 'carries a nested <embed src="https://evil.example/x.swf">'),
+                ("&lt;input type=image src=&quot;https://evil.example/x.png&quot;&gt;",
+                 'carries a nested <input src="https://evil.example/x.png">'),
+                ("&lt;div background=&quot;https://evil.example/bg.png&quot;&gt;&lt;/div&gt;",
+                 'carries a nested <div background="https://evil.example/bg.png">'),
+                ("&lt;svg&gt;&lt;use href=&quot;https://evil.example/x.svg#i&quot;/&gt;&lt;/svg&gt;",
+                 'carries a nested <use href="https://evil.example/x.svg#i">'),
+                ("&lt;video poster=&quot;https://evil.example/p.png&quot;&gt;&lt;/video&gt;",
+                 'carries a nested <video poster="https://evil.example/p.png">'),
+                ("&lt;audio src=&quot;https://evil.example/a.mp3&quot;&gt;&lt;/audio&gt;",
+                 'carries a nested <audio src="https://evil.example/a.mp3">'),
+                ("&lt;source src=&quot;https://evil.example/v.webm&quot;&gt;",
+                 'carries a nested <source src="https://evil.example/v.webm">'),
+                ("&lt;track src=&quot;https://evil.example/c.vtt&quot;&gt;",
+                 'carries a nested <track src="https://evil.example/c.vtt">'),
+                ("&lt;svg&gt;&lt;image href=&quot;https://evil.example/x.png&quot;/&gt;&lt;/svg&gt;",
+                 'carries a nested <image href="https://evil.example/x.png">'),
+                ("&lt;svg&gt;&lt;image xlink:href=&quot;https://evil.example/x.png&quot;/&gt;"
+                 "&lt;/svg&gt;",
+                 'carries a nested <image xlink:href="https://evil.example/x.png">'),
+                ("&lt;svg&gt;&lt;use xlink:href=&quot;https://evil.example/x.svg#i&quot;/&gt;"
+                 "&lt;/svg&gt;",
+                 'carries a nested <use xlink:href="https://evil.example/x.svg#i">'),
+                ("&lt;svg&gt;&lt;feImage href=&quot;https://evil.example/x.png&quot;/&gt;&lt;/svg&gt;",
+                 'carries a nested <feimage href="https://evil.example/x.png">'),
+                ("&lt;svg&gt;&lt;feImage xlink:href=&quot;https://evil.example/x.png&quot;/&gt;"
+                 "&lt;/svg&gt;",
+                 'carries a nested <feimage xlink:href="https://evil.example/x.png">'),
+                ("&lt;source srcset=&quot;https://evil.example/x.png 1x&quot;&gt;",
+                 'carries a nested <source srcset="https://evil.example/x.png">'),
+                ('&lt;p style=&quot;background: url(https://evil.example/bg.png)&quot;&gt;&lt;/p&gt;',
+                 'carries a nested inline style on <p> that contains a network url('),
+                ("&lt;style&gt;@import &quot;https://evil.example/t.css&quot;;&lt;/style&gt;",
+                 'carries a nested @import "https://evil.example/t.css"'),
+                ("&lt;style&gt;body{background:url(https://evil.example/bg.png)}&lt;/style&gt;",
+                 "carries a nested <style> block with a network url("),
+                ("&lt;meta http-equiv=refresh content=&quot;0;url=https://evil.example/&quot;&gt;",
+                 "carries a nested meta refresh to a network URL"),
+                ("&lt;script type=speculationrules&gt;{&quot;prefetch&quot;:[{&quot;source&quot;:"
+                 "&quot;document&quot;}]}&lt;/script&gt;",
+                 'carries a nested <script type="speculationrules">')):
+            markup = '<iframe srcdoc="%s"></iframe>' % nested
+            with self.subTest(nested=nested):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any(clause in e for e in errors),
+                                "expected %r in a nested error for %r, got %r"
+                                % (clause, nested, errors))
+
+    # The offline half of the moved checks, pinned EXACTLY rather than by substring, because the
+    # spec and changelog both claim an offline report's wording did not change when these checks
+    # left the `offline_mode` branch. A count assertion rides along: an `any()` match would stay
+    # green if a moved check ever ran twice, which is the other way the move could have gone wrong.
+    def test_the_moved_checks_report_offline_exactly_once_with_unchanged_wording(self):
+        css = CSS_REGION.replace(
+            ":root { --cp-bg: #ffffff; --cp-text: #000000; }",
+            '@import "https://evil.example/theme.css";\n'
+            ":root { --cp-bg: #ffffff; --cp-text: #000000; "
+            "background-image: url(https://evil.example/bg.png); }")
+        main = MAIN.replace("<p>content</p>",
+                            '<p style="background: url(//evil.example/inline.png)">content</p>')
+        extras = ['<video src="https://evil.example/v.mp4"></video>',
+                  '<div background="https://evil.example/bg.png"></div>',
+                  '<table><tr background="https://evil.example/row.png"></tr></table>']
+        errors, _ = self._errs_warns(
+            with_offline_mode(build(css=css, body=self._body(main, *extras))))
+        for expected in (
+                'offline mode: <video src="https://evil.example/v.mp4"> loads over the network - '
+                "inline or remove it",
+                'offline mode: <div background="https://evil.example/bg.png"> loads over the '
+                "network - inline or remove it",
+                # A table PART, which the old hand-maintained tag list did NOT cover: this is the
+                # one place the universal attribute read ADDS an offline finding, and it must be
+                # asserted rather than left to the prose.
+                'offline mode: <tr background="https://evil.example/row.png"> loads over the '
+                "network - inline or remove it",
+                'offline mode: @import "https://evil.example/theme.css" loads over the network - '
+                "inline or remove it",
+                "offline mode: style block contains a network url(...) - inline or remove it",
+                "offline mode: inline style on <p> contains a network url(...) - inline or "
+                "remove it"):
+            self.assertEqual(errors.count(expected), 1,
+                             "expected %r exactly once, got %r" % (expected, errors))
 
     def test_external_stylesheet_link_warns(self):
         link = '<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=X">'
