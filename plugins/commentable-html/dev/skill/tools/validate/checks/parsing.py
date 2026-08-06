@@ -3157,27 +3157,27 @@ def _is_executable_js(ad):
     Deliberately TYPE-ONLY and deliberately over-inclusive, and NOT the predicate to reach for
     when the question is "will a browser run this". It is the validator half of a pair pinned to
     the exporter's `_offlineIsRunnableScriptType` (`assets/js/68-export-offline.js`, pinned by
-    `tests/test_vendored_libs.py`), and every caller is one where over-inclusion is the SAFE
-    direction: the offline egress scan (a body it skipped would be a network import nobody looked
-    at), `_csp_predecessor_fetches` (a predecessor it missed would bless a policy that really is too
-    late), and the self-contained gate's `src` arm (`layer_parts/20-resources.py`, issue #1144),
-    which reads a script's `src` as a LOAD only for a type this predicate calls executable.
+    `tests/test_vendored_libs.py`), and every remaining caller is one where over-inclusion is the
+    SAFE direction: the offline egress SCAN over inline bodies (a body it skipped would be a network
+    import nobody looked at) and `_csp_predecessor_fetches` (a predecessor it missed would bless a
+    policy that really is too late - and that caller is namespace-BLIND, where the HTML-only rules
+    below would be fail-OPEN on an SVG script, which runs with `nomodule` and ignores `language`).
 
-    That last caller is why the PAIR matters more here than exactness: the gate and the offline
-    strip must call the same scripts loaders (CMH-OFFLINE-04), so the gate uses this predicate
-    rather than `script_code_runs` even though `script_code_runs` is the spec-exact one. The cost is
-    a recorded residual - every shape where this is broader than `script_code_runs` (a MIME
+    The self-contained gate's `src` arm no longer asks here (issue #1171). It DECIDES A LOAD, and
+    the offline strip DELETES an element behind that decision, so both moved together to the
+    spec-exact `script_code_runs` below: every shape where this predicate is broader - a MIME
     PARAMETER, `nomodule`, the legacy `event`+`for` pair, a whitespace-only `type`, the `language`
-    fallback) is a script a browser does not run whose `src` is still reported and whose element the
-    export still deletes. That over-reports rather than blesses, and moving it means moving BOTH
-    sides together. Do not "simplify" this caller to `script_code_runs` on its own.
+    fallback - is a script a browser does not run, and reporting its `src` refused a document over a
+    dead attribute while the export deleted the author's element and its body. The PAIRING is
+    unchanged in kind, only re-pointed: the exporter's `_offlineScriptCodeRuns` is the JS mirror of
+    `script_code_runs`, pinned over a shared corpus of ATTRIBUTE SETS evaluated in a real JS engine,
+    so the gate and the strip still call the same scripts loaders (CMH-OFFLINE-04).
 
     The trim is HTML's own ASCII whitespace class, not `str.strip()`, for the same reason the
     exporter's copy spells it out: the two engines' defaults disagree in BOTH directions (JS
-    `trim()` also takes NBSP and U+FEFF, Python's also takes U+001C-U+001F), and once this predicate
-    decides whether a `src` is a load, that disagreement is a document the gate blesses and the
-    export then deletes. A browser trims ASCII whitespace only, so both spellings are data blocks
-    and both sides now say so.
+    `trim()` also takes NBSP and U+FEFF, Python's also takes U+001C-U+001F), and a disagreement
+    between the two sides of a pinned pair is a document one side blesses and the other mutates. A
+    browser trims ASCII whitespace only, so both spellings are data blocks and both sides say so.
 
     For an EXECUTION decision use `script_code_runs()` / `script_runs_inline_body()` /
     `script_external_load()` below, which apply HTML's actual rule and whose over-inclusion would
@@ -3205,8 +3205,10 @@ def script_code_runs(ad, ns="html"):
       string BEFORE it strips, so only a literally empty value takes the classic branch and a
       value that merely strips to empty falls through to the essence match and fails it. Do not
       "simplify" the two branches together. This is also where the predicate deliberately DIVERGES
-      from `_is_executable_js` above, which splits at `;` because its callers need over-inclusion;
-      here over-inclusion is fail-OPEN.
+      from `_is_executable_js` above, which splits at `;` because its remaining callers need
+      over-inclusion; here over-inclusion is fail-OPEN. It is mirrored in the exporter by
+      `_offlineScriptCodeRuns`, pinned over a shared attribute-set corpus in a real JS engine, so
+      the self-contained gate's `src` arm and the offline strip's delete cannot drift (#1171).
     - `nomodule`: the algorithm returns early for an element carrying it when the script block
       type is CLASSIC, so every module-supporting browser - which is every browser that ships -
       skips it. The test is on the classic branch only, so it does nothing to a `type="module"`
@@ -3309,7 +3311,15 @@ def _csp_predecessor_fetches(tag, ad):
     bare `src` is deliberately NOT read on its own: it fetches only on a script that runs, which the
     executable test already covers, and counting it alone made a head-placed inert data block mark a
     following policy `<meta>` late and rejected an otherwise clean offline document with a
-    missing-CSP error, for a request no browser makes (#1144)."""
+    missing-CSP error, for a request no browser makes (#1144).
+
+    The predicate here stays the over-inclusive `_is_executable_js` even though the self-contained
+    gate's `src` arm moved to `script_code_runs` (#1171), and the reason is this caller's namespace
+    BLINDNESS: it is handed a flat tag/attribute pair with no namespace, and `nomodule`, `event`+`for`
+    and `language` are HTMLScriptElement rules that an SVG script does not obey - so reading them
+    here would call an SVG `<script nomodule>` inert and bless a policy that really is too late.
+    Over-inclusion is the safe direction for a "did anything before this policy fetch or execute"
+    question; it is not for a "delete this element" one."""
     if tag in _CSP_INERT_PREDECESSORS:
         return False
     if tag == "link":

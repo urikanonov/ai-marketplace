@@ -1945,6 +1945,35 @@ function scriptBlock(type, marker, importTarget) {
     + "</script>";
 }
 
+// Five shapes whose type essence names JavaScript (or whose type is absent) but which NO modern
+// browser runs (issue #1171): HTML's essence match is on the WHOLE trimmed type string, so a MIME
+// PARAMETER defeats it and a whitespace-only `type` is not the empty-string classic branch;
+// `nomodule` makes every module-supporting browser skip a classic script; the legacy `event`+`for`
+// pair is honoured unless it names `window`/`onload`; and with no `type` a non-empty `language`
+// sets the block type. None of them fetches its `src`, so the strict gate no longer reports one -
+// and the strip must not delete the element and its body behind a verdict the gate has dropped.
+const UNRUN_SCRIPT_SHAPES = [
+  ["mime-param", 'type="text/javascript; charset=utf-8"'],
+  ["nomodule", 'type="text/javascript" nomodule'],
+  ["event-for", 'type="text/javascript" for="x" event="y"'],
+  ["ws-type", 'type=" "'],
+  ["language", 'language="vbscript"'],
+];
+function unrunSrcBlock(shape) {
+  return "<script " + shape[1] + ' id="cmh-unrun-' + shape[0] + '" '
+    + 'src="https://evil.example/unrun-' + shape[0] + '.js">\n'
+    + "/* cmh-unrun-body-" + shape[0] + " */\n"
+    + "</script>";
+}
+// The same shapes wearing a RENDERER-shaped body, which the loader-shim strip removes by name. A
+// shim no browser ever ran is not a reason to delete an author's element either.
+function unrunShimBlock(shape) {
+  return "<script " + shape[1] + ' id="cmh-unrun-shim-' + shape[0] + '">\n'
+    + "/* cmh-unrun-shim-body-" + shape[0] + " */\n"
+    + 'if (window.mermaid) window.mermaid.run({ querySelector: "pre.mermaid" });\n'
+    + "</script>";
+}
+
 const LEGACY_TYPE_CONTENT = [
   "<h1>Legacy script MIME types</h1>",
   '<p id="legacy-note">A legacy executable script type still runs in a browser.</p>',
@@ -1961,10 +1990,17 @@ const LEGACY_TYPE_CONTENT = [
   ],
   INERT_SCRIPT_TYPES.map((t) => scriptBlock(t, "cmh-inert-" + typeSlug(t), "inert-" + typeSlug(t) + ".js")),
   INERT_SCRIPT_TYPES.map(inertSrcBlock),
+  UNRUN_SCRIPT_SHAPES.map(unrunSrcBlock),
+  UNRUN_SCRIPT_SHAPES.map(unrunShimBlock),
   [
     INERT_RENDERER_SRC_BLOCK,
     // The control in the other direction: a script a browser RUNS goes entirely, src and all.
     '<script type="text/x-javascript" id="cmh-runnable-src" src="https://evil.example/runnable-src.js"></script>',
+    // ...and so does the one shape that only the EXACT reading gets right in the other direction:
+    // `nomodule` does nothing to a MODULE script, and `for="window" event="onload"` is the legacy
+    // pair HTML still honours, so both of these really do load.
+    '<script type="module" nomodule id="cmh-runnable-nomodule-module" src="https://evil.example/runnable-nomodule.js"></script>',
+    '<script for="window" event="onload" id="cmh-runnable-onload" src="https://evil.example/runnable-onload.js"></script>',
   ]
 ).join("\n");
 test("CMH-OFFLINE-04: the offline strips cover every executable script MIME type, not only the modern three", async ({ page }) => {
@@ -2009,6 +2045,23 @@ test("CMH-OFFLINE-04: the offline strips cover every executable script MIME type
     // The control: a script a browser RUNS loses the whole element, not just the attribute.
     expect(exportedHtml, "a runnable script with a network src goes entirely").not.toContain("cmh-runnable-src");
     expect(exportedHtml, "a runnable script's src target").not.toContain("runnable-src.js");
+    // ...including the two shapes only the EXACT reading gets right in this direction.
+    expect(exportedHtml, "nomodule does nothing to a module script").not.toContain("cmh-runnable-nomodule-module");
+    expect(exportedHtml, "...and its src target").not.toContain("runnable-nomodule.js");
+    expect(exportedHtml, "the legacy window/onload pair really loads").not.toContain("cmh-runnable-onload");
+    expect(exportedHtml, "...and its src target").not.toContain("runnable-onload.js");
+    // CMH-OFFLINE-04 / CMH-VAL-08 (#1171): a script no browser RUNS fetches nothing, so its `src`
+    // is a dead attribute exactly like a data block's. The gate stopped reporting it, so the strip
+    // must stop deleting the element behind it - otherwise the export mutates a file the gate has
+    // just blessed, which is the divergence this row exists to prevent.
+    for (const shape of UNRUN_SCRIPT_SHAPES) {
+      expect(exportedHtml, `unrunnable shape ${shape[0]} keeps its element`).toContain(`cmh-unrun-${shape[0]}`);
+      expect(exportedHtml, `unrunnable shape ${shape[0]} keeps its body`).toContain(`cmh-unrun-body-${shape[0]}`);
+      expect(exportedHtml, `unrunnable shape ${shape[0]} loses the dead src`).not.toContain(`unrun-${shape[0]}.js`);
+      // The loader-shim strip reads the same verdict: a shim that never ran is not a shim.
+      expect(exportedHtml, `unrunnable shim ${shape[0]} keeps its element`).toContain(`cmh-unrun-shim-${shape[0]}`);
+      expect(exportedHtml, `unrunnable shim ${shape[0]} keeps its body`).toContain(`cmh-unrun-shim-body-${shape[0]}`);
+    }
     // A RENDERER-shaped filename is not a reason to delete a data block either: the renderer strip
     // removes a chart/mermaid bundle by name, and this element fetches nothing, so its body stays
     // and only the dead attribute goes - otherwise the gate would bless a file the export mutates.

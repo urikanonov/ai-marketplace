@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.817.0" />
+<meta name="commentable-html-version" content="1.819.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.817.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.819.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>NYC Taxi 2014 Report</title>
 
@@ -4381,7 +4381,7 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-cmh-content-root id="commentRoot" data-comment-key="nyc-taxi-2014-report" data-doc-label="NYC Taxi 2014 Report" data-doc-source="report-taxi.html" data-generated="2026-08-07">
+<main data-cmh-content-root id="commentRoot" data-comment-key="nyc-taxi-2014-report" data-doc-label="NYC Taxi 2014 Report" data-doc-source="report-taxi.html" data-generated="2026-08-06">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
   <h1>NYC Yellow Taxi - 2014 Operations Status Report</h1>
@@ -5252,7 +5252,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.817.0";
+const CMH_VERSION = "1.819.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -19566,9 +19566,74 @@ function _offlineIsInlinedLibScript(s) {
 // trims ASCII whitespace only, so both of those are DATA BLOCKS and both sides now say so.
 function _offlineIsRunnableScriptType(type) {
   const t = String(type || "").split(";")[0].replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "").toLowerCase();
+  return _offlineIsJsTypeEssence(t);
+}
+// The set membership on its own, shared so the type-only predicate above and the element-level one
+// below can never disagree about WHICH strings name JavaScript while they deliberately disagree
+// about how the attribute is normalized into one.
+function _offlineIsJsTypeEssence(t) {
   if (!t || t === "module") return true;
   return /^(?:text|application)\/(?:x-)?(?:java|ecma)script$/.test(t) ||
     /^text\/(?:javascript1\.[0-5]|jscript|livescript)$/.test(t);
+}
+// HTML folds ASCII only. `toLowerCase()` is Unicode-aware, so a look-alike that folds onto an ASCII
+// letter would make a type a browser never matches look runnable - the fail-OPEN direction for the
+// predicate below, and a divergence from the validator's `_ascii_lower` besides.
+function _offlineAsciiLower(value) {
+  return String(value == null ? "" : value).replace(/[A-Z]/g, function (c) {
+    return String.fromCharCode(c.charCodeAt(0) + 32);
+  });
+}
+function _offlineTrimHtmlWs(value) {
+  return String(value == null ? "" : value).replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "");
+}
+// Whether a browser would run THIS `<script>` element's code at all - HTML's "prepare the script
+// element" reduced to the questions a static reader can answer, and the exporter half of a pair
+// pinned to the strict validator's `script_code_runs` by
+// `test_the_python_and_js_script_code_runs_predicates_agree`, which evaluates THIS function in a
+// real JS engine over a shared corpus of ATTRIBUTE SETS.
+//
+// It is deliberately NARROWER than `_offlineIsRunnableScriptType` above, and the split is by what
+// the caller does with the answer (issue #1171). A caller that DELETES an element, or that decides
+// whether a `src` is a real load, must be exact: the type string has to be a whole essence match, so
+// a MIME PARAMETER defeats it (`type="text/javascript; charset=utf-8"` executes in no modern
+// browser), and `nomodule`, the legacy `event`+`for` pair, a whitespace-only `type` and the
+// `language` fallback all decide it too. Calling one of those runnable cost an author the whole
+// element and its body for code no browser ran. A caller that only SCANS an inline body for egress
+// keeps the broader predicate, where over-inclusion is the safe direction - a body it skips is a
+// network import nobody looked at.
+//
+// The branches are HTML's, not a simplification of them:
+// - an ABSENT `type` takes the `language` fallback (HTML only, and NOT trimmed: the block type is
+//   the concatenation of `text/` with the raw attribute value), an explicitly EMPTY one is classic,
+//   and any other value is trimmed of ASCII whitespace and must be a whole essence match. The
+//   asymmetry between `type=""` and `type=" "` is the algorithm's own: the raw value is tested
+//   against the empty string BEFORE it is stripped, so only a literally empty one is classic.
+// - `nomodule`, and the legacy `event`+`for` pair, are HTMLScriptElement attributes and only apply
+//   on the CLASSIC branch in the HTML namespace. An SVG script carrying one still runs, so reading
+//   them there would delete a script that works.
+function _offlineScriptCodeRuns(s) {
+  const htmlNs = !s.namespaceURI || s.namespaceURI === _OFFLINE_HTML_NS;
+  const raw = s.getAttribute("type");
+  let block;
+  if (raw === null || raw === undefined) {
+    const lang = htmlNs ? (s.getAttribute("language") || "") : "";
+    block = lang ? "text/" + _offlineAsciiLower(lang) : "";
+  } else if (raw === "") {
+    block = "";
+  } else {
+    block = _offlineAsciiLower(_offlineTrimHtmlWs(raw));
+    if (!block) return false;
+  }
+  if (!_offlineIsJsTypeEssence(block)) return false;
+  if (block === "module" || !htmlNs) return true;
+  if (s.hasAttribute("nomodule")) return false;
+  if (s.hasAttribute("event") && s.hasAttribute("for")) {
+    const target = _offlineAsciiLower(_offlineTrimHtmlWs(s.getAttribute("for")));
+    const evt = _offlineAsciiLower(_offlineTrimHtmlWs(s.getAttribute("event")));
+    return target === "window" && (evt === "onload" || evt === "onload()");
+  }
+  return true;
 }
 // Two script types that are ACTIVE without being JavaScript, so the predicate above never looked at
 // either. They get DIFFERENT rules because their risk is not the same shape.
@@ -20903,6 +20968,11 @@ function _neutralizeOfflineReservedDataScripts(doc) {
   // Template-parked too, so a reserved-id block a script later adopts is inert data by then.
   _offlineQueryAll(doc, "script[id]").forEach(function (s) {
     if (!_OFFLINE_RESERVED_DATA_ID_RE.test(s.getAttribute("id") || "")) return;
+    // Broad on purpose: this pass REPAIRS a type rather than deleting anything, so retyping one
+    // block more than a browser would have run costs nothing, and the validator requires exactly
+    // `application/json` on these ids anyway. It is also what makes the `neutralized` override in
+    // `_offlineScriptSrcFetches` mean "was runnable as authored" for every spelling this pass has
+    // already rewritten.
     if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
     s.setAttribute("type", "application/json");
     neutralized.push(s);
@@ -20940,26 +21010,31 @@ function _offlinePingTargets(value) {
   return (value || "").split(/[\t\n\f\r ]+/).filter(function (t) { return t !== ""; }).length;
 }
 // Whether this `<script>`'s `src` is a reference a browser would really request. The strict
-// validator's `_is_executable_js` is the same type test, pinned to this one over a shared corpus -
-// the whitespace class included - by `test_the_python_and_js_runnable_script_type_predicates_agree`,
-// which evaluates THIS function in a real JS engine.
-// HTML decides it by TYPE, and the answer is exactly the set of types a browser RUNS: "prepare the
+// validator's self-contained `src` arm asks the same question with `script_code_runs`, pinned to
+// `_offlineScriptCodeRuns` over a shared corpus of ATTRIBUTE SETS - the whitespace class and every
+// residual shape included - by `test_the_python_and_js_script_code_runs_predicates_agree`, which
+// evaluates that function in a real JS engine.
+// HTML decides it by TYPE, and the answer is exactly the set of scripts a browser RUNS: "prepare the
 // script element" makes a script whose type is not a JavaScript MIME type, `module`, `importmap` or
 // `speculationrules` a DATA BLOCK and returns BEFORE the fetch step, and for the last two keyword
 // types the `src` step fires an `error` event and returns, because external import maps and external
 // speculation rule sets are not supported (a ruleset arrives inline or through the
 // `Speculation-Rules` response header, never through `src`). So only a classic or module script
-// fetches. Named separately from the runnable-type predicate because it answers a DIFFERENT
-// question - would a browser FETCH this, not would it RUN this - and a future HTML change adding an
-// external path for either keyword type lands here. The `neutralized` branch has no validator
-// counterpart on purpose: the gate reads the document as AUTHORED, where such a block is still a
-// runnable script, so both sides call it a loader.
+// fetches. It reads the whole ELEMENT rather than the type string alone (issue #1171): a MIME
+// PARAMETER, `nomodule`, the legacy `event`+`for` pair, a whitespace-only `type` and the `language`
+// fallback each make a script a browser never runs, so its `src` is a dead attribute and deleting
+// the element over it cost the author their content for a request nobody makes. Named separately
+// from the runnable-type predicate because it answers a DIFFERENT question - would a browser FETCH
+// this, not would it RUN this - and a future HTML change adding an external path for either keyword
+// type lands here. The `neutralized` branch has no validator counterpart on purpose: the gate reads
+// the document as AUTHORED, where such a block is still a runnable script, so both sides call it a
+// loader.
 function _offlineScriptSrcFetches(s, neutralized) {
   // A block the exporter itself neutralized was RUNNABLE as authored, so its `src` was a real load
   // and the element goes - a decoy that borrowed a reserved layer id must not buy itself the
   // data-block treatment with a type this very export just rewrote.
   if (neutralized && neutralized.has(s)) return true;
-  return _offlineIsRunnableScriptType(s.getAttribute("type"));
+  return _offlineScriptCodeRuns(s);
 }
 // Take the load away, and take no more than that. `src` loads on a script a browser RUNS, and an
 // `href` / `xlink:href` loads on an SVG one, so those elements go (dropping just the attribute from
@@ -21190,6 +21265,9 @@ function _stripOfflineNetworkLoads(doc, neutralized) {
       if (_offlineActiveDataBlockIsRemovable(active, s)) { s.remove(); dropped += 1; }
       return;
     }
+    // The broad type-only predicate on purpose: this pass only SCANS an inline body, where
+    // over-inclusion is the safe direction - a body it skipped would be a network import nobody
+    // looked at. The passes that DELETE on the element itself use `_offlineScriptCodeRuns`.
     if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
     const body = s.textContent || "";
     if (_offlineScriptHasNetworkEgress(body)) {
@@ -21418,7 +21496,11 @@ function _stripOfflineRichRenderers(doc, neutralized) {
     }
   });
   doc.querySelectorAll("script").forEach(function (s) {
-    if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
+    // This pass DELETES an element on what its body says, so it asks the exact question - a
+    // MIME-parameter, `nomodule`, `event`+`for`, whitespace-only-`type` or `language`-fallback
+    // block is a stale shim no browser ever ran, and removing it costs an author content for
+    // nothing (issue #1171). Same reasoning as the `script[src]` arm above, one step further in.
+    if (!_offlineScriptCodeRuns(s)) return;
     const body = s.textContent || "";
     if (_OFFLINE_LAYER_SCRIPT_RE.test(body)) return;
     if (/mermaid/i.test(body) && (/\bimport\s*\(/.test(body) || /\bmermaid\.(?:initialize|run)\b/i.test(body) || /\.run\s*\(/.test(body))) {

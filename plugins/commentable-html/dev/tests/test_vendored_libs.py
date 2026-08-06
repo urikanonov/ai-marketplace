@@ -1765,7 +1765,8 @@ class RuntimeParityTests(unittest.TestCase):
         if not node:
             self.skipTest("node is not on PATH; the JS-engine parity check needs it")
         script = (
-            self._runtime_fn(source, "_offlineIsRunnableScriptType") + "\n"
+            self._runtime_fn(source, "_offlineIsJsTypeEssence") + "\n"
+            + self._runtime_fn(source, "_offlineIsRunnableScriptType") + "\n"
             + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
             "const p=JSON.parse(raw);"
             "process.stdout.write(JSON.stringify(p.map(_offlineIsRunnableScriptType)));});"
@@ -1785,6 +1786,140 @@ class RuntimeParityTests(unittest.TestCase):
                 "either an unstripped executable script the gate blesses, or a false rejection - "
                 "and since this predicate decides whether a `src` is a load, a disagreement is an "
                 "element the export deletes after the gate has already passed it." % raw)
+
+
+    def test_the_python_and_js_script_code_runs_predicates_agree(self):
+        """The offline strip's DELETE decision (JS) and the strict validator's LOAD decision
+        (Python) must call the same `<script>` ELEMENTS runnable.
+
+        The sibling test above pins the deliberately over-inclusive TYPE-ONLY predicate, which is
+        still the right one for a caller that only SCANS an inline body. This one pins the EXACT
+        pair: `script_code_runs` and `_offlineScriptCodeRuns`, HTML's "prepare the script element"
+        reduced to what a static reader can answer. They are what the self-contained gate's `src`
+        arm and the offline strip's element removal both ask (issue #1171), so a drift between them
+        is the CMH-OFFLINE-04 failure in its most expensive form: the gate blesses a document and
+        the export then deletes an element out of it, or the gate refuses a file the exporter just
+        produced.
+
+        The corpus is ATTRIBUTE SETS, not type strings, because that is what the residual was: a
+        MIME PARAMETER, `nomodule`, the legacy `event`+`for` pair, a whitespace-only `type` and the
+        `language` fallback are each decided by something other than the type essence, and four of
+        the five cannot be expressed as a type at all. Both NAMESPACES are covered too, since
+        `nomodule`, `event`/`for` and `language` are HTMLScriptElement rules that an SVG script does
+        not obey - reading them there would call a script that runs inert.
+        """
+        source = self._read("68-export-offline.js")
+        fns = self._runtime_string_const(source, "_OFFLINE_HTML_NS") + "\n" + "\n".join(
+            self._runtime_fn(source, name) for name in (
+                "_offlineIsJsTypeEssence", "_offlineAsciiLower", "_offlineTrimHtmlWs",
+                "_offlineScriptCodeRuns"))
+        # Structural guards beside the behavioural one: each names a rule whose absence would make
+        # the predicate silently broader again, and most of the corpus would still pass.
+        for needle, why in (
+                ("[\\t\\n\\f\\r ]+", "the ASCII whitespace class the trim must use"),
+                ("nomodule", "the classic-branch nomodule skip"),
+                ("language", "the language fallback for an absent type"),
+                ("event", "the legacy event+for pair"),
+                ("namespaceURI", "the HTML-only scoping of those three rules")):
+            self.assertIn(needle, fns,
+                          "the runtime's element-level runs predicate no longer mentions %s; "
+                          "without it the exporter deletes scripts a browser never runs" % why)
+        self.assertNotIn(".toLowerCase()", fns,
+                         "the element-level predicate is on Unicode `toLowerCase()`, whose fold "
+                         "differs from the validator's ASCII-only `_ascii_lower`")
+        self.assertNotIn(".trim()", fns,
+                         "the element-level predicate is on `trim()`, whose whitespace class "
+                         "differs from HTML's in both directions")
+
+        html_ns = "http://www.w3.org/1999/xhtml"
+        svg_ns = "http://www.w3.org/2000/svg"
+        # Written out literally rather than derived from either implementation: a corpus built from
+        # the code under test shrinks with it, so a dropped rule would silently drop its coverage.
+        attr_sets = [
+            # The essence match itself, and the near misses around it.
+            {}, {"type": ""}, {"type": "module"}, {"type": "text/javascript"},
+            {"type": "application/ecmascript"}, {"type": "text/x-javascript"},
+            {"type": "text/javascript1.5"}, {"type": "text/javascript1.6"},
+            {"type": "text/jscript"}, {"type": "text/livescript"},
+            {"type": "application/json"}, {"type": "importmap"}, {"type": "speculationrules"},
+            {"type": "text/babel"}, {"type": "javascript"},
+            # ASCII case folding, which must NOT reach past ASCII.
+            {"type": "TEXT/JavaScript"}, {"type": "Text/EcmaScript"},
+            {"type": "TEXT/JAVASCR\u0130PT"},
+            # The MIME PARAMETER: a whole-string essence match, so every one of these is inert.
+            {"type": "text/javascript; charset=utf-8"},
+            {"type": "text/javascript;charset=utf-8"}, {"type": "module; x=1"},
+            {"type": "text/javascript ;"}, {"type": ";text/javascript"},
+            # Whitespace. The two engines' defaults disagree in BOTH directions, so the literal
+            # HTML ASCII class is the only spelling that keeps the pair honest - and `type=" "` is
+            # NOT the empty-string classic branch, because the algorithm tests the RAW value first.
+            {"type": " "}, {"type": "\t"}, {"type": "\ttext/javascript "},
+            {"type": "\ufefftext/javascript"}, {"type": "text/javascript\ufeff"},
+            {"type": "\u001ctext/javascript"}, {"type": "text/javascript\u001f"},
+            {"type": "\u00a0text/javascript"}, {"type": "text/javascript\u0085"},
+            {"type": "\u2028text/javascript"}, {"type": "\u3000text/javascript"},
+            # The `language` fallback, which applies ONLY with no `type` at all and is NOT trimmed.
+            {"language": "javascript"}, {"language": "JavaScript"}, {"language": "vbscript"},
+            {"language": ""}, {"language": " javascript"}, {"language": "javascript1.5"},
+            {"type": "application/json", "language": "javascript"},
+            {"type": "", "language": "vbscript"},
+            # `nomodule`, on the classic branch only.
+            {"nomodule": ""}, {"type": "text/javascript", "nomodule": ""},
+            {"type": "module", "nomodule": ""}, {"type": "application/json", "nomodule": ""},
+            {"language": "javascript", "nomodule": ""},
+            # The legacy `event` + `for` pair: both present, and only the one spelling survives.
+            {"event": "onload", "for": "window"}, {"event": "y", "for": "x"},
+            {"event": "ONLOAD()", "for": " WINDOW "}, {"event": "onload()", "for": "window"},
+            {"event": "onload", "for": "\u00a0window"}, {"event": "onload"}, {"for": "window"},
+            {"type": "text/javascript", "event": "y", "for": "x"},
+            {"type": "module", "event": "y", "for": "x"},
+        ]
+        corpus = [{"ns": ns, "attrs": attrs}
+                  for ns in (html_ns, svg_ns, None)
+                  for attrs in attr_sets]
+        expected = [parsing.script_code_runs(
+            spec["attrs"], "html" if spec["ns"] in (html_ns, None) else "svg")
+            for spec in corpus]
+        # A corpus that degenerated to one verdict would pass vacuously, and so would one that lost
+        # the residual shapes this test exists for.
+        self.assertIn(True, expected)
+        self.assertIn(False, expected)
+        self.assertFalse(parsing.script_code_runs({"type": "text/javascript; charset=utf-8"},
+                                                  "html"))
+        self.assertTrue(parsing.script_code_runs({"type": "text/javascript"}, "html"))
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        # The REAL runtime function, evaluated in node over a STUB element exposing only the three
+        # DOM members it reads. A Python re-implementation could only prove what Python does with
+        # the extracted source, which is not the question.
+        script = (
+            fns + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "process.stdout.write(JSON.stringify(p.map(function(spec){"
+            "const has=function(n){return Object.prototype.hasOwnProperty.call(spec.attrs,n);};"
+            "return _offlineScriptCodeRuns({namespaceURI:spec.ns,"
+            "getAttribute:function(n){return has(n)?spec.attrs[n]:null;},"
+            "hasAttribute:has});})));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps(corpus),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the element-level runs predicate: %s" % proc.stderr)
+        verdicts = json.loads(proc.stdout)
+        self.assertEqual(len(verdicts), len(corpus),
+                         "node returned %d verdicts for %d samples" % (len(verdicts), len(corpus)))
+        for spec, want, got in zip(corpus, expected, verdicts):
+            self.assertEqual(
+                got, want,
+                "the REAL JS engine's _offlineScriptCodeRuns and the validator's script_code_runs "
+                "disagree about ns=%r attrs=%r (JS says %r, Python says %r). Update BOTH: this "
+                "predicate decides whether a `src` is a load AND whether the offline strip deletes "
+                "the element, so a disagreement is either an element the export removes after the "
+                "gate has already blessed it, or a file the gate refuses that the exporter just "
+                "produced." % (spec["ns"], spec["attrs"], got, want))
 
 
     def test_the_python_and_js_script_load_attributes_agree(self):
@@ -1838,8 +1973,13 @@ class RuntimeParityTests(unittest.TestCase):
         # its own cross-engine parity test over its own corpus.
         region = "\n".join([
             self._runtime_const(source, "_OFFLINE_ACTIVE_DATA_TYPES"),
+            self._runtime_string_const(source, "_OFFLINE_HTML_NS"),
             self._runtime_fn(source, "_offlineActiveDataScriptType"),
+            self._runtime_fn(source, "_offlineIsJsTypeEssence"),
             self._runtime_fn(source, "_offlineIsRunnableScriptType"),
+            self._runtime_fn(source, "_offlineAsciiLower"),
+            self._runtime_fn(source, "_offlineTrimHtmlWs"),
+            self._runtime_fn(source, "_offlineScriptCodeRuns"),
             self._runtime_fn(source, "_offlineScriptSrcFetches"),
             'const _offlineIsNetworkUrl = (v) => /^https?:\\/\\//i.test(v || "");',
             body,
@@ -3542,6 +3682,14 @@ class RuntimeParityTests(unittest.TestCase):
         self.assertIsNotNone(m, "the runtime no longer declares %s on one line; the parity "
                                 "extraction is stale and must be re-pointed at whatever replaced "
                                 "it" % name)
+        return m.group(0)
+
+    def _runtime_string_const(self, source, name):
+        """One runtime `const NAME = "...";` declaration, as JS source, for evaluation in node."""
+        m = re.search(r'^const %s = "[^"]*";$' % re.escape(name), source, re.M)
+        self.assertIsNotNone(m, "the runtime no longer declares %s as a one-line string; the "
+                                "parity extraction is stale and must be re-pointed at whatever "
+                                "replaced it" % name)
         return m.group(0)
 
     def _runtime_fn(self, source, name):
