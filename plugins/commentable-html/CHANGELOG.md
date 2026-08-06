@@ -4,6 +4,42 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.798.0] - 2026-08-06
+
+### Fixed
+
+- An SVG presentation attribute whose value is a network `url(...)` reference no longer reaches the
+  network past every egress surface (CMH-VAL-08, CMH-OFFLINE-04, CMH-DECK-04). `<rect
+  clip-path="url(https://host/x.svg#c)">` (and `mask`, `fill`, `stroke`, `marker-start`,
+  `marker-mid`, `marker-end`) validated STRICT-CLEAN, was given the `commentable-html-validated`
+  stamp, and fetched the moment a recipient opened it: the value is a CSS declaration value, so the
+  element rules - which read attributes whose WHOLE value is a URL - did not see it, and the CSS
+  reads look at a `style=` attribute and a `<style>` body rather than at a presentation attribute.
+  In shareable mode there is no CSP behind the gate, so nothing else caught it. The strict gate now
+  applies the shared CSS `url()` reading to those attributes in both modes (and its
+  shareable-only `image-set(...)` reading beside it, since `mask` takes an image), inside a nested
+  `<iframe srcdoc>` as well, and the Offline export neutralizes the same attributes through the
+  same paired `_offlineCssNoNetwork` reading - so a local `url(#clip)` survives untouched and the
+  gate can never reject a file the export just produced. Which attributes are in scope is decided
+  by measurement in a real Chromium, recorded as a test: `clip-path`, `mask`, `fill`, `stroke`,
+  `cursor` and the three `marker-*` attributes are requested; `filter`, `mask-image`,
+  `mask-border-source`, the `marker` shorthand and `color-profile` are not. Each attribute is probed
+  the way the property is really used, because the probe shape decides the answer - `cursor` needs a
+  fallback keyword (`url(...), auto`) to be a valid declaration at all, and looked inert until it
+  was probed with one. `filter` is carried anyway, because Chromium REMOVED external filter
+  references - that negative is an engine decision rather than a structural one, and a rule that
+  fires only on a network reference costs an author with a local `url(#f)` nothing. The
+  `image-set(...)` reading beside it is narrower still and covers the two attributes that take an
+  IMAGE, `mask` and `cursor`: an attribute that takes a paint server, a shape reference or a filter
+  fetches nothing from a bare candidate, so reading one there would refuse a document with no
+  egress at all. Both lists are pinned to the measurement in both directions, so an attribute
+  cannot again be enforced for `url(...)` while nobody measured its `image-set(...)` behaviour.
+
+  Not closed by this change, and deliberately: an SMIL animation element that supplies the same
+  property indirectly (`<set attributeName="mask" to="url(https://host/x.svg#m)">`, and the
+  `to`/`from`/`by`/`values` of `<animate>`) is measured to fetch and is a separate surface with its
+  own `attributeName` indirection, tracked as its own issue.
+
 ## [1.796.0] - 2026-08-06
 
 ### Fixed

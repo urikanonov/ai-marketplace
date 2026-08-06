@@ -379,7 +379,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.796.0";
+const CMH_VERSION = "1.798.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -14700,6 +14700,25 @@ function _offlineCssNoNetwork(css) {
   }
   return out;
 }
+// An SVG PRESENTATION ATTRIBUTE carries a CSS declaration VALUE, so `clip-path="url(https://...)"`
+// is a network fetch on open that no element strip above reaches (they clear attributes whose WHOLE
+// value is a URL) and no CSS strip below reaches either (they take a `<style>` body and a `style=`
+// attribute). Neutralized through `_offlineCssNoNetwork`, the same paired reading the `[style]`
+// strip uses, so the strict gate's `CSS_NETWORK_URL_RE` and this cannot drift apart and a LOCAL
+// `url(#clip)` - which is how these attributes are almost always written - survives byte-identical
+// (issue #1186). The attribute list is the MEASURED one (`checks/resources.py`'s
+// `SVG_URL_PRESENTATION_ATTRS`, pinned to this literal by tests/test_egress_list_parity.py), and it
+// is written INSIDE this helper rather than as a shared constant so that reading can see it.
+function _offlineStripPresentationUrl(el) {
+  ["clip-path", "cursor", "fill", "filter", "marker-end", "marker-mid", "marker-start", "mask",
+   "stroke"]
+    .forEach(function (name) {
+      if (!el.hasAttribute(name)) return;
+      const next = _offlineCssNoNetwork(el.getAttribute(name) || "");
+      if (next) el.setAttribute(name, next);
+      else el.removeAttribute(name);
+    });
+}
 function _stripOfflineEventHandlers(doc) {
   // Template-parked too: an `on*` attribute on a fragment a script later adopts and inserts is a
   // live handler the moment it enters the document.
@@ -16135,6 +16154,9 @@ function _stripOfflineNetworkLoads(doc, neutralized) {
     const next = _offlineCssNoNetwork(el.getAttribute("style") || "");
     if (next) el.setAttribute("style", next);
     else el.removeAttribute("style");
+  });
+  all("[clip-path], [cursor], [fill], [filter], [marker-end], [marker-mid], [marker-start], [mask], [stroke]").forEach(function (el) {
+    _offlineStripPresentationUrl(el);
   });
   return { dropped: dropped, clearedBases: clearedBases, clearedSrcdocs: clearedSrcdocs, preservedSrcdocs: preservedSrcdocs };
 }

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import fs from "fs";
 import path from "path";
 import {
   SKILL,
@@ -1344,4 +1345,130 @@ test("a legacy lowsrc is not a load, so no egress gate needs a rule for it (CMH-
     .toBeGreaterThanOrEqual(2);
   await page.waitForLoadState("networkidle");
   expect(requested.filter((url) => /lowsrc-probe/.test(url))).toEqual([]);
+});
+
+
+
+// CMH-VAL-08 / CMH-OFFLINE-04 / CMH-BUILD-22 (issue #1186): an SVG PRESENTATION ATTRIBUTE whose
+// value is a `url(...)` reference fetches on open, and no egress surface read it - the CSS reads
+// take a `style=` attribute and a `<style>` body, and the element rules are keyed on attributes
+// whose WHOLE value is a URL. WHICH attributes carry the channel is decided HERE, by measurement,
+// rather than from the list of properties the specs say accept a `<url>`: this test is what the
+// gate's `SVG_URL_PRESENTATION_ATTRS` / `SVG_IMAGE_SET_PRESENTATION_ATTRS` and the offline export's
+// strip list are derived from, and it reads those lists back so a widening on either side has to be
+// measured first.
+//
+// It sits beside the `lowsrc` measurement above because it answers the same question for the same
+// three-list contract, and it is built the same way: every request is routed and aborted (so the
+// test reaches no network and idle arrives at once), the NEGATIVE probes are FIRST in the document
+// so a parse-time fetch would be requested before either control's, and the page is settled to
+// network-idle so a fetch deferred past the controls is caught too.
+//
+// The probe SHAPE is per attribute, not one shape for all, because a shape a browser rejects
+// measures nothing: `cursor` needs a fallback keyword (`url(...), auto`) to be a valid declaration
+// at all, and a bare-url probe made it look INERT when a valid one is requested and
+// `getComputedStyle` shows the value honoured (round-1 panel, and the reason `cursor` is in the
+// enforced list). Each probe below is therefore written the way the property is actually used, and
+// the positives double as the evidence that the shape works.
+const PRESENTATION_PROBES = {
+  "clip-path": (u) => `<rect width="20" height="20" clip-path="url(${u}.svg#c)"/>`,
+  "mask": (u) => `<rect width="20" height="20" mask="url(${u}.svg#m)"/>`,
+  "fill": (u) => `<rect width="20" height="20" fill="url(${u}.svg#g)"/>`,
+  "stroke": (u) => `<rect width="20" height="20" stroke="url(${u}.svg#g)"/>`,
+  "marker-start": (u) => `<path d="M0 0 L10 10 L20 20" stroke="black" marker-start="url(${u}.svg#m)"/>`,
+  "marker-mid": (u) => `<path d="M0 0 L10 10 L20 20" stroke="black" marker-mid="url(${u}.svg#m)"/>`,
+  "marker-end": (u) => `<path d="M0 0 L10 10 L20 20" stroke="black" marker-end="url(${u}.svg#m)"/>`,
+  // A cursor image needs the fallback keyword to be a valid declaration.
+  "cursor": (u) => `<rect width="20" height="20" cursor="url(${u}.cur), auto"/>`,
+  // The measured negatives. `filter` is a real presentation attribute Chromium honours but whose
+  // EXTERNAL references it removed, so this negative can change with an engine and is the tripwire
+  // the enforced list carries `filter` for anyway. The rest are not presentation attributes in this
+  // engine at all, so their silence is structural rather than a behavioural tripwire - they are
+  // asserted so that "the gate must not grow an attribute rule for them" stays a tested statement.
+  "filter": (u) => `<rect width="20" height="20" filter="url(${u}.svg#f)"/>`,
+  "mask-image": (u) => `<rect width="20" height="20" mask-image="url(${u}.png)"/>`,
+  "mask-border-source": (u) => `<rect width="20" height="20" mask-border-source="url(${u}.png)"/>`,
+  "marker": (u) => `<path d="M0 0 L10 10 L20 20" stroke="black" marker="url(${u}.svg#m)"/>`,
+  "color-profile": (u) => `<image width="20" height="20" color-profile="url(${u}.icc)" href="data:image/gif;base64,R0lGODlhAQABAAAAACw="/>`,
+};
+const PRESENTATION_FETCHES = ["clip-path", "mask", "fill", "stroke", "marker-start", "marker-mid",
+                              "marker-end", "cursor"];
+const PRESENTATION_INERT = ["filter", "mask-image", "mask-border-source", "marker", "color-profile"];
+// Carried by the gate and the strip DESPITE measuring inert here, with the reason recorded beside
+// the list in checks/resources.py.
+const PRESENTATION_CARRIED_ANYWAY = ["filter"];
+// `image-set(...)` takes a BARE remote string with no `url()` wrapper, so the shared `url()` pattern
+// cannot see it. Only an attribute that takes an IMAGE fetches one, which is why the gate's
+// image-set reading is narrower than its url() reading - reading it on a paint or a shape reference
+// would REJECT a document that fetches nothing. The shape is per attribute here for the same reason
+// it is above: `cursor` needs its fallback keyword, and probing it without one measured the leak
+// away (round-2 panel, 4 of 8 ducks). EVERY enforced attribute is answered in one direction or the
+// other, so the list cannot grow a member the measurement says nothing about.
+const IMAGE_SET_PROBES = {
+  "mask": (u) => `<rect width="20" height="20" mask="image-set(&quot;${u}&quot; 1x)"/>`,
+  "cursor": (u) => `<rect width="20" height="20" cursor="image-set(&quot;${u}&quot; 1x), auto"/>`,
+  "fill": (u) => `<rect width="20" height="20" fill="image-set(&quot;${u}&quot; 1x)"/>`,
+  "stroke": (u) => `<rect width="20" height="20" stroke="image-set(&quot;${u}&quot; 1x)"/>`,
+  "clip-path": (u) => `<rect width="20" height="20" clip-path="image-set(&quot;${u}&quot; 1x)"/>`,
+  "filter": (u) => `<rect width="20" height="20" filter="image-set(&quot;${u}&quot; 1x)"/>`,
+  "marker-start": (u) => `<path d="M0 0 L10 10 L20 20" stroke="black" marker-start="image-set(&quot;${u}&quot; 1x)"/>`,
+  "marker-mid": (u) => `<path d="M0 0 L10 10 L20 20" stroke="black" marker-mid="image-set(&quot;${u}&quot; 1x)"/>`,
+  "marker-end": (u) => `<path d="M0 0 L10 10 L20 20" stroke="black" marker-end="image-set(&quot;${u}&quot; 1x)"/>`,
+};
+const IMAGE_SET_FETCHES = ["mask", "cursor"];
+const IMAGE_SET_INERT = ["fill", "stroke", "clip-path", "filter", "marker-start", "marker-mid",
+                         "marker-end"];
+
+function presentationSvg(markup) {
+  return `<svg width="30" height="30">${markup}</svg>`;
+}
+
+test("which SVG presentation attributes fetch is measured, and both egress lists match (CMH-VAL-08)", async ({ page }) => {
+  const requested = [];
+  await page.route(/^https?:\/\//, async (route) => {
+    requested.push(route.request().url());
+    await route.abort();
+  });
+  const probe = (attr) => presentationSvg(PRESENTATION_PROBES[attr](`https://cmh.invalid/probe-${attr}`));
+  const imageSetProbe = (attr) => presentationSvg(
+    IMAGE_SET_PROBES[attr](`https://cmh.invalid/iset-${attr}.png`));
+  await page.setContent(
+    PRESENTATION_INERT.map(probe).join("")
+    + IMAGE_SET_INERT.map(imageSetProbe).join("")
+    + PRESENTATION_FETCHES.map(probe).join("")
+    + IMAGE_SET_FETCHES.map(imageSetProbe).join("")
+    + '<img src="https://cmh.invalid/control-src.png" alt="src control">'
+    + '<svg width="20" height="20"><image href="https://cmh.invalid/control-href.png" width="20" height="20"/></svg>'
+  );
+  await expect
+    .poll(() => requested.filter((url) => /control-/.test(url)).length, { timeout: 10000 })
+    .toBeGreaterThanOrEqual(2);
+  // A cursor image is fetched when the cursor applies, so the pointer is moved INTO each cursor
+  // probe's own box rather than swept across the page - a sweep that missed the element would make
+  // a cursor negative mean "the pointer never got there" instead of "this does not fetch".
+  for (const el of await page.locator("body > svg").all()) {
+    const box = await el.boundingBox();
+    if (box) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  }
+  await page.waitForLoadState("networkidle");
+  const hit = (name) => requested.filter((url) => url.includes(`/${name}.`)).length > 0;
+  expect(PRESENTATION_FETCHES.filter((attr) => !hit(`probe-${attr}`))).toEqual([]);
+  expect(PRESENTATION_INERT.filter((attr) => hit(`probe-${attr}`))).toEqual([]);
+  expect(IMAGE_SET_FETCHES.filter((attr) => !hit(`iset-${attr}`))).toEqual([]);
+  expect(IMAGE_SET_INERT.filter((attr) => hit(`iset-${attr}`))).toEqual([]);
+  // Both gate lists are the measured ones, plus only what is explicitly carried anyway.
+  const source = fs.readFileSync(
+    path.join(SKILL, "tools", "validate", "checks", "resources.py"), "utf8");
+  const declared = (name) => {
+    const match = source.match(new RegExp(`${name} = \\(([^)]*)\\)`));
+    expect(match, `the gate no longer declares ${name}`).toBeTruthy();
+    return Array.from(match[1].matchAll(/"([^"]+)"/g)).map((m) => m[1]).sort();
+  };
+  expect(declared("SVG_URL_PRESENTATION_ATTRS"))
+    .toEqual([...PRESENTATION_FETCHES, ...PRESENTATION_CARRIED_ANYWAY].sort());
+  expect(declared("SVG_IMAGE_SET_PRESENTATION_ATTRS")).toEqual([...IMAGE_SET_FETCHES].sort());
+  // ... and every enforced attribute is answered by the image-set measurement in one direction or
+  // the other, so the narrower list can never again exclude one nobody probed.
+  expect([...IMAGE_SET_FETCHES, ...IMAGE_SET_INERT].sort())
+    .toEqual(declared("SVG_URL_PRESENTATION_ATTRS"));
 });

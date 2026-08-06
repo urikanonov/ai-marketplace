@@ -186,6 +186,19 @@ def _srcdoc_network_findings(value, depth=1):
         if css_network_image_set(style.get("value", "")):
             out.append(("imageset-style", style.get("tag", "element"), "style",
                         style.get("value", "")))
+    # An SVG presentation attribute carries the same CSS `url()` egress inside a frame as outside
+    # one (#1186), so the nested read is not allowed to be narrower than the top-level rule - the
+    # `image-set(...)` reading included, on the same measured image-taking scope. The loop locals
+    # are `pres_attr` / `val`, not `attr` / `value`: `value` is this function's own parameter (the
+    # frame's nested document), and a later statement reaching for it must not get the last
+    # attribute read instead.
+    for pres_attr in SVG_URL_PRESENTATION_ATTRS:
+        for el in _find_attr_egress(text, pres_attr):
+            val = el.get("value", "")
+            if CSS_NETWORK_URL_RE.search(val):
+                out.append(("presentation", el.get("tag", "element"), pres_attr, val))
+            if pres_attr in SVG_IMAGE_SET_PRESENTATION_ATTRS and css_network_image_set(val):
+                out.append(("imageset-presentation", el.get("tag", "element"), pres_attr, val))
     fragment_styles, styles_failed = _find_fragment_styles(text)
     if styles_failed:
         out.append(("parse", None, None, None))
@@ -491,6 +504,31 @@ def _check_self_contained(html, parser):
             errors.append("inline style on <%s> contains a network image-set(...) candidate and "
                           "breaks the self-contained guarantee - inline or remove it"
                           % _report_value(style.get("tag", "element")))
+    # The SAME CSS reading, applied to an SVG PRESENTATION ATTRIBUTE (#1186). Its value is a CSS
+    # declaration value, so `clip-path="url(https://evil.example/x.svg#c)"` is CSS egress that no
+    # surface read: the two reads above take a `style=` attribute and a `<style>` body, and the
+    # element rules are keyed on attributes whose WHOLE value is a URL. Asked as the universal
+    # ATTRIBUTE question for the reason `_BACKGROUND_ATTR` records - the export strip's selector is
+    # universal too, so neither side can reject what the other leaves, and the over-detection on an
+    # element where a browser ignores the attribute is shared by both. Namespace-blind like every
+    # other rule here. The `image-set(...)` reading beside it is narrower than the `url()` one and
+    # SHAREABLE-only: it covers the attributes that take an IMAGE (`mask` and `cursor`), which are
+    # the ones that fetch a bare remote string with no `url()` wrapper (measured), and offline has
+    # the zero-network CSP behind it while its strip has no `image-set()` counterpart - exactly the
+    # split this gate already makes for `style=`.
+    for pres_attr in SVG_URL_PRESENTATION_ATTRS:
+        for el in _find_attr_egress(html, pres_attr):
+            value = el.get("value", "")
+            label = "presentation attribute %s on <%s>" % (pres_attr,
+                                                           _report_value(el.get("tag", "element")))
+            if CSS_NETWORK_URL_RE.search(value):
+                _css_error("%s contains a network url(...) - inline or remove it" % label,
+                           "%s contains a network url(...) and breaks the self-contained "
+                           "guarantee - inline or remove it" % label)
+            if (not offline_mode and pres_attr in SVG_IMAGE_SET_PRESENTATION_ATTRS
+                    and css_network_image_set(value)):
+                errors.append("%s contains a network image-set(...) candidate and breaks the "
+                              "self-contained guarantee - inline or remove it" % label)
     # A `<script type="speculationrules">` is the one ACTIVE-DATA block that reaches the network by
     # itself, with no user action and no code running: the browser reads the ruleset and prefetches
     # or prerenders. That is the same test every element rule above is drawn on, so it belongs in
@@ -828,6 +866,17 @@ def _check_self_contained(html, parser):
                                       "image-set(...) candidate that breaks the self-contained "
                                       "guarantee - inline the reference as a data: URI, or remove "
                                       "the frame" % (label, _report_value(tag)))
+                    elif kind == "presentation":
+                        errors.append("%s carries a nested presentation attribute %s on <%s> that "
+                                      "contains a network url(...) and breaks the self-contained "
+                                      "guarantee - inline the reference as a data: URI, or remove "
+                                      "the frame" % (label, attr, _report_value(tag)))
+                    elif kind == "imageset-presentation":
+                        errors.append("%s carries a nested presentation attribute %s on <%s> with "
+                                      "a network image-set(...) candidate that breaks the "
+                                      "self-contained guarantee - inline the reference as a data: "
+                                      "URI, or remove the frame" % (label, attr,
+                                                                    _report_value(tag)))
                     elif kind == "imageset-sheet":
                         errors.append("%s carries a nested <style> block with a network "
                                       "image-set(...) candidate that breaks the self-contained "
