@@ -252,12 +252,29 @@ def _check_content_markers(html, parser):
 def _check_comment_root(parser, html):
     errors, warnings = [], []
     # 3) #commentRoot present (real element id, via the parser) with required data-* attributes.
-    n_roots = parser.all_ids.count("commentRoot")
+    # Same split as _check_element_ids (CMH-VAL-26), including that the two halves are reported
+    # INDEPENDENTLY: PRESENCE is namespace-SCOPED, because the runtime drives the content root as
+    # an HTMLElement (it renders the authored document inside it, and every export re-serializes
+    # it), while a `<math>`/`<svg>` carrier - reachable through an HTML integration point, where
+    # the CONTENT-region parse succeeds and nothing else objects - is an SVGElement/MathMLElement
+    # that cannot host it. DUPLICATES stay namespace-BLIND, because `getElementById` is: a foreign
+    # root beside the real one can win the lookup. Coupling the two would report an all-foreign
+    # collision as a collision alone, so removing one carrier would reveal a second error that was
+    # there all along.
+    n_roots = parser.html_ids.count("commentRoot")
+    n_any = parser.all_ids.count("commentRoot")
     if n_roots == 0:
-        errors.append('no element with id="commentRoot" (content root is missing)')
-    elif n_roots > 1:
-        errors.append(f'id="commentRoot" appears {n_roots} times (must be unique)')
-    else:
+        if n_any:
+            errors.append('the element with id="commentRoot" is outside the HTML namespace (an '
+                          "SVG/MathML element cannot host the authored document the layer renders "
+                          "and re-serializes) - the content root must be an HTML element")
+        else:
+            errors.append('no element with id="commentRoot" (content root is missing)')
+    if n_any > 1:
+        errors.append(f'id="commentRoot" appears {n_any} times (must be unique)')
+    # The data-* audit needs an UNAMBIGUOUS root: `comment_root_attrs` is latched by the first
+    # carrier in any namespace, so with a duplicate it may not be the one this check blessed.
+    if n_roots == 1 and n_any == 1:
         attrs = parser.comment_root_attrs or {}
         if "data-cmh-content-root" not in attrs:
             errors.append('#commentRoot is missing data-cmh-content-root (stable hook for content/infra tooling)')
@@ -322,12 +339,37 @@ def _check_element_ids(parser, html):
     # 7) Required UI ids present exactly once (a duplicate means a decoy could
     # satisfy the check while the real control is missing, and getElementById may
     # bind the layer to the wrong element).
+    # The two halves read DIFFERENT views on purpose (CMH-VAL-26). PRESENCE is namespace-SCOPED:
+    # the layer's companion UI is HTML, and `hidden` - the toggle it uses to reveal and hide many
+    # of these controls - is an IDL attribute of `HTMLElement` alone, so `el.hidden = true` on an
+    # SVG/MathML carrier writes a plain JS expando, sets no content attribute, and matches neither
+    # the UA rule nor the layer's own `.cm-skip[hidden]` rule. DUPLICATES stay namespace-BLIND and
+    # are reported INDEPENDENTLY of presence, because `getElementById` really is blind for
+    # collisions: a foreign element sharing the id can win the lookup and shadow the real control,
+    # and that is just as true when every carrier is foreign. An id at an HTML integration point
+    # (`<svg><foreignObject>`, `<math><mtext>`, `<math><annotation-xml encoding="text/html">` or
+    # `"application/xhtml+xml"`) counts for both, because a browser really inserts that element in
+    # the HTML namespace.
+    # The floor this raises is real but partial: the check asks which NAMESPACE the control is in,
+    # never whether it renders. It is tag-agnostic (the shipped layer uses a `<span>` for a
+    # button), and an HTML element that cannot be seen - in `<head>`, under `display:none`, or
+    # under a non-rendering `<svg><title>` - still satisfies it, exactly as before.
     id_counts = Counter(parser.all_ids)
+    html_id_counts = Counter(parser.html_ids)
     for uid in REQUIRED_IDS:
         c = id_counts.get(uid, 0)
-        if c == 0:
-            errors.append(f'required element id="{uid}" is missing')
-        elif c > 1:
+        if html_id_counts.get(uid, 0) == 0:
+            if c:
+                carriers = ("the only element carrying it is" if c == 1
+                            else f"all {c} elements carrying it are")
+                errors.append(f'required element id="{uid}" is missing - {carriers} outside the '
+                              "HTML namespace (`hidden` is an HTMLElement-only IDL attribute, so "
+                              "the toggle the layer uses to reveal many of these controls does "
+                              "nothing on an SVG/MathML element, which cannot take the place of "
+                              "the HTML control either way)")
+            else:
+                errors.append(f'required element id="{uid}" is missing')
+        if c > 1:
             errors.append(f'required element id="{uid}" appears {c} times (must be unique)')
 
     # 7b) The document-owned JSON script blocks must also be unique across the

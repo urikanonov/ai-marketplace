@@ -4,6 +4,35 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.756.0] - 2026-08-06
+
+### Fixed
+
+- The validator's required-layer-control PRESENCE check is now namespace-scoped, so a
+  foreign-namespace element can no longer satisfy a control the layer could never drive.
+  The check read `_DocParser.all_ids`, which is namespace-BLIND on purpose because
+  `getElementById` is - the right view for spotting a DUPLICATE, the wrong one for asking whether
+  the control is there. The layer's companion UI is HTML, and `hidden` - the toggle it uses to
+  reveal and hide many of these controls - is an IDL attribute of `HTMLElement` alone, so setting
+  it on an SVG/MathML carrier writes a plain JS expando, sets no content attribute, and matches
+  neither the UA rule nor the layer's own `.cm-skip[hidden]` rule. Replacing the real
+  `<span id="btnAutoOpenPanel" class="cm-skip">` with
+  `<svg><rect id="btnAutoOpenPanel" class="cm-skip"/></svg>` validated with zero errors and zero
+  warnings. Presence now reads a new HTML-namespace id view, and a required id present only
+  outside that namespace is reported as missing with the reason named and the carrier count
+  stated. The DUPLICATE half is still namespace-blind and is now reported INDEPENDENTLY of
+  presence, so an id carried twice draws the collision error even when both carriers are foreign;
+  an id at an HTML integration point (`<svg><foreignObject>`, `<math><mtext>`, and
+  `<math><annotation-xml>` at either encoding HTML5 accepts) still counts, because a browser
+  really inserts that element in the HTML namespace, while the near-miss `encoding=" text/html"`
+  does not. The CONTENT ROOT gets the same split: `<svg><foreignObject id="commentRoot">`,
+  `<math><mtext id="commentRoot">` and either `annotation-xml` encoding used to validate with zero
+  errors and zero warnings - the region parsed, so nothing objected - while the root was an
+  element the layer cannot render the authored document into. This is the element-id half of the
+  namespace argument CMH-VAL-19 already applies to the layer views. The limit is a NAMESPACE one:
+  the check asks which namespace the control is in, never whether it renders, so an HTML element
+  parked in `<head>` or under `display:none` satisfies it exactly as before. (CMH-VAL-26)
+
 ## [1.754.0] - 2026-08-06
 
 ### Fixed
