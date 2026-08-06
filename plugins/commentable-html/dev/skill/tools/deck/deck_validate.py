@@ -32,11 +32,13 @@ import _browser_attrs  # noqa: E402
 import _browser_boundaries  # noqa: E402
 from deck_common import SLIDE_ID_RE  # noqa: E402
 try:
-    from checks.resources import (CSS_HOST_CHAR, CSS_NETWORK_IMPORT_RE,  # noqa: E402
-                                  CSS_NETWORK_PREFIX, CSS_NETWORK_URL_RE, CSS_WS,
+    from checks.resources import (CSS_HOST_CHAR, CSS_NETWORK_IMAGE_SET_RE,  # noqa: E402
+                                  CSS_NETWORK_IMPORT_RE, CSS_NETWORK_PREFIX, CSS_NETWORK_URL_RE,
+                                  CSS_WS, css_image_set_args, css_network_image_set,
                                   is_network_url, srcset_candidate_urls)
 except Exception:  # pragma: no cover - only a broken/partial install reaches this
-    CSS_HOST_CHAR = CSS_NETWORK_IMPORT_RE = CSS_NETWORK_PREFIX = CSS_NETWORK_URL_RE = None
+    CSS_HOST_CHAR = CSS_NETWORK_IMAGE_SET_RE = CSS_NETWORK_IMPORT_RE = CSS_NETWORK_PREFIX = None
+    CSS_NETWORK_URL_RE = css_image_set_args = css_network_image_set = None
     CSS_WS = is_network_url = srcset_candidate_urls = None
     _toolpath.warn_missing_tool(
         "checks.resources", "the shared network-URL predicate and srcset candidate tokenization")
@@ -74,21 +76,24 @@ _CSS_IMPORT_FALLBACK_RE = re.compile(
     r"@import[\t\n\f\r ]*(?:url\([\t\n\f\r ]*)?['\"]?[\t\n\f\r ]*" + _CSS_FALLBACK_PREFIX,
     re.IGNORECASE | re.ASCII)
 # `image-set()` can carry a bare remote string with no `url()` wrapper, which the shared `url()`
-# pattern cannot see and no other surface reads - so the READER is deck-only, but its prefix and
-# host-character rule come from the shared fragments rather than a hand copy. It scans EVERY
-# candidate, not just the one abutting `image-set(`: `image-set('local.png' 1x, '//h/x.png' 2x)`
-# really does fetch the second one at 2x DPR, and anchoring on the open paren saw only the first.
-_IMAGE_SET_OPEN_RE = re.compile(r"image-set\(", re.IGNORECASE | re.ASCII)
-# An unquoted one of these ends a CSS declaration or is markup, so the scan stops there. A `<` or
-# `>` inside a QUOTE is a legal CSS string character, so it only stops the scan on the SECOND
-# reading below - the one used when the list never closed.
-_IMAGE_SET_MARKUP = "<>"
-_IMAGE_SET_STOP = "<>;{}"
+# pattern cannot see. Both the candidate-list READER and its candidate pattern now live in the
+# shared CSS reading (`checks/resources.py`), because the strict gate needs the same question
+# answered in shareable mode (#1166); this module keeps only the DEGRADED spellings a broken
+# install falls back to. The degraded READER is a local COPY of the same quote- and paren-aware
+# scanner rather than a cruder regex, and that duplication is deliberate: a regex that stops at an
+# unquoted `;`/`{`/`}` truncates at the `;` INSIDE a quoted `data:` candidate and drops every
+# candidate after it, so `image-set("data:image/png;base64,AAAA" 1x, "//evil/x.png" 2x)` read clean
+# in the degraded path - a fail-OPEN in the one path whose whole point is to fail CLOSED (found by
+# the round-1 multi-duck panel, 6 of 8 ducks). Sharing the PATTERN is what #1129 asks for; the
+# fallback scanner is by definition the code that runs when nothing is shared.
 _IMAGE_SET_TOKEN_START = r"(?:^|['\",(]|" + (CSS_WS or r"[\t\n\f\r ]") + r")"
 _CSS_IMAGE_SET_FALLBACK_RE = re.compile(
     _IMAGE_SET_TOKEN_START + _CSS_FALLBACK_PREFIX, re.IGNORECASE | re.ASCII)
-_CSS_IMAGE_SET_RE = None if CSS_NETWORK_PREFIX is None else re.compile(
-    _IMAGE_SET_TOKEN_START + CSS_NETWORK_PREFIX + CSS_HOST_CHAR, re.IGNORECASE | re.ASCII)
+_IMAGE_SET_OPEN_FALLBACK_RE = re.compile(r"image-set\(", re.IGNORECASE | re.ASCII)
+_IMAGE_SET_FALLBACK_MARKUP = "<>"
+_IMAGE_SET_FALLBACK_STOP = "<>;{}"
+_IMAGE_SET_FALLBACK_BAD_STRING = "\n\r\f"
+_CSS_IMAGE_SET_RE = CSS_NETWORK_IMAGE_SET_RE
 # The characters the URL parser removes from a reference that CSS also permits inside a quoted
 # string. It removes ASCII tab (and LF/CR) from ANYWHERE, but every OTHER C0 control only from the
 # LEADING run - so the two are normalized differently: deleting a mid-token `\x01` would turn the
@@ -101,7 +106,21 @@ _CSS_IMAGE_SET_RE = None if CSS_NETWORK_PREFIX is None else re.compile(
 _CSS_LEADING_C0_RE = re.compile(r"([('\",\t\n\f\r ])[\x00-\x08\x0b\x0c\x0e-\x1f]+")
 
 
-def _scan_image_set(text, start, markup_ends_a_string):
+def _image_set_args_fallback(text):
+    """The degraded copy of the shared reader, used only when `checks.resources` did not import."""
+    out, pos = [], 0
+    while True:
+        m = _IMAGE_SET_OPEN_FALLBACK_RE.search(text, pos)
+        if not m:
+            return out
+        stop, closed = _scan_image_set_fallback(text, m.end(), False)
+        if not closed:
+            stop = _scan_image_set_fallback(text, m.end(), True)[0]
+        out.append(text[m.end():stop])
+        pos = stop + 1
+
+
+def _scan_image_set_fallback(text, start, markup_ends_a_string):
     """Where one `image-set(` argument list ends, and whether it CLOSED with its own `)`."""
     depth, i, quote, end = 1, start, "", len(text)
     while i < end:
@@ -112,7 +131,9 @@ def _scan_image_set(text, start, markup_ends_a_string):
         if quote:
             if ch == quote:
                 quote = ""
-            elif markup_ends_a_string and ch in _IMAGE_SET_MARKUP:
+            elif ch in _IMAGE_SET_FALLBACK_BAD_STRING:
+                return i, False
+            elif markup_ends_a_string and ch in _IMAGE_SET_FALLBACK_MARKUP:
                 return i, False
         elif ch in "'\"":
             quote = ch
@@ -122,36 +143,17 @@ def _scan_image_set(text, start, markup_ends_a_string):
             depth -= 1
             if depth == 0:
                 return i, True
-        elif ch in _IMAGE_SET_STOP:
+        elif ch in _IMAGE_SET_FALLBACK_STOP:
             return i, False
         i += 1
     return end, False
 
 
 def _image_set_args(text):
-    """Every `image-set(...)` argument list, read with a depth counter rather than a regex.
-
-    A `[^)]*` capture stopped at the FIRST `)`, which in real CSS is the `)` of a nested
-    `url(...)`/`type(...)` or a literal `)` inside a quoted candidate - so
-    `image-set(url("a.png") 1x, "//evil/x.png" 2x)` hid the candidate a 2x browser fetches.
-
-    A list that never CLOSES is re-read with markup as a hard boundary, even inside a quote: the
-    open quote is then almost certainly the one ending the `style` attribute rather than a CSS
-    string, and reading on would swallow the rest of the slide and report an allowed `<a href>`
-    further down as a remote CSS reference. A CLOSED list keeps the quote-faithful reading, so a
-    legal `<` inside a candidate (`image-set("a<b.png" 1x, "//evil/x.png" 2x)`) cannot hide the
-    candidate after it.
-    """
-    out, pos = [], 0
-    while True:
-        m = _IMAGE_SET_OPEN_RE.search(text, pos)
-        if not m:
-            return out
-        stop, closed = _scan_image_set(text, m.end(), False)
-        if not closed:
-            stop = _scan_image_set(text, m.end(), True)[0]
-        out.append(text[m.end():stop])
-        pos = stop + 1
+    """Every `image-set(...)` argument list, from the shared reader (or the degraded copy)."""
+    if css_image_set_args is not None:
+        return css_image_set_args(text)
+    return _image_set_args_fallback(text)
 
 
 def _css_bodies(body):
@@ -170,8 +172,13 @@ def _css_url_is_remote(bodies):
     pattern = CSS_NETWORK_URL_RE or _CSS_URL_FALLBACK_RE
     if any(pattern.search(b) for b in bodies):
         return True
-    image_set = _CSS_IMAGE_SET_RE or _CSS_IMAGE_SET_FALLBACK_RE
-    return any(image_set.search(args) for b in bodies for args in _image_set_args(b))
+    if css_network_image_set is not None:
+        return any(css_network_image_set(b) for b in bodies)
+    # The degraded reading: the shared per-candidate one is gone, so every candidate list is
+    # searched whole with the over-inclusive fallback pattern. That over-reports where the shared
+    # reading is precise, which is the safe direction for a broken install.
+    return any(_CSS_IMAGE_SET_FALLBACK_RE.search(args)
+               for b in bodies for args in _image_set_args(b))
 
 
 
