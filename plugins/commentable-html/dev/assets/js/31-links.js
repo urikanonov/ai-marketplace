@@ -54,6 +54,12 @@ function _cmhLinkHrefKey(value) {
 function _cmhLegacyLinkHrefKey(value) {
   return String(value == null ? "" : value).replace(/[\r\n\t]+/g, " ").trim();
 }
+// The reading of a link's TEXT used as the comment's secondary anchor key: the same collapse
+// `linkInfo` stores, so a live link's text can be compared against a stored one as written. It
+// disambiguates links the href cannot tell apart (two references to the same URL).
+function _cmhLinkTextKey(value) {
+  return String(value == null ? "" : value).replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+}
 // The validator's own reading of an `<a href>` (`tools/validate/checks/links.py` - `_browser_href`,
 // `_href_scheme`, `_is_document_reference`), mirrored here for the case the browser cannot answer:
 // an href `new URL()` refuses to resolve against this document. Each class is written out as an
@@ -239,8 +245,10 @@ function findLinkEl(index) {
   if (!/^\d+$/.test(String(index))) return null;
   return linkEls[index] || root.querySelector(`[data-cm-link-index="${index}"]`) || null;
 }
-// Resolve a link comment to its current element: by index first, then heal by stored
-// href if the index is stale (the document re-ordered). Used everywhere a link anchor
+// Resolve a link comment to its current element: by the stored keys in strength order (href + text,
+// then href alone, then the legacy href readings), with the indexed candidate winning the first tier
+// it satisfies, so an index that is still right never moves the comment and a stale one is healed.
+// Used everywhere a link anchor
 // is looked up (highlight, jump, edit, section review) so all consumers relocate the
 // same way - not just the highlight restore. The stored key is compared AS WRITTEN against the live
 // attribute, read the CURRENT way first and the pre-1.790.0 way only as a fallback, so a record
@@ -252,25 +260,34 @@ function findLinkEl(index) {
 // it runs only after the current reading has found nothing.
 function resolveLinkEl(comment) {
   if (!comment) return null;
-  let a = findLinkEl(comment.linkIndex);
+  const a = findLinkEl(comment.linkIndex);
   const key = comment.linkHref;
   if (!key) return a || null;
   const exact = (l) => _cmhLinkHrefKey(l.getAttribute("href")) === key;
   const legacy = (l) => _cmhLegacyLinkHrefKey(l.getAttribute("href")) === key;
-  if (!a || !exact(a)) {
-    const byHref = linkEls.find(exact);
-    if (byHref) a = byHref;
-    else if (!a || !legacy(a)) {
-      const byLegacy = linkEls.find(legacy);
-      if (byLegacy) a = byLegacy;
-    }
+  // The stored text only ever NARROWS a set the href already accepts, and only when it was stored
+  // non-empty (an image-only link stores none, and an older record may carry none).
+  const want = _cmhLinkTextKey(comment.linkText);
+  const textOk = (l) => !want || _cmhLinkTextKey(l.textContent) === want;
+  // Resolution order, strongest key first: href + text, href alone, then the pre-1.790.0 href
+  // reading with and without the text. The indexed candidate wins the first tier it satisfies, so a
+  // comment whose index is still right never moves; a tier it fails hands the comment to the first
+  // link that does satisfy that tier. That is what undoes a stale index landing on a SAME-HREF
+  // sibling (the href test alone cannot tell two references to one URL apart, so the heal never ran
+  // and the comment silently re-anchored), while a link whose label was merely edited - no link
+  // satisfies a text tier - still heals by href exactly as before.
+  const tiers = [(l) => exact(l) && textOk(l), exact, (l) => legacy(l) && textOk(l), legacy];
+  for (const ok of tiers) {
+    if (a && ok(a)) return a;
+    const found = linkEls.find(ok);
+    if (found) return found;
   }
   return a || null;
 }
 function linkInfo(a) {
   const i = parseInt(a.dataset.cmLinkIndex, 10) || 0;
   const href = _cmhLinkHrefKey(a.getAttribute("href"));
-  const text = (a.textContent || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+  const text = _cmhLinkTextKey(a.textContent);
   const shortHref = href.length > 120 ? href.slice(0, 117) + "..." : href;
   const quote = text || ("link: " + (shortHref || "(no href)"));
   return { linkIndex: i, href, text, quote };

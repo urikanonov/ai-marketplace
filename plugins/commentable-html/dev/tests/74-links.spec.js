@@ -184,6 +184,25 @@ async function stageBase(page, head) {
   await ready(page);
 }
 
+// Two links that share ONE href, behind a leading commentable link. The href alone cannot tell the
+// duplicates apart, so a stored index that has gone stale by one lands on the wrong one of them and
+// the href test still passes - only the stored TEXT can say which link the comment was authored
+// against. `#dupfirst` is the leading link a re-index (a change to WHICH links are commentable)
+// would insert, so the seeded index below is exactly the one such a shift produces.
+const DUP_CONTENT = `
+<h2 id="dup-lead">Duplicate hrefs</h2>
+<p id="dup-p"><a id="dupfirst" href="https://example.com/first">leading link</a>
+<a id="dupa" href="https://example.com/same">first duplicate</a>
+<a id="dupb" href="https://example.com/same">second duplicate</a>
+<a id="duprenamed" href="https://example.com/renamed">renamed since the comment</a></p>`;
+
+async function stageDup(page, init) {
+  const { html } = stageContent(DUP_CONTENT, { key: KEY + "-dup" });
+  if (init) await page.addInitScript(init);
+  await page.goto(fileUrl(html));
+  await ready(page);
+}
+
 const relTokens = async (page, id) =>
   ((await page.locator("#" + id).getAttribute("rel")) || "").split(/[\t\n\f\r ]+/).filter(Boolean);
 
@@ -381,6 +400,42 @@ test.describe("link handling", () => {
     await expect(page.locator('a.cm-link-hl[data-cid="coldctrl1"]#cctl')).toHaveCount(1);
     // ...and never on the link whose padding the current reading collapses to the same key.
     await expect(page.locator('a.cm-link-hl[data-cid="coldctrl1"]#ctab')).toHaveCount(0);
+  });
+
+  test("a stale index cannot re-anchor a comment onto a same-href sibling (CMH-LINK-02)", async ({ page }) => {
+    // #dupa and #dupb carry the SAME href, so an index that has gone stale by one (what a re-index
+    // produces when a link ahead of them becomes commentable) lands on #dupa and the href test
+    // passes - the heal never runs and the comment silently moves to the wrong link. The stored
+    // text is what tells them apart, so the comment must stay on the link it was authored against.
+    await stageDup(page, () => {
+      localStorage.setItem("cmh-link-test-dup", JSON.stringify([{
+        id: "cdupsib1", anchorType: "link", linkIndex: 1, linkHref: "https://example.com/same",
+        linkText: "second duplicate", quote: "second duplicate", note: "authored on the second",
+        createdAt: new Date().toISOString(),
+      }]));
+    });
+    await expect(page.locator('a.cm-link-hl[data-cid="cdupsib1"]#dupb')).toHaveCount(1);
+    await expect(page.locator('a.cm-link-hl[data-cid="cdupsib1"]')).toHaveCount(1);
+  });
+
+  test("a link whose text changed still resolves by href alone (CMH-LINK-02)", async ({ page }) => {
+    // The text is a disambiguator, never a requirement: when NO link carries the stored text, the
+    // href heal must still find the link - both when the index is right (so the indexed candidate
+    // is kept) and when it is stale (so the href search runs). Otherwise editing a link's label
+    // would orphan every comment on it.
+    await stageDup(page, () => {
+      const at = new Date().toISOString();
+      localStorage.setItem("cmh-link-test-dup", JSON.stringify([
+        { id: "cdupkept1", anchorType: "link", linkIndex: 3, linkHref: "https://example.com/renamed",
+          linkText: "the label it used to carry", quote: "old label", note: "index still right",
+          createdAt: at },
+        { id: "cdupheal1", anchorType: "link", linkIndex: 99, linkHref: "https://example.com/first",
+          linkText: "the label it used to carry", quote: "old label", note: "index gone stale",
+          createdAt: at },
+      ]));
+    });
+    await expect(page.locator('a.cm-link-hl[data-cid="cdupkept1"]#duprenamed')).toHaveCount(1);
+    await expect(page.locator('a.cm-link-hl[data-cid="cdupheal1"]#dupfirst')).toHaveCount(1);
   });
 
   test("marks an older runtime left on a link this one does not index are cleared (CMH-LINK-02)", async ({ page }) => {

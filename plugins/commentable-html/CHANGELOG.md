@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.801.0] - 2026-08-06
+
+### Fixed
+
+- A link comment whose stored index has gone stale can no longer re-anchor onto a DIFFERENT link
+  that happens to share its href (CMH-LINK-02). `resolveLinkEl` resolved by `linkIndex` first and
+  distrusted that index only when the indexed link's href differed from the stored one, so when a
+  re-index (any change to WHICH links are commentable shifts every later index) moved the stored
+  index onto a same-href sibling, the href test passed, the heal never ran, and the comment silently
+  attached to the wrong link - a document with two references to one URL is enough to reproduce it.
+  Resolution is now by KEY STRENGTH - href + text, href alone, then the same two under the
+  pre-1.790.0 href reading - with the indexed candidate winning the first tier it satisfies, so the
+  stored `linkText` disambiguates links the href cannot tell apart while a comment whose index is
+  still right never moves. A link whose label was merely edited still heals by href alone, since no
+  link satisfies a text tier.
+
 ## [1.800.0] - 2026-08-06
 
 ### Fixed
