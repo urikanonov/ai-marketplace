@@ -219,20 +219,41 @@ DEFAULT_OVERLOAD_LINE_CHARS = 90
 # cannot bypass them with a solidus attribute separator (<svg/onload=...>), an entity-encoded
 # scheme (&#106;avascript:), an unquoted attribute (<img src=//evil>), or an SVG <image>/<use>.
 _ACTIVE_TAGS = {"iframe", "object", "embed"}
-_URL_ATTRS = {"href", "src", "xlink:href", "poster", "background", "lowsrc", "action", "formaction", "data"}
+_URL_ATTRS = {"href", "src", "xlink:href", "poster", "background", "action", "formaction", "data"}
 # Elements whose URL attribute triggers a network FETCH on load (egress), not a mere hyperlink.
 # A <link> or <base> with a remote href is egress/redirect just like remote media, so they are
 # included; a plain <a href="https://..."> hyperlink is deliberately NOT (it fetches nothing).
+# Pinned to the strict layer gate's `_MEDIA_LOAD_ATTRS` (plus its core groups) and to the offline
+# export strips by `tests/test_egress_list_parity.py` (CMH-BUILD-22): a deck is checked by THIS gate
+# and, outside descriptor mode `offline`, by nothing else, so a pair the other two carry and this
+# one does not is a live hole rather than a stylistic difference - which is exactly what `feimage`
+# was, from #992 until #1179. `HTMLParser` lowercases the tag, so the key is `feimage` while the
+# export selector spells it `feImage`; both readings are namespace-blind for the reason that row
+# records.
 _EGRESS_ATTRS = {
     "img": {"src", "srcset"}, "video": {"src", "poster"}, "audio": {"src"},
     "source": {"src", "srcset"}, "track": {"src"}, "input": {"src"},
     "image": {"href", "xlink:href", "src", "srcset"}, "use": {"href", "xlink:href"},
+    "feimage": {"href", "xlink:href"},
     "iframe": {"src"}, "embed": {"src"}, "object": {"data"},
     "link": {"href"}, "base": {"href"},
 }
-# Legacy presentational URL attributes that fetch on ANY element (a browser rewrites a bare
-# <image> to <img>, and body/table background / img lowsrc still load), independent of tag.
-_EGRESS_ANY_ATTRS = {"background", "lowsrc"}
+# Legacy presentational URL attributes that fetch on ANY element (body/table background still
+# loads), independent of tag. `lowsrc` used to be in here, on a comment asserting it still loads;
+# it does not. The warrant is stated exactly, because a retirement is only as good as its evidence:
+# (1) HTML's own spec lists `lowsrc` as a NON-CONFORMING legacy feature and gives it no step in the
+# embedded-content loading algorithm - the IDL attribute merely reflects a URL; (2) it is not
+# documented as a supported feature by MDN and has no browser-compat entry at all (so nothing
+# records support for it, which is different from something recording its absence); (3) it is
+# MEASURED not to fetch in the engine CI runs - `tests/62-deck-regressions.spec.js` puts the
+# `lowsrc` image FIRST in the document, settles the page, and records that a plain `src` and a
+# legacy `background` are both requested while the `lowsrc` is not requested at all. IE fetched it
+# historically; no evergreen engine does. The strict layer gate never had a rule for `lowsrc` and
+# the offline export strips none, so this gate was the only one of the three that rejected an inert
+# attribute - and it rejected an authored `lowsrc="../x.png"` as a traversal too, which is why the
+# attribute leaves `_URL_ATTRS` with the egress rule. Reviving it means moving all three lists
+# together, which the CMH-BUILD-22 parity test enforces (#1179).
+_EGRESS_ANY_ATTRS = {"background"}
 _DANGER_SCHEME_RE = re.compile(r"^\s*(?:javascript|vbscript|livescript|mocha)\s*:", re.I)
 _DATA_HTML_RE = re.compile(r"^\s*data\s*:\s*text/html", re.I)
 # The strictly OVER-inclusive stand-in for the shared network predicate, used only by a broken or

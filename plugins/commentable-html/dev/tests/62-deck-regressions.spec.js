@@ -1315,3 +1315,33 @@ test("CMH-DECK-42: content-slide titles and subtitles share a stable header base
     await server.close();
   }
 });
+
+// CMH-DECK-04 / CMH-BUILD-22 (issue #1179): the deck gate used to treat the legacy `lowsrc`
+// attribute as a fetch on ANY element, with a comment asserting it "still loads", while the strict
+// layer gate carried no `lowsrc` rule at all and the offline export stripped none - so the three
+// media load-attribute lists disagreed and nothing said which belief was current. This MEASURES it
+// rather than replacing one unmeasured claim with another. Two boundaries make the negative
+// assertion mean something: the `lowsrc` image is FIRST in the document, so a parse-time fetch
+// would be requested before either control's, and the page is then settled to network-idle, so a
+// fetch DEFERRED past the controls is caught too (every request is aborted, so idle arrives at
+// once and the test reaches no network). The controls are asserted as "at least two" rather than
+// exactly two, since a duplicate request must not turn a real result into a timeout. If a future
+// engine ever revives `lowsrc` this goes red, which is the signal to move ALL THREE lists together
+// rather than any one of them.
+test("a legacy lowsrc is not a load, so no egress gate needs a rule for it (CMH-DECK-04)", async ({ page }) => {
+  const requested = [];
+  await page.route(/^https?:\/\//, async (route) => {
+    requested.push(route.request().url());
+    await route.abort();
+  });
+  await page.setContent(
+    '<img lowsrc="https://cmh.invalid/lowsrc-probe.png" alt="lowsrc probe">'
+    + '<img src="https://cmh.invalid/control-src.png" alt="src control">'
+    + '<table><tr><td background="https://cmh.invalid/control-background.png">cell</td></tr></table>'
+  );
+  await expect
+    .poll(() => requested.filter((url) => /control-/.test(url)).length, { timeout: 10000 })
+    .toBeGreaterThanOrEqual(2);
+  await page.waitForLoadState("networkidle");
+  expect(requested.filter((url) => /lowsrc-probe/.test(url))).toEqual([]);
+});

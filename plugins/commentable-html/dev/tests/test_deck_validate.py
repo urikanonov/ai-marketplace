@@ -463,16 +463,55 @@ class DeckValidateTests(unittest.TestCase):
 
     def test_html_image_alias_background_and_image_set_egress_fail(self):
         # A bare <image> is rewritten to <img> by browsers (src/srcset fetch); the legacy
-        # background/lowsrc attributes and a bare-string image-set() are egress too.
+        # background attribute and a bare-string image-set() are egress too.
         for snippet, needle in (
             ('<image src="//evil/track.png">', "remote media/resource"),
             ('<image srcset="https://evil/x.png 1x">', "remote media/resource"),
             ('<td background="//evil/bg.png"></td>', "remote media/resource"),
-            ('<img lowsrc="https://evil/low.png" src="local.png">', "remote media/resource"),
             ('<div style="background:image-set(\'//evil/x.png\' 1x)">x</div>', "remote CSS url()"),
         ):
             with self.subTest(snippet=snippet):
                 self._assert_error(_inject(self.html, snippet), needle)
+
+    def test_svg_feimage_remote_href_fails(self):
+        # An SVG filter primitive fetches exactly like an <image> or a <use>. The strict validator
+        # and the offline export strip have covered it since #992; this gate did not, and outside
+        # descriptor mode `offline` it is the ONLY checker a deck gets - so a deck could fetch
+        # through one (#1179). `HTMLParser` lowercases the tag, so either spelling is caught.
+        for snippet in ('<svg><filter><feImage href="https://evil/x.png"/></filter></svg>',
+                        '<svg><filter><feImage xlink:href="//evil/x.png"/></filter></svg>',
+                        '<svg><filter><feimage href="https://evil/x.png"/></filter></svg>'):
+            with self.subTest(snippet=snippet):
+                self._assert_error(_inject(self.html, snippet), "remote media/resource")
+
+    def test_a_local_feimage_reference_is_not_reported(self):
+        # The negative control for the rule above: `feImage` is overwhelmingly authored with a
+        # LOCAL fragment reference into the same document, so a widening that rejected those would
+        # be a false positive on the common case rather than a closed hole.
+        for snippet in ('<svg><filter><feImage href="#local"/></filter></svg>',
+                        '<svg><filter><feImage href="art/x.png"/></filter></svg>',
+                        '<svg><filter><feImage xlink:href="data:image/png;base64,AAAA"/></filter>'
+                        '</svg>'):
+            with self.subTest(snippet=snippet):
+                errs = _errors(_inject(self.html, snippet))
+                self.assertEqual([e for e in errs if "remote media/resource" in e], [],
+                                 (snippet, errs))
+
+    def test_a_legacy_lowsrc_is_not_reported_as_egress_or_traversal(self):
+        # `lowsrc` was retired from this gate in #1179: it does not load (HTML lists it as a
+        # non-conforming legacy feature with no step in the loading algorithm, it has no
+        # browser-compat entry, and it is measured not to fetch in the engine CI runs -
+        # `tests/62-deck-regressions.spec.js`), the strict validator never had a rule for it and
+        # the offline export strips none - so this gate was rejecting a deck over an inert
+        # attribute, and the `_URL_ATTRS` membership that came with it reported an authored
+        # `lowsrc="../x.png"` as a traversal as well.
+        for snippet in ('<img lowsrc="https://evil/low.png" src="local.png">',
+                        '<img lowsrc="../secret.png" src="local.png">'):
+            with self.subTest(snippet=snippet):
+                errs = _errors(_inject(self.html, snippet))
+                self.assertEqual([e for e in errs
+                                  if "remote media/resource" in e or "parent-directory" in e],
+                                 [], (snippet, errs))
 
     # The deck gate reads a `srcset` with the SHARED candidate reader, so it agrees with the
     # strict validator and the offline strip. Splitting on the comma cut a `data:` URL in half at

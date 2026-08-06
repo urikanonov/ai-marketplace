@@ -4,6 +4,31 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.784.0] - 2026-08-06
+
+### Fixed
+
+- The deck validator now reports an SVG filter primitive that fetches: `<feImage href="https://...">`
+  (and its `xlink:href` spelling) is a remote media/resource error, as it already was for the strict
+  validator and the offline export strip since 1.670.0 (CMH-DECK-04, CMH-VAL-08). Outside descriptor
+  mode `offline` the deck gate is the ONLY checker a deck's egress gets, so a deck could still fetch
+  through one.
+- The deck validator no longer treats the legacy `lowsrc` attribute as a fetch, and `lowsrc` is out
+  of its URL-attribute set with it (CMH-DECK-04). It does not load: HTML lists it as a
+  non-conforming legacy feature with no step in the embedded-content loading algorithm, it has no
+  browser-compat entry at all, and it is measured not to fetch in the engine CI runs - with the
+  `lowsrc` image FIRST in the document and the page settled, a plain `src` and a legacy
+  `background` are both requested and the `lowsrc` is not. So the deck was the only one of the
+  three egress surfaces with a rule for it, and that rule rejected a deck over an inert attribute
+  (an authored `lowsrc="../x.png"` was reported as a parent-directory reference too).
+
+### Added
+
+- The three media load-attribute lists - the strict validator's, the deck validator's, and the offline
+  export strips' - are pinned to each other by a parity test (CMH-BUILD-22). It reads all three from
+  their real sources and fails when a widening lands on one side only, with every intentional
+  difference named in the test as data with a reason. Both fixes above are divergences it found.
+
 ## [1.782.0] - 2026-08-06
 
 ### Fixed
