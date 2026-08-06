@@ -26,7 +26,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   skips a `<base>` parked in an inert `<template>` or a declarative shadow root where its old name
   scan saw one. Only an HTML anchor INHERITS - HTML's rule is defined for an HTML `a`/`area`/`form`
   - so a foreign (SVG/MathML) `<a>`, which mermaid emits for a clickable node, is no longer given a
-  `noreferrer` that would suppress the Referer on a same-tab navigation. The gate's warning now
+  `noreferrer` that would suppress the Referer on a same-tab navigation - a rule the `cmh-kql-run`
+  gate now applies too, so a foreign run link is no longer warned about for a base it cannot
+  inherit. That gate's sibling reading got the same treatment: the named-context EXEMPTION now
+  counts only a LIVE HTML `<iframe>`/`<frame>`/`<object name>`, so one parked in a `<template>`, a
+  declarative shadow root, or foreign content can no longer make an unresolvable name look
+  resolvable and silence the only reverse-tabnabbing control a run link has. The gate's warning now
   names the AUTHORED markup and the rule that transformed it, rather than reporting a `target` the
   element does not carry. The same shared reading also settles the `<`-coercion for the same-tab
   link check (`checks/links.py`, CMH-LINK-05), which used to report `target="x&#10;<"` - a new tab

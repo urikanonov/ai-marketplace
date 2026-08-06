@@ -586,6 +586,11 @@ class RuntimeParityTests(unittest.TestCase):
         with open(path, "r", encoding="utf-8", newline="") as fh:
             return fh.read()
 
+    def _read_test(self, *parts):
+        path = os.path.join(_paths.DEV, "tests", *parts)
+        with open(path, "r", encoding="utf-8", newline="") as fh:
+            return fh.read()
+
     def _read_css(self, *parts):
         path = os.path.join(_paths.DEV, "assets", "css", *parts)
         with open(path, "r", encoding="utf-8", newline="") as fh:
@@ -2389,6 +2394,33 @@ class RuntimeParityTests(unittest.TestCase):
                 "validator. A link only one of them calls _blank is either a new tab the gate "
                 "blesses without rel=noopener or a named context the stamper newly breaks."
                 % (own, base, js_says, py_says))
+
+    def test_the_python_and_js_parked_base_corpora_are_identical(self):
+        """The two readers' parked-`<base>` corpora are hand-copied markup lists, so pin their TEXT.
+
+        The effective-target parity test pins the pure COMBINE function, whose `base` operand is
+        already resolved. The resolution itself is now a real implementation on each side - the
+        validator's `_DocParser.base_targets` (parser state: namespace, template and shadow rules)
+        and the runtime's `querySelectorAll("base[target]")` plus a namespace filter - and nothing
+        makes them agree except being checked against the same document shapes. A shape added to one
+        list and forgotten in the other silently leaves one reader unchecked on it.
+        """
+        js = self._read_test("74-links.spec.js")
+        m = re.search(r"const PARKED_BASES = \[\n(.*?)\n\];", js, re.S)
+        self.assertIsNotNone(m, "74-links.spec.js no longer declares PARKED_BASES; the parity pin "
+                                "must be re-pointed at whatever corpus replaced it")
+        js_shapes = re.findall(r"^\s*'(.*?)',$", m.group(1), re.M)
+        self.assertEqual(len(js_shapes), len(m.group(1).strip().splitlines()),
+                         "a PARKED_BASES entry is not a single-quoted one-line literal, so the "
+                         "extraction read a partial corpus")
+        py = self._read_test("test_validate_kql.py")
+        m = re.search(r"PARKED_BASES = \(\n(.*?)\n    \)", py, re.S)
+        self.assertIsNotNone(m, "test_validate_kql.py no longer declares PARKED_BASES")
+        py_shapes = re.findall(r"^\s*'(.*?)',$", m.group(1), re.M)
+        self.assertEqual(js_shapes, py_shapes,
+                         "the runtime is checked against %r and the validator against %r; a shape "
+                         "only one of them stages is a `<base>` only one reader is known to read "
+                         "the way a browser does" % (js_shapes, py_shapes))
 
     def test_the_python_and_js_link_relation_tokenizers_are_textually_identical(self):
         """The `rel` separator class is a hand-copied literal in two languages, so pin its TEXT.

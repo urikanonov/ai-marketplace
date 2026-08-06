@@ -56,13 +56,27 @@ const BASE_CONTENT = `
 <svg id="bsvg" width="10" height="10"><a id="bsvga" href="#base-section"><title>svg link</title></a></svg>
 <h2 id="base-section">Base section</h2>`;
 
+// The `<base>` shapes a browser never applies. Shared with the validator's own parked-base test
+// (`tests/test_validate_kql.py` - `PARKED_BASES`), pinned to it as TEXT by
+// `tests/test_vendored_libs.py` so the two readers can never be checked against different corpora.
+const PARKED_BASES = [
+  '<template><base target="%s"></template>',
+  '<svg><base target="%s"></svg>',
+  '<math><base target="%s"></math>',
+  '<div><template shadowrootmode="open"><base target="%s"></template></div>',
+];
+
 // Stage BASE_CONTENT with (or, for the control, without) `<base target>` markup in the head.
 // `head` is raw markup, so a test can park a base a browser never applies before the live one.
 async function stageBase(page, head) {
   const { html } = stageContent(BASE_CONTENT, { key: KEY + "-base" });
   if (head !== null) {
-    const src = fs.readFileSync(html, "utf8").replace("<head>", "<head>\n" + head);
-    fs.writeFileSync(html, src);
+    const src = fs.readFileSync(html, "utf8");
+    const injected = src.replace("<head>", "<head>\n" + head);
+    // A silent no-op replace would turn every negative assertion below green rather than red, so
+    // fail loudly the way stageContent does when its CONTENT region is missing.
+    if (injected === src) throw new Error("stageBase: no <head> to inject into");
+    fs.writeFileSync(html, injected);
   }
   await page.goto(fileUrl(html));
   await ready(page);
@@ -200,24 +214,24 @@ test.describe("link handling", () => {
     // `<svg>`/`<math>` is a foreign element (`base` is not a foreign breakout tag, so it stays
     // there) - a browser applies neither. A bare CSS type selector matches ANY namespace, so
     // `querySelector("base[target]")` returned the SVG one and an author who wrote a same-context
-    // base before the real one silently lost the stamp on every link that inherits it.
-    const parked = [
-      '<template><base target="_self"></template>',
-      '<svg><base target="_self"></svg>',
-      '<math><base target="_self"></math>',
-      '<div><template shadowrootmode="open"><base target="_self"></template></div>',
-    ];
-    for (const head of parked) {
-      await stageBase(page, head + '<base target="_blank">');
+    // base before the real one (in document order) silently lost the stamp on every link that
+    // inherits it.
+    for (const shape of PARKED_BASES) {
+      const head = shape.replace("%s", "_self") + '<base target="_blank">';
+      await stageBase(page, head);
       const tokens = await relTokens(page, "binherit");
       expect(tokens, head).toContain("noopener");
       expect(tokens, head).toContain("noreferrer");
     }
     // ...and on its own such a base inherits NOTHING, so no link may be stamped.
-    for (const head of parked) {
-      await stageBase(page, head.replace(/_self/g, "_blank"));
+    for (const shape of PARKED_BASES) {
+      const head = shape.replace("%s", "_blank");
+      await stageBase(page, head);
       expect(await relTokens(page, "binherit"), head).toEqual([]);
     }
+    // Only the FIRST live base is inherited, as HTML ignores all but the first.
+    await stageBase(page, '<base target="_self"><base target="_blank">');
+    expect(await relTokens(page, "binherit"), "first live base wins").toEqual([]);
   });
 
   test("a padded or case-variant inherited _blank is still stamped (CMH-LINK-01)", async ({ page }) => {
@@ -244,6 +258,18 @@ test.describe("link handling", () => {
     // The coercion needs BOTH characters: `x<` alone is an ordinary name that navigates a named
     // context, so stamping it would newly break an author's targeting.
     expect(await relTokens(page, "bname"), "bname").toEqual([]);
+    // Measure the rule rather than restate it: a coerced target opens an UNNAMED auxiliary context
+    // (the `_blank` keyword), while the uncoerced control opens one NAMED `x<`. Asserting only that
+    // the runtime stamps `x\n<` would just read `_cmhEffectiveTarget` back at itself.
+    for (const [id, name] of [["bcoerce", ""], ["bname", "x<"]]) {
+      const [popup] = await Promise.all([
+        page.context().waitForEvent("page"),
+        page.locator("#" + id).click(),
+      ]);
+      await popup.waitForLoadState("domcontentloaded").catch(() => {});
+      expect(await popup.evaluate(() => window.name), id).toBe(name);
+      await popup.close();
+    }
   });
 
   test("hovering a link reveals the add button and comments the link (CMH-LINK-02)", async ({ page }) => {

@@ -2102,6 +2102,14 @@ class _DocParser(_BrowserBoundaries):
         # silent on a run link a browser really does open in a new tab (#1141). Recorded here,
         # after the template/shadow early return above, so both exclusions come for free.
         self.base_targets = []
+        # The browsing-context NAMES this document really declares - the `name` of every LIVE HTML
+        # <iframe>/<frame>/<object>. A `target` naming one of these navigates a context that already
+        # exists, so it gets no opener and the reverse-tabnabbing gate must not warn about it. Read
+        # here for the same reason `base_targets` is: a name scan of the markup also saw an
+        # <iframe> parked in an inert <template> or written under <svg>/<math>, and one of those
+        # made an unresolvable name look resolvable - silencing the gate on a link that really does
+        # open a new auxiliary context.
+        self.named_contexts = set()
         self.metas = {}          # {meta name (lowercased): content} for <meta name content>
         # Every <meta http-equiv=content-security-policy> a browser really APPLIES, in document
         # order, as {"content", "late"}. Collected here rather than off the shared tag index
@@ -2376,6 +2384,8 @@ class _DocParser(_BrowserBoundaries):
             return
         if tag == "base" and ns == "html" and ad.get("target") is not None:
             self.base_targets.append(ad["target"])
+        if tag in ("iframe", "frame", "object") and ns == "html" and ad.get("name"):
+            self.named_contexts.add(ad["name"])
         # NAMESPACE-AWARE (CMH-VAL-19). The LAYER's own markup is HTML markup: a browser loads a
         # stylesheet only from an HTML `<link>`, honors `src` only on an HTML `<script>` (an SVG
         # script loads from `href`/`xlink:href`, and MathML defines no script at all), and reads
@@ -2442,6 +2452,7 @@ class _DocParser(_BrowserBoundaries):
             # positive that is fatal under `--strict`) while an <a> under `<svg><desc>` or
             # `<svg><title>` was exempted though a browser really does stamp it.
             self.anchors.append({"href": ad.get("href"), "target": ad.get("target"),
+                                 "attrs": dict(ad),
                                  "skip": self._skip_ancestor() or own_skip,
                                  "foreign": ns != "html",
                                  "in_root": self._in_comment_root()})

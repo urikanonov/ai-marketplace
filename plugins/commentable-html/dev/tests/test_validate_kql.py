@@ -256,12 +256,28 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         #    whose link carries no `target` at all is not sent looking for an attribute that is not
         #    there, and a coerced name is not silently reported as `_blank`.
         warnings = warnings_for(base % "_blank", "")
-        self.assertTrue(any("inherited target='_blank' from <base target>" in w for w in warnings),
-                        warnings)
+        self.assertTrue(any("inherited <base target>='_blank'" in w for w in warnings), warnings)
         warnings = warnings_for("", ' target="x&#10;&lt;"')
-        self.assertTrue(any("which HTML coerces to '_blank'" in w for w in warnings), warnings)
+        self.assertTrue(any("target='x\\n<', which HTML coerces to '_blank'" in w for w in warnings),
+                        warnings)
         warnings = warnings_for("", ' target="_blank"')
         self.assertTrue(any("(target='_blank')" in w for w in warnings), warnings)
+        # ...including when it is the INHERITED value that HTML coerces: reporting that one as a
+        # plain `_blank` sent the author grepping their markup for a string it does not contain.
+        warnings = warnings_for(base % "x&#10;&lt;", "")
+        self.assertTrue(any("inherited <base target>='x\\n<', which HTML coerces to '_blank'" in w
+                            for w in warnings), warnings)
+
+    # The `<base>` shapes a browser never applies. Shared with the runtime's own parked-base spec
+    # (`tests/74-links.spec.js`), which stages the SAME markup in a real browser - the two lists are
+    # pinned to each other as TEXT by `tests/test_vendored_libs.py`, so a shape added on one side
+    # cannot be forgotten on the other and leave the two readers pinned to different corpora.
+    PARKED_BASES = (
+        '<template><base target="%s"></template>',
+        '<svg><base target="%s"></svg>',
+        '<math><base target="%s"></math>',
+        '<div><template shadowrootmode="open"><base target="%s"></template></div>',
+    )
 
     def test_kusto_run_link_base_target_is_read_the_way_a_browser_reads_it(self):
         # CMH-KQL-05: "the document contains a base element" is the BROWSER's view, not a name scan
@@ -271,30 +287,71 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         # parser-backed reading (`_DocParser.base_targets`) skips both.
         run = '<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x">Run</a>'
 
-        def warnings_for(head_extra):
-            main = MAIN.replace("<p>content</p>", head_extra + "<p>content</p>" + run)
-            _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
-                                                     main, JS_REGION]))
+        def warnings_for(head_extra, in_head=False):
+            main = MAIN.replace("<p>content</p>", ("" if in_head else head_extra)
+                                + "<p>content</p>" + run)
+            doc = build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(), main, JS_REGION])
+            if in_head:
+                doc = doc.replace("<head>\n", "<head>\n" + head_extra + "\n", 1)
+            _, warnings = _validate_text(doc)
             return [w for w in warnings if 'without rel="noopener"' in w]
 
         # A `<base>` a browser never applies must not mask the real one. Each of these writes a
         # same-context base BEFORE the live `<base target="_blank">`; Chromium opens the link in a
         # new tab in every one of them (measured), so the gate must warn.
-        for parked in ('<template><base target="_self"></template>',
-                       '<svg><base target="_self"></svg>',
-                       '<math><base target="_self"></math>',
-                       '<div><template shadowrootmode="open"><base target="_self">'
-                       '</template></div>'):
-            self.assertTrue(warnings_for(parked + '<base target="_blank">'),
+        for parked in self.PARKED_BASES:
+            self.assertTrue(warnings_for(parked % "_self" + '<base target="_blank">'),
                             "%r did not mask the live base" % parked)
         # ...and on its own, a parked or foreign base inherits NOTHING, so a run link under one is
         # clean. Warning there would be a false positive, which is fatal under --strict.
-        for parked in ('<template><base target="_blank"></template>',
-                       '<svg><base target="_blank"></svg>',
-                       '<math><base target="_blank"></math>',
-                       '<div><template shadowrootmode="open"><base target="_blank">'
-                       '</template></div>'):
-            self.assertEqual(warnings_for(parked), [], parked)
+        for parked in self.PARKED_BASES:
+            self.assertEqual(warnings_for(parked % "_blank"), [], parked)
+        # The canonical placement - a `<base>` in `<head>`, which is where a conforming document
+        # puts one - reaches the gate the same way a body-placed one does.
+        self.assertTrue(warnings_for('<base target="_blank">', in_head=True))
+        self.assertEqual(warnings_for('<base target="_self">', in_head=True), [])
+
+    def test_kusto_run_link_foreign_anchor_inherits_nothing(self):
+        # CMH-KQL-05 / CMH-LINK-01: HTML's "get an element's target" is defined for an HTML
+        # `a`/`area`/`form`, so a FOREIGN run link inherits no `<base target>` - the rule the
+        # render-time stamper applies. Inheriting on its behalf warned about every foreign run link
+        # in a `<base target="_blank">` document, a false positive that --strict makes fatal.
+        svg_run = ('<svg><a class="cmh-kql-run" href="https://dataexplorer.azure.com/x">'
+                   "<title>Run</title></a></svg>")
+        main = MAIN.replace("<p>content</p>",
+                            '<base target="_blank"><p>content</p>' + svg_run)
+        _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                                                 main, JS_REGION]))
+        self.assertEqual([w for w in warnings if 'without rel="noopener"' in w], [], warnings)
+        # Its OWN target still counts, though: an SVG anchor really does open a new tab and really
+        # does hand the opened page an opener, so the gate must not go blind to a foreign link.
+        main = MAIN.replace("<p>content</p>",
+                            "<p>content</p>" + svg_run.replace('class=', 'target="_blank" class='))
+        _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                                                 main, JS_REGION]))
+        self.assertTrue([w for w in warnings if 'without rel="noopener"' in w], warnings)
+
+    def test_kusto_run_link_named_context_must_be_one_a_browser_declares(self):
+        # CMH-KQL-05: the named-context EXEMPTION is the mirror of the base lookup and had the same
+        # blindness. A parked or foreign `<iframe name>` declares no browsing context, so a target
+        # naming it opens a brand-new auxiliary one - and counting it as resolvable silenced the
+        # only reverse-tabnabbing control a run link has.
+        run = ('<a class="cmh-kql-run" href="https://dataexplorer.azure.com/x" '
+               'target="win1">Run</a>')
+
+        def warnings_for(frame):
+            main = MAIN.replace("<p>content</p>", "<p>content</p>" + run + frame)
+            _, warnings = _validate_text(build(body=[HANDLED_REGION, EMBEDDED_REGION, comment_ui(),
+                                                     main, JS_REGION]))
+            return [w for w in warnings if 'without rel="noopener"' in w]
+
+        for parked in ('<template><iframe name="win1" title="f"></iframe></template>',
+                       '<svg><iframe name="win1"></iframe></svg>',
+                       '<div><template shadowrootmode="open">'
+                       '<iframe name="win1" title="f"></iframe></template></div>'):
+            self.assertTrue(warnings_for(parked), parked)
+        # A LIVE HTML frame really does declare the context, so it stays exempt.
+        self.assertEqual(warnings_for('<iframe name="win1" title="f"></iframe>'), [])
 
     def test_bare_kusto_without_no_cluster_marker_errors(self):
         # CMH-KQL-08: a bare KQL code block that is neither framed in a figure.cmh-kql (with a Run in
