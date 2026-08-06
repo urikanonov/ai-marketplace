@@ -178,6 +178,60 @@ class SharedDecodeShimTests(unittest.TestCase):
         self.assertEqual(_browser_attrs._FALLBACK_TAG_NAME_RE.flags, parsing._TAG_NAME_RE.flags)
         self.assertEqual(_browser_attrs._FALLBACK_ATTR_RE.pattern, parsing._ATTR_RE.pattern)
         self.assertEqual(_browser_attrs._FALLBACK_ATTR_RE.flags, parsing._ATTR_RE.flags)
+        # The NUL fold is a copy too, and a BEHAVIOR rather than a pattern, so it is pinned
+        # answer-for-answer against the shared one on the shapes that carry a NUL and the ones
+        # that do not (the latter must come back unchanged, and by identity - the shared fold
+        # skips the replace entirely, and a copy that always replaced would rebuild every string
+        # a start tag has).
+        for text in ("a\x00b", "\x00", "", "plain", "\ufffd"):
+            self.assertEqual(_browser_attrs._fallback_fold_nul(text), parsing._fold_nul(text),
+                             repr(text))
+        untouched = "plain"
+        self.assertIs(_browser_attrs._fallback_fold_nul(untouched), untouched)
+
+    def test_the_degraded_value_decode_is_the_browser_rule_not_the_hosts(self):
+        # The fallback decodes an attribute value with its own copy of the shared rule, NOT with
+        # `html.unescape`: the host's decode resolves a named reference that is only a PREFIX of
+        # the value or is followed by `=`, and DELETES the code points it considers invalid. A
+        # caller that RE-SERIALIZES the start tag (the deck scaffold, the KQL run-link refresh)
+        # writes that difference into the document, so a degraded install would silently rewrite
+        # an authored `id`, `title` or `aria-label` into a value the rendered DOM never carries.
+        named = ["x&ampy", "a&gt1", "&notit;", "&AMP=", "&amp;", "&amp", "&notanentity",
+                 "&not", "&notinva;", "&NotEqualTilde;", "&nbsp", "&nbspx"]
+        # Every branch of the numeric end state, not a hand-picked few: the C1 remap and its
+        # UNLISTED members, the surrogate range, the U+10FFFF boundary either side, the null
+        # reference, both hex spellings, and a run past Python's integer-conversion limit (which
+        # the host's decode RAISES on). A corpus without these left the copied
+        # `_fallback_numeric_charref` body effectively unpinned - its C1 and surrogate clauses
+        # could be deleted with every test still green.
+        numeric = ["&#%d;" % n for n in (0, 1, 9, 65, 127, 0x80, 0x81, 0x8d, 0x9f, 0xa0,
+                                         0xd7ff, 0xd800, 0xdfff, 0xe000, 0xfffe, 0x10ffff,
+                                         0x110000)]
+        numeric += ["&#x%x;" % n for n in (0x80, 0x9f, 0xd800, 0xfffe, 0x10ffff, 0x110000)]
+        numeric += ["&#X%X;" % n for n in (0x41, 0x80, 0xD800)]
+        numeric += ["&#x41", "&#65=", "&#65a", "&#0000065;", "&#", "&#x", "&#;",
+                    "&#" + "9" * 4600 + ";", "&#x" + "f" * 40 + ";"]
+        # ...and each of them wrapped, so the `;` / `=` / other-trailing-character reattachment
+        # and the `=` guard on the named branch are exercised in position, not only alone.
+        cases = ["", "plain", "&", "&&", "a&b"]
+        for ref in named + numeric:
+            cases += [ref, "a" + ref, ref + "z", "a" + ref + "z", ref + "=", ref + "&"]
+        with mock.patch.object(_browser_attrs, "_parsing", None):
+            for value in cases:
+                self.assertEqual(_browser_attrs.unescape_attr_value(value),
+                                 parsing._unescape_attr_value(value), repr(value[:40]))
+            self.assertEqual(_browser_attrs.unescape_attr_value("&#" + "9" * 4600 + ";"), "\ufffd")
+            self.assertEqual(_browser_attrs.unescape_attr_value(None), "")
+        # Pinned as data too, like the whitespace and start-tag patterns, so an edit to the shared
+        # rule cannot silently leave the degraded one behind.
+        self.assertEqual(_browser_attrs._FALLBACK_ATTR_CHARREF_RE.pattern,
+                         parsing._ATTR_CHARREF_RE.pattern)
+        self.assertEqual(_browser_attrs._FALLBACK_C1_CHARREF_REPLACEMENTS,
+                         parsing._C1_CHARREF_REPLACEMENTS)
+        self.assertEqual(_browser_attrs._FALLBACK_MAX_CHARREF_DIGITS,
+                         parsing._MAX_CHARREF_DIGITS)
+        self.assertEqual(_browser_attrs._FALLBACK_HTML5_ENTITY_NAMES,
+                         parsing._HTML5_ENTITY_NAMES)
 
     def test_the_inert_scan_reads_a_comment_the_way_a_browser_ends_one(self):
         # Deliberately NOT the shared `_HTML_COMMENT_RE`: that pattern is a comment SEARCH, and a
@@ -249,6 +303,14 @@ class SharedDecodeShimTests(unittest.TestCase):
                              [("title", " class=cmh-kql"), ("id", "x")])
             self.assertEqual(_browser_attrs.raw_attrs_pairs(""), [])
             self.assertEqual(_browser_attrs.raw_attrs_pairs(None), [])
+            # A NUL folds to U+FFFD in an attribute NAME and VALUE alike, as the shared reading
+            # folds it (`parsing._fold_nul`) and as a browser writes it. Handing back the literal
+            # NUL gives a caller that RE-SERIALIZES the start tag - the deck scaffold - a document
+            # whose own DOM carries a different value than the one the tool just decided on.
+            self.assertEqual(_browser_attrs.raw_attrs_pairs(' data-x="a\x00b" data\x00-y=v'),
+                             [("data-x", "a\ufffdb"), ("data\ufffd-y", "v")])
+            self.assertEqual(_browser_attrs.raw_attrs_pairs(' data-x="a\x00b"'),
+                             parsing.raw_attrs_pairs(' data-x="a\x00b"'))
         with mock.patch.object(_browser_attrs, "_parsing", None), \
                 mock.patch.object(_browser_attrs, "_shared_raw_attrs_class_tokens", None), \
                 mock.patch.object(_browser_attrs, "_shared_raw_attrs_pairs", None):
