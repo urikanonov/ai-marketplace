@@ -443,6 +443,39 @@ class KqlEditLoopTests(_DocCase):
         self.assertEqual(content_replace.refresh_kql_links(edited), edited,
                          "a `my-cmh-kql-ish` figure is not a cmh-kql figure")
 
+    def test_a_commented_out_kql_figure_is_left_exactly_as_authored(self):
+        # The figure scan is a raw scan too, so it must skip what the validator's parsed views
+        # never see: a figure the author commented out is not a figure to rebuild, and editing it
+        # would rewrite markup that was deliberately taken out of the document.
+        import kql_highlight
+
+        figure = kql_highlight.render_block(
+            "help.kusto.windows.net", "Samples", "Demo", "StormEventsI | take 10")
+        commented = "<!-- %s -->" % figure
+        edited = commented.replace("StormEventsI", "StormEventsY")
+        self.assertEqual(content_replace.refresh_kql_links(edited), edited)
+
+    def test_the_query_is_read_from_the_figures_kql_block_not_its_first_block(self):
+        # Nothing forbids a `figure.cmh-kql` from carrying a second, non-KQL code block, and the
+        # tool that READS the source and the tool that REWRITES it must pick the SAME one. Taking
+        # the figure's first block of any language encoded the neighbouring block's text into the
+        # ADX link and wrote it over the author's KQL query - silent data loss on a
+        # validator-clean figure.
+        import kql_highlight
+
+        figure = kql_highlight.render_block(
+            "help.kusto.windows.net", "Samples", "Demo", "StormEventsH | take 10")
+        figure = figure.replace(
+            "<pre>", '<pre><code class="language-text">a note</code></pre>\n<pre>', 1)
+        # The stored code is HIGHLIGHTED, so the edit renames the table (one plain token in the
+        # span soup) rather than rewriting the whole query.
+        edited = figure.replace("StormEventsH", "StormEventsX")
+        out = content_replace.refresh_kql_links(edited)
+        self.assertEqual(_decoded_run_queries(out), ["StormEventsX | take 10"],
+                         "the Run link must encode the KQL block, not the neighbouring one")
+        self.assertIn('<code class="language-text">a note</code>', out,
+                      "the neighbouring block must be left exactly as authored")
+
 
 def _decoded_run_queries(fragment):
     """Every ADX Run link's decoded query text, for the KQL-figure selection test above."""

@@ -37,9 +37,11 @@ _KQL_LANGUAGES = frozenset(("kusto", "kql"))
 # The attribute regions are QUOTE-AWARE: a `>` may sit inside a quoted attribute value, and a
 # `[^>]*` region truncated `<code title="a>b" class="language-python">` before its class, so the
 # block was silently read as unlabelled. Kept byte-identical to `content_extract._PRE_CODE_RE`, so
-# the two tools can never disagree about what counts as a highlightable block.
+# the two tools can never disagree about what counts as a highlightable block. Both tag names are
+# terminated the way HTML terminates one: a `\b` is satisfied by the `-` in `<pre-run>`, so a
+# custom element the validator's parsed view never counts as a code block was read as one.
 _PRE_CODE_RE = re.compile(
-    r"""(<pre\b(?:"[^"]*"|'[^']*'|[^>"'])*>\s*<code\b((?:"[^"]*"|'[^']*'|[^>"'])*)>)"""
+    r"""(<pre(?![^\t\n\f\r />])(?:"[^"]*"|'[^']*'|[^>"'])*>\s*<code(?![^\t\n\f\r />])((?:"[^"]*"|'[^']*'|[^>"'])*)>)"""
     r"""(.*?)(</code>\s*</pre>)""", re.DOTALL | re.IGNORECASE)
 # The start of a real HTML tag inside the inner (an escaped &lt; never matches).
 _TAG_RE = re.compile(r"<[a-zA-Z/!]")

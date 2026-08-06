@@ -4,6 +4,66 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.779.0] - 2026-08-06
+
+### Fixed
+
+- Editing a KQL query now regenerates the `Run in Azure Data Explorer` link on every figure the
+  validator calls runnable, not only on the one spelling the tool itself emits. `refresh_block()`
+  found the link it had to rebuild with a literal `<a class="cmh-kql-run" href="` match, so it only
+  saw a run link whose class attribute was EXACTLY that one token, double-quoted, and written
+  before `href`. The validator, meanwhile, accepts any anchor carrying `cmh-kql-run` as a class
+  TOKEN (CMH-KQL-05/07, through the shared reading of CMH-VAL-21 clause 11), so a perfectly valid,
+  validator-clean figure whose link carried an extra class, a single-quoted or unquoted class, a
+  character-referenced class, or `href` before `class` was invisible to the rewriter: it raised,
+  `content_replace.refresh_kql_links()` swallowed that, and the figure kept its PRE-EDIT query in
+  the button - silently, with nothing validating the payload, which is the exact failure CMH-KQL-10
+  exists to prevent.
+- Both halves of the refresh now read the document the way the validator does. The run link is
+  located by the shared class-token reading and its start tag is RE-SERIALIZED from its parsed
+  attributes, so `target` and `rel="noopener noreferrer"` survive, an `href` spelled inside another
+  attribute's quoted value is never the one rewritten, a duplicate `href` (which a browser ignores)
+  is not left behind as a stale payload, and the figure this tool emits round-trips byte for byte
+  (a hand-written link is normalized rather than preserved: names fold to ASCII lower case, values
+  come back double-quoted and re-escaped from their decoded form, and an inert trailing `/` is
+  dropped - all of it equivalent to a browser). The `language-kusto` code block was the same defect
+  on the other half - a literal double-quoted substring that both over-matched
+  (`language-kustomize`) and never saw a single-quoted label - and is now read through the same
+  ordered class-token reading with an ASCII-only fold.
+- Three more ways the two sides could disagree are closed with it. EVERY run link in the figure is
+  refreshed, because the validator's gate accepts a figure with more than one and checks them all,
+  so refreshing only the first left the rest executing the pre-edit query. A start tag inside an
+  INERT region is no longer treated as an element - not in an HTML comment (terminated or not),
+  not in a raw-text body, and not inside another tag's quoted attribute VALUE, all of which are
+  literal text to a browser and to the validator's parsed views. That reading is applied at BOTH
+  levels, so a figure the author commented out is left exactly as authored rather than quietly
+  rewritten, and a `<!--` written inside an attribute value no longer marks the LIVE run link
+  inert (which made the refresh raise, the caller swallow it, and the figure keep its pre-edit
+  query). And the tag names are terminated the way HTML terminates one rather than by a `\b` word
+  boundary, which the `-` in `<a-run>` and `<pre-run>` / `<code-run>` satisfied: a custom element
+  was read as the run link and re-serialized as `<a>`, or as the figure's code block and read as
+  the query. The code-block pattern has three byte-identical copies (`kql_highlight`,
+  `content_extract`, `highlight_document`), so all three are corrected together to keep the parity
+  they promise. The inert scan ends a comment where the validator's own parser ends one - `-->`,
+  the legacy `--!>`, the abrupt `<!-->` / `<!--->`, or the end of the input when unterminated - and
+  tokenizes an END tag's quoted attributes with it, so neither can hide a live element.
+- An anchor written inside the code block's own body is content, not a control. The rewrite
+  locates every edit on the input and applies them in descending order, which is only safe while
+  they are disjoint, so such an anchor is now excluded rather than spliced inside the region the
+  re-highlighted query replaces.
+- The query is now read from the same block it is written back to. `content_replace` took a
+  figure's source from its first `<pre><code>` of ANY language while the rewriter targets the
+  first KQL-labelled one, so a `figure.cmh-kql` carrying a second, non-KQL block - which nothing
+  forbids - had that block's text encoded into the ADX link and written over the author's KQL
+  query.
+- The partial-install fallback in `tools/_browser_attrs.py` reads a whole start tag rather than
+  just its class: it walks copies of the same tag-name and attribute patterns the shared tokenizer
+  walks (pinned to them as text by a parity test), so the degraded reading can serve a tool that
+  REWRITES a start tag, and the degraded class reading now comes off that same split instead of a
+  separate `class=` search that a `class=` inside another attribute's quoted value could fool. The
+  shim also gains `inert_spans()`, the shared reading of where a `<` does not open an element, for
+  any tool that finds an element by scanning the source text.
+
 ## [1.777.0] - 2026-08-06
 
 ### Fixed

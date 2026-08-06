@@ -41,9 +41,11 @@ import new_document  # noqa: E402
 # tools can never disagree about what counts as a highlightable block. The attribute regions are
 # QUOTE-AWARE: a `>` may sit inside a quoted attribute value, and a `[^>]*` region truncated
 # `<code title="a>b" class="language-python">` before its class, so the block was read as
-# unlabelled and left unhighlighted (CMH-VAL-21 clause 11).
+# unlabelled and left unhighlighted (CMH-VAL-21 clause 11). Both tag names are terminated the way
+# HTML terminates one: a `\b` is satisfied by the `-` in `<pre-run>` / `<code-run>`, so a custom
+# element the validator's parsed view never counts as a code block was read as one.
 _PRE_CODE_RE = re.compile(
-    r"""(<pre\b(?:"[^"]*"|'[^']*'|[^>"'])*>\s*<code\b((?:"[^"]*"|'[^']*'|[^>"'])*)>)"""
+    r"""(<pre(?![^\t\n\f\r />])(?:"[^"]*"|'[^']*'|[^>"'])*>\s*<code(?![^\t\n\f\r />])((?:"[^"]*"|'[^']*'|[^>"'])*)>)"""
     r"""(.*?)(</code>\s*</pre>)""", re.DOTALL | re.IGNORECASE)
 
 

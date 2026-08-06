@@ -148,12 +148,18 @@ def refresh_kql_links(fragment):
     rather than substituting over whole `<figure>...</figure>` spans, because a span substitution
     consumes a non-KQL OUTER figure through the first `</figure>` and never sees a real KQL figure
     nested inside it. Skipping a non-KQL start tag here leaves its interior in the scan, so the
-    nested figure is still found.
+    nested figure is still found. A start tag inside an INERT region (an HTML comment, a raw-text
+    body) is skipped for the same reason the rewriter one level down skips one: the validator's
+    elements come from a real parse, so a commented-out figure is not a figure, and editing it
+    would rewrite markup the author deliberately commented out.
     """
     out, pos, done = [], 0, 0
+    inert = _browser_attrs.inert_spans(fragment)
     for m in _FIGURE_START_RE.finditer(fragment):
         if m.start() < done:
             continue  # inside a figure this pass already rebuilt
+        if _browser_attrs.in_inert_span(m.start(), inert):
+            continue  # commented-out (or otherwise inert) markup is not a figure to rebuild
         if not _browser_attrs.attrs_have_class(m.group(1), "cmh-kql"):
             continue
         end_m = _FIGURE_END_RE.search(fragment, m.end())
@@ -170,8 +176,14 @@ def refresh_kql_links(fragment):
 
 def _refreshed_kql_figure(figure):
     """One KQL figure with its Run link rebuilt from its own code block, or unchanged when the
-    figure carries nothing this tool can rebuild from."""
-    code = content_extract._PRE_CODE_RE.search(figure)
+    figure carries nothing this tool can rebuild from.
+
+    The source is taken from the figure's first KQL-labelled block - the very block
+    `refresh_block` will rewrite - not from its first block of ANY language. Nothing forbids a
+    `figure.cmh-kql` from carrying a second, non-KQL code block, so reading the first one
+    encoded a neighbouring block's text into the ADX link and wrote it over the KQL query.
+    """
+    code = kql_highlight.find_kusto_code(figure)
     if not code:
         return figure
     source = _core_dehighlight(code.group(3))

@@ -24,6 +24,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _browser_attrs  # noqa: E402
 import kusto_link  # noqa: E402
 import _highlight_core as _core  # noqa: E402
 from urllib.parse import unquote, urlsplit  # noqa: E402
@@ -154,10 +155,130 @@ def render_block(cluster, database, title, query):
     ) % (cluster_attr, cluster_attr, _html.escape(title), href, render_code(query))
 
 
-_RUN_HREF_RE = re.compile(r'(<a class="cmh-kql-run" href=")([^"]*)(")', re.IGNORECASE)
+# An `<a>` START TAG with its raw attributes. The tag name is terminated the way HTML terminates
+# one (ASCII whitespace, `/` or `>`), NOT by a `\b` word boundary: `\b` is satisfied by the `-` in
+# `<a-run>`, so a custom element would have been read as an anchor and RE-SERIALIZED as `<a>` -
+# markup the author never wrote, while the real run link kept its pre-edit query. The attribute
+# region is QUOTE-AWARE, so a `>` inside a quoted value cannot truncate the tag before its class.
+_A_TAG_RE = re.compile(r"""<a(?![^\t\n\f\r />])((?:"[^"]*"|'[^']*'|[^>"'])*)>""", re.IGNORECASE)
+# The figure's `<pre><code>` block, matched exactly as `authoring/content_extract.py` matches one
+# (`_PRE_CODE_RE`, pinned to it by `test_the_code_block_pattern_matches_content_extracts`), so the
+# tool that READS a block's source and the tool that REWRITES it can never disagree about what a
+# code block is. Both tag names are terminated the way HTML terminates one, for the same reason
+# `_A_TAG_RE` above is: a `\b` is satisfied by the `-` in `<pre-run>` / `<code-run>`, so a
+# KQL-labelled custom-element decoy was read as the figure's code block.
 _CODE_INNER_RE = re.compile(
-    r'(<pre\b[^>]*>\s*<code\b[^>]*class="[^"]*language-kusto[^"]*"[^>]*>)(.*?)(</code>\s*</pre>)',
-    re.DOTALL | re.IGNORECASE)
+    r"""(<pre(?![^\t\n\f\r />])(?:"[^"]*"|'[^']*'|[^>"'])*>\s*<code(?![^\t\n\f\r />])((?:"[^"]*"|'[^']*'|[^>"'])*)>)"""
+    r"""(.*?)(</code>\s*</pre>)""", re.DOTALL | re.IGNORECASE)
+
+# The kusto labels the document highlight path dispatches to this tokenizer (CMH-KQL-09), so a
+# figure the validator reads as KQL is one this rewriter can rebuild. Kept local rather than
+# imported from `blocks/highlight_document.py`, which imports this module.
+_KQL_LABELS = frozenset(("kusto", "kql"))
+
+
+def is_kusto_code(code_attrs):
+    """Whether a `<code>` start tag carries a KQL `language-` label.
+
+    The ORDERED shared class-token reading (CMH-VAL-21 clause 11) with an ASCII-only fold, the
+    same one `content_extract._language` and the validator's `_code_block_language` use. A literal
+    `class="[^"]*language-kusto[^"]*"` substring both over-matched (`language-kustomize` is not
+    kusto) and, being double-quote only, never saw a single-quoted or unquoted label at all.
+
+    Public because `content_replace` must pick the block it takes a figure's SOURCE from by the
+    same test this module rewrites by; picking the first block of ANY language wrote a neighbouring
+    block's text over the KQL query.
+    """
+    for token in _browser_attrs.raw_attrs_class_tokens(code_attrs):
+        label = _browser_attrs.ascii_lower(token)
+        if label.startswith("language-"):
+            return label[len("language-"):] in _KQL_LABELS
+    return False
+
+
+def find_kusto_code(html, spans=None):
+    """The first LIVE KQL code block in `html` as a match of `_CODE_INNER_RE`, or None.
+
+    A rejected block restarts the scan just past its `<code ...>` open tag rather than past its
+    whole match: a non-KQL block whose closer this pattern does not recognize
+    (`</code></pre >`) otherwise ran its non-greedy body on to the NEXT `</code></pre>`,
+    swallowing the real KQL block, and resuming past the match stepped over it - so the figure
+    kept its pre-edit query. Restarting inside the rejected open tag cannot step over a block the
+    rejected body swallowed, since such a block begins after that tag.
+    """
+    html = html or ""
+    spans = _browser_attrs.inert_spans(html) if spans is None else spans
+    pos = 0
+    while True:
+        m = _CODE_INNER_RE.search(html, pos)
+        if m is None:
+            return None
+        if not _browser_attrs.in_inert_span(m.start(), spans) and is_kusto_code(m.group(2)):
+            return m
+        pos = max(m.start() + 1, m.end(1))
+
+
+def _find_run_links(figure_html, spans):
+    """Every LIVE Run link in the figure, as start-tag matches, in document order.
+
+    The links are located by the class-TOKEN reading the VALIDATOR uses (CMH-KQL-05/07, through
+    the shared `class_tokens` of CMH-VAL-21 clause 11), never by the literal
+    `<a class="cmh-kql-run" href="` spelling: that only saw a run link whose class attribute was
+    exactly that one token, double-quoted, and written before `href`, so a validator-clean figure
+    written any other way was invisible here and silently kept its PRE-EDIT query (#1160).
+
+    EVERY one of them, not just the first: the validator's 11d gate accepts a figure with more
+    than one run link and checks them all, so refreshing only the first left the others executing
+    the pre-edit query - the same defect one anchor along. A match inside an INERT region (an HTML
+    comment, a raw-text body) is skipped, because the validator's anchors come from a real parse
+    and a commented-out link is not one: rewriting the decoy and reporting success left the live
+    link stale.
+    """
+    return [m for m in _A_TAG_RE.finditer(figure_html)
+            if not _browser_attrs.in_inert_span(m.start(), spans)
+            and _browser_attrs.attrs_have_class(m.group(1), "cmh-kql-run")]
+
+
+def _adx_target(href):
+    """The `(cluster, database)` an ADX deep link names, or None when it is not one."""
+    if href is None:
+        return None
+    parts = urlsplit(href)
+    path = parts.path.strip("/").split("/")
+    if len(path) < 4 or "query=" not in parts.query:
+        return None
+    return unquote(path[1]), unquote(path[3])
+
+
+def _run_link_tag(pairs, href):
+    """The run link's start tag RE-SERIALIZED from its parsed attributes, carrying `href`.
+
+    Re-serializing (rather than substituting over the raw text) is what lets the rewriter accept
+    every shape the validator accepts: the attributes are located by parsing, so an `href` spelled
+    inside another attribute's quoted value is never the one rewritten. Each value is escaped
+    exactly once from its DECODED form, so the canonical figure this tool emits round-trips byte
+    for byte. A HAND-WRITTEN link is NORMALIZED instead: the tag and attribute names fold to ASCII
+    lower case, every value comes back double-quoted and re-escaped from its decoded form, a
+    trailing self-closing `/` (which HTML ignores on an `<a>`) is dropped, and a DUPLICATED
+    attribute keeps only its first occurrence - all of it the view a browser already has, none of
+    it byte-preserving. Dropping the duplicate matters most for `href`: a browser reads the first,
+    so a second one would sit in the file still encoding the pre-edit query.
+
+    `pairs` always carries an `href` here: `refresh_block` reads and validates that href before it
+    decides to rebuild the link at all, and skips the link when there is none.
+    """
+    out, seen = [], set()
+    for name, value in pairs:
+        if name in seen:
+            continue
+        seen.add(name)
+        if name == "href":
+            value = href
+        if value is None:
+            out.append(" " + name)
+        else:
+            out.append(' %s="%s"' % (name, _html.escape(value, quote=True)))
+    return "<a%s>" % "".join(out)
 
 
 def refresh_block(figure_html, query):
@@ -169,22 +290,35 @@ def refresh_block(figure_html, query):
     database are recovered from the existing link, so the caption, the copy affordance
     and the frame are preserved exactly.
 
-    Raises ValueError when the figure carries no readable Run link or code block.
+    Raises ValueError when the figure carries no readable Run link or code block. Every edit is
+    located on the INPUT and applied last, in descending order, so one rewrite cannot shift the
+    offsets another was found at - which holds only while the edits are DISJOINT, so an anchor
+    written inside the code block's own body is content this rewrites past, not a control to
+    rebuild.
     """
-    m = _RUN_HREF_RE.search(figure_html or "")
-    if not m:
+    figure_html = figure_html or ""
+    spans = _browser_attrs.inert_spans(figure_html)
+    code = find_kusto_code(figure_html, spans)
+    links = [m for m in _find_run_links(figure_html, spans)
+             if code is None or m.end() <= code.start(3) or m.start() >= code.end(3)]
+    if not links:
         raise ValueError("no cmh-kql-run link found: not a runnable KQL figure")
-    parts = urlsplit(_html.unescape(m.group(2)))
-    path = parts.path.strip("/").split("/")
-    if len(path) < 4 or "query=" not in parts.query:
+    edits = []
+    for m in links:
+        pairs = _browser_attrs.raw_attrs_pairs(m.group(1))
+        target = _adx_target(next((v for n, v in pairs if n == "href"), None))
+        if target is None:
+            continue  # not a runnable ADX link: the validator's own gate reports that one
+        href = kusto_link.kusto_link(target[0], target[1], query)
+        edits.append((m.start(), m.end(), _run_link_tag(pairs, href)))
+    if not edits:
         raise ValueError("the Run link is not a recognizable ADX deep link")
-    cluster, database = unquote(path[1]), unquote(path[3])
-    href = _html.escape(kusto_link.kusto_link(cluster, database, query), quote=True)
-    out = _RUN_HREF_RE.sub(lambda mm: mm.group(1) + href + mm.group(3), figure_html, count=1)
-    inner = highlight_inner(query)
-    out, n = _CODE_INNER_RE.subn(lambda mm: mm.group(1) + inner + mm.group(3), out, count=1)
-    if n != 1:
+    if code is None:
         raise ValueError("no language-kusto code block found in the figure")
+    edits.append((code.start(3), code.end(3), highlight_inner(query)))
+    out = figure_html
+    for start, end, text in sorted(edits, reverse=True):
+        out = out[:start] + text + out[end:]
     return out
 
 
