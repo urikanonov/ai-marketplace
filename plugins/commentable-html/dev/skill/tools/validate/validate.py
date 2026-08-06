@@ -128,7 +128,6 @@ from checks.parsing import (  # noqa: F401,E402
     REQUIRED_IDS,
     SAFE_ID_RE,
     VOID,
-    _CLASS_ATTR_RE,
     _COMMENT_ROOT_ATTR_RE,
     _DATA_KEY_RE,
     _DocParser,

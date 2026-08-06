@@ -1,5 +1,7 @@
 from _validate_helpers import *
 
+from checks import highlighting  # noqa: E402
+
 
 class ValidateHighlightingTests(ValidateAssertions, unittest.TestCase):
     def test_required_ids_contract(self):
@@ -39,6 +41,40 @@ class ValidateHighlightingTests(ValidateAssertions, unittest.TestCase):
             doc = self._doc_with_code(
                 '<pre><code class="language-%s">&lt;div class="x"&gt;hi&lt;/div&gt;</code></pre>' % lang)
             self.assertWarn(doc, "is not syntax-highlighted")
+
+    def test_the_language_label_is_read_first_wins_and_folded_ascii_only(self):
+        # CMH-VAL-21 clause 11 (#1139). Two pins on the label reader:
+        # (a) it is a FIRST-WINS read, so it must answer the FIRST `language-*` token the author
+        #     wrote. Reading it out of a `class_tokens` SET made the answer depend on the
+        #     process's hash seed, so this document's verdict alternated run to run. The helper is
+        #     asserted directly, in BOTH author orders: a set cannot satisfy both, while running
+        #     one order N times in ONE process proves nothing (set order is stable per process).
+        # (b) the label is folded ASCII-only, matching the highlighter that consumes it: an
+        #     uppercase label is still that language, but U+212A KELVIN SIGN is not a `k`.
+        self.assertEqual(
+            highlighting._code_block_language({"class": "language-csharp language-text"}), "csharp")
+        self.assertEqual(
+            highlighting._code_block_language({"class": "language-text language-csharp"}), "text")
+        doc = self._doc_with_code(
+            '<pre><code class="language-csharp language-text">public sealed class X {}</code></pre>')
+        self.assertWarn(doc, "is not syntax-highlighted")
+        doc = self._doc_with_code(
+            '<pre><code class="language-CSHARP">public sealed class X {}</code></pre>')
+        self.assertWarn(doc, "is not syntax-highlighted")
+        doc = self._doc_with_code(
+            '<pre><code class="language-cshar\u212a">public sealed class X {}</code></pre>')
+        self.assertOkNoWarn(doc)
+
+    def test_a_kusto_language_label_is_read_first_wins_by_both_readers(self):
+        # The KQL gate and the highlighting advisory must give the SAME effective language for a
+        # block: reading the KQL side as set MEMBERSHIP made `class="language-csharp
+        # language-kusto"` C# to the highlighter and Kusto to CMH-KQL-08, which then fired "not
+        # runnable" on a block the reader sees as C#.
+        doc = self._doc_with_code(
+            '<pre><code class="language-csharp language-kusto">public sealed class X {}</code></pre>')
+        errors, _ = _validate_text(doc)
+        self.assertEqual([e for e in errors if "not runnable" in e], [],
+                         "the first label wins, and it is not kusto: %r" % errors)
 
     def test_highlighted_code_block_is_clean(self):
         doc = self._doc_with_code(

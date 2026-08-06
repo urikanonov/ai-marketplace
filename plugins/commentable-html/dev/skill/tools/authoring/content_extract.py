@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 import _atomic_io  # noqa: E402
+import _browser_attrs  # noqa: E402
 import _highlight_core as _core  # noqa: E402
 import highlight_code  # noqa: E402
 import highlight_document  # noqa: E402
@@ -37,11 +38,13 @@ import kql_highlight  # noqa: E402
 import new_document  # noqa: E402
 
 # A block code element, matched exactly as highlight_document.py matches it so the two
-# tools can never disagree about what counts as a highlightable block.
-_PRE_CODE_RE = re.compile(r"(<pre\b[^>]*>\s*<code\b([^>]*)>)(.*?)(</code>\s*</pre>)",
-                          re.DOTALL | re.IGNORECASE)
-_CLASS_RE = re.compile(
-    r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""", re.IGNORECASE)
+# tools can never disagree about what counts as a highlightable block. The attribute regions are
+# QUOTE-AWARE: a `>` may sit inside a quoted attribute value, and a `[^>]*` region truncated
+# `<code title="a>b" class="language-python">` before its class, so the block was read as
+# unlabelled and left unhighlighted (CMH-VAL-21 clause 11).
+_PRE_CODE_RE = re.compile(
+    r"""(<pre\b(?:"[^"]*"|'[^']*'|[^>"'])*>\s*<code\b((?:"[^"]*"|'[^']*'|[^>"'])*)>)"""
+    r"""(.*?)(</code>\s*</pre>)""", re.DOTALL | re.IGNORECASE)
 
 
 class ExtractError(Exception):
@@ -49,16 +52,18 @@ class ExtractError(Exception):
 
 
 def _language(code_attrs):
-    """Return the `language-XXX` label on a <code> tag, or None."""
-    m = _CLASS_RE.search(code_attrs or "")
-    if not m:
-        return None
-    value = next((g for g in m.groups() if g is not None), "")
-    for token in value.split():
-        if token.lower().startswith("language-"):
+    """Return the `language-XXX` label on a <code> tag, or None.
+
+    The ORDERED shared reading (CMH-VAL-21 clause 11) with an ASCII-only fold of the label, so
+    this tool and the validator's own `checks/highlighting._code_block_language` read the same
+    `<code>` the same way: Python's `str.split()` would additionally split the class list on
+    U+000B / NBSP / U+001C-U+001F, and `str.lower()` would map `LANGUAGE-\u212aUSTO` onto a real
+    kusto label that no engine on either side reads.
+    """
+    for token in _browser_attrs.raw_attrs_class_tokens(code_attrs):
+        if _browser_attrs.ascii_lower(token).startswith("language-"):
             return token[len("language-"):]
     return None
-
 
 def _reversible_source(code_attrs, inner):
     """Return the de-highlighted source for a block, or None to leave it stored as is.

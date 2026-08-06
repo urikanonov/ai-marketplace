@@ -36,6 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 import _atomic_io  # noqa: E402
+import _browser_attrs  # noqa: E402
 import content_extract  # noqa: E402
 import doc_stamp  # noqa: E402
 import finalize  # noqa: E402
@@ -125,8 +126,12 @@ def restore_unchanged_blocks(new_fragment, old_fragment):
     return content_extract._PRE_CODE_RE.sub(repl, new_fragment)
 
 
-_KQL_FIGURE_RE = re.compile(r"<figure\b[^>]*\bclass=\"[^\"]*cmh-kql[^\"]*\"[^>]*>.*?</figure>",
-                            re.DOTALL | re.IGNORECASE)
+# A `<figure>` START TAG, with its raw attributes. The attribute region is QUOTE-AWARE, so a `>`
+# inside a quoted value does not truncate the start tag before its class.
+_FIGURE_START_RE = re.compile(r"""<figure\b((?:"[^"]*"|'[^']*'|[^>"'])*)>""", re.IGNORECASE)
+# Its closer. An HTML tag name is ASCII case-insensitive, so a `</FIGURE>` really does close the
+# element; a case-sensitive search would end the figure nowhere and skip its Run link entirely.
+_FIGURE_END_RE = re.compile(r"</figure[\t\n\f\r ]*>", re.IGNORECASE | re.ASCII)
 
 
 def refresh_kql_links(fragment):
@@ -135,21 +140,47 @@ def refresh_kql_links(fragment):
     The link encodes the query INSIDE its href, so a figure whose code was edited would
     otherwise keep running the pre-edit text - silently, since nothing validates the
     payload. Rebuilding from the figure's own code block keeps the two in step.
-    """
-    def repl(m):
-        figure = m.group(0)
-        code = content_extract._PRE_CODE_RE.search(figure)
-        if not code:
-            return figure
-        source = _core_dehighlight(code.group(3))
-        if source is None:
-            return figure
-        try:
-            return kql_highlight.refresh_block(figure, source)
-        except ValueError:
-            return figure  # not a runnable figure: leave it exactly as authored
 
-    return _KQL_FIGURE_RE.sub(repl, fragment)
+    Which figures are KQL figures is decided by the shared class reading (CMH-VAL-21 clause 11),
+    never by a `class="[^"]*cmh-kql[^"]*"` substring - that shape over-matched a `my-cmh-kql-ish`
+    figure and, being double-quote only, never saw a single-quoted or unquoted class at all, so
+    THAT figure's Run link silently kept encoding the pre-edit query. The scan walks START TAGS
+    rather than substituting over whole `<figure>...</figure>` spans, because a span substitution
+    consumes a non-KQL OUTER figure through the first `</figure>` and never sees a real KQL figure
+    nested inside it. Skipping a non-KQL start tag here leaves its interior in the scan, so the
+    nested figure is still found.
+    """
+    out, pos, done = [], 0, 0
+    for m in _FIGURE_START_RE.finditer(fragment):
+        if m.start() < done:
+            continue  # inside a figure this pass already rebuilt
+        if not _browser_attrs.attrs_have_class(m.group(1), "cmh-kql"):
+            continue
+        end_m = _FIGURE_END_RE.search(fragment, m.end())
+        if end_m is None:
+            continue
+        end = end_m.end()
+        figure = fragment[m.start():end]
+        out.append(fragment[pos:m.start()])
+        out.append(_refreshed_kql_figure(figure))
+        pos = done = end
+    out.append(fragment[pos:])
+    return "".join(out)
+
+
+def _refreshed_kql_figure(figure):
+    """One KQL figure with its Run link rebuilt from its own code block, or unchanged when the
+    figure carries nothing this tool can rebuild from."""
+    code = content_extract._PRE_CODE_RE.search(figure)
+    if not code:
+        return figure
+    source = _core_dehighlight(code.group(3))
+    if source is None:
+        return figure
+    try:
+        return kql_highlight.refresh_block(figure, source)
+    except ValueError:
+        return figure  # not a runnable figure: leave it exactly as authored
 
 
 def _core_dehighlight(inner):

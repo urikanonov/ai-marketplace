@@ -20,6 +20,7 @@ Usage (run from the skill root):
 """
 import argparse
 import hashlib
+import html as _html
 import os
 from pathlib import Path
 import re
@@ -31,6 +32,7 @@ import _toolpath  # noqa: E402
 _toolpath.ensure()
 import _atomic_io  # noqa: E402
 import _brand_profile  # noqa: E402
+import _browser_attrs  # noqa: E402
 import _deck_theme  # noqa: E402
 from deck_common import esc, slide_id  # noqa: E402
 
@@ -53,8 +55,16 @@ except ImportError:  # pragma: no cover
     _highlight_document = None
     _toolpath.warn_missing_tool("highlight_document", "syntax highlighting")
 
-SECTION_RE = re.compile(r'<section\b([^>]*)>(.*?)</section>', re.S | re.I)
-CLASS_RE = re.compile(r'class\s*=\s*"([^"]*)"', re.I)
+SECTION_RE = re.compile(r"""<section\b((?:"[^"]*"|'[^']*'|[^>"'])*)>(.*?)</section>""", re.S | re.I)
+# The `class` attribute in all three HTML quoting forms, with an attribute-name boundary and
+# HTML's own unquoted-value terminator - ASCII whitespace or `>` ONLY (CMH-VAL-21 clause 11). Kept
+# for the raw-text scans that have nothing else; the slide rewrite reads and RE-SERIALIZES parsed
+# attributes instead, because a search matches a `class=` spelled inside another attribute's
+# quoted value and would then rewrite THAT. `re.ASCII` beside `re.IGNORECASE` so Python's Unicode
+# fold does not read `cla\u017f\u017f=` as `class=`.
+CLASS_RE = re.compile(
+    r"""(?<![^\t\n\f\r /"'])class[\t\n\f\r ]*=[\t\n\f\r ]*"""
+    r"""(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r >]+))""", re.I | re.A)
 SLIDE_ID_ATTR_RE = re.compile(r'data-slide-id\s*=\s*"([^"]*)"', re.I)
 MAIN_ROOT_RE = re.compile(r'<main\b[^>]*\bid="commentRoot"[^>]*>', re.I)
 
@@ -103,22 +113,43 @@ def prepare_slides(fragment: str):
 
     def repl(m):
         attrs, inner = m.group(1), m.group(2)
-        cls_m = CLASS_RE.search(attrs)
-        classes = (cls_m.group(1).split() if cls_m else [])
+        # The start tag is PARSED, not searched: a `class=` search matches one spelled inside
+        # ANOTHER attribute's quoted value (`<section title=' class="slide"'>`) and the rewrite
+        # below would then corrupt that title and promote a non-slide. The shared reading also
+        # decodes character references (`class='sl&#105;de'` IS a slide to a browser), keeps the
+        # FIRST of a duplicated attribute as HTML5 does, and reads all three quoting forms.
+        pairs = _browser_attrs.raw_attrs_pairs(attrs)
+        cls_value = next((v for n, v in pairs if n == "class"), None)
+        # The ORDERED shared reading, not `str.split()`: this REWRITES the class attribute below,
+        # so the tokens go back in the order the author wrote them - and Python's split would turn
+        # a `class="a\u000bb"` (ONE class to a browser) into two real classes on the way through.
+        classes = _browser_attrs.html_ws_tokens(cls_value)
         if "slide" not in classes:
             return m.group(0)  # not a slide section; leave untouched
-        cm = SLIDE_ID_ATTR_RE.search(attrs)
-        if cm:
-            sid = cm.group(1)
-        else:
+        sid = next((v for n, v in pairs if n == "data-slide-id" and v), None)
+        if not sid:
             sid = slide_id(_strip_tags(inner), taken)
-            attrs = attrs + f' data-slide-id="{sid}"'
         ids.append(sid)
         if first[0] and "active" not in classes:
             classes.append("active")
-            attrs = CLASS_RE.sub('class="%s"' % " ".join(classes), attrs, count=1)
         first[0] = False
-        return f"<section{attrs}>{inner}</section>"
+        # The start tag is RE-SERIALIZED from the parsed attributes for EVERY slide, so the class
+        # lands in the double-quoted form `deck_validate`'s structural scan can see (issue #1159)
+        # and every value is re-escaped exactly once from its DECODED form - escaping the raw text
+        # instead turned an authored `x&amp;y` into the literal `x&amp;y`.
+        rebuilt = []
+        for name, value in pairs:
+            if name == "class":
+                value = " ".join(classes)
+            elif name == "data-slide-id":
+                value = sid
+            if value is None:
+                rebuilt.append(" " + name)
+            else:
+                rebuilt.append(' %s="%s"' % (name, _html.escape(value, quote=True)))
+        if not any(n == "data-slide-id" for n, _ in pairs):
+            rebuilt.append(' data-slide-id="%s"' % _html.escape(sid, quote=True))
+        return "<section%s>%s</section>" % ("".join(rebuilt), inner)
 
     return SECTION_RE.sub(repl, fragment), ids
 

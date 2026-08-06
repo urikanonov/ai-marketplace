@@ -21,9 +21,23 @@ def _check_diff_blocks(html):
 
 
 def _is_kql_code(code):
-    """True when a parsed <code> element carries a language-kusto / language-kql class token."""
-    return (parsed_attrs_have_class(code["attrs"], "language-kusto")
-            or parsed_attrs_have_class(code["attrs"], "language-kql"))
+    """True when a parsed <code> element's language label is kusto / kql.
+
+    The class LIST is tokenized exactly (CMH-VAL-21 clause 11), but the `language-XXX` LABEL is
+    read exactly as `checks/highlighting._code_block_language` reads it - FIRST-WINS in author
+    order, and folded ASCII-only - so the two never disagree about the block's language. Set
+    membership made `class="language-csharp language-kusto"` C# to the highlighter and Kusto here,
+    which fired CMH-KQL-08's "not runnable" error on a block the reader sees as C#. The label is
+    folded rather than matched exactly because a language label is read as a label rather than
+    matched as a CSS selector: the highlighter that consumes it and the runtime's own `language-`
+    pattern both fold it that way, so an exact match would have made `class="language-KUSTO"` a
+    KQL block to the highlighter and not to this gate.
+    """
+    for token in html_ws_tokens(code["attrs"].get("class")):
+        folded = _ascii_lower(token)
+        if folded.startswith("language-"):
+            return folded in ("language-kusto", "language-kql")
+    return False
 
 
 # The `target` keywords that do NOT open an auxiliary browsing context, so no `window.opener` is
@@ -56,7 +70,7 @@ def _check_kql_blocks(html):
     #      https and open safely. This fires ONLY on the explicit run-link class, so
     #      it never false-positives on a plain KQL code block or a syntax example.
     for a in _find_tag_attrs(html, "a"):
-        if "cmh-kql-run" not in (a.get("class") or "").split():
+        if "cmh-kql-run" not in class_tokens(a.get("class")):
             continue
         href = a.get("href", "")
         if not href.startswith("https://dataexplorer.azure.com/"):
@@ -97,11 +111,25 @@ def _check_kql_blocks(html):
     #      token (parsed, entity-decoded) - NOT a raw substring - so query text that merely
     #      mentions "cmh-kql-run" does not satisfy the requirement. Bare, unframed KQL in a plain
     #      <pre> is intentionally exempt (an illustrative query belongs in a <pre> code block).
-    for fm in re.finditer(r"<figure\b([^>]*)>(.*?)</figure>", html, re.IGNORECASE | re.DOTALL):
-        if not _attrs_have_class(fm.group(1), "cmh-kql"):
+    # The figure scan walks START TAGS with a QUOTE-AWARE attribute region (a `>` inside a quoted
+    # value must not truncate the start tag before its class, which skipped this gate on a figure
+    # a browser really does frame) and filters each one by the shared class reading BEFORE slicing
+    # its body. Substituting over whole `<figure>...</figure>` spans instead consumed a plain
+    # OUTER figure through the first `</figure>`, so a `cmh-kql` figure nested inside it never
+    # reached the gate and its missing Run link passed in silence. Skipping a non-KQL start tag
+    # leaves its interior in the scan, so the nested figure is still found.
+    _fig_done = 0
+    for fm in re.finditer(r"""<figure\b((?:"[^"]*"|'[^']*'|[^>"'])*)>""", html, re.IGNORECASE):
+        if fm.start() < _fig_done or not _attrs_have_class(fm.group(1), "cmh-kql"):
             continue
-        run_links = [a for a in _find_tag_attrs(fm.group(2), "a")
-                     if "cmh-kql-run" in (a.get("class") or "").split()]
+        _fig_end_m = re.search(r"</figure[\t\n\f\r ]*>", html[fm.end():], re.IGNORECASE | re.ASCII)
+        if _fig_end_m is None:
+            continue
+        _fig_end = fm.end() + _fig_end_m.start()
+        _fig_done = _fig_end
+        _fig_inner = html[fm.end():_fig_end]
+        run_links = [a for a in _find_tag_attrs(_fig_inner, "a")
+                     if "cmh-kql-run" in class_tokens(a.get("class"))]
         if not run_links:
             errors.append('a figure.cmh-kql has no "Run in Azure Data Explorer" link (class cmh-kql-run); '
                           "build one with tools/kusto_link.py so readers can open the query in ADX "

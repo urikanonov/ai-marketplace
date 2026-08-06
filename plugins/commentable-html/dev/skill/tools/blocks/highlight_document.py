@@ -34,21 +34,24 @@ import kql_highlight  # noqa: E402
 _KQL_LANGUAGES = frozenset(("kusto", "kql"))
 
 # A block code element: <pre ...><code ...>INNER</code></pre> (optional whitespace between tags).
-_PRE_CODE_RE = re.compile(r"(<pre\b[^>]*>\s*<code\b([^>]*)>)(.*?)(</code>\s*</pre>)",
-                          re.DOTALL | re.IGNORECASE)
-_LANG_RE = re.compile(r"(?:^|\s)language-([\w#+.\-]+)", re.IGNORECASE)
+# The attribute regions are QUOTE-AWARE: a `>` may sit inside a quoted attribute value, and a
+# `[^>]*` region truncated `<code title="a>b" class="language-python">` before its class, so the
+# block was silently read as unlabelled. Kept byte-identical to `content_extract._PRE_CODE_RE`, so
+# the two tools can never disagree about what counts as a highlightable block.
+_PRE_CODE_RE = re.compile(
+    r"""(<pre\b(?:"[^"]*"|'[^']*'|[^>"'])*>\s*<code\b((?:"[^"]*"|'[^']*'|[^>"'])*)>)"""
+    r"""(.*?)(</code>\s*</pre>)""", re.DOTALL | re.IGNORECASE)
 # The start of a real HTML tag inside the inner (an escaped &lt; never matches).
 _TAG_RE = re.compile(r"<[a-zA-Z/!]")
-_CLASS_RE = re.compile(r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""", re.IGNORECASE)
 
 
 def _lang(code_attrs):
-    m = _CLASS_RE.search(code_attrs or "")
-    if not m:
-        return None
-    value = next((g for g in m.groups() if g is not None), "")
-    for token in value.split():
-        if token.lower().startswith("language-"):
+    """The `language-XXX` label on a <code> tag, read exactly as `content_extract._language` and
+    the validator's `checks/highlighting._code_block_language` read it (CMH-VAL-21 clause 11):
+    the class list tokenized on ASCII whitespace ONLY, in order, and the label folded ASCII-only.
+    """
+    for token in _browser_attrs.raw_attrs_class_tokens(code_attrs):
+        if _browser_attrs.ascii_lower(token).startswith("language-"):
             return token[len("language-"):]
     return None
 

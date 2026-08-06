@@ -637,7 +637,7 @@ def _check_transient_body_classes(parser):
     #      decoy "<body ...>" literal inside a head <script>/comment cannot hide a dirty real
     #      body or false-flag a benign mention.
     if parser.body_attrs is not None:
-        _body_classes = set((parser.body_attrs.get("class") or "").split())
+        _body_classes = class_tokens(parser.body_attrs.get("class"))
         for _cls in _TRANSIENT_BODY_CLASSES:
             if _cls in _body_classes:
                 errors.append('<body> carries the transient runtime UI-state class "%s" - it must '

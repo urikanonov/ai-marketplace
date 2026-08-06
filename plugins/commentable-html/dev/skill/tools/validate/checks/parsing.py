@@ -60,9 +60,12 @@ FORBIDDEN_IDS = [
 
 SAFE_ID_RE = re.compile(r"^c[a-z0-9]{6,63}$")
 
-_PRE_TAG_RE = re.compile(r"<pre\b([^>]*)>(.*?)</pre>", re.DOTALL | re.IGNORECASE)
-
-_CLASS_ATTR_RE = re.compile(r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))""", re.IGNORECASE)
+# A `<pre>` element and its body. The attribute region is QUOTE-AWARE: HTML lets a `>` sit inside a
+# quoted attribute value, so a `[^>]*` region truncates `<pre title="a>b" class="cmh-diff">` before
+# its class and the escaped-diff-text gate below then skips a block a browser really does render as
+# a diff.
+_PRE_TAG_RE = re.compile(r"""<pre\b((?:"[^"]*"|'[^']*'|[^>"'])*)>(.*?)</pre>""",
+                         re.DOTALL | re.IGNORECASE)
 
 # Transient runtime UI-state classes the layer toggles on document.body (sidebar open, active
 # sidebar resize, active widget drag). They must never be baked into a shipped <body>: a persisted
@@ -72,20 +75,61 @@ _CLASS_ATTR_RE = re.compile(r"""\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`
 _TRANSIENT_BODY_CLASSES = ("sidebar-open", "cm-sidebar-resizing", "cm-widget-dragging")
 
 
+def raw_attrs_pairs(attrs):
+    """A RAW start-tag attribute string's `(name, value)` pairs, browser-decoded and in order.
+
+    The same vendored start-tag tokenizer the parsed views are built from (see
+    `raw_attrs_class_tokens` for the wrapper and the caller precondition), for a tool that has the
+    attribute TEXT and needs more of it than the class - the deck scaffold, which REWRITES the
+    start tag and so must not locate an attribute by searching the raw text.
+    """
+    found = _tokenize_raw_tag("<x " + (attrs or "") + ">", "x")
+    return list(found[0]) if found is not None else []
+
+
+def raw_attrs_class_tokens(attrs):
+    """The class tokens a RAW start-tag attribute string names, IN ORDER.
+
+    The attributes are read through the SAME vendored start-tag tokenizer every parsed view is
+    built from (`_tokenize_raw_tag`, CMH-VAL-21 clauses 7 and 9) rather than by matching a
+    `class=` regex against the raw text, so a raw-input reader answers exactly what its parsed
+    twin answers. A regex read four things wrong at once, each of them a way for a gate to
+    disagree with the browser: it never DECODED the value (a browser's `classList` sees
+    `class="cmh-&#107;ql"` as `cmh-kql`, so a hard gate that reads the raw text fails open), it
+    matched `data-class=` and a `class=` spelled inside another attribute's quoted value
+    (`title='class="cmh-kql"'`), it accepted ANY of several duplicate `class` attributes where
+    HTML5 keeps the FIRST, and its own `\\s` / `re.IGNORECASE` were Python's rather than HTML's.
+
+    The synthetic `<x ...>` wrapper is only there because callers hold the attribute text, not
+    the whole start tag; the tokenizer needs a tag name to accept the input as that tag's own. The
+    space after `x` is load-bearing: without it an `attrs` that does not start with a separator
+    would fuse into the tag name (`<xclass="a">`) and the tokenizer would refuse the whole input.
+
+    One precondition is the CALLER's: `attrs` must be the element's COMPLETE attribute text. A
+    caller that slices the start tag with a `[^>]*` regex truncates it at a `>` inside a quoted
+    value and hands over a fragment, which reads as a different element - so the scans that feed
+    this (`_PRE_TAG_RE`, the KQL figure scan) are quote-aware.
+    """
+    found = _tokenize_raw_tag("<x " + (attrs or "") + ">", "x")
+    if found is None:
+        return []
+    for name, value in found[0]:
+        if name == "class":
+            return html_ws_tokens(value)
+    return []
+
+
 def _attrs_have_class(attrs, class_name):
-    wanted = class_name.casefold()
-    for m in _CLASS_ATTR_RE.finditer(attrs):
-        value = next((g for g in m.groups() if g is not None), "")
-        if any(part.casefold() == wanted for part in value.split()):
-            return True
-    return False
+    """Whether a RAW start-tag attribute string carries `class_name` as a class token. See
+    `raw_attrs_class_tokens` for how the attribute is read and `class_tokens` for the
+    tokenizing and case rules."""
+    return class_name in set(raw_attrs_class_tokens(attrs))
 
 
 def parsed_attrs_have_class(ad, class_name):
-    """Whether a PARSED attribute dict carries `class_name` as a class token. Matching is
-    case-insensitive, like the raw-attribute `_attrs_have_class` it replaces for parsed input."""
-    wanted = class_name.casefold()
-    return any(part.casefold() == wanted for part in (ad.get("class") or "").split())
+    """Whether a PARSED attribute dict carries `class_name` as a class token, by the same
+    `class_tokens` reading the raw-attribute `_attrs_have_class` above uses."""
+    return class_name in class_tokens(ad.get("class"))
 
 
 # dist/SHAREABLE.html ships a working DEMO: its content root carries these placeholder
@@ -218,12 +262,24 @@ FETCHING_LINK_RELS = frozenset((
 # unconditionally (`_OFFLINE_SPECULATIVE_LINK_RELS`), so the two sides agree by construction.
 SPECULATIVE_LINK_RELS = frozenset(("preconnect", "dns-prefetch"))
 
-# How a `rel` list is TOKENIZED, which is neither language's own idea of whitespace: HTML splits
-# the list on ASCII whitespace ONLY, while Python's argument-less `str.split()` also splits on
-# U+001C-U+001F and NBSP and a JS `\s` also splits on U+FEFF and NBSP. Each of those made one side
-# see two relations where the other saw one, so both spell the class out (`_OFFLINE_REL_WS_RE` in
-# `assets/js/68-export-offline.js`), pinned to each other as TEXT by the parity test.
-LINK_REL_WS_RE = re.compile(r"[\t\n\f\r ]+")
+# How a space-separated ATTRIBUTE LIST is TOKENIZED, which is neither language's own idea of
+# whitespace: HTML splits such a list on ASCII whitespace ONLY, while Python's argument-less
+# `str.split()` also splits on U+001C-U+001F and NBSP and a JS `\s` also splits on U+FEFF and NBSP.
+# Each of those made one side see two tokens where the other saw one, so both spell the class out
+# (`_OFFLINE_REL_WS_RE` in `assets/js/68-export-offline.js`), pinned to each other as TEXT by the
+# parity test. `LINK_REL_WS_RE` is the name that pin reads; the same split serves the `class` list
+# (`class_tokens`), which is why it is spelled once here rather than copied per attribute.
+HTML_WS_RE = re.compile(r"[\t\n\f\r ]+")
+LINK_REL_WS_RE = HTML_WS_RE
+
+
+def html_ws_tokens(value):
+    """The tokens of a space-separated attribute list, IN ORDER, split HTML's way.
+
+    Ordered (and a list, not a set) because a caller that REWRITES the attribute has to put the
+    tokens back in the order the author wrote them.
+    """
+    return [t for t in HTML_WS_RE.split(value or "") if t]
 
 
 def link_rel_tokens(value):
@@ -245,7 +301,35 @@ def link_rel_tokens(value):
     Unicode fold maps U+212A onto `k` and U+017F onto `s`, so a look-alike would become a real
     relation on the side whose engine happens to fold it.
     """
-    return set(_ascii_lower(t) for t in LINK_REL_WS_RE.split(value or "") if t)
+    return set(_ascii_lower(t) for t in html_ws_tokens(value))
+
+
+def class_tokens(value):
+    """The classes a `class` attribute names, read the way HTML reads them (CMH-VAL-21 clause 11).
+
+    EVERY Python reader of a `class` list goes through this or through `html_ws_tokens` - the
+    checks in this package, the deck tools and the authoring tools (the latter two through
+    `tools/_browser_attrs.class_tokens`) - so one document cannot be read one way by a gate and
+    another by the tool beside it.
+
+    Two rules, both the browser's:
+
+    - The list is split on ASCII whitespace ONLY (`html_ws_tokens`). Python's argument-less
+      `str.split()` additionally splits on the vertical tab U+000B, NBSP and U+001C-U+001F, so it
+      saw the token `cmh-kql-run` in `class="cmh-kql-run\u000bx"` where a browser sees ONE opaque
+      class that `.cmh-kql-run` never matches - the runtime never styles or binds it, and the
+      gate's verdict and the rendered document disagreed (#1139).
+    - A token is matched by EXACT CODE POINTS, which is how a standards-mode document matches a
+      class selector and how the runtime's own `classList` reads one. No fold at all, so there is
+      nothing for a look-alike to ride in on: `casefold()` here mapped U+212A KELVIN SIGN onto `k`
+      and U+017F onto `s`, making `class="cmh-\u212aql"` a `cmh-kql` figure for the validator and
+      never for a browser. The ASCII fold that a tag, an attribute NAME and a `rel` keyword do get
+      (clause 7, `link_rel_tokens`) is right for those because HTML matches THEM
+      case-insensitively; a class is not one of them, and every other class reader here already
+      matched exactly - so exactness is what makes the whole validator agree with itself.
+    """
+    return set(html_ws_tokens(value))
+
 
 # The head-content set for the CSP view. `_HEAD_TAGS` above deliberately mirrors
 # `tools/authoring/_favicon.py`, so the three obsolete elements the "in head" insertion mode also
@@ -1008,6 +1092,12 @@ def _browser_attrs_dict(parser, tag, attrs):
 # the same rule the two tolerant passes here apply.
 browser_attrs = _browser_attrs
 browser_attrs_dict = _browser_attrs_dict
+
+# The raw-start-tag class reader is public for the same reason: a tool outside this package that
+# holds the attribute TEXT (the KQL-figure refresh in `authoring/content_replace.py`, the two
+# `language-XXX` label readers) must read a class exactly as the gate that would flag the same
+# document does.
+attrs_have_class = _attrs_have_class
 
 # A TAG name folds by the same rule, so those tools read it from the same place rather than
 # keeping a second copy of clause 7: they derive their scanners from `BrowserTagNames` (through
@@ -2308,7 +2398,7 @@ class _DocParser(_BrowserBoundaries):
             self.has_offline_chart = True
         if "style" in ad:
             self.inline_styles.append({"tag": tag, "value": ad.get("style", "")})
-        classes = set((ad.get("class") or "").split())
+        classes = class_tokens(ad.get("class"))
         is_mermaid_host = tag in ("pre", "div") and "mermaid" in classes
         if is_mermaid_host:
             self.mermaid_blocks.append({"cm_skip": own_skip, "has_svg": False})
@@ -2335,7 +2425,7 @@ class _DocParser(_BrowserBoundaries):
         # own title header (new_document.ensure_doc_title emits <header class="cmh-lede"><h1>).
         if (self._cr_depth is not None and not self._cr_closed
                 and len(self.stack) == self._cr_depth + 1
-                and "cmh-lede" in set((ad.get("class") or "").split())):
+                and "cmh-lede" in class_tokens(ad.get("class"))):
             self.has_top_level_lede = True
             self._lede_depth = len(self.stack)
 
@@ -2351,7 +2441,7 @@ class _DocParser(_BrowserBoundaries):
             if (tag in _HEADING_TAGS and self.stack
                     and self.stack[-1][0] in _HEADING_TAGS):
                 self._truncate_stacks(len(self.stack) - 1)
-        own_skip = "cm-skip" in set((ad.get("class") or "").split())
+        own_skip = "cm-skip" in class_tokens(ad.get("class"))
         is_shadow = self._attaches_shadow_root(tag, ad, ns)
         if not is_shadow and tag != "template":
             self._mark_light_child()
@@ -2405,7 +2495,7 @@ class _DocParser(_BrowserBoundaries):
         own_skip, before_mermaid, inert_template, is_shadow = info
         self.stack.append((tag, own_skip))
         self._push_ancestors(tag, own_skip,
-                             tag == "figure" and "chart" in set((ad.get("class") or "").split()),
+                             tag == "figure" and "chart" in class_tokens(ad.get("class")),
                              html_template=inert_template, shadow=is_shadow)
         self._shadow_hosts.append(
             None if is_shadow else {
@@ -2435,7 +2525,7 @@ class _DocParser(_BrowserBoundaries):
             if idx is not None:
                 self.mermaid_blocks[idx]["has_svg"] = True
         self._mark_light_child()
-        self._record(tag, ad, "cm-skip" in set((ad.get("class") or "").split()), ns)
+        self._record(tag, ad, "cm-skip" in class_tokens(ad.get("class")), ns)
         self._close_zero_width()
 
     def handle_data(self, data):

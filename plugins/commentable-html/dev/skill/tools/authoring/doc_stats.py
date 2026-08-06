@@ -20,6 +20,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _atomic_io  # noqa: E402
 import _browser_boundaries  # noqa: E402
+import _browser_attrs  # noqa: E402
 
 DEFAULT_WPM = 200
 STATS_ATTR = "data-cmh-doc-stats"
@@ -28,7 +29,7 @@ SKIP_TAGS = {"script", "style", "template"}
 
 
 def _has_class(attrs, class_name):
-    return class_name in set((attrs.get("class") or "").split())
+    return class_name in _browser_attrs.class_tokens(attrs.get("class"))
 
 
 def _is_word(token):

@@ -447,7 +447,10 @@ def _class_with_cm_skip(attrs):
         if _browser_attrs.ascii_lower(name) == "class":
             current = value or ""
             break
-    classes = current.split()
+    # The ORDERED shared reading, not `str.split()`: this REWRITES the attribute, so the tokens
+    # have to go back in the order the author wrote them - and Python's split would also turn a
+    # `class="a\u000bb"` (ONE class to a browser) into two real classes on the way through.
+    classes = _browser_attrs.html_ws_tokens(current)
     if "cm-skip" not in classes:
         classes.append("cm-skip")
     _set_attr(attrs, "class", " ".join(classes))
@@ -496,7 +499,7 @@ def _matches_selector(elem, selector):
     if selector.startswith("#"):
         return elem.attr_map.get("id") == selector[1:]
     if selector.startswith("."):
-        return selector[1:] in (elem.attr_map.get("class") or "").split()
+        return selector[1:] in _browser_attrs.class_tokens(elem.attr_map.get("class"))
     # An HTML type selector matches ASCII-case-insensitively, as the element name folds.
     return elem.tag == _browser_attrs.ascii_lower(selector)
 
@@ -517,7 +520,7 @@ def _apply_skip_selectors(text, selectors):
             matches[elem.start] = elem
     edits = []
     for elem in matches.values():
-        if "cm-skip" in (elem.attr_map.get("class") or "").split():
+        if "cm-skip" in _browser_attrs.class_tokens(elem.attr_map.get("class")):
             continue
         edits.append((elem.start, elem.start_end, _add_cm_skip_tag(text, elem)))
     return _edits_apply(text, edits), warnings

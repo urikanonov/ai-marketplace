@@ -173,11 +173,23 @@ class CodeBlockSpansTests(unittest.TestCase):
         spans = self._spans(html)
         self.assertEqual([p["in_kql_figure"] for p in spans.pres], [True, False])
 
-    def test_the_kql_figure_class_match_is_case_insensitive(self):
-        # The raw-attribute helper this replaced matched class tokens case-insensitively; an exact
-        # match would make an uppercase class a spurious FATAL "not runnable" error.
+    def test_the_kql_figure_class_match_is_exact(self):
+        # CMH-VAL-21 clause 11 (#1139): a standards-mode document matches a class selector by EXACT
+        # code points, so `class="CMH-KQL"` is not a `.cmh-kql` figure - the frame is not rendered
+        # and the block inside it really is unframed. The earlier case-insensitive reading (a
+        # `casefold()`, which also mapped U+212A KELVIN SIGN onto `k`) called such a block framed
+        # and then demanded a Run link on a figure a reader never sees framed; reading it exactly
+        # reports the block for what it is instead.
         html = '<figure class="CMH-KQL"><pre><code class="language-kusto">T</code></pre></figure>'
+        self.assertEqual([p["in_kql_figure"] for p in self._spans(html).pres], [False])
+        html = '<figure class="cmh-\u212aql"><pre><code class="language-kusto">T</code></pre></figure>'
+        self.assertEqual([p["in_kql_figure"] for p in self._spans(html).pres], [False])
+        # A class list a browser DOES tokenize into `cmh-kql` still frames the block.
+        html = '<figure class="a\tcmh-kql\nb"><pre><code class="language-kusto">T</code></pre></figure>'
         self.assertEqual([p["in_kql_figure"] for p in self._spans(html).pres], [True])
+        # ...and one HTML does not split (the vertical tab) does not.
+        html = '<figure class="a\u000bcmh-kql"><pre><code class="language-kusto">T</code></pre></figure>'
+        self.assertEqual([p["in_kql_figure"] for p in self._spans(html).pres], [False])
 
     def test_a_block_level_start_tag_closes_an_open_p_before_it_nests(self):
         # HTML5 closes an open <p> when <figure> starts, so the later stray </p> pops nothing and

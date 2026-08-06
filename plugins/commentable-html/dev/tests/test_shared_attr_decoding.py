@@ -166,6 +166,91 @@ class SharedDecodeShimTests(unittest.TestCase):
         # canonical one as TEXT - the same discipline the JS copy is held to. Without this, an edit
         # to the shared pattern silently diverges the degraded reading.
         self.assertEqual(_browser_attrs._FALLBACK_REL_WS_RE.pattern, parsing.LINK_REL_WS_RE.pattern)
+        self.assertEqual(_browser_attrs._FALLBACK_HTML_WS_RE.pattern, parsing.HTML_WS_RE.pattern)
+
+    def test_a_class_list_is_tokenized_the_way_html_tokenizes_it(self):
+        # CMH-VAL-21 clause 11 (#1139): HTML splits a `class` list on ASCII whitespace ONLY and
+        # matches a token by EXACT code points. Python's argument-less `str.split()` additionally
+        # splits on the vertical tab, NBSP and U+001C-U+001F, so it read `class="cm-skip\u000bx"`
+        # as carrying `cm-skip` where a browser sees ONE opaque class that `.cm-skip` never
+        # matches - the gate's verdict and the rendered document disagreed.
+        for sep in ("\u000b", "\u00a0", "\u001c", "\u001f"):
+            self.assertEqual(parsing.class_tokens("cm-skip%sx" % sep), {"cm-skip%sx" % sep},
+                             repr(sep))
+        for ws in ("\t", "\n", "\f", "\r", " "):
+            self.assertEqual(parsing.class_tokens("cm-skip%sx" % ws), {"cm-skip", "x"}, repr(ws))
+        # No fold at all, so a look-alike cannot ride in: `casefold()` mapped U+212A KELVIN SIGN
+        # onto `k`, making `cmh-\u212aql` a `cmh-kql` for the validator and never for a browser.
+        self.assertEqual(parsing.class_tokens("cmh-\u212aql"), {"cmh-\u212aql"})
+        self.assertEqual(parsing.class_tokens("CM-SKIP"), {"CM-SKIP"})
+        self.assertEqual(parsing.class_tokens(None), set())
+        self.assertEqual(parsing.class_tokens("   "), set())
+        # The ORDERED reading a caller that REWRITES the attribute needs.
+        self.assertEqual(parsing.html_ws_tokens("  b   a\tc "), ["b", "a", "c"])
+
+    def test_the_degraded_path_reads_a_class_list_the_way_html_tokenizes_it(self):
+        # The partial-install fallback must not reintroduce the differential either.
+        with mock.patch.object(_browser_attrs, "_shared_class_tokens", None), \
+                mock.patch.object(_browser_attrs, "_shared_html_ws_tokens", None):
+            for sep in ("\u000b", "\u00a0", "\u001c", "\u001f"):
+                self.assertEqual(_browser_attrs.class_tokens("cm-skip%sx" % sep),
+                                 {"cm-skip%sx" % sep}, repr(sep))
+            self.assertEqual(_browser_attrs.class_tokens("cm-skip x"), {"cm-skip", "x"})
+            self.assertEqual(_browser_attrs.class_tokens("cmh-\u212aql"), {"cmh-\u212aql"})
+            self.assertEqual(_browser_attrs.class_tokens(None), set())
+            self.assertEqual(_browser_attrs.class_tokens("   "), set())
+            self.assertEqual(_browser_attrs.html_ws_tokens(" b  a "), ["b", "a"])
+
+    def test_a_raw_start_tag_class_is_read_through_the_shared_rule(self):
+        # A tool that has the start tag as TEXT reads a class through the same rule, in all three
+        # HTML quoting forms - a `class="[^"]*cmh-kql[^"]*"` substring regex both over-matched a
+        # `my-cmh-kql-ish` class and never saw a single-quoted or unquoted one at all.
+        for attrs in (' class="a cmh-kql b"', " class='a cmh-kql'", " class=cmh-kql", " CLASS=cmh-kql"):
+            self.assertTrue(_browser_attrs.attrs_have_class(attrs, "cmh-kql"), attrs)
+        for attrs in (' class="my-cmh-kql-ish"', ' class="cmh-kql\u000bx"', ' class="CMH-KQL"',
+                      ' class="cmh-\u212aql"', "", ' id="x"'):
+            self.assertFalse(_browser_attrs.attrs_have_class(attrs, "cmh-kql"), attrs)
+        with mock.patch.object(_browser_attrs, "_shared_raw_attrs_class_tokens", None):
+            self.assertTrue(_browser_attrs.attrs_have_class(" class='a cmh-kql'", "cmh-kql"))
+            self.assertFalse(_browser_attrs.attrs_have_class(' class="my-cmh-kql-ish"', "cmh-kql"))
+            self.assertFalse(_browser_attrs.attrs_have_class(None, "cmh-kql"))
+            self.assertEqual(_browser_attrs.raw_attrs_class_tokens(' class="b a"'), ["b", "a"])
+
+    def test_a_raw_start_tag_class_is_read_by_the_shared_tokenizer_not_a_regex(self):
+        # The raw reader runs the SHARED start-tag tokenizer, so it answers exactly what the
+        # parsed twin answers. A `class=` regex over the raw text got four things wrong at once,
+        # each of them a way for a HARD gate (the KQL run-link requirement, the escaped-diff-text
+        # error) to disagree with the browser:
+        cases = [
+            # (a) a character reference is DECODED, as `classList` decodes it: this one failed the
+            #     gate OPEN, since a browser really does see the class `cmh-kql` here.
+            (' class="cmh-&#107;ql"', True),
+            (' class="x&#32;cmh-kql"', True),
+            # (b) `data-class=` is not `class=`, and neither is a `class=` spelled inside another
+            #     attribute's quoted VALUE.
+            (' data-class="cmh-kql"', False),
+            (" title='class=\"cmh-kql\"'", False),
+            # (c) HTML5 keeps the FIRST of a duplicated attribute, so a later decoy loses.
+            (' class="x" class="cmh-kql"', False),
+            (' class="cmh-kql" class="x"', True),
+            # (d) an unquoted value ends at ASCII whitespace, so NBSP stays INSIDE the one class.
+            (" class=cmh-kql\u00a0x", False),
+            (" class=cmh-kql", True),
+        ]
+        for attrs, expected in cases:
+            self.assertEqual(parsing.attrs_have_class(attrs, "cmh-kql"), expected, repr(attrs))
+            self.assertEqual(_browser_attrs.attrs_have_class(attrs, "cmh-kql"), expected,
+                             repr(attrs))
+
+    def test_the_degraded_raw_class_regex_is_pinned_to_the_rules_it_can_keep(self):
+        # The partial-install fallback cannot decode a character reference (that is what the
+        # shared tokenizer is FOR), but it must not give up the rules a regex CAN keep: the
+        # attribute-name boundary, HTML's unquoted-value terminator, and an ASCII-only fold.
+        with mock.patch.object(_browser_attrs, "_shared_raw_attrs_class_tokens", None):
+            self.assertTrue(_browser_attrs.attrs_have_class(" class=cmh-kql", "cmh-kql"))
+            self.assertFalse(_browser_attrs.attrs_have_class(' data-class="cmh-kql"', "cmh-kql"))
+            self.assertFalse(_browser_attrs.attrs_have_class(" class=cmh-kql\u00a0x", "cmh-kql"))
+            self.assertFalse(_browser_attrs.attrs_have_class(' cla\u017f\u017f="cmh-kql"', "cmh-kql"))
 
     def test_the_degraded_path_measures_an_href_the_way_html_measures_it(self):
         # The href half of the same discipline (#1140): the partial-install fallback must trim the

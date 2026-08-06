@@ -1,6 +1,6 @@
 """Editable notes-field authoring checks (`data-cmh-note` elements)."""
 
-from .parsing import _BrowserStartTag, _browser_attrs_dict
+from .parsing import _BrowserStartTag, _browser_attrs_dict, class_tokens
 
 _NOTE_VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
@@ -37,7 +37,7 @@ class _NotesParser(_BrowserStartTag):
     def _is_layer(self, d):
         if any(a in d for a in _LAYER_ATTRS):
             return True
-        cls = (d.get("class") or "").split()
+        cls = class_tokens(d.get("class"))
         return any(c in cls for c in _LAYER_CLASSES)
 
     def handle_starttag(self, tag, attrs):

@@ -95,7 +95,7 @@ class _SectionParser(_browser_boundaries.BrowserBoundaries):
     def _visit_start(self, tag_l, d, ns, opens):
         if self._stack:
             self._stack[-1]["strip_lf"] = False
-        classes = (d.get("class") or "").split()
+        classes = _browser_attrs.class_tokens(d.get("class"))
         # HTML5's h1-h6 start tag pops an open heading that is the CURRENT node, so a heading whose
         # end tag never arrived stops here instead of running on to collect the rest of the
         # document as its own text. The rule is STRUCTURAL - a browser pops whatever open heading

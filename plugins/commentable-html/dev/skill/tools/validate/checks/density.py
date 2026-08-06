@@ -11,7 +11,7 @@ section cards). All findings are non-fatal warnings, matching the section-wrappi
 """
 import re
 
-from .parsing import _BrowserBoundaries, _ascii_lower, _can_host_shadow_root
+from .parsing import _BrowserBoundaries, _ascii_lower, _can_host_shadow_root, class_tokens
 
 MIN_LONG_PARAGRAPH_CHARS = 240
 MAX_CONSECUTIVE_LONG = 4
@@ -156,7 +156,7 @@ class _DensityParser(_BrowserBoundaries):
 
     @staticmethod
     def _classes(d):
-        return (d.get("class") or "").split()
+        return class_tokens(d.get("class"))
 
     def _is_root(self, tag, d):
         return "data-cmh-content-root" in d or d.get("id") == "commentRoot"

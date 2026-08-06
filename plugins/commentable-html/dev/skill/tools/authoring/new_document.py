@@ -131,7 +131,6 @@ _SECTION_CARD_KINDS = frozenset({"report", "plan"})
 _VOID_ELEMENTS = frozenset((
     "area", "base", "br", "col", "embed", "hr", "img", "input",
     "link", "meta", "param", "source", "track", "wbr"))
-_LEDE_CLASS_RE = re.compile(r'(^|\s)cmh-lede(\s|$)')
 
 
 class _TitleDetector(_browser_attrs.BrowserTagNames):
@@ -158,7 +157,7 @@ class _TitleDetector(_browser_attrs.BrowserTagNames):
             self.found = True
             return
         cls = dict(attrs).get("class") or ""
-        if _LEDE_CLASS_RE.search(cls):
+        if "cmh-lede" in _browser_attrs.class_tokens(cls):
             self.found = True
 
     def handle_starttag(self, tag, attrs):
