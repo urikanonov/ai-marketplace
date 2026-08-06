@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.801.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.803.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,7 +496,7 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.801.0] - 2026-08-06</h3></div>
+            <div class="rel-head"><h3>[1.803.0] - 2026-08-06</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>A link comment whose stored index has gone stale can no longer re-anchor onto a DIFFERENT link that happens to share its href (CMH-LINK-02). <code>resolveLinkEl</code> resolved by <code>linkIndex</code> first and distrusted that index only when the indexed link&#x27;s href differed from the stored one, so when a re-index (any change to WHICH links are commentable shifts every later index) moved the stored index onto a same-href sibling, the href test passed, the heal never ran, and the comment silently attached to the wrong link - a document with two references to one URL is enough to reproduce it. Resolution is now by KEY STRENGTH within each href reading (the current one, then the pre-1.790.0 one): the link matching href + text, then the indexed candidate if its href matches, then the first href match. The stored <code>linkText</code> disambiguates links the href cannot tell apart, so text BEATS the index when they disagree - the index is the most fragile key the record holds. The mirror case is accepted and indistinguishable from the same stored fields: if a link&#x27;s own label is edited AND a same-href sibling carries the label it used to have, the comment follows the text onto that sibling. A link whose label was edited with no same-href twin still heals by href alone, and two links sharing BOTH keys stay indistinguishable, with the index still deciding. An EMPTY stored text is information (a bare or image-only link had none) and still disambiguates; a <code>linkText</code> that is not a string carries no text key at all, so a hand-edited or imported record can neither invent a key nor throw inside resolution when coerced.</li>
