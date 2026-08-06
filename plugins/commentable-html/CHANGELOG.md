@@ -22,7 +22,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   scrolls instead. The comment list takes a 96px floor, so the shrink lands on that region rather
   than on the cards, and a landscape phone spends the header's doubled padding on it. All twelve
   states now keep the whole list on screen with no pane overflow, and opening either transient row
-  scrolls its field fully into view. The desktop layout is unchanged.
+  scrolls its field fully into view - including the identity NUDGE, the first way a reviewer meets
+  the editor, which opens it for them without focus and so had to learn to scroll itself. Bounding
+  a region has consequences, and they are handled rather than left: the inline axis is clipped
+  explicitly (so a long localized "Generated on" line wraps instead of growing a horizontal
+  scrollbar inside the header), the region's clip edge is pushed out to the header's padding box
+  (so a focus ring is not shaved off and the scrollbar sits flush with the pane), the `set name`
+  link's overlaid 44px tap target gets its overhang reserved inside the scrollport, and the region
+  takes a keyboard tab stop, `role="group"` and an accessible name while - and only while - it
+  actually scrolls. Below 320px both floors yield rather than let the pinned chrome overrun the
+  list. The desktop layout is unchanged.
 
 ## [1.779.0] - 2026-08-06
 

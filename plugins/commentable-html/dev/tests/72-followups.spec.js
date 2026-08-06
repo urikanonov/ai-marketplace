@@ -401,9 +401,18 @@ test.describe("visual-audit follow-ups", () => {
     await expect(page.locator("#cmSearchRow")).toBeVisible({ visible: want });
   };
   const setIdentityEditor = async (page, want) => {
-    const open = await page.locator("#cmIdentityEdit").isVisible();
-    if (open !== want) await page.click(want ? "#btnEditIdentity" : "#btnCancelIdentity");
-    await expect(page.locator("#cmIdentityEdit")).toBeVisible({ visible: want });
+    // The editor can already be open WITHOUT focus - the nudge after a first comment opens it that
+    // way (`43-identity.js`) - so always drive it through the user's own open path rather than
+    // accepting whatever state it is in, or the focus this helper promises never happens.
+    if (await page.locator("#cmIdentityEdit").isVisible()) await page.click("#btnCancelIdentity");
+    await expect(page.locator("#cmIdentityEdit")).toBeHidden();
+    if (!want) return;
+    await page.click("#btnEditIdentity");
+    await expect(page.locator("#cmIdentityEdit")).toBeVisible();
+    // Opening focuses the input from a `setTimeout(..., 0)` (`43-identity.js`), and it is that
+    // focus that scrolls the editor into the bounded header region. Measuring before it lands
+    // reads a pre-scroll geometry, so wait for the focus rather than racing it.
+    await expect(page.locator("#cmIdentityInput")).toBeFocused();
   };
   // The list's LAYOUT height stops meaning anything once the header has pushed it past the pane's
   // bottom edge, so measure the part that is inside BOTH the pane and the viewport - what a
@@ -413,6 +422,8 @@ test.describe("visual-audit follow-ups", () => {
     const pane = document.querySelector(".cm-sidebar");
     const list = document.getElementById("commentList");
     if (!pane || !list) throw new Error("the side pane or its comment list is not present");
+    const head = pane.querySelector("header");
+    const primary = pane.querySelector(".head-primary");
     const pr = pane.getBoundingClientRect();
     const lr = list.getBoundingClientRect();
     const top = Math.max(lr.top, pr.top, 0);
@@ -421,6 +432,11 @@ test.describe("visual-audit follow-ups", () => {
       layout: lr.height,
       visible: Math.max(0, bottom - top),
       paneOverflowY: pane.scrollHeight - pane.clientHeight,
+      // The header can now SHRINK, so a deficit no longer shows up as pane overflow - it moves
+      // INSIDE the header, where the pinned chrome would paint over (and hit-test above) the
+      // cards. That is the failure `paneOverflowY` alone can no longer see.
+      headOverflowY: head.scrollHeight - head.clientHeight,
+      chromeOverlap: primary.getBoundingClientRect().bottom - lr.top,
     };
   });
 
@@ -444,12 +460,19 @@ test.describe("visual-audit follow-ups", () => {
     // The metric is the VISIBLE height, not the layout height this guard used to read: once the
     // header had pushed the list past the pane's bottom edge (issue #1180) the layout box stopped
     // shrinking and stopped meaning what it was taken to mean. CMH-RESP-16 bounds the header so
-    // the two agree again, and these floors are asserted against the visible number.
+    // the two agree again, and these floors are asserted against the visible number. That bound
+    // also means the floors below can no longer be the WHOLE guard: the list now has a structural
+    // 96px floor, so a control bump big enough to starve it is paid by `.head-aux` instead. The
+    // budget this row defends is therefore asserted on BOTH sides - the list's floors, and the
+    // scroll window left for the transient rows, which is where the cost actually lands now.
     const FLOOR = {
       "": { closed: 73, editing: 46 },
       compact: { closed: 92, editing: 64 },
       comfortable: { closed: 53, editing: 27 },
     };
+    // One 44px control plus its overlaid tap target: below this the identity editor cannot be
+    // shown, which is the same starvation one step downstream of the cards.
+    const AUX_FLOOR = 48;
     await page.setViewportSize({ width: 640, height: 320 });
     await page.goto(fileUrl(INLINE));
     await ready(page);
@@ -463,9 +486,15 @@ test.describe("visual-audit follow-ups", () => {
         expect(m.visible, `${at}: the comment list keeps a usable VISIBLE height`)
           .toBeGreaterThanOrEqual(editing ? FLOOR[density].editing : FLOOR[density].closed);
         // ...and it is visible because it is actually laid out inside the pane, not because the
-        // pane grew a scrollbar underneath it.
+        // pane grew a scrollbar underneath it, and not because the header shrank so far that its
+        // pinned chrome now paints over the cards.
         expect(m.paneOverflowY, `${at}: the side pane does not overflow vertically`)
           .toBeLessThanOrEqual(1);
+        expect(m.chromeOverlap, `${at}: the pinned chrome does not paint over the comment list`)
+          .toBeLessThanOrEqual(1);
+        const aux = await page.evaluate(() => document.querySelector(".cm-sidebar .head-aux").getBoundingClientRect().height);
+        expect(aux, `${at}: the header's transient rows keep a usable scroll window`)
+          .toBeGreaterThanOrEqual(AUX_FLOOR);
       }
     }
     await setIdentityEditor(page, false);
@@ -476,13 +505,39 @@ test.describe("visual-audit follow-ups", () => {
   // bottom, so this guard walks the whole state space rather than the one state CMH-RESP-14 reads.
   test("the side pane header never pushes the comment list off the bottom on a landscape phone (CMH-RESP-16)", async ({ page }) => {
     // A rendered card measures ~250px at this viewport, taller than the whole 320px pane, so no
-    // header can promise "a whole card". What IS promised is a list that stays a usable scroll
-    // window: 88px is a card's meta line plus the start of its body, and it is the number the
-    // pinned chrome (title row, ribbon, primary actions) leaves room for in every preset.
-    const VISIBLE_FLOOR = 88;
+    // header can promise "a whole card" (the issue's wording); what IS promised is a list that
+    // stays a usable scroll window - a card's meta line plus the start of its body. The CSS floor
+    // is `min(96px, 30vh)`, exactly 96px here, and the assertion sits just under it so genuine
+    // cross-platform font metrics cannot flake it while a real regression still fails.
+    const VISIBLE_FLOOR = 95.5;
     await page.setViewportSize({ width: 640, height: 320 });
     await page.goto(fileUrl(INLINE));
     await ready(page);
+    // The EMPTY list is the first-time reviewer's state and the one with the least reason to be
+    // squeezed, so measure it before there is a card to measure. Nothing has opened the pane yet,
+    // so open it explicitly - it is translated off-screen until then.
+    if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
+      await page.click("#btnToggleSidebar");
+    }
+    await expect(page.locator("body")).toHaveClass(/sidebar-open/);
+    await expect(page.locator("#commentList .cm-empty")).toBeVisible();
+    for (const density of DENSITIES) {
+      await setDensity(page, density);
+      for (const search of [false, true]) {
+        await setSearchRow(page, search);
+        for (const editing of [false, true]) {
+          await setIdentityEditor(page, editing);
+          const m = await measureList(page);
+          const at = `[empty, density=${density || "default"}, search=${search}, editing=${editing}]`;
+          expect(m.visible, `${at}: the empty comment list keeps a visible window`).toBeGreaterThanOrEqual(VISIBLE_FLOOR);
+          expect(m.paneOverflowY, `${at}: the side pane does not overflow vertically`).toBeLessThanOrEqual(1);
+        }
+      }
+    }
+    await setSearchRow(page, false);
+    await setIdentityEditor(page, false);
+    await setDensity(page, "");
+
     await addTextComment(page, "#commentRoot p", "landscape header budget");
     for (const density of DENSITIES) {
       await setDensity(page, density);
@@ -500,6 +555,13 @@ test.describe("visual-audit follow-ups", () => {
             .toBeLessThanOrEqual(1);
           expect(m.paneOverflowY, `${at}: the side pane does not overflow vertically`)
             .toBeLessThanOrEqual(1);
+          // A shrinkable header moves the OLD failure somewhere the pane's own overflow can no
+          // longer see it: the pinned chrome would spill out of the header box and paint over -
+          // and hit-test above - the cards, with `paneOverflowY` still reading 0.
+          expect(m.headOverflowY, `${at}: the header's pinned chrome fits the header box`)
+            .toBeLessThanOrEqual(1);
+          expect(m.chromeOverlap, `${at}: the pinned chrome does not paint over the comment list`)
+            .toBeLessThanOrEqual(1);
         }
       }
     }
@@ -507,9 +569,34 @@ test.describe("visual-audit follow-ups", () => {
     await setIdentityEditor(page, false);
     await setDensity(page, "");
 
-    // A bounded region is only usable if what you OPEN in it comes into view. Both transient rows
-    // focus their own field on open, so the browser scrolls `.head-aux` to it; pin that the field
-    // lands fully inside both the scroll window and the viewport, in every preset.
+    // Shorter than the viewport this targets, the floor must YIELD rather than let the pinned
+    // chrome overrun the list: `min(96px, 30vh)` on the list and `min(48px, 15vh)` on the region
+    // are what make that graceful. What is promised BELOW 320px is bounded degradation, not the
+    // full guarantee - at 280px everything still fits, and by 240px (well under any phone, and
+    // less than the pinned chrome plus one control) the transient region starts to overlap the
+    // list, while the chrome a reviewer actually presses stays clear of it either way.
+    await page.setViewportSize({ width: 640, height: 280 });
+    let short = await measureList(page);
+    expect(short.visible, "[640x280]: the comment list still has a window").toBeGreaterThan(0);
+    expect(short.chromeOverlap, "[640x280]: the pinned chrome does not paint over the comment list").toBeLessThanOrEqual(1);
+    expect(short.headOverflowY, "[640x280]: the header still fits its box").toBeLessThanOrEqual(1);
+    await page.setViewportSize({ width: 640, height: 240 });
+    short = await measureList(page);
+    expect(short.visible, "[640x240]: the comment list still has a window").toBeGreaterThan(0);
+    expect(short.chromeOverlap, "[640x240]: the pinned chrome does not paint over the comment list").toBeLessThanOrEqual(1);
+    // Bounded, not zero: the residual is recorded so it cannot silently grow back into #1180.
+    expect(short.headOverflowY, "[640x240]: the header's spill stays bounded").toBeLessThanOrEqual(24);
+    await page.setViewportSize({ width: 640, height: 320 });
+  });
+
+  // The second half of the CMH-RESP-16 guarantee: a bounded region is only worth anything if what
+  // you open in it is reachable. Split from the state sweep above because the two together run
+  // past the per-test budget, and the repo splits a slow test rather than widening the timeout.
+  test("the side pane header's bounded region stays reachable on a landscape phone (CMH-RESP-16)", async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 320 });
+    await page.goto(fileUrl(INLINE));
+    await ready(page);
+
     const revealed = (page, sel) => page.evaluate((s) => {
       const aux = document.querySelector(".head-aux");
       const el = document.querySelector(s);
@@ -523,6 +610,32 @@ test.describe("visual-audit follow-ups", () => {
         onScreenBottom: window.innerHeight - er.bottom,
       };
     }, sel);
+
+    // The identity NUDGE is the FIRST way a reviewer meets the editor: saving a first comment opens
+    // it for them, and deliberately does NOT focus it (`43-identity.js`). Focus is what would
+    // otherwise scroll it into the bounded region, so this is the one path that has to scroll
+    // itself - and it is the path a reviewer actually walks. Measured with the search row open,
+    // ...and it runs FIRST because the nudge fires only once. The pane is not open until something
+    // opens it, so open it before reaching for a control inside it.
+    if (!(await page.evaluate(() => document.body.classList.contains("sidebar-open")))) {
+      await page.click("#btnToggleSidebar");
+    }
+    await expect(page.locator("body")).toHaveClass(/sidebar-open/);
+    await setSearchRow(page, true);
+    await addTextComment(page, "#commentRoot p", "landscape header reach");
+    await expect(page.locator("#cmIdentityEdit")).toBeVisible();
+    const nudged = await revealed(page, "#cmIdentityInput");
+    expect(nudged.h, "the nudged identity editor is rendered").toBeGreaterThan(0);
+    expect(nudged.insideTop, "an unfocused (nudged) identity editor is scrolled into view").toBeGreaterThanOrEqual(-0.5);
+    expect(nudged.insideBottom, "an unfocused (nudged) identity editor is scrolled into view").toBeGreaterThanOrEqual(-0.5);
+    expect(nudged.onScreenTop, "an unfocused (nudged) identity editor is on screen").toBeGreaterThanOrEqual(-0.5);
+    expect(nudged.onScreenBottom, "an unfocused (nudged) identity editor is on screen").toBeGreaterThanOrEqual(-0.5);
+    await setIdentityEditor(page, false);
+    await setSearchRow(page, false);
+
+    // A bounded region is only usable if what you OPEN in it comes into view. Both transient rows
+    // focus their own field on open, so the browser scrolls `.head-aux` to it; pin that the field
+    // lands fully inside both the scroll window and the viewport, in every preset.
     for (const density of DENSITIES) {
       await setDensity(page, density);
       const at = `[density=${density || "default"}]`;
@@ -541,6 +654,33 @@ test.describe("visual-audit follow-ups", () => {
       }
     }
     await setDensity(page, "");
+
+    // The region takes a keyboard tab stop and a name only WHILE it actually scrolls, so a sighted
+    // keyboard-only reviewer can reach the non-focusable `Generated on` / `Last comment` lines
+    // without a dead tab stop appearing on a viewport where nothing scrolls. The stamping is
+    // observer-driven, so assert it with the auto-retrying locator matchers rather than a single
+    // synchronous read that can land before the observer has run.
+    const aux = page.locator(".cm-sidebar .head-aux");
+    await setSearchRow(page, true);
+    expect(await page.evaluate(() => {
+      const el = document.querySelector(".cm-sidebar .head-aux");
+      return el.scrollHeight > el.clientHeight + 1;
+    }), "the bounded region scrolls on a landscape phone").toBe(true);
+    await expect(aux, "a scrolling region is keyboard reachable").toHaveAttribute("tabindex", "0");
+    await expect(aux, "a scrolling region is a named group").toHaveAttribute("role", "group");
+    await expect(aux, "a scrolling region carries an accessible name").toHaveAttribute("aria-label", /\S/);
+    await setSearchRow(page, false);
+
+    // On a tall viewport it must NOT scroll at all - neither a leftover tab stop nor the 44px
+    // identity tap target's overhang may turn the header into a scroller with nothing to scroll.
+    await page.setViewportSize({ width: 400, height: 900 });
+    await expect(aux, "no dead tab stop where nothing scrolls").not.toHaveAttribute("tabindex", /.*/);
+    await expect(aux, "no leftover accessible name where nothing scrolls").not.toHaveAttribute("aria-label", /.*/);
+    expect(await page.evaluate(() => {
+      const el = document.querySelector(".cm-sidebar .head-aux");
+      return el.scrollHeight - el.clientHeight;
+    }), "the region does not scroll where the header has room").toBeLessThanOrEqual(1);
+    await page.setViewportSize({ width: 640, height: 320 });
 
     // The obvious way to bound a header - scrolling the header itself - would CLIP the Export and
     // More menus, which are absolutely positioned inside it. Pin that they are not: each opens
@@ -579,11 +719,18 @@ test.describe("visual-audit follow-ups", () => {
       expect(geo.bottom, `${menu} ends on screen`).toBeLessThanOrEqual(geo.vh + 0.5);
       expect(geo.left, `${menu} starts inside the viewport`).toBeGreaterThanOrEqual(-0.5);
       expect(geo.right, `${menu} ends inside the viewport`).toBeLessThanOrEqual(geo.vw + 0.5);
-      expect(geo.below, `${menu} opens just under its toggle`).toBeGreaterThanOrEqual(0);
+      expect(geo.below, `${menu} opens just under its toggle`).toBeGreaterThanOrEqual(-0.5);
       expect(geo.below, `${menu} stays anchored to its toggle`).toBeLessThanOrEqual(12);
       expect(geo.overlapsX, `${menu} is aligned with its toggle`).toBeGreaterThan(0);
-      // Every item is reachable: the menu is its own scroller (CMH-RESP-15's cap makes it one on a
-      // 320px-tall viewport), so scroll the LAST item into it and assert it lands inside.
+      // Every item is reachable. The menu's own `max-height` cap (`assets/css/20-chrome.css`,
+      // `.cm-sidebar-export-menu`) makes it a scroller on a 320px-tall viewport, so assert it IS
+      // one before scrolling the LAST item into it - otherwise "the item is inside the menu" would
+      // pass simply because the menu was never bounded.
+      const scroller = await page.evaluate((m) => {
+        const el = document.querySelector(m);
+        return el.scrollHeight > el.clientHeight + 1;
+      }, menu);
+      expect(scroller, `${menu} is bounded and scrolls on a landscape phone`).toBe(true);
       await page.locator(item).scrollIntoViewIfNeeded();
       const reach = await page.evaluate(([m, i]) => {
         const el = document.querySelector(m);

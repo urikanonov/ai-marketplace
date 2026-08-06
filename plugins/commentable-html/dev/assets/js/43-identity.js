@@ -93,6 +93,11 @@ function _identityEditing(on) {
   els.editBox.hidden = !on;
   if (els.nameEl) els.nameEl.hidden = on;
   if (els.editBtn) els.editBtn.hidden = on;
+  // The identity row is the last child of the sidebar header's bounded `.head-aux` scroll region
+  // (CMH-RESP-16), so REVEALING the editor is not enough on a landscape phone - it can open below
+  // the region's fold. Focusing the input scrolls it in, but the NUDGE path deliberately opens the
+  // editor WITHOUT focus, so scroll it in explicitly rather than leaving it invisible.
+  if (on) { try { els.editBox.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) {} }
   if (returnFocus && els.editBtn) { try { els.editBtn.focus(); } catch (e) {} }
 }
 function beginEditIdentity(focus) {
