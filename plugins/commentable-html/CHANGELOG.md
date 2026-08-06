@@ -27,9 +27,9 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   a region has consequences, and they are handled rather than left: the inline axis is pinned to
   `hidden` (so a long localized "Generated on" line wraps instead of growing a horizontal scrollbar
   inside the header, and a browser without `overflow: clip` support cannot fall back into one), the
-  region's clip edge is pushed out to the header's padding box with a reserved scrollbar gutter (so
-  a focus ring is not shaved off, the scrollbar sits flush with the pane, and the rows do not shift
-  when it starts scrolling), the `set name` link's overlaid 44px tap target gets its overhang reserved inside the
+  region's clip edge is pushed out to the header's padding box (so a focus ring is not shaved off
+  and the scrollbar sits flush with the pane), the `set name` link's overlaid 44px tap target gets
+  its overhang reserved inside the
   scrollport with the header handing over its own bottom padding so a portrait phone pays nothing
   for it, both floors carry an explicit `box-sizing` because the `border-box` reset lives in the
   document theme rather than the layer, and the region takes a keyboard tab stop, `role="group"`, an
