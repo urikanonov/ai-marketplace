@@ -393,6 +393,37 @@ test.describe("visual-audit follow-ups", () => {
     await expect(page.locator("#cmIdentityName")).toContainText("Thumbs");
   });
 
+  // The states a landscape phone's sidebar header can be in: the two TRANSIENT rows (the
+  // reader-toggled search field and the identity editor) open or closed, under every density.
+  const setSearchRow = async (page, want) => {
+    const open = await page.evaluate(() => !document.getElementById("cmSearchRow").hidden);
+    if (open !== want) await page.click("#btnSearchToggle");
+    await expect(page.locator("#cmSearchRow")).toBeVisible({ visible: want });
+  };
+  const setIdentityEditor = async (page, want) => {
+    const open = await page.locator("#cmIdentityEdit").isVisible();
+    if (open !== want) await page.click(want ? "#btnEditIdentity" : "#btnCancelIdentity");
+    await expect(page.locator("#cmIdentityEdit")).toBeVisible({ visible: want });
+  };
+  // The list's LAYOUT height stops meaning anything once the header has pushed it past the pane's
+  // bottom edge, so measure the part that is inside BOTH the pane and the viewport - what a
+  // reviewer can actually see - alongside the pane's own vertical overflow, which is where any
+  // further header growth is paid once the layout box has bottomed out.
+  const measureList = (page) => page.evaluate(() => {
+    const pane = document.querySelector(".cm-sidebar");
+    const list = document.getElementById("commentList");
+    if (!pane || !list) throw new Error("the side pane or its comment list is not present");
+    const pr = pane.getBoundingClientRect();
+    const lr = list.getBoundingClientRect();
+    const top = Math.max(lr.top, pr.top, 0);
+    const bottom = Math.min(lr.bottom, pr.bottom, window.innerHeight);
+    return {
+      layout: lr.height,
+      visible: Math.max(0, bottom - top),
+      paneOverflowY: pane.scrollHeight - pane.clientHeight,
+    };
+  });
+
   test("enlarging the side pane's controls does not starve the comment list on a landscape phone (CMH-RESP-14)", async ({ page }) => {
     // The worst case for the sidebar header's vertical budget: the shortest phone the repo
     // targets, in every density preset. The header is mostly pre-existing chrome, so these are
@@ -409,6 +440,11 @@ test.describe("visual-audit follow-ups", () => {
     // EDITING is transient and costs ~28px, because `Save` / `Cancel` / the input cannot be 44px
     // targets in a row that is not 44px tall; while a reviewer is typing a name they are not
     // reading cards, and the row collapses again the moment they save or cancel.
+    //
+    // The metric is the VISIBLE height, not the layout height this guard used to read: once the
+    // header had pushed the list past the pane's bottom edge (issue #1180) the layout box stopped
+    // shrinking and stopped meaning what it was taken to mean. CMH-RESP-16 bounds the header so
+    // the two agree again, and these floors are asserted against the visible number.
     const FLOOR = {
       "": { closed: 73, editing: 46 },
       compact: { closed: 92, editing: 64 },
@@ -421,20 +457,147 @@ test.describe("visual-audit follow-ups", () => {
     for (const density of DENSITIES) {
       await setDensity(page, density);
       for (const editing of [false, true]) {
-        const open = await page.locator("#cmIdentityEdit").isVisible();
-        if (editing && !open) await page.click("#btnEditIdentity");
-        if (!editing && open) await page.click("#btnCancelIdentity");
-        const listH = await page.evaluate(() => {
-          const list = document.getElementById("commentList");
-          if (!list) throw new Error("the comment list is not present");
-          return list.getBoundingClientRect().height;
-        });
+        await setIdentityEditor(page, editing);
+        const m = await measureList(page);
         const at = `[density=${density || "default"}, editing=${editing}]`;
-        expect(listH, `${at}: the comment list keeps a usable height`)
+        expect(m.visible, `${at}: the comment list keeps a usable VISIBLE height`)
           .toBeGreaterThanOrEqual(editing ? FLOOR[density].editing : FLOOR[density].closed);
+        // ...and it is visible because it is actually laid out inside the pane, not because the
+        // pane grew a scrollbar underneath it.
+        expect(m.paneOverflowY, `${at}: the side pane does not overflow vertically`)
+          .toBeLessThanOrEqual(1);
+      }
+    }
+    await setIdentityEditor(page, false);
+    await setDensity(page, "");
+  });
+
+  // Issue #1180: the header's own rows - not any one control - were what pushed the list off the
+  // bottom, so this guard walks the whole state space rather than the one state CMH-RESP-14 reads.
+  test("the side pane header never pushes the comment list off the bottom on a landscape phone (CMH-RESP-16)", async ({ page }) => {
+    // A rendered card measures ~250px at this viewport, taller than the whole 320px pane, so no
+    // header can promise "a whole card". What IS promised is a list that stays a usable scroll
+    // window: 88px is a card's meta line plus the start of its body, and it is the number the
+    // pinned chrome (title row, ribbon, primary actions) leaves room for in every preset.
+    const VISIBLE_FLOOR = 88;
+    await page.setViewportSize({ width: 640, height: 320 });
+    await page.goto(fileUrl(INLINE));
+    await ready(page);
+    await addTextComment(page, "#commentRoot p", "landscape header budget");
+    for (const density of DENSITIES) {
+      await setDensity(page, density);
+      for (const search of [false, true]) {
+        await setSearchRow(page, search);
+        for (const editing of [false, true]) {
+          await setIdentityEditor(page, editing);
+          const at = `[density=${density || "default"}, search=${search}, editing=${editing}]`;
+          const m = await measureList(page);
+          expect(m.visible, `${at}: the comment list keeps a visible scroll window`)
+            .toBeGreaterThanOrEqual(VISIBLE_FLOOR);
+          // The visible part is the WHOLE list box: nothing of it is below the fold, which is the
+          // failure mode - a non-zero layout height that a reviewer cannot see any of.
+          expect(m.layout - m.visible, `${at}: no part of the comment list is below the fold`)
+            .toBeLessThanOrEqual(1);
+          expect(m.paneOverflowY, `${at}: the side pane does not overflow vertically`)
+            .toBeLessThanOrEqual(1);
+        }
+      }
+    }
+    await setSearchRow(page, false);
+    await setIdentityEditor(page, false);
+    await setDensity(page, "");
+
+    // A bounded region is only usable if what you OPEN in it comes into view. Both transient rows
+    // focus their own field on open, so the browser scrolls `.head-aux` to it; pin that the field
+    // lands fully inside both the scroll window and the viewport, in every preset.
+    const revealed = (page, sel) => page.evaluate((s) => {
+      const aux = document.querySelector(".head-aux");
+      const el = document.querySelector(s);
+      const ar = aux.getBoundingClientRect();
+      const er = el.getBoundingClientRect();
+      return {
+        h: er.height,
+        insideTop: er.top - ar.top,
+        insideBottom: ar.bottom - er.bottom,
+        onScreenTop: er.top,
+        onScreenBottom: window.innerHeight - er.bottom,
+      };
+    }, sel);
+    for (const density of DENSITIES) {
+      await setDensity(page, density);
+      const at = `[density=${density || "default"}]`;
+      for (const [open, field, close] of [
+        [() => setSearchRow(page, true), "#cmSearchInput", () => setSearchRow(page, false)],
+        [() => setIdentityEditor(page, true), "#cmIdentityInput", () => setIdentityEditor(page, false)],
+      ]) {
+        await open();
+        const r = await revealed(page, field);
+        expect(r.h, `${at}: ${field} is rendered`).toBeGreaterThan(0);
+        expect(r.insideTop, `${at}: ${field} is scrolled into the header's scroll window`).toBeGreaterThanOrEqual(-0.5);
+        expect(r.insideBottom, `${at}: ${field} is scrolled into the header's scroll window`).toBeGreaterThanOrEqual(-0.5);
+        expect(r.onScreenTop, `${at}: ${field} is on screen`).toBeGreaterThanOrEqual(-0.5);
+        expect(r.onScreenBottom, `${at}: ${field} is on screen`).toBeGreaterThanOrEqual(-0.5);
+        await close();
       }
     }
     await setDensity(page, "");
+
+    // The obvious way to bound a header - scrolling the header itself - would CLIP the Export and
+    // More menus, which are absolutely positioned inside it. Pin that they are not: each opens
+    // fully on screen, anchored to its own toggle, with every item reachable.
+    for (const [toggle, menu, item] of [
+      ["#btnSidebarExportMenu", "#sidebarExportMenu", "#btnPrint"],
+      ["#btnMoreMenu", "#sidebarMoreMenu", "#btnClearAll"],
+    ]) {
+      await page.click(toggle);
+      await expect(page.locator(menu)).toBeVisible();
+      const geo = await page.evaluate(([t, m]) => {
+        const tog = document.querySelector(t);
+        const el = document.querySelector(m);
+        const tr = tog.getBoundingClientRect();
+        const mr = el.getBoundingClientRect();
+        return {
+          top: mr.top, bottom: mr.bottom, left: mr.left, right: mr.right,
+          w: mr.width, h: mr.height,
+          vw: window.innerWidth, vh: window.innerHeight,
+          // Anchored to its toggle: the menu opens directly under it and shares an edge with it.
+          below: mr.top - tr.bottom,
+          overlapsX: Math.min(mr.right, tr.right) - Math.max(mr.left, tr.left),
+          clipped: (() => {
+            for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+              const cs = getComputedStyle(a);
+              if (cs.overflowY !== "visible" || cs.overflowX !== "visible") return a.className || a.tagName;
+            }
+            return "";
+          })(),
+        };
+      }, [toggle, menu]);
+      expect(geo.clipped, `${menu} has no clipping ancestor inside the pane`).toBe("");
+      expect(geo.w, `${menu} is rendered`).toBeGreaterThan(0);
+      expect(geo.h, `${menu} is rendered`).toBeGreaterThan(0);
+      expect(geo.top, `${menu} starts on screen`).toBeGreaterThanOrEqual(-0.5);
+      expect(geo.bottom, `${menu} ends on screen`).toBeLessThanOrEqual(geo.vh + 0.5);
+      expect(geo.left, `${menu} starts inside the viewport`).toBeGreaterThanOrEqual(-0.5);
+      expect(geo.right, `${menu} ends inside the viewport`).toBeLessThanOrEqual(geo.vw + 0.5);
+      expect(geo.below, `${menu} opens just under its toggle`).toBeGreaterThanOrEqual(0);
+      expect(geo.below, `${menu} stays anchored to its toggle`).toBeLessThanOrEqual(12);
+      expect(geo.overlapsX, `${menu} is aligned with its toggle`).toBeGreaterThan(0);
+      // Every item is reachable: the menu is its own scroller (CMH-RESP-15's cap makes it one on a
+      // 320px-tall viewport), so scroll the LAST item into it and assert it lands inside.
+      await page.locator(item).scrollIntoViewIfNeeded();
+      const reach = await page.evaluate(([m, i]) => {
+        const el = document.querySelector(m);
+        const last = document.querySelector(i);
+        const mr = el.getBoundingClientRect();
+        const ir = last.getBoundingClientRect();
+        return { insideTop: ir.top - mr.top, insideBottom: mr.bottom - ir.bottom, h: ir.height };
+      }, [menu, item]);
+      expect(reach.h, `${item} is rendered`).toBeGreaterThan(0);
+      expect(reach.insideTop, `${item} can be scrolled into ${menu}`).toBeGreaterThanOrEqual(-0.5);
+      expect(reach.insideBottom, `${item} can be scrolled into ${menu}`).toBeGreaterThanOrEqual(-0.5);
+      await page.keyboard.press("Escape");
+      await expect(page.locator(menu)).toBeHidden();
+    }
   });
 
   test("table-mode checklist rows keep their 44px tap targets from overlapping (CMH-RESP-06)", async ({ page }) => {

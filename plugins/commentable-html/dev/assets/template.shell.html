@@ -304,25 +304,27 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
         </div>
       </div>
     </div>
-    <div class="head-search" id="cmSearchRow" role="search" hidden>
-      <svg class="cm-search-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-      <input type="text" id="cmSearchInput" class="cm-search-input" placeholder="Search comments" aria-label="Search comments" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <button type="button" id="cmSearchClear" class="cm-search-clear" aria-label="Clear comment search" title="Clear search" hidden><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
-      <span id="cmSearchCount" class="cm-search-count" aria-live="polite" title="Comments shown by the current search out of the total"></span>
-    </div>
-    <div class="cm-side-info" title="Document info">
-      <span id="cmGenerated"></span>
-      <span id="cmLastComment"></span>
-    </div>
-    <div class="cm-identity" id="cmIdentity" title="The name attached to comments you add. Editing it applies to new comments only; it does not change past comments.">
-      <span class="cm-identity-label">Commenting as</span>
-      <span class="cm-identity-name" id="cmIdentityName" aria-live="polite"></span>
-      <button type="button" id="btnEditIdentity" class="cm-identity-btn" title="Set or change the name attached to your new comments">set name</button>
-      <span class="cm-identity-edit" id="cmIdentityEdit" hidden>
-        <input type="text" id="cmIdentityInput" class="cm-identity-input" maxlength="60" placeholder="Your name" aria-label="Your reviewer name" autocomplete="off" autocapitalize="words" spellcheck="false">
-        <button type="button" id="btnSaveIdentity" class="cm-identity-save" title="Save this name for your new comments">Save</button>
-        <button type="button" id="btnCancelIdentity" class="cm-identity-cancel" title="Cancel">Cancel</button>
-      </span>
+    <div class="head-aux">
+      <div class="head-search" id="cmSearchRow" role="search" hidden>
+        <svg class="cm-search-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="text" id="cmSearchInput" class="cm-search-input" placeholder="Search comments" aria-label="Search comments" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button type="button" id="cmSearchClear" class="cm-search-clear" aria-label="Clear comment search" title="Clear search" hidden><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
+        <span id="cmSearchCount" class="cm-search-count" aria-live="polite" title="Comments shown by the current search out of the total"></span>
+      </div>
+      <div class="cm-side-info" title="Document info">
+        <span id="cmGenerated"></span>
+        <span id="cmLastComment"></span>
+      </div>
+      <div class="cm-identity" id="cmIdentity" title="The name attached to comments you add. Editing it applies to new comments only; it does not change past comments.">
+        <span class="cm-identity-label">Commenting as</span>
+        <span class="cm-identity-name" id="cmIdentityName" aria-live="polite"></span>
+        <button type="button" id="btnEditIdentity" class="cm-identity-btn" title="Set or change the name attached to your new comments">set name</button>
+        <span class="cm-identity-edit" id="cmIdentityEdit" hidden>
+          <input type="text" id="cmIdentityInput" class="cm-identity-input" maxlength="60" placeholder="Your name" aria-label="Your reviewer name" autocomplete="off" autocapitalize="words" spellcheck="false">
+          <button type="button" id="btnSaveIdentity" class="cm-identity-save" title="Save this name for your new comments">Save</button>
+          <button type="button" id="btnCancelIdentity" class="cm-identity-cancel" title="Cancel">Cancel</button>
+        </span>
+      </div>
     </div>
   </header>
   <div class="list" id="commentList" role="region" tabindex="-1" aria-label="Comments list">

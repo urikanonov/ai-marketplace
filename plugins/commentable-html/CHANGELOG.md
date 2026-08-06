@@ -4,6 +4,26 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.781.0] - 2026-08-06
+
+### Fixed
+
+- On a 640x320 landscape phone the side pane header no longer pushes the comment list off the
+  bottom of the pane. The header was the pane's one unshrinkable block: with the reader-toggled
+  search row and the identity editor both open its six rows totalled 313-340px of a 320px viewport,
+  so the list - which is `flex: 1 1 0` and collapses to its own padding - was laid out partly or
+  wholly below the fold with a non-zero LAYOUT height a reviewer could see none of, and
+  `.cm-sidebar` overflowed vertically by 16-47px. Measured across the twelve states (three density
+  presets x search open/closed x editor open/closed), three of them left 0-7px of the list actually
+  visible. The header is now split at the seam that already exists in it: the three CHROME rows
+  (title, ribbon, primary actions) stay pinned - which is also what keeps the Export and More
+  dropdowns, absolutely positioned inside them, out of a clipping context - and the three rows that
+  grow transiently (search, document info, identity) sit in a new bounded `.head-aux` region that
+  scrolls instead. The comment list takes a 96px floor, so the shrink lands on that region rather
+  than on the cards, and a landscape phone spends the header's doubled padding on it. All twelve
+  states now keep the whole list on screen with no pane overflow, and opening either transient row
+  scrolls its field fully into view. The desktop layout is unchanged.
+
 ## [1.779.0] - 2026-08-06
 
 ### Fixed
