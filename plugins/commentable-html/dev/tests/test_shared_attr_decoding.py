@@ -290,7 +290,9 @@ class SharedDecodeShimTests(unittest.TestCase):
         # A tool that REWRITES a start tag (the KQL run-link refresh, #1160) needs the whole
         # attribute list, so the degraded split offers all of them - in order, first occurrence
         # winning, in every HTML quoting form - rather than the class alone. `_parsing` is patched
-        # away wholesale, so the value decode really is the degraded `html.unescape` one too.
+        # away wholesale, so the value decode really is the degraded one too - which is the COPIED
+        # browser rule, not the host's `html.unescape` (`&amp;` still decodes, and the shapes the
+        # two rules disagree about have their own test below).
         with mock.patch.object(_browser_attrs, "_parsing", None), \
                 mock.patch.object(_browser_attrs, "_shared_raw_attrs_pairs", None):
             pairs = _browser_attrs.raw_attrs_pairs(

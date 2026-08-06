@@ -22,13 +22,17 @@ instead: `attrs()` / `attrs_dict()` for the attribute view, and the `BrowserTagN
 
 A partial install (the `validate` tool missing) degrades rather than failing: a degraded read is
 better than a tool that cannot run, and the fallback is WARNED about once, the way every other
-optional-tool import in the skill is. What degrades is narrower than it once was: the value DECODE,
-the NUL fold and the ASCII name fold are the shared rules, applied from pinned local copies, because
-two callers (`deck/deck_scaffold.py`, `kusto/kql_highlight.py`) RE-SERIALIZE a start tag from what
-they read and so write any difference into the document. What still degrades is the parsed views
-(the host's own `HTMLParser` and its attribute list) and a start tag's EXTENT, decided by pattern
-rather than by the vendored character-by-character scan, so the eof-in-tag error an unterminated
-quoted value earns is not applied.
+optional-tool import in the skill is. What degrades is narrower than it once was, but only on ONE
+path: in the RAW start-tag attribute reading (`raw_attrs_pairs` / `raw_attrs_class_tokens`) the
+value DECODE, the NUL fold and the attribute-name ASCII fold are the shared rules, applied from
+pinned local copies, because two callers (`deck/deck_scaffold.py`, `kusto/kql_highlight.py`)
+RE-SERIALIZE a start tag from what they read and so write any difference into the document.
+Everything else still degrades to the host: the PARSED views (`attrs()` / `attrs_dict()` /
+`StartTagParser`) fall back to the host's own `HTMLParser` and its attribute list, `ascii_lower()`
+and `_FallbackTagNames._browser_tag()` fall back to Python's UNICODE `.lower()` (so the clause-7 tag
+name differential above is back on that path), and a start tag's EXTENT is decided by pattern rather
+than by the vendored character-by-character scan, so the eof-in-tag error an unterminated quoted
+value earns is not applied.
 """
 import html as _html
 import os
