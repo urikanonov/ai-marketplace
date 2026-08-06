@@ -4,6 +4,36 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.761.0] - 2026-08-06
+
+### Fixed
+
+- The side pane's `Reply` button and the sidebar identity row now meet the repo-wide `>=44px`
+  touch target on a phone (`max-width: 640px`), the two composer-adjacent controls the previous
+  composer sizing left behind. `Reply` measured ~17px tall, the `set name` / `change` link that
+  opens the identity editor ~12px, and the editor's `Save` / `Cancel` ~22px: no existing phone rule
+  reached any of them, because the card-actions rule matches only `.cm-card .meta .acts button`
+  while `Reply` lives in `.cm-reply-row`. `Reply` and `set name` were the same defect - a
+  thumb-sized destination behind a sliver-sized door - so enlarging only the editor's buttons would
+  have moved the miss one control upstream instead of removing it.
+- The two halves are enlarged differently, because their costs differ. The `set name` link is
+  always on screen, so growing its box would add ~27px to the sidebar header on every phone, spent
+  out of the comment list (on a 640x320 landscape phone at the comfortable density the list falls
+  to ~37px, less than one card). It takes an overlaid `::after` tap target instead, the same
+  treatment the checklist control and the notes fold already use, which costs no layout. The
+  editor's input, `Save` and `Cancel` exist only while editing and are grown for real, as the
+  composer rows are, with the same absolute both-axis gap floor so an enlarged `Save` is never
+  flush against the `Cancel` beside it. The name input keeps its inline flex basis: it measures
+  167-181px wide at 320px in every density preset, so it is not squeezed, and a forced line break
+  would cost another ~56px of header.
+- The controls that grow for real now set `box-sizing: border-box` explicitly, as their editor
+  siblings already do. The `border-box` reset lives in the document theme rather than the layer, so
+  without it a host document rendered them materially larger than asked - about 15% for the
+  identity pair and about 34% for `Reply`, whose padding and border are the largest of the set.
+- Both rows still fit their surface at 320px in every density preset with no clipping and no
+  horizontal overflow of the pane, and the comment list keeps a usable height on a landscape phone.
+  Other side-pane controls remain below the target and are tracked in issue #1167.
+
 ## [1.760.0] - 2026-08-06
 
 ### Fixed

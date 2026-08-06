@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.760.0" />
+<meta name="commentable-html-version" content="1.761.0" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.760.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.761.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -2364,6 +2364,7 @@ html[data-theme="dark"] .cm-author-pill {
 .cm-identity-input {
   flex: 1 1 6rem;
   min-width: 0;
+  box-sizing: border-box;
   padding: 0.15rem 0.4rem;
   font-size: inherit;
   border: 1px solid var(--cp-border, #cbd5e1);
@@ -2375,6 +2376,7 @@ html[data-theme="dark"] .cm-author-pill {
    Copy all), Cancel a themed secondary with a border that hovers to the accent. */
 .cm-identity-save, .cm-identity-cancel {
   flex: 0 0 auto;
+  box-sizing: border-box;
   padding: 0.15rem 0.6rem;
   border-radius: 6px;
   font: inherit;
@@ -2395,6 +2397,40 @@ html[data-theme="dark"] .cm-author-pill {
   font-weight: 500;
 }
 .cm-identity-cancel:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+/* On phones the identity control is a touch surface like every other side-pane control, and it is
+   enlarged in TWO different ways, because the two halves have different costs.
+
+   The `set name` / `change` link is 12px tall and is ALWAYS on screen, so growing its box would
+   add ~27px to the sidebar header on every phone - spent out of the comment list, which on a
+   640x320 landscape phone at the comfortable density falls to ~37px, less than one card. It
+   therefore takes an OVERLAID tap target instead (the same treatment CMH-RESP-06 / CMH-RESP-07
+   give the checklist control and the notes fold): a centered `::after` that is 44px on both axes
+   and costs no layout at all. It is the door to the editor below, so it is the same
+   sliver-sized-door defect as the Reply button, but a link, not a bordered button.
+
+   The editor's own input / Save / Cancel are real form controls that exist only WHILE editing, so
+   they are grown for real, exactly as the composer rows are, and take the same absolute both-axis
+   gap FLOOR so an enlarged Save is never flush against a Cancel. The input is grown with them: it
+   is `min-width: 0`, so leaving it at ~22px would put one sliver in the middle of a thumb-sized
+   row. It KEEPS its inline flex basis rather than moving to a line of its own - measured
+   167-181px wide at 320px in every density, so it is not squeezed, and the line break would cost
+   another ~56px of header. `flex-wrap` stays as the fallback for a row that genuinely no longer
+   fits (a larger root font, a localized label set). */
+@media (max-width: 640px) {
+  .cm-identity .cm-identity-btn { position: relative; }
+  .cm-identity .cm-identity-btn::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 44px;
+    height: 44px;
+  }
+  .cm-identity-edit { flex-wrap: wrap; gap: max(12px, var(--cp-chrome-gap)); }
+  .cm-identity-input { min-height: 44px; }
+  .cm-identity-save, .cm-identity-cancel { min-width: 44px; min-height: 44px; }
+}
 
 /* ---- Thread entries + replies ---- */
 .cm-card .cm-entry-root .note { margin: 0; }
@@ -2411,6 +2447,7 @@ html[data-theme="dark"] .cm-author-pill {
 .cm-card .cm-reply-row { margin-top: 0.45rem; }
 .cm-card .cm-reply-btn {
   background: none;
+  box-sizing: border-box;
   border: 1px solid var(--cp-border, #cbd5e1);
   border-radius: 6px;
   padding: 0.1rem 0.6rem;
@@ -2419,6 +2456,15 @@ html[data-theme="dark"] .cm-author-pill {
   cursor: pointer;
 }
 .cm-card .cm-reply-btn:hover { background: var(--cp-accent-soft); }
+/* On phones the button that OPENS the reply composer keeps the repo-wide >=44px touch target too:
+   the destination was enlarged (CMH-RESP-13) while the door to it stayed a ~17px sliver. The card
+   actions rule in 20-chrome.css does not reach it - it lives in `.cm-reply-row`, not `.meta .acts`.
+   This one grows for REAL rather than taking an overlaid target like the identity link above: it is
+   a bordered button, which is how the card's own action buttons are already treated (CMH-RESP-07),
+   and it sits in a scrolling card list that has the room to spend. */
+@media (max-width: 640px) {
+  .cm-card .cm-reply-btn { min-width: 44px; min-height: 44px; padding: 0.4rem 0.7rem; }
+}
 
 /* Inline reply composer (issue #644): compose a new reply or edit an existing one in place, in the
    thread card, instead of a floating popup. */
@@ -5451,7 +5497,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.760.0";
+const CMH_VERSION = "1.761.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
