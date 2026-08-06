@@ -515,7 +515,12 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
   <use href="https://evil.example/sprite.svg#icon"></use>
   <image xlink:href="https://evil.example/vector-xlink.png" width="20" height="20"></image>
   <use xlink:href="https://evil.example/sprite-xlink.svg#icon"></use>
+  <image id="svgImageSrc" src="https://evil.example/svg-image-src.png" width="20" height="20"></image>
+  <image id="svgImageSrcset" srcset="https://evil.example/svg-image-srcset.png 1x" width="20" height="20"></image>
+  <image id="svgImageKeep" href="local-vector.png" src="local-image-src.png" width="20" height="20"></image>
 </svg>
+<image id="htmlImageSrc" src="https://evil.example/html-image-src.png" alt="html image src">
+<image id="htmlImageSrcset" srcset="https://evil.example/html-image-srcset.png 1x" alt="html image srcset">
 <video poster="https://evil.example/poster.png"><track src="https://evil.example/captions.vtt"></video>
 <video src="https://evil.example/video.mp4"><source src="https://evil.example/video-source.mp4" srcset="https://evil.example/video-2x.png 2x"></video>
 <audio src="https://evil.example/audio.mp3"><source src="https://evil.example/audio-source.ogg"></audio>
@@ -582,6 +587,19 @@ test("Export Offline adds a zero-network CSP and strips loader, media, CSS, and 
     // scheme-only `url(https:host/x.png)` resolves to the same host.
     expect(noscriptInlineStyleTag[0]).not.toMatch(/url\(\s*(?:&quot;|&#39;|["'])?\s*(?:https?:\/*|\/\/)/i);
     expect(exportedHtml).not.toContain("evil.example");
+    // `<image src>` / `<image srcset>` (#1165). In HTML content tree construction RENAMES the tag to
+    // `img`, so the `all("img")` pass reaches that one; inside `<svg>` the element keeps its own name
+    // and only `all("image")` does. Both have to be cleared, because the shared egress index the
+    // strict validator reads deliberately does not carry the namespace its parser computes, so it
+    // reports `<image src>` in either - a strip that left the SVG spelling behind would have the
+    // gate reject the file this export just made. The relative control must SURVIVE, in both of the
+    // attributes it carries.
+    expect(attrOfId(exportedHtml, "svgImageSrc", "src")).toBeUndefined();
+    expect(attrOfId(exportedHtml, "svgImageSrcset", "srcset")).toBeUndefined();
+    expect(attrOfId(exportedHtml, "svgImageKeep", "href")).toBe("local-vector.png");
+    expect(attrOfId(exportedHtml, "svgImageKeep", "src")).toBe("local-image-src.png");
+    expect(attrOfId(exportedHtml, "htmlImageSrc", "src")).toBe("data:image/gif;base64,R0lGODlhAQABAAAAACw=");
+    expect(attrOfId(exportedHtml, "htmlImageSrcset", "srcset")).toBeUndefined();
     expect(exportedHtml).not.toContain(server.url + "/same-origin.png");
     expect(exportedHtml).not.toMatch(/<link\b[^>]*rel=["'][^"']*(?:prefetch|prerender)/i);
     expect(exportedHtml).not.toMatch(/<meta\b[^>]*http-equiv=["']refresh/i);

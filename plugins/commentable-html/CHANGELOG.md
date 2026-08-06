@@ -4,6 +4,40 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.777.0] - 2026-08-06
+
+### Fixed
+
+- `<image src="https://...">` and `<image srcset="https://... 1x">` are now an ERROR in shareable
+  AND offline mode, and inside an `<iframe srcdoc>` (CMH-VAL-08, CMH-VAL-25, CMH-OFFLINE-04). HTML
+  tree construction RENAMES an `<image>` start tag to `img` and reprocesses it with its attributes,
+  so a browser really fetches it on open - but the self-contained gate reads the LITERAL tokenized
+  tag name, and its media list carried `image` only for the SVG `href`/`xlink:href` pair. The result
+  was a complete inversion: `<image src="https://evil.example/x.png">` drew 0 errors and was
+  STAMPED, while the byte-equivalent `<img src=...>` was refused and `<image href="https://...">`,
+  which in HTML content loads nothing at all, WAS reported. Shareable mode has no zero-network CSP
+  behind it, so that gate was the only layer.
+- BREAKING for some documents, for the same reason the 1.762.0 widening was: a file that carries a
+  network `<image src>` or `<image srcset>` may now FAIL `--strict`, be refused the
+  `commentable-html-validated` stamp, and be refused outright by the fail-closed tools that validate
+  first (`retrofit` and `upgrade` leave the target unchanged on any validator error). Fix it by
+  inlining the reference (a `data:` URI) or removing it; a relative or `data:` reference is
+  untouched, and no shipped example or fixture gains a finding.
+
+### Changed
+
+- Export Offline's `<image>` strip clears `src` and `srcset` beside `href` and `xlink:href`, in the
+  same change as the gate above, so neither side can reject what the other leaves (CMH-OFFLINE-04).
+  The HTML spelling is already an `img` element in the DOM and was cleared by the `img` pass; an
+  SVG-namespaced `<image src>` fetches nothing, but the shared egress index the validator reads
+  deliberately does not carry the namespace its parser computes, so the export now carries the same
+  deliberate over-detection the gate does - which is exactly what
+  keeps the gate from rejecting a file the export just produced. A relative `<image src>` survives.
+  One asymmetry is deliberately RECORDED rather than closed: the local-path "run
+  tools/inline_images.py" advisory stays keyed on `img` `src` and always has been - `img srcset`, an
+  `<input type="image" src>` and every other local reference draw nothing either - so a relative
+  `<image src>` is not a carve-out from a general local-path rule, it is that rule's existing scope.
+
 ## [1.776.0] - 2026-08-06
 
 ### Fixed
