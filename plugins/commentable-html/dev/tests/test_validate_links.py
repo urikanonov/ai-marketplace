@@ -91,6 +91,24 @@ class LinkTargetTests(unittest.TestCase):
         self.assertTrue(self._warns(
             '<p><math><mtext><a href="page.html" target="_self">x</a></mtext></math></p>'))
 
+    def test_every_html_integration_point_anchor_is_still_checked(self):
+        # `desc` and `title` are HTML integration points too (a mermaid <svg> routinely carries
+        # them), and so is an `annotation-xml` whose encoding a browser matches EXACTLY - each puts
+        # its <a> child in the HTML namespace, where the runtime stamps it. Reading the exemption
+        # off an svg ANCESTOR exempted the first two; reading it off the namespace does not.
+        for frag in ('<svg><desc><a href="page.html" target="_self">x</a></desc></svg>',
+                     '<svg><title><a href="page.html" target="_self">x</a></title></svg>',
+                     '<math><annotation-xml encoding="text/html">'
+                     '<a href="page.html" target="_self">x</a></annotation-xml></math>'):
+            self.assertTrue(self._warns("<p>" + frag + "</p>"), frag)
+
+    def test_a_padded_annotation_xml_encoding_anchor_is_exempt(self):
+        # `encoding=" text/html"` is NOT an integration point (a browser matches the value
+        # exactly), so the <a> stays MathML, has tagName "a", and is never stamped.
+        self.assertFalse(self._warns(
+            '<p><math><annotation-xml encoding=" text/html">'
+            '<a href="page.html" target="_self">x</a></annotation-xml></math></p>'))
+
 
 if __name__ == "__main__":
     unittest.main()

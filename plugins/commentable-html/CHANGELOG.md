@@ -14,9 +14,11 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   foreign element satisfies in any namespace. So `<math><a href="..." target="_self">` was recorded
   as an HTML anchor and warned about, a false positive that is fatal under `--strict` and made an
   author "fix" a link the runtime never stamps. The exemption is now read off the element's
-  insertion namespace, so it covers MathML as well as SVG while an HTML `<a>` at an integration
-  point (`<svg><foreignObject>`, `<math><mtext>`) is still checked - a browser really does stamp
-  that one.
+  insertion namespace, so it covers MathML as well as SVG while an `<a>` at an HTML integration
+  point is HTML and is still checked - a browser really does stamp that one. That last part also
+  widens the check slightly: `<svg><desc>` and `<svg><title>` are integration points too (a
+  mermaid `<svg>` routinely carries them), and the old nearest-`svg`-ancestor test exempted an
+  `<a>` under them, so a same-tab link there is now reported where it used to be missed.
 
 ## [1.751.0] - 2026-08-05
 

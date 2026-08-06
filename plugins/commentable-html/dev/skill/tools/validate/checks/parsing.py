@@ -2185,10 +2185,13 @@ class _DocParser(_BrowserBoundaries):
             # A FOREIGN-namespaced <a> (SVG or MathML) has tagName "a", not "A", so the runtime's
             # own test (`assets/js/31-links.js` - `a.tagName !== "A"`) never stamps it: exclude
             # every non-HTML anchor, not just an SVG one. An <a> at an HTML integration point
-            # (`<svg><foreignObject>`, `<math><mtext>`) is inserted in the HTML namespace, has
-            # tagName "A" and IS stamped, so the INSERTION NAMESPACE - not an ancestor tag name -
-            # is the whole rule. Keyed on a nearest-svg ancestor instead, a MathML <a> was reported
-            # as opening in the same tab, a false positive that is fatal under `--strict`.
+            # (`<svg><foreignObject>`, `<svg><desc>`, `<svg><title>`, a MathML text integration
+            # point such as `<math><mtext>`, or an exactly-matching `<annotation-xml encoding>`)
+            # is inserted in the HTML namespace, has tagName "A" and IS stamped, so the INSERTION
+            # NAMESPACE - not an ancestor tag name - is the whole rule. Keyed on a nearest-svg
+            # ancestor instead, a MathML <a> was reported as opening in the same tab (a false
+            # positive that is fatal under `--strict`) while an <a> under `<svg><desc>` or
+            # `<svg><title>` was exempted though a browser really does stamp it.
             self.anchors.append({"href": ad.get("href"), "target": ad.get("target"),
                                  "skip": self._skip_ancestor() or own_skip,
                                  "foreign": ns != "html",

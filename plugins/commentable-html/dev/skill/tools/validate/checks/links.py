@@ -54,8 +54,9 @@ def check_links(parser):
     runtime defaults it to a new tab). mailto:/tel:/javascript:/data: schemes, same-page
     #fragments, and .cm-skip chrome are exempt, as is an <a> in ANY foreign namespace (SVG or
     MathML), which the runtime does not stamp because its tagName is "a", not "A". An <a> at an
-    HTML integration point (<svg><foreignObject>, <math><mtext>) is HTML and IS checked. Returns
-    a list of warning strings."""
+    HTML integration point (<svg><foreignObject>, <svg><desc>, <svg><title>, <math><mtext> and the
+    other MathML text integration points, or an <annotation-xml> whose encoding a browser matches
+    exactly) is HTML and IS checked. Returns a list of warning strings."""
     seen = []
     for a in parser.anchors:
         if a.get("skip") or a.get("foreign") or not a.get("in_root"):
