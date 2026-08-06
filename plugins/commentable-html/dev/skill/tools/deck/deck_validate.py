@@ -175,9 +175,6 @@ def _css_url_is_remote(bodies):
 
 
 
-# The upstream inline editor ships as an <edit-toggle> custom element / .edit-toggle control;
-# match the actual element or class, not the bare substring (which can occur in slide prose).
-EDIT_TOGGLE_RE = re.compile(r"<\s*edit-toggle\b|class\s*=\s*['\"][^'\"]*\bedit-toggle\b", re.I)
 DECK_CONTRAST_VARIABLE_PAIRS = (
     ("--slide-fg", "--slide-bg", "deck theme variables --slide-fg/--slide-bg"),
     ("--slide-fg", "--stage-bg", "deck theme variables --slide-fg/--stage-bg"),
@@ -528,6 +525,143 @@ def _content_overload_warnings(body, max_slide_lines, max_slide_elements,
     return warnings
 
 
+class _DeckStructureScanner(_browser_boundaries.BrowserBoundaries):
+    """The deck's STRUCTURE - viewport, stage, slides, inline editor - read from PARSED elements.
+
+    These four checks used to be raw-text regexes that matched a class by SUBSTRING and only in
+    the DOUBLE-QUOTED form, so they were wrong against a browser in both directions (#1159):
+    `class="my-deck-stage"` satisfied the "exactly one .deck-stage" check for an element a browser
+    never matches `.deck-stage` on, while `<section class='slide'>` - the same class to a browser -
+    was not seen at all, so a hand-authored deck failed for having no slides and every per-slide
+    check then inspected nothing. Membership is the SHARED class reading (`class_tokens`,
+    CMH-VAL-21 clause 11) the validator's own class gates use, and it is asked of ELEMENTS, so a
+    class named in slide prose or inside a `<script>` body is text rather than deck structure.
+
+    A `<template>` subtree carries no STRUCTURE: its content is a fragment a browser renders
+    nowhere, and the runtime finds the stage and the viewport with
+    `#commentRoot.querySelector(".deck-stage")` / `.deck-viewport`, which reaches neither a
+    template fragment nor a shadow root a declarative template attaches. Only the SUBTREE is
+    skipped - the `<template>` ELEMENT itself stays in the document tree, so a
+    `<template class="deck-stage">` really is what that query returns (and then holds no slides),
+    and its own classes are counted. The EDITOR stays inclusive of templates: an `<edit-toggle>`
+    parked in one is still upstream editor chrome a generated deck should not carry, and a guard
+    fails closed. Namespace is deliberately NOT filtered - an undeclared-namespace type selector
+    and a class selector both match in ANY namespace, so `querySelector(".deck-stage")` really
+    does find an SVG-namespace element carrying the class, and this scan reads the document the
+    way that query does.
+
+    `_fallback` selects the SCRIPTING-DISABLED reading, in which `<noscript>` is TRANSPARENT rather
+    than raw text, exactly as `_ActiveContentScanner` does. `_structure_errors()` runs both and
+    unions the findings, because a reader is on one side or the other: a second `.deck-stage`, a
+    duplicate slide id or an un-stripped editor parked in a `<noscript>` is live markup to a
+    scripting-off reader, and the raw-text regexes this replaced saw it.
+    """
+
+    def __init__(self, html="", _fallback=False):
+        super().__init__(html)
+        self.viewports = 0
+        self.stages = 0
+        self.slides = []      # the browser-decoded attribute dict of each <section class=slide>
+        self.editor = False
+        self._stack = []
+        self._templates = []  # stack indices of the open <template> elements
+        self._fallback = _fallback
+
+    def _truncate_stacks(self, depth):
+        super()._truncate_stacks(depth)
+        del self._stack[depth:]
+        while self._templates and self._templates[-1] >= depth:
+            self._templates.pop()
+
+    def _push_element(self, tag, ad, ns, info):
+        self._stack.append(tag)
+
+    def _enter_raw_text(self, tag, ns):
+        if tag == "noscript" and self._fallback:
+            return   # scripting is off in this pass, so <noscript> holds markup, not text
+        super()._enter_raw_text(tag, ns)
+
+    def _visit_start(self, tag, ad, ns, opens):
+        classes = _classes(ad)
+        if tag == "edit-toggle" or "edit-toggle" in classes:
+            self.editor = True
+        # Read BEFORE the push below, so a `<template>`'s own classes are counted and only its
+        # content is skipped.
+        inside_template = bool(self._templates)
+        if tag == "template" and ns == "html" and opens:
+            self._templates.append(len(self._stack))
+        if inside_template:
+            return
+        if "deck-viewport" in classes:
+            self.viewports += 1
+        if "deck-stage" in classes:
+            self.stages += 1
+        if tag == "section" and "slide" in classes:
+            self.slides.append(ad)
+
+
+def _structure_pass_errors(structure):
+    errors = []
+    if not structure.viewports:
+        errors.append("deck: missing .deck-viewport wrapper")
+    if structure.stages != 1:
+        errors.append(f"deck: expected exactly one .deck-stage, found {structure.stages}")
+
+    if not structure.slides:
+        errors.append("deck: no <section class=\"slide\"> found")
+    ids = []
+    for attrs in structure.slides:
+        # A VALUELESS `data-slide-id` decodes to "" like an empty one, and neither names a slide,
+        # so both read as missing. Keeping "" out of `ids` is also what stops the duplicate line
+        # below from naming an empty id.
+        slide_id = attrs.get("data-slide-id") or ""
+        if not slide_id:
+            errors.append("deck: a slide is missing data-slide-id")
+            continue
+        if not SLIDE_ID_RE.match(slide_id):
+            errors.append(f"deck: invalid data-slide-id '{slide_id}'")
+        ids.append(slide_id)
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    if dupes:
+        errors.append(f"deck: duplicate slide id(s): {', '.join(dupes)}")
+
+    if structure.editor:
+        errors.append("deck: the upstream inline editor (edit-toggle) must be stripped")
+    return errors
+
+
+def _structure_errors(body):
+    """The structural errors of BOTH readings of the body, unioned.
+
+    The same two passes `_active_content_errors()` runs, for the same reason: `<noscript>` is raw
+    TEXT to a scripting-enabled browser and live markup to a scripting-disabled one, and a reader
+    is on one side or the other. A body that names no `<noscript>` at all is read once.
+
+    A finding only the scripting-DISABLED reading has is NAMED as such. Two readings of one body
+    otherwise merge into a report an author cannot act on - `found 2` beside `found 3` reads as a
+    self-contradiction rather than as two readers seeing two documents.
+    """
+    passes = (False, True) if "<noscript" in (body or "").lower() else (False,)
+    scans = []
+    for fallback in passes:
+        scanner = _DeckStructureScanner(body, _fallback=fallback)
+        try:
+            scanner.parse_document(body)
+        except Exception:  # pragma: no cover - HTMLParser is lenient; fail closed if it ever raises
+            scans.append(["deck: could not parse the deck body for the structural checks"])
+            continue
+        scans.append(_structure_pass_errors(scanner))
+    errors = list(scans[0])
+    seen = set(errors)
+    for extra in scans[1:]:
+        for e in extra:
+            if e in seen:
+                continue
+            seen.add(e)
+            errors.append(e + " (with scripting disabled)")
+    return errors
+
+
 def _content_region(html: str):
     bi = html.find(BEGIN_MARK)
     ei = html.rfind(END_MARK)
@@ -555,34 +689,12 @@ def deck_checks_with_options(html: str, contrast_threshold=contrast.DEFAULT_MIN_
     if not roots or 'data-cmh-mode="deck"' not in roots[-1]:
         errors.append('deck: #commentRoot is missing data-cmh-mode="deck"')
 
-    if 'class="deck-viewport"' not in body and "class='deck-viewport'" not in body:
-        errors.append("deck: missing .deck-viewport wrapper")
-    stages = len(re.findall(r'class="[^"]*\bdeck-stage\b', body))
-    if stages != 1:
-        errors.append(f"deck: expected exactly one .deck-stage, found {stages}")
-
-    slide_opens = re.findall(r'<section\b([^>]*\bclass="[^"]*\bslide\b[^"]*"[^>]*)>', body)
-    if not slide_opens:
-        errors.append("deck: no <section class=\"slide\"> found")
-    ids = []
-    for attrs in slide_opens:
-        m = re.search(r'data-slide-id\s*=\s*"([^"]*)"', attrs)
-        if not m:
-            errors.append("deck: a slide is missing data-slide-id")
-            continue
-        if not SLIDE_ID_RE.match(m.group(1)):
-            errors.append(f"deck: invalid data-slide-id '{m.group(1)}'")
-        ids.append(m.group(1))
-    dupes = sorted({i for i in ids if ids.count(i) > 1})
-    if dupes:
-        errors.append(f"deck: duplicate slide id(s): {', '.join(dupes)}")
+    errors.extend(_structure_errors(body))
 
     if re.search(r"<\s*deck-stage\b", body, re.I) or "data-deck-active" in body:
         errors.append("deck: the <deck-stage> web component is not allowed in a generated deck")
     if "prefers-reduced-motion" not in body:
         errors.append("deck: missing a prefers-reduced-motion rule")
-    if "edit-toggle" in body and EDIT_TOGGLE_RE.search(body):
-        errors.append("deck: the upstream inline editor (edit-toggle) must be stripped")
 
     if REMOTE_FONT_RE.search(body) or FONTFACE_REMOTE_RE.search(body):
         errors.append("deck: remote font reference in the deck body - self-host fonts (no egress)")

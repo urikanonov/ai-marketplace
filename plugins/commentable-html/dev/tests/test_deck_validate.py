@@ -297,6 +297,146 @@ class DeckValidateTests(unittest.TestCase):
             _errors(_inject(self.html, "<p>We removed the edit-toggle control upstream.</p>")), [])
         self._assert_error(_inject(self.html, "<edit-toggle></edit-toggle>"), "edit-toggle")
 
+    def test_a_single_quoted_or_unquoted_deck_structure_validates(self):
+        # UNDER-match: a class is the same class to a browser however it is quoted, and a
+        # `deck-viewport` beside another class is still the viewport. The structural checks used
+        # to be raw-text regexes that only saw the double-quoted, whole-literal spelling, so a
+        # hand-authored deck failed with "no <section class=\"slide\"> found" and every per-slide
+        # check then inspected nothing (#1159).
+        body = _wrap(
+            "<div class=\"deck-viewport theme-dark\"><div class=deck-stage>"
+            "<section class='slide' data-slide-id='slide-00000001'><p>x</p></section>"
+            "</div></div>prefers-reduced-motion")
+        self.assertEqual(_errors(body), [])
+        # ...and the editor guard misses nothing for the same reason: an unquoted `.edit-toggle`
+        # control is the upstream editor just as a double-quoted one is.
+        self._assert_error(_inject(self.html, "<div class=edit-toggle></div>"), "edit-toggle")
+
+    def test_a_class_that_merely_contains_a_structural_name_is_not_that_structure(self):
+        # OVER-match: `\bdeck-stage\b` is a substring test, so `my-deck-stage` satisfied the
+        # "exactly one .deck-stage" check for an element a browser never matches `.deck-stage`
+        # on - and `my-slide` was read as a slide (then reported as missing its id), and
+        # `not-edit-toggle` as the upstream editor.
+        bad = _inject(self.html,
+                      '<div class="my-deck-stage"></div>'
+                      '<section class="my-slide"><p>x</p></section>'
+                      '<div class="not-edit-toggle"></div>')
+        self.assertEqual(_errors(bad), [])
+
+    def test_a_structural_class_named_in_prose_or_a_script_is_not_structure(self):
+        # The checks read PARSED elements, so a class a reader merely SEES - in slide prose, or
+        # inside a <script> body, which is text to a browser - is not deck structure.
+        prose = _inject(self.html, '<p>Each stage carries class="deck-stage" on its wrapper.</p>')
+        self.assertEqual(_errors(prose), [])
+        scripted = _wrap(
+            "<script>var t = '<div class=\"deck-viewport\"><div class=\"deck-stage\">"
+            "<section class=\"slide\" data-slide-id=\"slide-00000001\"></section>"
+            "</div></div>';</script>prefers-reduced-motion")
+        errs = deck_validate.deck_checks(scripted)
+        self.assertTrue(any("deck-viewport" in e for e in errs), errs)
+        self.assertTrue(any("deck-stage" in e for e in errs), errs)
+        self.assertTrue(any('class="slide"' in e for e in errs), errs)
+
+    def test_a_noscript_parked_stage_editor_or_duplicate_id_is_still_structure(self):
+        # A reader is on one side of scripting or the other, so the structural scan reads the body
+        # BOTH ways and unions the findings - exactly as the active-content scan does. To a
+        # scripting-DISABLED browser a <noscript> body is live markup, so a second stage, an
+        # un-stripped editor or a duplicate slide id parked in one is real (and the raw-text
+        # regexes this replaced saw them).
+        self._assert_error(
+            _inject(self.html, '<noscript><div class="deck-stage"></div></noscript>'),
+            "expected exactly one .deck-stage")
+        self._assert_error(
+            _inject(self.html, "<noscript><edit-toggle></edit-toggle></noscript>"), "edit-toggle")
+        first = re.findall(r'data-slide-id="([^"]+)"', self.html)[0]
+        self._assert_error(
+            _inject(self.html,
+                    '<noscript><section class="slide" data-slide-id="%s"></section></noscript>'
+                    % first),
+            "duplicate slide id")
+        # A finding only the scripting-DISABLED reading has is NAMED as such, so two readings of
+        # one body never merge into a report that reads as a self-contradiction.
+        self._assert_error(
+            _inject(self.html, '<noscript><div class="deck-stage"></div></noscript>'),
+            "(with scripting disabled)")
+
+    def test_template_content_is_not_deck_structure_but_a_templated_editor_still_fails(self):
+        # A <template> holds a fragment a browser renders nowhere, and the runtime finds the stage
+        # and viewport with root.querySelector(".deck-stage") / ".deck-viewport", which reaches
+        # neither a template fragment nor a shadow root a declarative template attaches - so a deck
+        # whose only structure is parked in one has no structure at all.
+        errs = deck_validate.deck_checks(_wrap(
+            "<template><div class=\"deck-viewport\"><div class=\"deck-stage\">"
+            "<section class=\"slide\" data-slide-id=\"slide-00000001\"></section>"
+            "</div></div></template>prefers-reduced-motion"))
+        self.assertTrue(any("deck-viewport" in e for e in errs), errs)
+        self.assertTrue(any("deck-stage" in e for e in errs), errs)
+        self.assertTrue(any('class="slide"' in e for e in errs), errs)
+        # ...and a templated demo beside the real stage does not make a second one.
+        self.assertEqual(
+            _errors(_inject(self.html, '<template><div class="deck-stage"></div></template>')), [])
+        # The EDITOR guard stays inclusive of templates and fails CLOSED: an <edit-toggle> parked
+        # in one is still upstream editor chrome a generated deck should not carry.
+        self._assert_error(
+            _inject(self.html, "<template><edit-toggle></edit-toggle></template>"), "edit-toggle")
+
+    def test_a_template_elements_own_class_is_still_structure(self):
+        # Only the CONTENT of a <template> leaves the document tree; the element itself stays in
+        # it, so root.querySelector(".deck-stage") really does return a <template class=deck-stage>
+        # - and then finds no slides under it. Skipping the element as well as its subtree would
+        # pass a deck that renders nothing.
+        self._assert_error(
+            _inject(self.html, '<template class="deck-stage"></template>'),
+            "expected exactly one .deck-stage, found 2")
+        self.assertEqual(_errors(_wrap(
+            '<template class="deck-viewport"></template><div class="deck-stage">'
+            '<section class="slide" data-slide-id="slide-00000001"></section>'
+            "</div>prefers-reduced-motion")), [])
+
+    def test_structure_in_a_foreign_namespace_is_still_structure(self):
+        # An undeclared-namespace type selector and a class selector both match in ANY namespace,
+        # so the runtime's own query finds these; filtering to ns == "html" would make this scan
+        # disagree with the query it models.
+        self.assertEqual(_errors(_wrap(
+            '<div class="deck-viewport"><div class="deck-stage">'
+            '<svg><section class="slide" data-slide-id="slide-00000001"></section></svg>'
+            "</div></div>prefers-reduced-motion")), [])
+
+    def test_a_class_or_slide_id_is_read_the_way_a_browser_resolves_the_attribute(self):
+        # A duplicated attribute resolves FIRST-wins, and a character reference in the value is
+        # decoded - both the shared reading, and neither visible to a raw double-quoted regex.
+        self.assertEqual(_errors(_wrap(
+            '<div class="deck&#45;viewport"><div class="deck&#45;stage">'
+            '<section class="slide" data-slide-id="slide-00000001"'
+            ' data-slide-id="not-valid"></section>'
+            "</div></div>prefers-reduced-motion")), [])
+        self._assert_error(
+            _inject(self.html, '<div class="edit&#45;toggle"></div>'), "edit-toggle")
+
+    def test_a_valueless_slide_id_reads_as_missing_not_as_an_empty_duplicate(self):
+        # A valueless `data-slide-id` decodes to "" like an empty one, and neither names a slide.
+        for attr in ("data-slide-id", 'data-slide-id=""'):
+            with self.subTest(attr=attr):
+                errs = deck_validate.deck_checks(_wrap(
+                    '<div class="deck-viewport"><div class="deck-stage">'
+                    '<section class="slide" %s></section>'
+                    '<section class="slide" %s></section>'
+                    "</div></div>prefers-reduced-motion" % (attr, attr)))
+                self.assertTrue(any("missing data-slide-id" in e for e in errs), errs)
+                self.assertFalse(any("duplicate slide id" in e for e in errs), errs)
+                self.assertFalse(any("invalid data-slide-id" in e for e in errs), errs)
+
+    def test_an_editor_named_only_in_script_text_is_not_the_editor(self):
+        # The editor guard is an ELEMENT reading like the other three, so the upstream control's
+        # markup quoted inside a <script> body - text to a browser - is not the editor. The real
+        # control in either spelling still fails, which is what keeps the narrowing honest.
+        self.assertEqual(_errors(_inject(
+            self.html,
+            "<script>var t = '<button class=\"edit-toggle\">edit</button>'"
+            " + '<edit-toggle></edit-toggle>';</script>")), [])
+        self._assert_error(_inject(self.html, "<edit-toggle></edit-toggle>"), "edit-toggle")
+        self._assert_error(_inject(self.html, '<div class="edit-toggle"></div>'), "edit-toggle")
+
     def test_solidus_and_whitespace_separated_event_handler_fails(self):
         # HTML5 allows a solidus or any whitespace as an attribute separator; the parser catches both.
         self._assert_error(_inject(self.html, "<svg/onload=alert(1)></svg>"), "event-handler")

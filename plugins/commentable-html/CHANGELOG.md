@@ -4,6 +4,35 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.765.0] - 2026-08-06
+
+### Fixed
+
+- The deck validator's four STRUCTURAL checks (`deck/deck_validate.py`, CMH-DECK-04) - the
+  `.deck-viewport` wrapper, the exactly-one `.deck-stage`, the `<section class="slide">` list with
+  its `data-slide-id`s, and the stripped-editor guard - now decide class membership through the
+  shared class reading (`class_tokens`, CMH-VAL-21 clause 11) over PARSED elements, instead of a
+  raw-text regex that matched a class by SUBSTRING and only in the double-quoted form. That regex
+  was wrong against a browser in both directions: `class="my-deck-stage"` satisfied the one-stage
+  check for an element a browser never matches `.deck-stage` on (and `my-slide` was read as a
+  slide, `not-edit-toggle` as the upstream editor), while `<section class='slide'>`,
+  `<div class=deck-stage>` and `class="deck-viewport cm-skip"` - the same classes to a browser -
+  were not seen at all, so a hand-authored deck failed for having no slides and every per-slide
+  check then silently inspected nothing. Reading elements also means a structural class named only
+  in slide prose or inside a `<script>` body is text rather than deck structure, and a slide's
+  `data-slide-id` is read from the browser-decoded attribute dict. Three boundaries are declared
+  with the reading: the scan reads the body BOTH ways and unions the findings (so a second stage,
+  a duplicate slide id or an un-stripped editor parked in a `<noscript>` - live markup to a
+  scripting-off reader - is still reported, and named as belonging to that reading); a
+  `<template>` SUBTREE carries no structure, since the runtime finds the deck with a light-DOM
+  `querySelector` that reaches neither a template fragment nor a shadow root, while the template
+  ELEMENT's own classes still count (that query does return a `<template class="deck-stage">`) and
+  the editor guard stays inclusive of templates and fails closed; and namespace is deliberately
+  not filtered, because an undeclared-namespace type selector and a class selector both match in
+  any namespace. A valueless `data-slide-id` now reads
+  as MISSING like an empty one, instead of being reported as an invalid empty id and then listed
+  in an empty duplicate-id line.
+
 ## [1.764.0] - 2026-08-06
 
 ### Fixed
