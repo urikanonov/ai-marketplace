@@ -176,10 +176,16 @@ def _srcdoc_network_findings(value, depth=1):
     # CSS egress carried in a nested `style=` attribute or a nested `<style>` BODY. The style
     # bodies need their own fallback parse (`_find_fragment_styles`) because the shared attribute
     # index deliberately does not buffer ordinary style bodies; scanning the raw nested TEXT for a
-    # `url(...)` instead is the false-rejection trade CMH-VAL-25 rejected.
+    # `url(...)` instead is the false-rejection trade CMH-VAL-25 rejected. The `image-set(...)`
+    # reading rides along with no mode test of its own: this whole walk is SHAREABLE-only (offline
+    # rejects a `srcdoc` on PRESENCE), so it inherits the scope decision the top-level rule records.
+
     for style in _find_inline_styles_egress(text):
         if CSS_NETWORK_URL_RE.search(style.get("value", "")):
             out.append(("style", style.get("tag", "element"), "style", style.get("value", "")))
+        if css_network_image_set(style.get("value", "")):
+            out.append(("imageset-style", style.get("tag", "element"), "style",
+                        style.get("value", "")))
     fragment_styles, styles_failed = _find_fragment_styles(text)
     if styles_failed:
         out.append(("parse", None, None, None))
@@ -188,6 +194,8 @@ def _srcdoc_network_findings(value, depth=1):
             out.append(("import", "style", "@import", m.group(1)))
         if CSS_NETWORK_URL_RE.search(style.get("body", "")):
             out.append(("sheet", "style", "url", ""))
+        if css_network_image_set(style.get("body", "")):
+            out.append(("imageset-sheet", "style", "image-set", ""))
     # A speculation ruleset inside a frame prefetches exactly as one at the top level does, and the
     # nested read is not allowed to be narrower than the top-level rule. PRESENCE is the test here
     # too - a document-source ruleset names no URL at all - so only the `type` is read and the
@@ -442,6 +450,20 @@ def _check_self_contained(html, parser):
     # non-empty host so neither reports a parse failure the strip leaves behind. Running them in
     # shareable mode too adds no drift, because shareable mode runs no strip pass at all: the strips
     # are an OFFLINE-export step, so there is no second implementation to stay in step with here.
+    # The `image-set(...)` reading beside them is SHAREABLE-ONLY, and deliberately so (issue #1166).
+    # A bare remote string inside `image-set()` needs no `url()` wrapper, so the pattern above
+    # cannot see it and a stamped shareable file really could fetch it - shareable mode has no CSP
+    # behind the gate, which is what makes this reachable there. Offline mode does: its
+    # zero-network CSP, not the parser-level pattern, is what enforces fetch egress (CMH-SEC-06 -
+    # the ground #1007 and #1029 were closed on), and widening the offline gate ALONE would make it
+    # reject a file the exporter's `_offlineCssNoNetwork` had just produced - the #961 precedent and
+    # the CMH-OFFLINE-04 drift. So the offline gate and the export strip stay in step by not moving,
+    # and the reading is asked only where nothing else enforces it. The two readings are INDEPENDENT
+    # `if`s, not an `elif`: a body is usually the whole inlined stylesheet, so suppressing it on a
+    # `url()` hit hid a network `image-set()` in an unrelated RULE and the author learned about the
+    # second reference only after fixing the first. One DECLARATION that spells both is still
+    # reported once, because `css_network_image_set` blanks the `url(...)` spans the other reading
+    # already owns.
     def _css_error(offline_text, shareable_text):
         errors.append(("offline mode: " + offline_text) if offline_mode else shareable_text)
     for style in parser.styles + parser.template_styles + _find_noscript_styles(html):
@@ -454,6 +476,9 @@ def _check_self_contained(html, parser):
             _css_error("style block contains a network url(...) - inline or remove it",
                        "style block contains a network url(...) and breaks the self-contained "
                        "guarantee - inline or remove it")
+        if not offline_mode and css_network_image_set(style.get("body", "")):
+            errors.append("style block contains a network image-set(...) candidate and breaks the "
+                          "self-contained guarantee - inline or remove it")
     for style in (parser.inline_styles + parser.template_inline_styles
                   + _find_noscript_inline_styles(html)):
         if CSS_NETWORK_URL_RE.search(style.get("value", "")):
@@ -462,6 +487,10 @@ def _check_self_contained(html, parser):
                        "inline style on <%s> contains a network url(...) and breaks the "
                        "self-contained guarantee - inline or remove it"
                        % _report_value(style.get("tag", "element")))
+        if not offline_mode and css_network_image_set(style.get("value", "")):
+            errors.append("inline style on <%s> contains a network image-set(...) candidate and "
+                          "breaks the self-contained guarantee - inline or remove it"
+                          % _report_value(style.get("tag", "element")))
     # A `<script type="speculationrules">` is the one ACTIVE-DATA block that reaches the network by
     # itself, with no user action and no code running: the browser reads the ruleset and prefetches
     # or prerenders. That is the same test every element rule above is drawn on, so it belongs in
@@ -794,6 +823,16 @@ def _check_self_contained(html, parser):
                         errors.append("%s carries a nested <style> block with a network url(...) "
                                       "that breaks the self-contained guarantee - inline the "
                                       "reference as a data: URI, or remove the frame" % label)
+                    elif kind == "imageset-style":
+                        errors.append("%s carries a nested inline style on <%s> with a network "
+                                      "image-set(...) candidate that breaks the self-contained "
+                                      "guarantee - inline the reference as a data: URI, or remove "
+                                      "the frame" % (label, _report_value(tag)))
+                    elif kind == "imageset-sheet":
+                        errors.append("%s carries a nested <style> block with a network "
+                                      "image-set(...) candidate that breaks the self-contained "
+                                      "guarantee - inline the reference as a data: URI, or remove "
+                                      "the frame" % label)
                     elif kind == "refresh":
                         errors.append('%s carries a nested meta refresh to a network URL ("%s") '
                                       "that navigates the frame off this file the moment it opens "

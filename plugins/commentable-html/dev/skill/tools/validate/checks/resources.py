@@ -108,12 +108,12 @@ _CSP_ASCII_WS_RE = re.compile(r"[\t\n\f\r ]+")
 # drift); `tests/test_vendored_libs.py` pins the pair by running the exporter's strip in the real JS
 # engine over a shared corpus. What NEITHER side reads is a CSS ESCAPE (`url(https:\65 vil/x)`) or a
 # comment between the at-keyword and its URL, so they agree there too; issue #1029 tracks giving
-# both a CSS-token-aware reader.
-# `CSS_WS`, `CSS_NETWORK_PREFIX` and `CSS_HOST_CHAR` are PUBLIC because the deck gate builds its
-# deck-only `image-set()` reader from them (`deck/deck_validate.py`): that reader answers a question
-# no other surface asks, but hand-spelling the prefix and host-character rule there would be exactly
-# the drift #1129 closed. `_CSS_AT_SEP` stays private - it is an `@import` assembly detail with no
-# other consumer.
+# both a CSS-token-aware reader, and #1166 re-weighed and kept that residual for the same reason
+# (it is a paired gate-and-strip change, and it is the CSP that enforces egress offline).
+# `CSS_WS`, `CSS_NETWORK_PREFIX` and `CSS_HOST_CHAR` are PUBLIC because the `image-set()` reader
+# below and the deck gate's degraded fallback are assembled from them rather than from a hand copy
+# of the prefix and host-character rule - which is exactly the drift #1129 closed. `_CSS_AT_SEP`
+# stays private - it is an `@import` assembly detail with no other consumer.
 CSS_WS = r"[\t\n\f\r ]"
 # The at-keyword's separator: whitespace, OR nothing at all when a quote follows. `@import"x.css";`
 # is valid CSS - a `"` cannot continue an ident, so the at-keyword ends there - and really fetches,
@@ -131,6 +131,99 @@ CSS_NETWORK_IMPORT_RE = re.compile(
     r"@import(?:" + _CSS_AT_SEP + r")(?:url\(" + CSS_WS + r"*)?(?:['\"]" + CSS_WS + r"*)?("
     + CSS_NETWORK_PREFIX + CSS_HOST_CHAR + r"[^;'\")]*)",
     re.IGNORECASE | re.ASCII)
+
+# `image-set()` (and its `-webkit-` alias) takes a BARE string candidate with no `url()` wrapper, so
+# `background-image: image-set("https://evil.example/x.png" 1x)` really fetches and the `url()`
+# pattern above cannot see it at all - a stamped shareable file carried one and validated
+# STRICT-CLEAN (issue #1166). The reader lives HERE rather than beside its first caller because the
+# deck gate already needed it: it was written there first (#1155) and hand-copying it into the
+# strict gate is exactly the drift #1129 closed. The candidate pattern is assembled from the SAME
+# `CSS_NETWORK_PREFIX` + `CSS_HOST_CHAR` fragments as the `url()` reading beside it, so the two
+# cannot answer differently about a host, and the token-start alternation is what keeps a candidate
+# ANYWHERE in the list visible: `image-set('local.png' 1x, '//evil/x.png' 2x)` really does fetch the
+# second one at 2x DPR, and anchoring on the open paren saw only the first.
+CSS_IMAGE_SET_OPEN_RE = re.compile(r"image-set\(", re.IGNORECASE | re.ASCII)
+CSS_NETWORK_IMAGE_SET_RE = re.compile(
+    r"(?:^|['\",(]|" + CSS_WS + r")" + CSS_NETWORK_PREFIX + CSS_HOST_CHAR,
+    re.IGNORECASE | re.ASCII)
+# An unquoted one of these ends a CSS declaration or is markup, so the scan stops there. A `<` or
+# `>` inside a QUOTE is a legal CSS string character, so it only stops the scan on the SECOND
+# reading below - the one used when the list never closed.
+_CSS_IMAGE_SET_MARKUP = "<>"
+_CSS_IMAGE_SET_STOP = "<>;{}"
+# A whole `url(...)` function, blanked out of a candidate list before the bare-string reading looks
+# at it, so the two readings do not both report ONE `image-set(url(https://h/x) 1x)`. The escape arm
+# keeps a `\)` inside the reference from ending it early; an UNCLOSED `url(` runs to the end of the
+# args, which is the fail-safe direction here (the `url()` reading has already seen it).
+_CSS_URL_FUNC_RE = re.compile(r"url\((?:\\.|[^()\\])*\)?", re.IGNORECASE | re.DOTALL)
+
+
+def _css_image_set_scan(text, start, markup_ends_a_string):
+    """Where one `image-set(` argument list ends, and whether it CLOSED with its own `)`."""
+    depth, i, quote, end = 1, start, "", len(text)
+    while i < end:
+        ch = text[i]
+        if ch == "\\":       # a CSS escape: whatever follows is a literal, never a delimiter
+            i += 2
+            continue
+        if quote:
+            if ch == quote:
+                quote = ""
+            elif markup_ends_a_string and ch in _CSS_IMAGE_SET_MARKUP:
+                return i, False
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i, True
+        elif ch in _CSS_IMAGE_SET_STOP:
+            return i, False
+        i += 1
+    return end, False
+
+
+def css_image_set_args(text):
+    """Every `image-set(...)` argument list, read with a depth counter rather than a regex.
+
+    A `[^)]*` capture stopped at the FIRST `)`, which in real CSS is the `)` of a nested
+    `url(...)`/`type(...)` or a literal `)` inside a quoted candidate - so
+    `image-set(url("a.png") 1x, "//evil/x.png" 2x)` hid the candidate a 2x browser fetches.
+
+    A list that never CLOSES is re-read with markup as a hard boundary, even inside a quote: the
+    open quote is then almost certainly the one ending a `style` attribute rather than a CSS
+    string, and reading on would swallow the rest of the document and report an allowed `<a href>`
+    further down as a remote CSS reference. A CLOSED list keeps the quote-faithful reading, so a
+    legal `<` inside a candidate (`image-set("a<b.png" 1x, "//evil/x.png" 2x)`) cannot hide the
+    candidate after it.
+    """
+    out, pos = [], 0
+    while True:
+        m = CSS_IMAGE_SET_OPEN_RE.search(text, pos)
+        if not m:
+            return out
+        stop, closed = _css_image_set_scan(text, m.end(), False)
+        if not closed:
+            stop = _css_image_set_scan(text, m.end(), True)[0]
+        out.append(text[m.end():stop])
+        pos = stop + 1
+
+
+def css_network_image_set(text):
+    """True when a BARE `image-set()` candidate in `text` is a network reference.
+
+    A candidate wrapped in `url(...)` is deliberately NOT counted: `CSS_NETWORK_URL_RE` already
+    reports it, and the caller runs both readings over the same body. Blanking the `url(...)` spans
+    is what lets the two readings be INDEPENDENT rather than an `elif` - suppressing the whole body
+    on a `url()` hit hid a network `image-set()` in an unrelated rule, so the author fixed the
+    `url()`, re-ran, and only then learned about the second reference (round-1 multi-duck panel).
+    """
+    for args in css_image_set_args(text or ""):
+        if CSS_NETWORK_IMAGE_SET_RE.search(_CSS_URL_FUNC_RE.sub("url()", args)):
+            return True
+    return False
 
 # The `localhost` exclusion is spelled as the URL PARSER compares a host, not as a literal, because
 # the parser percent-decodes a file host and lowercases it through domain-to-ASCII BEFORE the

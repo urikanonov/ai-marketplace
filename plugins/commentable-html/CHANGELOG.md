@@ -4,6 +4,48 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.782.0] - 2026-08-06
+
+### Fixed
+
+- The shareable self-contained gate now reads a network `image-set()` candidate (CMH-VAL-08).
+  `image-set()` takes a BARE string candidate with no `url()` wrapper, so the shared `url()`
+  pattern could not see it at all: `background-image: image-set("https://evil.example/x.png" 1x)`
+  in a `<style>` block, in a `style=` attribute or inside an `<iframe srcdoc>` validated
+  STRICT-CLEAN and was handed the `commentable-html-validated` stamp, while the byte-identical
+  fetch written `url(https://evil.example/x.png)` was refused. The candidate-list reader the deck
+  gate already carried moved into the shared CSS reading, so both gates now ask ONE question
+  instead of two that agreed only by accident: every candidate in the list is read (not just the
+  one abutting the open paren, since a 2x-DPR browser really does fetch a later one), through a
+  quote- and paren-aware scanner that a nested `url(...)` / `type(...)` paren cannot truncate, and
+  the `-webkit-` alias and the scheme-only / slash-run spellings are covered. Each candidate is
+  read ANCHORED at its own start, the way the `url()` reading anchors after `url(`, so a relative,
+  `data:` or empty-authority candidate stays clean and an inline SVG payload carrying
+  `xmlns="http://www.w3.org/2000/svg"` is not mistaken for egress. This is a BREAKING change for
+  authored documents: a shareable file that carried such a candidate passed before and now fails
+  `--strict` and is refused the stamp.
+- The reading is asked in SHAREABLE mode ONLY, and the scope is the decision rather than an
+  omission: offline mode has a zero-network CSP behind the gate and shareable has none, which is
+  what makes the spelling reachable there, and widening the offline gate alone would make it
+  reject a file the offline export's own CSS strip had just produced. The export strip and its
+  cross-engine parity corpus are therefore untouched. The `url(...)` and `image-set(...)` readings
+  are independent, so a network `url()` in one rule no longer hides a network `image-set()` in
+  another, while a candidate that IS a complete `url(...)` function is left to the reading that
+  owns it. The CSS-ESCAPE (`u\72l(...)`), comment-as-whitespace and custom-property
+  (`image-set(var(--u) 1x)`) spellings remain recorded shareable-only residuals on CMH-VAL-08,
+  pinned by a control test: the first two need a CSS-token-aware reader on the gate and the export
+  strip in one change, and failing closed on a bare `var(` would reject a variable holding a local
+  path.
+- An unescaped LF, CR or FF inside a CSS string is a bad-string token, so the browser drops that
+  declaration and recovers at the next brace - a LATER rule still applies and still fetches. The
+  candidate scanner kept the string open across it, letting a broken earlier declaration swallow
+  the later rule and the remote candidate in it; it now stops at the bad-string token.
+- The deck gate's broken-install fallback no longer fails open. Its `image-set()` argument-list
+  reader had been reduced to a regex that stopped at a `;`, `{` or `}` even inside a quoted
+  candidate, so a `data:` payload's own `;` truncated the list and dropped every candidate after it
+  in the one path whose purpose is to fail closed; it now keeps a local copy of the same quote- and
+  paren-aware scanner, pinned to the shared one by a corpus test.
+
 ## [1.781.0] - 2026-08-06
 
 ### Fixed
