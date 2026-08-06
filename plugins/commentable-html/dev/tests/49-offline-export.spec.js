@@ -2020,6 +2020,10 @@ const LEGACY_TYPE_CONTENT = [
     '<script type="module" nomodule id="cmh-runnable-nomodule-module" src="https://evil.example/runnable-nomodule.js"></script>',
     '<script for="window" event="onload" id="cmh-runnable-onload" src="https://evil.example/runnable-onload.js"></script>',
     '<script type="text/javascript" for="x" event="y" id="cmh-fetched-eventfor" src="https://evil.example/fetched-eventfor.js"></script>',
+    // The same fetched-but-inert shape wearing a RENDERER-shaped URL, which the loader-name pass
+    // removes by filename. That pass must make the same fetch/execution split, or it silently
+    // undoes the preservation for the one spelling whose URL looks like a bundle.
+    '<script type="text/javascript" for="x" event="y" id="cmh-eventfor-renderer" src="https://cdn.example/eventfor/chart.umd.js">\n/* cmh-eventfor-renderer-body */\n</script>',
   ]
 ).join("\n");
 test("CMH-OFFLINE-04: the offline strips cover every executable script MIME type, not only the modern three", async ({ page }) => {
@@ -2073,6 +2077,11 @@ test("CMH-OFFLINE-04: the offline strips cover every executable script MIME type
     // an author's inert body, so it stays and only the dead attribute is taken (issue #1171).
     expect(exportedHtml, "a skipped event+for script keeps its element").toContain("cmh-fetched-eventfor");
     expect(exportedHtml, "...and loses the requested src").not.toContain("fetched-eventfor.js");
+    // ...and the renderer-name pass makes the same split, so a bundle-shaped URL on the same inert
+    // shape does not delete the author's element behind its filename.
+    expect(exportedHtml, "an inert event+for renderer keeps its element").toContain("cmh-eventfor-renderer");
+    expect(exportedHtml, "...and its body").toContain("cmh-eventfor-renderer-body");
+    expect(exportedHtml, "...and loses the requested src").not.toContain("eventfor/chart.umd.js");
     // CMH-OFFLINE-04 / CMH-VAL-08 (#1171): a script whose `src` a browser never REQUESTS carries a
     // dead attribute exactly like a data block's. The gate stopped reporting it, so the strip must
     // stop deleting the element behind it - otherwise the export mutates a file the gate has just
@@ -2241,21 +2250,18 @@ test("CMH-OFFLINE-04: the export never hoists a MathML script, which would start
       .toBeGreaterThan(0);
     expect(bodyAt - mathAt).toBeLessThan(400);
 
-    // The decisive check: reopening the EXPORT must not run it either.
-    const outDir = fs.mkdtempSync(path.join(DEV, "tmp-ns-hoist-"));
-    const outFile = path.join(outDir, "exported.html");
+    // The decisive check: reopening the EXPORT must not run it either. The file goes inside the
+    // already-temporary staged directory, which the `finally` below removes, so an interrupted run
+    // leaves nothing in the tracked `dev/` tree.
+    const outFile = path.join(staged.dir, "exported-ns-hoist.html");
     fs.writeFileSync(outFile, exportedHtml, "utf8");
-    try {
-      ctx = await browser.newContext();
-      const p2 = await ctx.newPage();
-      await p2.route(/^https?:\/\//, (route) => route.abort());
-      await p2.goto(fileUrl(outFile));
-      await p2.waitForTimeout(300);
-      expect(await p2.evaluate(() => window.__cmhMathmlRan),
-        "the export must not start running a script the source left inert").toBeUndefined();
-    } finally {
-      fs.rmSync(outDir, { recursive: true, force: true });
-    }
+    ctx = await browser.newContext();
+    const p2 = await ctx.newPage();
+    await p2.route(/^https?:\/\//, (route) => route.abort());
+    await p2.goto(fileUrl(outFile));
+    await p2.waitForTimeout(300);
+    expect(await p2.evaluate(() => window.__cmhMathmlRan),
+      "the export must not start running a script the source left inert").toBeUndefined();
   } finally {
     if (ctx) await ctx.close();
     fs.rmSync(staged.dir, { recursive: true, force: true });

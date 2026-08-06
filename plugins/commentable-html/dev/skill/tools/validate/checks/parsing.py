@@ -3376,12 +3376,15 @@ def _csp_predecessor_fetches(tag, ad):
     missing-CSP error, for a request no browser makes (#1144).
 
     The predicate here stays the over-inclusive `_is_executable_js` even though the self-contained
-    gate's `src` arm moved to `script_code_runs` (#1171), and the reason is this caller's namespace
-    BLINDNESS: it is handed a flat tag/attribute pair with no namespace, and `nomodule`, `event`+`for`
-    and `language` are HTMLScriptElement rules that an SVG script does not obey - so reading them
-    here would call an SVG `<script nomodule>` inert and bless a policy that really is too late.
-    Over-inclusion is the safe direction for a "did anything before this policy fetch or execute"
-    question; it is not for a "delete this element" one."""
+    gate's `src` arm moved to `script_src_fetches` (#1171), and the reason is this caller's QUESTION:
+    it asks whether anything before the policy could fetch OR execute, so it must stay broader than
+    either half. `script_src_fetches` alone would miss a script that runs an inline body without
+    fetching anything, and `script_code_runs` would need a namespace this caller does not have - it
+    is handed a flat tag/attribute pair, and `nomodule`, `event`+`for` and `language` are
+    HTMLScriptElement rules an SVG script does not obey, so reading them here would call an SVG
+    `<script nomodule>` inert and bless a policy that really is too late. Over-inclusion is the safe
+    direction for "did anything before this policy fetch or execute"; it is not for a "delete this
+    element" one."""
     if tag in _CSP_INERT_PREDECESSORS:
         return False
     if tag == "link":

@@ -2026,7 +2026,13 @@ function _stripOfflineRichRenderers(doc, neutralized) {
     const src = s.getAttribute("src") || "";
     if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||
         /\/chart\.js@/i.test(src)) {
-      s.remove();
+      // FETCHED but never RUN is the same split the load strip makes (issue #1171): this element
+      // is a stale renderer reference no browser executes, so the dead attribute alone goes and
+      // the author's body stays. Deleting it here would silently undo that preservation for the
+      // one spelling whose URL happens to look like a bundle. A block the export NEUTRALIZED was
+      // runnable as authored, so it keeps the whole-element treatment.
+      if ((neutralized && neutralized.has(s)) || _offlineScriptCodeRuns(s)) { s.remove(); return; }
+      s.removeAttribute("src");
     }
   });
   doc.querySelectorAll("script").forEach(function (s) {
