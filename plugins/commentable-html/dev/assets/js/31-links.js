@@ -278,9 +278,9 @@ function resolveLinkEl(comment) {
   // PRESENCE, not truthiness, gates the text: an empty stored text is information (the link had no
   // text), so it still disambiguates, while a record that predates the field - or a hand-edited or
   // imported one whose `linkText` is not a string at all - carries no text key and is resolved by
-  // href alone, exactly as before. `String()` is never applied to the stored side: a value such as
-  // `{"toString": "x"}` throws when coerced, and a number or array would otherwise become a text key
-  // no record ever meant to write.
+  // href alone, exactly as before. `String()` is never applied to the stored side: a number or an
+  // array would otherwise become a text key no record ever meant to write, and a value that cannot
+  // be converted to a primitive at all (`{"toString": "x"}`) would throw here, mid-restore.
   const want = typeof comment.linkText === "string" ? _cmhLinkTextKey(comment.linkText) : null;
   const textOk = (l) => want === null || _cmhLinkTextKey(l.textContent) === want;
   // The href key is read once per link per reading, and the text only for the links that reading

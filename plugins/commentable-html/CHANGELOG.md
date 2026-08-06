@@ -24,7 +24,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   sharing BOTH keys stay indistinguishable, with the index still deciding. An EMPTY stored text is
   information (a bare or image-only link had none) and still disambiguates; a `linkText` that is not
   a string carries no text key at all, so a hand-edited or imported record can neither invent a key
-  nor abort the highlight restore by throwing when coerced.
+  nor throw inside resolution when coerced.
 
 ## [1.800.0] - 2026-08-06
 
