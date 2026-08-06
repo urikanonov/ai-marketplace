@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.780.0] - 2026-08-06
+
+### Fixed
+
+- `deck/deck_scaffold.py` no longer mints a slide id that the input fragment already uses. It
+  collected the ids already taken with a `data-slide-id\s*=\s*"([^"]*)"` search, the double-quoted
+  form only, so a hand-authored `data-slide-id='slide-1a2b3c4d'` (or an unquoted
+  `data-slide-id=slide-1a2b3c4d`), which is the same id to a browser, was invisible and could be
+  minted again for another slide, leaving the scaffold to refuse the deck it had just produced with
+  `deck: duplicate slide id(s)`. The taken ids now come from the shared raw start-tag reading
+  (`_browser_attrs.raw_attrs_pairs`), so every quoting form is seen, the value is compared
+  browser-DECODED exactly as `deck_validate` compares it, and a `data-slide-id=` spelled inside
+  another attribute's quoted value is not mistaken for one. A DUPLICATED `data-slide-id` now reads
+  its FIRST occurrence on both sides, as HTML5 and `deck_validate` do, so a valueless or empty
+  first one names no id whatever a later duplicate says, and it is written back once rather than
+  once per occurrence.
+
 ## [1.779.0] - 2026-08-06
 
 ### Fixed

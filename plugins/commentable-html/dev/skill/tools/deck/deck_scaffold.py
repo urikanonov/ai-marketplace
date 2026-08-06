@@ -65,7 +65,6 @@ SECTION_RE = re.compile(r"""<section\b((?:"[^"]*"|'[^']*'|[^>"'])*)>(.*?)</secti
 CLASS_RE = re.compile(
     r"""(?<![^\t\n\f\r /"'])class[\t\n\f\r ]*=[\t\n\f\r ]*"""
     r"""(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r >]+))""", re.I | re.A)
-SLIDE_ID_ATTR_RE = re.compile(r'data-slide-id\s*=\s*"([^"]*)"', re.I)
 MAIN_ROOT_RE = re.compile(r'<main\b[^>]*\bid="commentRoot"[^>]*>', re.I)
 
 # A system-font stack keeps a scaffolded deck free of remote font requests; a design pass can
@@ -100,14 +99,32 @@ def _strip_tags(html: str) -> str:
     return re.sub(r"<[^>]+>", " ", html)
 
 
+def _slide_id_attr(pairs):
+    """The `data-slide-id` a parsed start tag names, or None when it names none.
+
+    The FIRST occurrence wins, as HTML5 and `deck_validate` read it: taking the first NON-EMPTY
+    one instead would adopt an id a browser never sees, from a duplicate attribute the browser
+    discards. A valueless or empty one decodes to no id at all, so it reads as missing - which is
+    also how `deck_validate` reads it.
+    """
+    sid = next((v for n, v in pairs if n == "data-slide-id"), None)
+    return sid or None
+
+
 def prepare_slides(fragment: str):
     """Ensure every slide <section> has a stable data-slide-id and the first is .active.
     Returns (rewritten_fragment, [slide_ids])."""
     taken = set()
     for m in SECTION_RE.finditer(fragment):
-        cm = SLIDE_ID_ATTR_RE.search(m.group(1))
-        if cm:
-            taken.add(cm.group(1))
+        # The shared raw-attribute reading, not a `data-slide-id\s*=\s*"..."` search: an id
+        # authored single-quoted or unquoted is the SAME id to a browser (and to `deck_validate`,
+        # which compares the decoded value), so a search that sees only the double-quoted form
+        # leaves it out of `taken` and lets `slide_id()` mint it again - a deck the scaffold's own
+        # deck contract then refuses as a duplicate. It also decodes character references and
+        # ignores a `data-slide-id=` spelled inside another attribute's quoted value.
+        sid = _slide_id_attr(_browser_attrs.raw_attrs_pairs(m.group(1)))
+        if sid:
+            taken.add(sid)
     ids = []
     first = [True]
 
@@ -126,7 +143,7 @@ def prepare_slides(fragment: str):
         classes = _browser_attrs.html_ws_tokens(cls_value)
         if "slide" not in classes:
             return m.group(0)  # not a slide section; leave untouched
-        sid = next((v for n, v in pairs if n == "data-slide-id" and v), None)
+        sid = _slide_id_attr(pairs)
         if not sid:
             sid = slide_id(_strip_tags(inner), taken)
         ids.append(sid)
@@ -138,16 +155,24 @@ def prepare_slides(fragment: str):
         # DECODED form - escaping the raw text instead turned an authored `x&amp;y` into the
         # literal `x&amp;y`.
         rebuilt = []
+        wrote_sid = False
         for name, value in pairs:
             if name == "class":
                 value = " ".join(classes)
             elif name == "data-slide-id":
+                # A DUPLICATED id is written back ONCE. Re-emitting the later occurrences would
+                # contradict the reading above, which - like HTML5 and `deck_validate` - treats
+                # only the first as the slide's id, and would double the slide in every raw-text
+                # `data-slide-id="..."` count.
+                if wrote_sid:
+                    continue
+                wrote_sid = True
                 value = sid
             if value is None:
                 rebuilt.append(" " + name)
             else:
                 rebuilt.append(' %s="%s"' % (name, _html.escape(value, quote=True)))
-        if not any(n == "data-slide-id" for n, _ in pairs):
+        if not wrote_sid:
             rebuilt.append(' data-slide-id="%s"' % _html.escape(sid, quote=True))
         return "<section%s>%s</section>" % ("".join(rebuilt), inner)
 
