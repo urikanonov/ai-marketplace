@@ -2495,6 +2495,111 @@ class RuntimeParityTests(unittest.TestCase):
                 "blesses without rel=noopener or a named context the stamper newly breaks."
                 % (own, base, js_says, py_says))
 
+    _URL_ENDS_TRIM_CORPUS = [
+        # Nothing to trim.
+        "", "#frag", "https://example.com/x", "mailto:x@example.com",
+        # The characters the URL parser trims (C0 controls and space) - alone, leading, trailing.
+        " ", "\t", "\n", "\r", "\u000b", "\u000c", "\u0000", "\u0001", "\u001f", "\u0020",
+        " #frag", "\t#frag", "\u0001#frag", "#frag ", "#frag\u0001", "\u0001#frag\u0001",
+        "\u0001\u0002\u0003", " \t\r\n ",
+        # The characters JS `.trim()` takes and the parser KEEPS - the half that caused #1170.
+        "\u00a0", "\u00a0#frag", "\u2028#frag", "\u2029#frag", "\u3000#frag", "\ufeff#frag",
+        "\u0085#frag", "\u1680#frag", "\u2000#frag", "\u200a#frag", "\u202f#frag", "\u205f#frag",
+        "#frag\u00a0", "\u00a0#frag\u00a0",
+        # Mixed: a kept character behind a trimmed one, and the reverse.
+        "\u0001\u00a0#frag", "\u00a0\u0001#frag", " \u00a0 ",
+        # Non-BMP and a lone surrogate: neither side may mangle what it does not trim.
+        "\U0001f600#frag", "\ud800#frag", " \ud800 ",
+    ]
+
+    def _runtime_url_ends_trim_source(self):
+        """The runtime's whole URL end-trim reading, as JS source, for evaluation in node.
+
+        Extracted as one contiguous region - the class and the function together - for the same
+        reason the effective-target extraction is: reading only the class would keep passing after
+        the function drifted.
+        """
+        source = self._read("31-links.js")
+        start = source.find("const _CMH_URL_ENDS_TRIM_RE")
+        self.assertNotEqual(start, -1,
+                            "the runtime no longer declares _CMH_URL_ENDS_TRIM_RE; the parity "
+                            "extraction is stale and must be re-pointed at what trims an href now")
+        m = re.compile(r"function _cmhUrlEndsTrim\(value\) \{.*?\n\}", re.S).search(source, start)
+        self.assertIsNotNone(m, "the runtime no longer declares _cmhUrlEndsTrim after the trim "
+                                "class; the parity extraction is stale")
+        region = source[start:m.end()]
+        self.assertEqual(region.count("{") - region.count("}"), 0,
+                         "the extracted URL end-trim region has unbalanced braces, so it was cut "
+                         "mid-function and the parity check would evaluate a truncated copy")
+        return region
+
+    def test_the_python_and_js_url_end_trim_classes_cover_the_same_characters(self):
+        """The URL parser's end trim is a hand-copied character set in two languages, so pin the
+        whole regex TEXT.
+
+        A corpus cannot see a class that drifted on a character the corpus does not carry, and this
+        set exists precisely because neither engine's own trim is the parser's: JS `.trim()` reaches
+        past ASCII into NBSP/U+2028/Zs/U+FEFF and Python's `str.strip()` reaches the same way, while
+        the parser trims C0 controls and space and nothing else.
+        """
+        source = self._read("31-links.js")
+        m = re.search(r"const _CMH_URL_ENDS_TRIM_RE = /(.*?)/g;", source)
+        self.assertIsNotNone(m, "the runtime no longer declares _CMH_URL_ENDS_TRIM_RE as a global "
+                                "regex literal; the parity pin must be re-pointed at whatever trims "
+                                "an href now")
+        low, high = ord(parsing._URL_ENDS_TRIM[0]), ord(parsing._URL_ENDS_TRIM[-1])
+        self.assertEqual(parsing._URL_ENDS_TRIM,
+                         "".join(chr(c) for c in range(low, high + 1)),
+                         "the validator's trim is no longer one contiguous range, so the JS class "
+                         "below cannot be derived from its endpoints; pin the two sets directly")
+        # The WHOLE regex body, not just the ranges inside it: a `findall` of the ranges is blind to
+        # anything ADDED beside them (a `|[\u007f]+$` alternative, an extra singleton in the class),
+        # and the corpus test cannot see a character it does not carry either.
+        expected = "^[\\u%04x-\\u%04x]+|[\\u%04x-\\u%04x]+$" % (low, high, low, high)
+        self.assertEqual(m.group(1), expected,
+                         "the runtime trims an href's ends with /%s/ while the validator trims "
+                         "U+%04X-U+%04X and nothing else; a character only one of them takes makes "
+                         "one side call a link a same-page fragment the other reads as a document "
+                         "reference" % (m.group(1), low, high))
+
+    def test_the_python_and_js_url_end_trim_readings_agree(self):
+        """The render-time link classifier (JS) and the new-tab gate (Python) must trim an href's
+        ENDS identically.
+
+        This is the twin that #1170 exists because of: the runtime read an href with JS `.trim()`
+        while the validator read it with the parser's trim, so one of them called
+        `href="&#xa0;#frag"` a same-page fragment and the other a document reference. Run in node
+        rather than re-implemented here, for the same reason the effective-target pair is: the two
+        engines disagree about whitespace, and an engine difference is exactly what this pins.
+        Skipped when node is absent, like the other node-gated checks.
+        """
+        expected = [parsing.url_ends_trim(value) for value in self._URL_ENDS_TRIM_CORPUS]
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        script = (
+            self._runtime_url_ends_trim_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);process.stdout.write(JSON.stringify("
+            "p.corpus.map(v=>_cmhUrlEndsTrim(v))));});"
+        )
+        proc = subprocess.run([node, "-e", script],
+                              input=json.dumps({"corpus": self._URL_ENDS_TRIM_CORPUS}),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the URL end-trim reading: %s" % proc.stderr)
+        verdicts = json.loads(proc.stdout)
+        self.assertEqual(len(verdicts), len(self._URL_ENDS_TRIM_CORPUS),
+                         "node returned %d verdicts for %d samples"
+                         % (len(verdicts), len(self._URL_ENDS_TRIM_CORPUS)))
+        for value, js_says, py_says in zip(self._URL_ENDS_TRIM_CORPUS, verdicts, expected):
+            self.assertEqual(
+                js_says, py_says,
+                "href %r trims to %r in the runtime and %r in the validator. An href only one of "
+                "them empties, or only one of them leaves starting with '#', is a link the stamper "
+                "and the authoring gate disagree about opening in a new tab."
+                % (value, js_says, py_says))
+
     def test_the_python_and_js_parked_base_corpora_are_identical(self):
         """The two readers' parked-`<base>` corpora are hand-copied markup lists, so pin their TEXT.
 

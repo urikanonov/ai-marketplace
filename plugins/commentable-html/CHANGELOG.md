@@ -4,6 +4,56 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.790.0] - 2026-08-06
+
+### Fixed
+
+- The render-time link classifier now trims an `<a href>`'s ENDS the way the URL parser trims
+  them (C0 controls and space, U+0000-U+0020, through `_cmhUrlEndsTrim` - the JS twin of the
+  validator's `url_ends_trim`) instead of with JS `.trim()`. Both halves of the early return move
+  with it: the EMPTINESS test and the leading-`#` same-page-fragment test. The two trims differ in
+  BOTH directions, and because this trim sits on the EARLY RETURN an over-broad one applies the
+  new-tab stamp to FEWER links - the unsafe direction. JS `.trim()` removes NBSP, U+2028, U+2029,
+  every Zs and U+FEFF, which the parser KEEPS, so `<a href="&#xa0;#frag" target="_self">` was read
+  as a same-page fragment and returned early: it was neither stamped `target="_blank"` nor made
+  commentable, while a browser resolves that href to a DIFFERENT document (`%C2%A0#frag`), so the
+  author's `_self` stood and a click navigated the reviewer's own tab away from the report and
+  their comments - exactly the harm CMH-LINK-01 exists to prevent. An NBSP-only `href="&#xa0;"`
+  went the same way through the emptiness half. In the other direction JS `.trim()` KEEPS a
+  non-whitespace C0 control the parser removes, so `href="&#x1;#frag"` was stamped and indexed
+  although a browser navigates it inside this document; that link is now exempt like the plain
+  fragment it is. (U+0085 is kept by BOTH readings, so it needed no correction, and the ASCII tab,
+  vertical tab and space both readings remove behave exactly as before.) The validator side of
+  this already read the href this way (1.775.0, CMH-LINK-05), so the two agree about the END TRIM.
+  They are still not identical classifiers, and the spec row now says so rather than claiming
+  parity: the runtime resolves a `#fragment` against a `<base href>` where the gate exempts it on
+  the string, and an href the URL parser cannot parse at all (`http://[`) is a document reference
+  to the gate but reaches the runtime's `catch` branch unstamped. (#1170)
+- The same-page exemption is now confirmed against the URL a browser RESOLVES, not just the shape
+  of the href. A `<base href>` re-points BOTH an empty href and a bare `#fragment` at a DIFFERENT
+  document, so a click on one leaves the report and an author's `target="_self"` takes the
+  reviewer's tab - and their comments - with it. The classifier asks the anchor's resolved `href`
+  against `location.href` (`_cmhSamePageHref`) before granting the exemption, so a `<base href>`
+  document's fragment links are stamped and commentable like the cross-document references they
+  are. Without a `<base href>` nothing changes: a fragment link still stays in the tab.
+- A link comment's stored href KEY is read the way the classifier reads an href
+  (`_cmhLinkHrefKey`), and the healing lookup compares the stored key AS WRITTEN against the live
+  attribute - the current reading first, the pre-1.790.0 JS-`.trim()` reading only as a fallback.
+  The key used to be a JS `.trim()`, which for exactly the links the corrected classifier newly
+  admits stored a key no commentable link's attribute could ever equal - so relocating such a
+  comment by href was dead, and `href="&#xa0;"` stored an EMPTY key that the healing branch skips
+  entirely. The stored side is deliberately never re-normalized: the two readings are lossy in
+  OPPOSITE directions, so a single normalized compare would move a comment stored on
+  `href="&#x1;#frag"` onto a `href="&#x9;#frag"` link. Upgraded documents: because the classifier
+  both admits and drops links, `data-cm-link-index` can shift for a link that follows a padded one,
+  and an older comment relocates by its stored href through the legacy fallback; a comment anchored
+  to a link this classifier no longer admits (a C0-padded `#fragment`) has no anchor to return to
+  and stays in the sidebar unringed.
+- `indexLinks` now CLEARS `cm-link-commentable` and `data-cm-link-index` from a link it does not
+  index. A document saved or exported by an older runtime carries the marks that runtime stamped,
+  and `findLinkEl` falls back to `[data-cm-link-index]`, so a stale attribute left on a link this
+  classifier no longer admits could resolve a comment onto it.
+
 ## [1.784.0] - 2026-08-06
 
 ### Fixed
