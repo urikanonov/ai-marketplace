@@ -115,7 +115,9 @@ test.describe("visual-audit follow-ups", () => {
   // `onScreenY` is only asserted for a FIXED floating surface: the side pane's cards live in a
   // scrolling list (`.cm-sidebar .list`), where a row below the fold is reached by scrolling and is
   // not a defect - there, containment within the composer is the meaningful bound.
-  function expectRowFits(info, label, count, { onScreenY = false } = {}) {
+  // `gaps` is opted out of for a row that is not a flex container at all (the side pane's
+  // single-button reply row), where a computed `row-gap` of `normal` carries no separation promise.
+  function expectRowFits(info, label, count, { onScreenY = false, gaps = true } = {}) {
     expect(info.boxes.length, `${label}: the row holds all of its actions`).toBe(count);
     for (const b of info.boxes) {
       expect(b.h, `${label}: '${b.label}' height`).toBeGreaterThanOrEqual(44);
@@ -137,8 +139,10 @@ test.describe("visual-audit follow-ups", () => {
     }
     // Neither axis may close up between an enlarged Save and the Cancel beside it, which discards
     // the draft with no confirmation.
-    expect(info.rowGap, `${label}: wrapped lines keep a deliberate gap`).toBeGreaterThanOrEqual(12);
-    expect(info.columnGap, `${label}: neighbours on one line keep a deliberate gap`).toBeGreaterThanOrEqual(12);
+    if (gaps) {
+      expect(info.rowGap, `${label}: wrapped lines keep a deliberate gap`).toBeGreaterThanOrEqual(12);
+      expect(info.columnGap, `${label}: neighbours on one line keep a deliberate gap`).toBeGreaterThanOrEqual(12);
+    }
   }
 
   // Pins WHICH buttons a row holds, by selector rather than by a class string, so an added modifier
@@ -266,6 +270,171 @@ test.describe("visual-audit follow-ups", () => {
     const reply = await measureActionRow(page, ".cm-reply-compose-actions", ".cm-reply-compose");
     expectRowFits(reply, "wrapped side pane reply composer", 2);
     expect(rowLines(reply), "the reply row wraps rather than clipping").toBeGreaterThan(1);
+  });
+
+  // The side pane's remaining compact controls (issue #1146): the Reply button that OPENS the
+  // now-thumb-sized reply composer, and the identity row - the `set name` link that opens the
+  // editor plus the editor's own input, Save and Cancel.
+  test("the side pane Reply button and identity Save/Cancel are >=44px touch targets on mobile (CMH-RESP-14)", async ({ page }) => {
+    // 320px is the narrowest phone the repo targets, so measure the tightest case.
+    await page.setViewportSize({ width: 320, height: 720 });
+    await page.goto(fileUrl(INLINE));
+    await ready(page);
+    await addTextComment(page, "#commentRoot p", "side pane touch targets");
+
+    // The door to the reply composer, measured against the card that owns it. Its row is a plain
+    // block, not a flex container, so there is no gap promise to assert.
+    await expectRowFitsEveryDensity(page, ".cm-card .cm-reply-row", ".cm-card",
+      "side pane reply button", [".cm-reply-btn"], { gaps: false });
+    // Reply's nearest neighbour is the card's DESTRUCTIVE delete action. The two boxes are apart
+    // on BOTH axes today (delete is right-aligned in `.meta`, Reply starts at the card's start
+    // edge a row below), so pin the LARGER separation: two boxes are only a thumb-slip apart when
+    // they are close on every axis, and this way neither a re-alignment nor a collapsed vertical
+    // rhythm can bring them together while the other axis still holds them apart.
+    await expect(page.locator(".cm-card .meta .acts button.del")).toHaveCount(1);
+    const apart = await page.evaluate(() => {
+      const card = document.querySelector(".cm-card");
+      const delEl = card.querySelector(".meta .acts button.del");
+      const replyEl = card.querySelector(".cm-reply-btn");
+      if (!delEl || !replyEl) throw new Error("card is missing its delete or reply control");
+      const del = delEl.getBoundingClientRect();
+      const reply = replyEl.getBoundingClientRect();
+      return Math.max(
+        del.left - reply.right, reply.left - del.right,
+        del.top - reply.bottom, reply.top - del.bottom);
+    });
+    expect(apart, "Reply is kept clear of the card's delete action").toBeGreaterThanOrEqual(12);
+    // ...and the enlarged button still opens the composer at that size.
+    await page.locator(".cm-card .cm-reply-btn").first().click();
+    await expect(page.locator(".cm-reply-compose")).toHaveCount(1);
+    await page.locator(".cm-reply-compose .cm-reply-cancel").click();
+    await expect(page.locator(".cm-reply-compose")).toHaveCount(0);
+
+    // The identity row's two states are disjoint: `43-identity.js` hides the `set name` link while
+    // the editor is open, and hides the editor otherwise. Measure each in its own state, under
+    // every density, so a preset-specific regression cannot slip through.
+    const identity = () => page.evaluate(() => {
+      const pane = document.querySelector(".cm-sidebar");
+      const own = document.getElementById("cmIdentityEdit");
+      const input = document.getElementById("cmIdentityInput");
+      const save = document.getElementById("btnSaveIdentity");
+      const cancel = document.getElementById("btnCancelIdentity");
+      if (!pane || !own || !input || !save || !cancel) throw new Error("identity editor is not present");
+      const box = (el) => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height, top: r.top, left: r.left, right: r.right }; };
+      const owncs = getComputedStyle(own);
+      const ownBox = own.getBoundingClientRect();
+      return {
+        input: box(input), save: box(save), cancel: box(cancel),
+        editorLeft: ownBox.left + parseFloat(owncs.paddingLeft) + parseFloat(owncs.borderLeftWidth),
+        editorRight: ownBox.right - parseFloat(owncs.paddingRight) - parseFloat(owncs.borderRightWidth),
+        paneOverflow: pane.scrollWidth - pane.clientWidth,
+        vw: window.innerWidth,
+      };
+    });
+    for (const density of DENSITIES) {
+      const at = `[density=${density || "default"}]`;
+      await setDensity(page, density);
+      // Closed: the `set name` / `change` link that OPENS the editor. Its 44px target is an
+      // OVERLAID pseudo-element (as CMH-RESP-06 / CMH-RESP-07 do for the checklist control and the
+      // notes fold), so the visible link is deliberately left small and `::after` is what is
+      // measured - growing the link itself would add ~27px to the sidebar header on every phone.
+      if (await page.locator("#cmIdentityEdit").isVisible()) await page.click("#btnCancelIdentity");
+      await expect(page.locator("#btnEditIdentity")).toBeVisible();
+      const opener = await page.evaluate(() => {
+        const btn = document.getElementById("btnEditIdentity");
+        if (!btn) throw new Error("the identity edit control is not present");
+        const a = getComputedStyle(btn, "::after");
+        // A missing overlay computes to `auto`, which parses to NaN; report it as 0 so the
+        // failure reads as a missing target rather than an unreadable one.
+        return { w: parseFloat(a.width) || 0, h: parseFloat(a.height) || 0, boxH: btn.getBoundingClientRect().height };
+      });
+      expect(opener.h, `${at}: the 'set name' tap target height`).toBeGreaterThanOrEqual(44);
+      expect(opener.w, `${at}: the 'set name' tap target width`).toBeGreaterThanOrEqual(44);
+      // The overlay must stay an overlay: if the link itself ever grew to 44px the header would
+      // eat the comment list on a short phone, which is the whole reason for the pseudo-element.
+      expect(opener.boxH, `${at}: the 'set name' link is not grown for real`).toBeLessThan(44);
+
+      // Open: the editor's input, Save and Cancel, which DO grow for real.
+      await page.click("#btnEditIdentity");
+      await expect(page.locator("#cmIdentityEdit")).toBeVisible();
+      await expectRowHolds(page, "#cmIdentityEdit", [".cm-identity-save", ".cm-identity-cancel"]);
+      const info = await measureActionRow(page, "#cmIdentityEdit", ".cm-identity");
+      expectRowFits(info, `identity editor ${at}`, 2);
+      const id = await identity();
+      // The input shares the row with the enlarged pair, so it must stay a usable, tappable
+      // control rather than the one sliver left in a thumb-sized row.
+      expect(id.input.h, `${at}: the name input is a touch target too`).toBeGreaterThanOrEqual(44);
+      expect(id.input.w, `${at}: the name input keeps a usable width beside the pair`).toBeGreaterThanOrEqual(88);
+      // The whole row stays inside the editor's content box and on screen, and nothing in it
+      // pushes the pane sideways.
+      for (const [name, b] of [["input", id.input], ["Save", id.save], ["Cancel", id.cancel]]) {
+        expect(b.left, `${at}: '${name}' clipped at the start edge`).toBeGreaterThanOrEqual(id.editorLeft - 0.5);
+        expect(b.right, `${at}: '${name}' clipped at the end edge`).toBeLessThanOrEqual(id.editorRight + 0.5);
+        expect(b.left, `${at}: '${name}' off the left of the screen`).toBeGreaterThanOrEqual(-0.5);
+        expect(b.right, `${at}: '${name}' off the right of the screen`).toBeLessThanOrEqual(id.vw + 0.5);
+      }
+      expect(id.paneOverflow, `${at}: the identity row does not scroll the side pane sideways`)
+        .toBeLessThanOrEqual(1);
+      // With the shipped labels the whole row - input included - still fits ONE line at 320px in
+      // every preset. That is what bounds the sidebar header's growth: a forced line break costs
+      // roughly another 56px of header, which a landscape phone pays out of the comment list.
+      const lines = new Set([id.input, id.save, id.cancel].map((b) => Math.round(b.top))).size;
+      expect(lines, `${at}: the identity row fits one line at 320px`).toBe(1);
+      await page.click("#btnCancelIdentity");
+      await expect(page.locator("#cmIdentityEdit")).toBeHidden();
+    }
+    await setDensity(page, "");
+
+    // ...and both enlarged buttons still do their job at that size.
+    await page.click("#btnEditIdentity");
+    await page.fill("#cmIdentityInput", "Thumbs");
+    await page.click("#btnSaveIdentity");
+    await expect(page.locator("#cmIdentityEdit")).toBeHidden();
+    await expect(page.locator("#cmIdentityName")).toContainText("Thumbs");
+  });
+
+  test("enlarging the side pane's controls does not starve the comment list on a landscape phone (CMH-RESP-14)", async ({ page }) => {
+    // The worst case for the sidebar header's vertical budget: the shortest phone the repo
+    // targets, in every density preset. The header is mostly pre-existing chrome, so these are
+    // FLOORS on what is left for the cards rather than a promise of roominess - they are what
+    // stops a later touch-target bump from taking the last of it.
+    //
+    // The two states get different floors on purpose. CLOSED is the state a reviewer READS in, and
+    // it must not regress: the `set name` link's 44px target is an overlaid pseudo-element
+    // precisely so this state costs nothing, so each density keeps the budget it had before the
+    // enlargement. The floors below are the measured pre-change heights less a 10px tolerance -
+    // wide enough for cross-platform font metrics, far tighter than the ~28px a real (non-overlaid)
+    // 44px link would cost, which is the regression they exist to catch. The causal half of that
+    // guarantee is asserted separately, by the `set name` link's own box staying under 44px.
+    // EDITING is transient and costs ~28px, because `Save` / `Cancel` / the input cannot be 44px
+    // targets in a row that is not 44px tall; while a reviewer is typing a name they are not
+    // reading cards, and the row collapses again the moment they save or cancel.
+    const FLOOR = {
+      "": { closed: 73, editing: 46 },
+      compact: { closed: 92, editing: 64 },
+      comfortable: { closed: 53, editing: 27 },
+    };
+    await page.setViewportSize({ width: 640, height: 320 });
+    await page.goto(fileUrl(INLINE));
+    await ready(page);
+    await addTextComment(page, "#commentRoot p", "landscape budget");
+    for (const density of DENSITIES) {
+      await setDensity(page, density);
+      for (const editing of [false, true]) {
+        const open = await page.locator("#cmIdentityEdit").isVisible();
+        if (editing && !open) await page.click("#btnEditIdentity");
+        if (!editing && open) await page.click("#btnCancelIdentity");
+        const listH = await page.evaluate(() => {
+          const list = document.getElementById("commentList");
+          if (!list) throw new Error("the comment list is not present");
+          return list.getBoundingClientRect().height;
+        });
+        const at = `[density=${density || "default"}, editing=${editing}]`;
+        expect(listH, `${at}: the comment list keeps a usable height`)
+          .toBeGreaterThanOrEqual(editing ? FLOOR[density].editing : FLOOR[density].closed);
+      }
+    }
+    await setDensity(page, "");
   });
 
   test("table-mode checklist rows keep their 44px tap targets from overlapping (CMH-RESP-06)", async ({ page }) => {
