@@ -103,6 +103,11 @@ class SharedDecodeShimTests(unittest.TestCase):
     def test_the_shim_resolves_the_shipped_decoder(self):
         self.assertIsNotNone(_browser_attrs._shared_attrs)
         self.assertIsNotNone(_browser_attrs._shared_attrs_dict)
+        # A renamed or moved shared reading resolves to None SILENTLY (the missing-tool warning
+        # fires only when the module itself fails to import), so every tool would quietly run on
+        # the fallback copy for good. Pin the lookups themselves.
+        self.assertIsNotNone(_browser_attrs._shared_link_rel_tokens)
+        self.assertIsNotNone(_browser_attrs._shared_link_href_is_set)
         self.assertTrue(_browser_attrs._is_shipped(_browser_attrs._parsing))
 
     def test_the_shim_resolves_the_shipped_start_tag_parser(self):
@@ -161,6 +166,30 @@ class SharedDecodeShimTests(unittest.TestCase):
         # canonical one as TEXT - the same discipline the JS copy is held to. Without this, an edit
         # to the shared pattern silently diverges the degraded reading.
         self.assertEqual(_browser_attrs._FALLBACK_REL_WS_RE.pattern, parsing.LINK_REL_WS_RE.pattern)
+
+    def test_the_degraded_path_measures_an_href_the_way_html_measures_it(self):
+        # The href half of the same discipline (#1140): the partial-install fallback must trim the
+        # URL parser's own end set (the C0 controls and space), not Python's Unicode one, or the
+        # degraded reading calls an href a browser resolves and fetches EMPTY and the tools inject
+        # a favicon beside the author's.
+        with mock.patch.object(_browser_attrs, "_shared_link_href_is_set", None):
+            for ws in ("\u00a0", "\u2028", "\u3000"):
+                self.assertTrue(_browser_attrs.link_href_is_set(ws), repr(ws))
+            self.assertTrue(_browser_attrs.link_href_is_set(" /f.ico "))
+            for ws in (None, "", " ", "\t\n\f\r ", "\u000b", "\u001c\u001f", "\u0001"):
+                self.assertFalse(_browser_attrs.link_href_is_set(ws), repr(ws))
+
+    def test_the_degraded_href_reading_is_pinned_to_the_shared_one(self):
+        # A SECOND copy of the reading, pinned to the canonical one for the same reason the rel
+        # split above is - but pinned BEHAVIOR-for-behavior, not just constant-for-constant: the
+        # most likely future edit changes the function BODY (a different trim set), which a
+        # constant-equality pin would sail straight past.
+        self.assertEqual(_browser_attrs._FALLBACK_URL_ENDS_TRIM, parsing._URL_ENDS_TRIM)
+        corpus = (None, "", " ", "\t\n\f\r ", "\u000b", "\u001c\u001f", "\u0001", "\u0000",
+                  "\u00a0", "\u2028", "\u3000", "\u0085", " /f.ico ", "x", "\u000b/f.ico")
+        with mock.patch.object(_browser_attrs, "_shared_link_href_is_set", None):
+            degraded = [_browser_attrs.link_href_is_set(v) for v in corpus]
+        self.assertEqual(degraded, [parsing.link_href_is_set(v) for v in corpus])
 
     def test_the_degraded_path_still_returns_the_hosts_attributes(self):
         # Only a broken/partial install gets here (the warning is emitted at import). It must

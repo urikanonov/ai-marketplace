@@ -3,13 +3,15 @@
 A favicon is a `<link>` in the head whose `rel` attribute, tokenized the way HTML tokenizes a
 `rel` list (on ASCII whitespace ONLY), contains the exact token `icon` (so `rel="icon"` and
 `rel="shortcut icon"` count, but `apple-touch-icon`, `mask-icon`, and `fluid-icon` do NOT) AND
-whose `href` is non-empty. This mirrors the validator's check (checks/kind.py `check_favicon` over
-the parser's `icon_links`, which uses the same shared `link_rel_tokens` split plus a non-empty
-href), so the tools inject a favicon exactly when the validator would warn. Keeping this in one
-place stops the tools' detection from drifting away from the validator's - and the SPLIT itself is
-read from the shared reading rather than restated, because Python's argument-less `str.split()`
-also splits on the vertical tab, NBSP and U+001C-U+001F and would name a relation a browser never
-matches (#1120).
+whose `href` survives the URL parser's own end trim. This mirrors the validator's
+check (checks/kind.py `check_favicon` over the parser's `icon_links`), so the tools inject a
+favicon exactly when the validator would warn. Keeping this in one place stops the tools'
+detection from drifting away from the validator's - and BOTH readings, the `rel` SPLIT and the
+`href` emptiness test, are read from the shared ones rather than restated, because Python's own
+idea of whitespace matches neither HTML's nor the URL parser's: `str.split()` also splits on the
+vertical tab, NBSP and U+001C-U+001F and would name a relation a browser never matches (#1120),
+and `str.strip()` reaches past ASCII into NBSP, U+2028, U+3000 and U+0085, which the URL parser
+keeps, so it would call an `href="&#xa0;"` a browser resolves and fetches EMPTY (#1140).
 
 Detection uses `html.parser.HTMLParser` (the same tokenizer the validator uses) rather than a raw
 regex so that: attributes are parsed exactly (a `data-rel` / `data-href` is never mistaken for
@@ -61,7 +63,7 @@ class _FaviconFinder(_browser_attrs.BrowserTagNames):
         if tag != "link":
             return
         ad = _browser_attrs.attrs_dict(self, tag, attrs)
-        if rel_is_favicon(ad.get("rel")) and (ad.get("href") or "").strip():
+        if rel_is_favicon(ad.get("rel")) and _browser_attrs.link_href_is_set(ad.get("href")):
             self.tags.append(self.get_starttag_text())
 
     def handle_starttag(self, tag, attrs):

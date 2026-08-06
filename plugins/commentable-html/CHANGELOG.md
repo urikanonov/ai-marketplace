@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.754.0] - 2026-08-06
+
+### Fixed
+
+- The favicon check no longer warns about a favicon link a browser actually resolves and fetches
+  (CMH-KIND-05). The `href` half of the decision used Python's argument-less `.strip()`, which
+  reaches past ASCII into NBSP, U+2028, U+3000 and U+0085 - none of which the URL parser removes.
+  So `<link rel="icon" href="&#xa0;">` was read as EMPTY: `validate --strict` (the mandatory
+  finalize path) warned `no favicon` about a document that declares one a browser honors, and
+  `retrofit` / `upgrade` injected a second icon link beside the author's. Both sides now measure
+  an `href`'s emptiness through ONE shared reading (`link_href_is_set`, reached from outside the
+  validator's package through `tools/_browser_attrs.py`, exactly as the `rel` split already was)
+  that applies the URL parser's own end trim - every C0 control and space. The check asks whether
+  an icon is DECLARED, not whether it renders, so an `href` the trim empties (absent, empty, or
+  made only of characters a browser trims away, which resolves to the document's own URL rather
+  than to an icon resource) still warns.
+
 ## [1.753.0] - 2026-08-06
 
 ### Fixed

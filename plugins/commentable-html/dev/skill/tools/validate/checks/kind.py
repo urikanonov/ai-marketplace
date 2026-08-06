@@ -2,7 +2,7 @@
 
 import re
 
-from .parsing import visible_text
+from .parsing import link_href_is_set, visible_text
 
 # Document kind. Every commentable-html document declares its kind in a
 # <meta name="commentable-html-kind" content="..."> so per-type rules can apply and
@@ -95,9 +95,14 @@ def check_favicon(parser):
     standalone/legacy document (or a hand-authored head) that omits it. A missing favicon
     is a cosmetic/branding defect, not a functional one, so it is a WARNING (enforced
     under --strict, the mandatory finalize path). Returns a list of warning strings.
+
+    An icon link counts only when its `href` survives the URL parser's end trim - measured through
+    the shared `link_href_is_set` rather than Python's Unicode `.strip()`, so an `href="&#xa0;"` a
+    browser really does resolve and fetch is not called empty (#1140). This asks whether an icon is
+    DECLARED, not whether it renders.
     """
     for link in parser.icon_links:
-        if (link.get("href") or "").strip():
+        if link_href_is_set(link.get("href")):
             return []
     return ['no favicon: the document has no <link rel="icon" href="..."> in its head, so a '
             'browser tab shows the generic globe instead of the commentable-html mark - add '

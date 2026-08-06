@@ -562,8 +562,9 @@ def _insert_favicon_if_missing(text, head, template):
     head declares none, else "". A retrofitted host often has no favicon, which would leave the
     browser tab showing the generic globe and trip the validator's favicon check; mirror
     _insert_title_if_missing and add the CMH favicon when it is absent. Detection matches the
-    validator's semantics (see tools/authoring/_favicon.py): a `rel` token exactly `icon` with a
-    non-empty href, so `apple-touch-icon` / `mask-icon` and an empty-href icon do NOT count."""
+    validator's semantics through the ONE shared reading (see tools/authoring/_favicon.py): a `rel`
+    token exactly `icon` plus an href that survives the URL parser's end trim, so
+    `apple-touch-icon` / `mask-icon` and an icon link whose href trims away do NOT count."""
     head_text = text[head.start_end:head.end_start]
     if _favicon.head_has_favicon(head_text):
         return ""
