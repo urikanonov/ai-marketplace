@@ -4,6 +4,32 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.792.0] - 2026-08-06
+
+### Fixed
+
+- A partial install (one where the validator's `checks/parsing` cannot be imported) no longer lets
+  `deck/deck_scaffold.py` write a deck whose slide start tags carry values the rendered document
+  does not (CMH-DECK-02). The scaffold RE-SERIALIZES every slide's start tag from the attribute
+  pairs `tools/_browser_attrs.raw_attrs_pairs` hands back, so that reading decides which attributes
+  survive and what they say. Its partial-install fallback already answered the whole attribute
+  list, but it read two things the host's way rather than the browser's, and the scaffold wrote
+  both differences into the deck: it did not fold a NUL, where a browser writes U+FFFD in an
+  attribute name and value alike, and it decoded values with `html.unescape`, which resolves a
+  named reference that is only a PREFIX of the value or is followed by `=` (an authored
+  `title="x&ampy"` was rewritten as `x&y`, `&notit;` as `\u00acit;`) and DELETES the code points it
+  considers invalid (`&#1;`, `&#x7f;` and `&#xfffe;` all vanished, where a browser keeps them).
+  Both are silent and both pass the deck contract with a zero exit. The degraded reading now folds
+  a NUL and applies the browser's attribute-value rule from its own copies of
+  `checks/parsing._fold_nul`, `_ATTR_CHARREF_RE`, `_numeric_charref` and `_unescape_attr_value`,
+  pinned to the shared ones as data and answer-for-answer by parity tests, so a partial install
+  writes the deck a full one writes. The `data-slide-id` was NOT spared by its shape gate, either:
+  because the host's decode deletes a character a browser keeps, an authored
+  `data-slide-id="slide-aaaaaaaa&#1;"` - which a browser reads as the shape-invalid
+  `slide-aaaaaaaa\u0001` and which must therefore fail the scaffold closed - decoded to the
+  perfectly valid `slide-aaaaaaaa`, passed the deck contract and was written, silently renaming the
+  authored id that create-only exists to keep stable.
+
 ## [1.790.0] - 2026-08-06
 
 ### Fixed

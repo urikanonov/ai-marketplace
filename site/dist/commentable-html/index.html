@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.790.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.792.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.792.0] - 2026-08-06</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A partial install (one where the validator&#x27;s <code>checks/parsing</code> cannot be imported) no longer lets <code>deck/deck_scaffold.py</code> write a deck whose slide start tags carry values the rendered document does not (CMH-DECK-02). The scaffold RE-SERIALIZES every slide&#x27;s start tag from the attribute pairs <code>tools/_browser_attrs.raw_attrs_pairs</code> hands back, so that reading decides which attributes survive and what they say. Its partial-install fallback already answered the whole attribute list, but it read two things the host&#x27;s way rather than the browser&#x27;s, and the scaffold wrote both differences into the deck: it did not fold a NUL, where a browser writes U+FFFD in an attribute name and value alike, and it decoded values with <code>html.unescape</code>, which resolves a named reference that is only a PREFIX of the value or is followed by <code>=</code> (an authored <code>title=&quot;x&amp;ampy&quot;</code> was rewritten as <code>x&amp;y</code>, <code>&amp;notit;</code> as <code>\u00acit;</code>) and DELETES the code points it considers invalid (<code>&amp;#1;</code>, <code>&amp;#x7f;</code> and <code>&amp;#xfffe;</code> all vanished, where a browser keeps them). Both are silent and both pass the deck contract with a zero exit. The degraded reading now folds a NUL and applies the browser&#x27;s attribute-value rule from its own copies of <code>checks/parsing._fold_nul</code>, <code>_ATTR_CHARREF_RE</code>, <code>_numeric_charref</code> and <code>_unescape_attr_value</code>, pinned to the shared ones as data and answer-for-answer by parity tests, so a partial install writes the deck a full one writes. The <code>data-slide-id</code> was NOT spared by its shape gate, either: because the host&#x27;s decode deletes a character a browser keeps, an authored <code>data-slide-id=&quot;slide-aaaaaaaa&amp;#1;&quot;</code> - which a browser reads as the shape-invalid <code>slide-aaaaaaaa\u0001</code> and which must therefore fail the scaffold closed - decoded to the perfectly valid <code>slide-aaaaaaaa</code>, passed the deck contract and was written, silently renaming the authored id that create-only exists to keep stable.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.790.0] - 2026-08-06</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -505,6 +512,8 @@
               <li><code>indexLinks</code> now CLEARS <code>cm-link-commentable</code> and <code>data-cm-link-index</code> from a link it does not index. A document saved or exported by an older runtime carries the marks that runtime stamped, and <code>findLinkEl</code> falls back to <code>[data-cm-link-index]</code>, so a stale attribute left on a link this classifier no longer admits could resolve a comment onto it.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.784.0] - 2026-08-06</h3></div>
             <div class="group-label">Fixed</div>
@@ -517,8 +526,6 @@
               <li>The three media load-attribute lists - the strict validator&#x27;s, the deck validator&#x27;s, and the offline export strips&#x27; - are pinned to each other by a parity test (CMH-BUILD-22). It reads all three from their real sources and fails when a widening lands on one side only, with every intentional difference named in the test as data with a reason. Both fixes above are divergences it found.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.782.0] - 2026-08-06</h3></div>
             <div class="group-label">Fixed</div>
@@ -555,19 +562,7 @@
               <li>The partial-install fallback in <code>tools/_browser_attrs.py</code> reads a whole start tag rather than just its class: it walks copies of the same tag-name and attribute patterns the shared tokenizer walks (pinned to them as text by a parity test), so the degraded reading can serve a tool that REWRITES a start tag, and the degraded class reading now comes off that same split instead of a separate <code>class=</code> search that a <code>class=</code> inside another attribute&#x27;s quoted value could fool. The shim also gains <code>inert_spans()</code>, the shared reading of where a <code>&lt;</code> does not open an element, for any tool that finds an element by scanning the source text.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.777.0] - 2026-08-06</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li><code>&lt;image src=&quot;https://...&quot;&gt;</code> and <code>&lt;image srcset=&quot;https://... 1x&quot;&gt;</code> are now an ERROR in shareable AND offline mode, and inside an <code>&lt;iframe srcdoc&gt;</code> (CMH-VAL-08, CMH-VAL-25, CMH-OFFLINE-04). HTML tree construction RENAMES an <code>&lt;image&gt;</code> start tag to <code>img</code> and reprocesses it with its attributes, so a browser really fetches it on open - but the self-contained gate reads the LITERAL tokenized tag name, and its media list carried <code>image</code> only for the SVG <code>href</code>/<code>xlink:href</code> pair. The result was a complete inversion: <code>&lt;image src=&quot;https://evil.example/x.png&quot;&gt;</code> drew 0 errors and was STAMPED, while the byte-equivalent <code>&lt;img src=...&gt;</code> was refused and <code>&lt;image href=&quot;https://...&quot;&gt;</code>, which in HTML content loads nothing at all, WAS reported. Shareable mode has no zero-network CSP behind it, so that gate was the only layer.</li>
-              <li>BREAKING for some documents, for the same reason the 1.762.0 widening was: a file that carries a network <code>&lt;image src&gt;</code> or <code>&lt;image srcset&gt;</code> may now FAIL <code>--strict</code>, be refused the <code>commentable-html-validated</code> stamp, and be refused outright by the fail-closed tools that validate first (<code>retrofit</code> and <code>upgrade</code> leave the target unchanged on any validator error). Fix it by inlining the reference (a <code>data:</code> URI) or removing it; a relative or <code>data:</code> reference is untouched, and no shipped example or fixture gains a finding.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Export Offline&#x27;s <code>&lt;image&gt;</code> strip clears <code>src</code> and <code>srcset</code> beside <code>href</code> and <code>xlink:href</code>, in the same change as the gate above, so neither side can reject what the other leaves (CMH-OFFLINE-04). The HTML spelling is already an <code>img</code> element in the DOM and was cleared by the <code>img</code> pass; an SVG-namespaced <code>&lt;image src&gt;</code> fetches nothing, but the shared egress index the validator reads deliberately does not carry the namespace its parser computes, so the export now carries the same deliberate over-detection the gate does - which is exactly what keeps the gate from rejecting a file the export just produced. A relative <code>&lt;image src&gt;</code> survives. One asymmetry is deliberately RECORDED rather than closed: the local-path &quot;run tools/inline_images.py&quot; advisory stays keyed on <code>img</code> <code>src</code> and always has been - <code>img srcset</code>, an <code>&lt;input type=&quot;image&quot; src&gt;</code> and every other local reference draw nothing either - so a relative <code>&lt;image src&gt;</code> is not a carve-out from a general local-path rule, it is that rule&#x27;s existing scope.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">366 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">367 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

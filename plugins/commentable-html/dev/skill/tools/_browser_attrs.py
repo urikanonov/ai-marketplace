@@ -20,14 +20,25 @@ the validator and another way by the tool beside it (CMH-VAL-21). They all read 
 instead: `attrs()` / `attrs_dict()` for the attribute view, and the `BrowserTagNames` base (whose
 `_browser_tag()` names each element) for the tag.
 
-A partial install (the `validate` tool missing) falls back to the host's own list, fold and
-`HTMLParser` rather than failing: a degraded read is better than a tool that cannot run, and the
-fallback is WARNED about once, the way every other optional-tool import in the skill is.
+A partial install (the `validate` tool missing) degrades rather than failing: a degraded read is
+better than a tool that cannot run, and the fallback is WARNED about once, the way every other
+optional-tool import in the skill is. What degrades is narrower than it once was, but only on ONE
+path: in the RAW start-tag attribute reading (`raw_attrs_pairs` / `raw_attrs_class_tokens`) the
+value DECODE, the NUL fold and the attribute-name ASCII fold are the shared rules, applied from
+pinned local copies, because two callers (`deck/deck_scaffold.py`, `kusto/kql_highlight.py`)
+RE-SERIALIZE a start tag from what they read and so write any difference into the document.
+Everything else still degrades to the host: the PARSED views (`attrs()` / `attrs_dict()` /
+`StartTagParser`) fall back to the host's own `HTMLParser` and its attribute list, `ascii_lower()`
+and `_FallbackTagNames._browser_tag()` fall back to Python's UNICODE `.lower()` (so the clause-7 tag
+name differential above is back on that path), and a start tag's EXTENT is decided by pattern rather
+than by the vendored character-by-character scan, so the eof-in-tag error an unterminated quoted
+value earns is not applied.
 """
 import html as _html
 import os
 import re as _re
 import sys
+from html.entities import html5 as _HTML5_ENTITIES
 from html.parser import HTMLParser
 
 _TOOLS_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -37,6 +48,66 @@ for _root in (_TOOLS_ROOT, _VALIDATE_ROOT):
         sys.path.insert(0, _root)
 
 _parsing = None
+
+# The fallback's copy of the shared ATTRIBUTE-VALUE decode, for a partial install only, pinned to
+# `checks/parsing`'s (patterns and table as TEXT, behavior answer-for-answer) by parity tests. The
+# host's own `html.unescape` is NOT that rule and disagrees on both halves: it resolves a NAMED
+# reference that is only a PREFIX of the value or is followed by `=` (`x&ampy` becomes `x&y`,
+# `&notit;` becomes `\u00acit;`), and its NUMERIC branch DELETES the code points it considers
+# invalid (`&#1;`, `&#x7f;`, `&#xfffe;` all vanish) where a browser keeps them. A caller that
+# RE-SERIALIZES a start tag from the decoded value - the deck scaffold, the KQL run-link refresh -
+# writes that difference into the document, so a degraded install would silently rewrite an
+# authored `id`, `title` or `aria-label` into something the rendered DOM never carries.
+_FALLBACK_ATTR_CHARREF_RE = _re.compile(r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*)[;=]?")
+
+_FALLBACK_C1_CHARREF_REPLACEMENTS = {
+    0x80: "\u20ac", 0x82: "\u201a", 0x83: "\u0192", 0x84: "\u201e", 0x85: "\u2026",
+    0x86: "\u2020", 0x87: "\u2021", 0x88: "\u02c6", 0x89: "\u2030", 0x8a: "\u0160",
+    0x8b: "\u2039", 0x8c: "\u0152", 0x8e: "\u017d", 0x91: "\u2018", 0x92: "\u2019",
+    0x93: "\u201c", 0x94: "\u201d", 0x95: "\u2022", 0x96: "\u2013", 0x97: "\u2014",
+    0x98: "\u02dc", 0x99: "\u2122", 0x9a: "\u0161", 0x9b: "\u203a", 0x9c: "\u0153",
+    0x9e: "\u017e", 0x9f: "\u0178",
+}
+
+_FALLBACK_MAX_CHARREF_DIGITS = {10: len("1114111"), 16: len("10FFFF")}
+
+_FALLBACK_HTML5_ENTITY_NAMES = frozenset(_HTML5_ENTITIES)
+
+
+def _fallback_numeric_charref(body):
+    """The code point a NUMERIC reference names, by the HTML numeric-character-reference end
+    state - the shared `checks/parsing._numeric_charref`. The digit run is BOUNDED before any
+    integer conversion, so an arbitrarily long reference resolves cheaply rather than raising."""
+    if body[1] in "xX":
+        digits, base = body[2:], 16
+    else:
+        digits, base = body[1:], 10
+    digits = digits.lstrip("0")
+    if not digits:
+        return "\ufffd"
+    if len(digits) > _FALLBACK_MAX_CHARREF_DIGITS[base]:
+        return "\ufffd"
+    num = int(digits, base)
+    if num in _FALLBACK_C1_CHARREF_REPLACEMENTS:
+        return _FALLBACK_C1_CHARREF_REPLACEMENTS[num]
+    if num > 0x10FFFF or 0xD800 <= num <= 0xDFFF:
+        return "\ufffd"
+    return chr(num)
+
+
+def _fallback_replace_attr_charref(m):
+    ref = m.group(0)
+    body = m.group(1)
+    if body[0] == "#":
+        trailing = ref[len(body) + 1:]
+        return _fallback_numeric_charref(body) + ("" if trailing == ";" else trailing)
+    if not ref.endswith("=") and ref[1:] in _FALLBACK_HTML5_ENTITY_NAMES:
+        return _html.unescape(ref)
+    return ref
+
+
+def _fallback_unescape_attr_value(value):
+    return _FALLBACK_ATTR_CHARREF_RE.sub(_fallback_replace_attr_charref, value)
 
 
 def text_goahead(default):
@@ -63,9 +134,16 @@ def unescape_text(text):
 
 def unescape_attr_value(value):
     """An ATTRIBUTE VALUE decoded by the browser rule (a different rule from text: a named
-    reference resolves only on an exact match not followed by `=`). Degrades the same way."""
+    reference resolves only on an exact match not followed by `=`, and a numeric one resolves
+    through the tokenizer's end state rather than through `html.unescape`).
+
+    The partial-install fallback applies that SAME rule from its own copy above rather than
+    degrading to `html.unescape`, because a caller that RE-SERIALIZES a start tag writes the
+    decoded value back into the document: the host's decode would silently rewrite an authored
+    `x&ampy` as `x&y` and delete the character `&#1;` names.
+    """
     shared = getattr(_parsing, "_unescape_attr_value", None)
-    return shared(value or "") if shared else _html.unescape(value or "")
+    return shared(value or "") if shared else _fallback_unescape_attr_value(value or "")
 
 
 def visible_text(text):
@@ -198,10 +276,10 @@ def class_tokens(value):
 # The fallback's copy of the shared start-tag split, for a partial install only: the same tag-name
 # and attribute patterns `checks/parsing._tokenize_raw_tag` walks (pinned to them as TEXT by a
 # parity test, like the whitespace splits above), so the degraded reading answers what the shared
-# one answers on the shapes that matter. It is a DEGRADED stand-in, not the tokenizer: it decodes a
-# value with the host's `html.unescape` rather than the browser's numeric end state, and it does
-# not fold a NUL. Both are exactly why it runs only in the shared reading's absence, which the shim
-# warns about at import.
+# one answers. It is a stand-in for the SPLIT only, not for the tokenizer: it decides a tag's
+# EXTENT by these patterns rather than by the vendored character-by-character scan, so it does not
+# apply the eof-in-tag error an unterminated quoted value earns. Its NAME fold and its value DECODE
+# are the shared rules, from the copies above.
 _FALLBACK_TAG_NAME_RE = _re.compile(r"([a-zA-Z][^\t\n\r\f />]*)(?:[\t\n\r\f ]|/(?!>))*")
 _FALLBACK_ATTR_RE = _re.compile(r"""
   ((?<=['"\t\n\r\f /])[^\t\n\r\f />][^\t\n\r\f /=>]*)   # attribute name
@@ -213,6 +291,17 @@ _FALLBACK_ATTR_RE = _re.compile(r"""
    )?
   (?:[\t\n\r\f ]|/(?!>))*                               # trailing whitespace
 """, _re.VERBOSE)
+
+
+def _fallback_fold_nul(text):
+    """A NUL, replaced with U+FFFD the way a browser replaces it - the shared reading's
+    `checks/parsing._fold_nul`, for a partial install (pinned to it by a parity test).
+
+    HTML5's tag-name, attribute-name and attribute-value states all append U+FFFD for a NUL, so a
+    caller that RE-SERIALIZES a start tag from these pairs - the deck scaffold - would otherwise
+    write back a literal NUL and give the document a value its own DOM never carries.
+    """
+    return text.replace("\x00", "\ufffd") if "\x00" in text else text
 
 
 def _fallback_attr_pairs(attrs):
@@ -239,9 +328,12 @@ def _fallback_attr_pairs(attrs):
         else:
             if value[:1] == "'" == value[-1:] or value[:1] == '"' == value[-1:]:
                 value = value[1:-1]
-            if "&" in value:
-                value = unescape_attr_value(value)
-        out.append((_FALLBACK_ASCII_UPPER_RE.sub(lambda mm: mm.group(0).lower(), name), value))
+            if value:
+                value = _fallback_fold_nul(value)
+                if "&" in value:
+                    value = unescape_attr_value(value)
+        out.append((_fallback_fold_nul(
+            _FALLBACK_ASCII_UPPER_RE.sub(lambda mm: mm.group(0).lower(), name)), value))
         k = m.end()
     return out
 
@@ -269,7 +361,15 @@ def raw_attrs_pairs(attrs):
 
     The shared reading (`checks/parsing.raw_attrs_pairs`), for a tool that REWRITES a start tag
     and so must not locate an attribute by searching the raw text: a `class=` search matches one
-    spelled inside ANOTHER attribute's quoted value and then rewrites THAT.
+    spelled inside ANOTHER attribute's quoted value and then rewrites THAT. Two callers rewrite
+    from it - the KQL run-link refresh and the deck scaffold's slide rewrite - and both
+    RE-SERIALIZE the whole start tag from what comes back, so a reading that answers less than
+    the shared one does not merely mis-detect: it writes its OWN answer into the document - both
+    the attributes it could not see and the values it decoded differently. That is why the
+    partial-install fallback is a full split with the shared NUL fold and the shared value decode,
+    and not a stand-in for the one attribute a caller happens to want. (`authoring/upgrade.py`
+    reads the same value decode through `unescape_attr_value` without rewriting a tag, and gains
+    the same fidelity.)
     """
     if _shared_raw_attrs_pairs is None:
         return _fallback_attr_pairs(attrs)
