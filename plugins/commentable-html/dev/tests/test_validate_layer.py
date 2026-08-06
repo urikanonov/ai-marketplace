@@ -650,7 +650,7 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
                               '<span data-id="btnCopyAll" class="cm-skip"></span>')
         self.assertError(doc, 'required element id="btnCopyAll" is missing')
 
-    # CMH-VAL-26. The PRESENCE half of the required-id check is namespace-scoped: these controls
+    # CMH-VAL-27. The PRESENCE half of the required-id check is namespace-scoped: these controls
     # are wired as HTML elements (the layer renders them as buttons and menu rows, and reveals or
     # hides many of them through `.hidden`, whose UA rule is namespace-scoped), so a `<math>`/
     # `<svg>` element carrying the id is not an HTMLElement at all and satisfies nothing.
@@ -1439,6 +1439,27 @@ class ValidateLayerStructureTests(ValidateAssertions, unittest.TestCase):
 
     def test_mermaid_missing_loader_warns(self):
         self.assertTrue(self._mermaid_warns(None))
+
+    # CMH-VAL-27: the mermaid loader search is a "will a browser run this?" question too, so it
+    # reads the same per-namespace + type rule. A loader a browser never runs leaves the diagrams
+    # as source text while the document validated clean.
+    def test_a_mermaid_loader_a_browser_never_runs_is_not_a_loader(self):
+        for markup in ("<math>" + _MERMAID_LOADER + "</math>",
+                       _MERMAID_LOADER.replace('type="module"', 'type="text/plain"', 1),
+                       _MERMAID_LOADER.replace('type="module"', "nomodule", 1),
+                       _MERMAID_LOADER.replace("<script ", '<script src="mermaid-boot.js" ', 1)):
+            with self.subTest(markup=markup[:60]):
+                self.assertTrue(self._mermaid_warns(markup), markup[:60])
+
+    def test_an_svg_mermaid_loader_is_a_loader(self):
+        # The control: SVG really defines <script> and a browser really runs an inline one. It is
+        # written as a CLASSIC script on purpose - a dynamic `import()` runs in one, and whether an
+        # SVG script honors `type="module"` is a browser fact this suite deliberately does not
+        # assert (see the CMH-VAL-27 spec row).
+        classic = ('<script>import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")'
+                   ".then(function (m) { m.default.initialize({ startOnLoad: false }); "
+                   "m.default.run().catch(function () {}); });</script>")
+        self.assertFalse(self._mermaid_warns("<svg>" + classic + "</svg>"))
 
     def test_rendered_mermaid_svg_without_loader_is_clean(self):
         main = MAIN.replace(

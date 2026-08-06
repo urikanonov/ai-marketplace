@@ -878,6 +878,139 @@ class ChartValidatorTests(unittest.TestCase):
         e, _w, _n = run(html)
         self.assertTrue(any("no Chart.js" in x for x in e), e)
 
+    # -- CMH-VAL-27: "will a browser run this?" is not a question about the tag NAME -------- #
+    # The loader search and the inline-init scan both asked only for a `src` attribute and a
+    # runnable `type`. Neither asked which NAMESPACE the element was inserted in, so a `<script>`
+    # under `<math>` - an ordinary unknown foreign element a browser never runs and never loads -
+    # answered both. The rule applied is the BROWSER's rule per namespace, which is why the SVG
+    # controls below stay live rather than being rejected along with the MathML cases.
+
+    def test_a_mathml_chart_loader_is_not_a_loader(self):
+        # A browser loads nothing for `<math><script src="chart.js">`, so the canvas has no
+        # renderer - the fail-OPEN direction, since the document looked complete.
+        e, _w, _n = run(build(cdn="", pre_marker="<math>" + CDN_VALID + "</math>\n"))
+        self.assertTrue(any("no renderer was found" in x for x in e), e)
+
+    def test_an_svg_src_chart_loader_is_not_a_loader(self):
+        # An SVG script has no `src` at all - it loads from `href`/`xlink:href` - so `src` there
+        # is an ordinary unknown attribute and nothing is fetched.
+        e, _w, _n = run(build(cdn="", pre_marker="<svg>" + CDN_VALID + "</svg>\n"))
+        self.assertTrue(any("no renderer was found" in x for x in e), e)
+
+    def test_an_svg_href_chart_loader_is_a_loader(self):
+        # The control that keeps the rule browser-accurate rather than "reject every foreign
+        # namespace": a browser really does fetch and run this one, so it IS the loader.
+        tag = ('<svg><script href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" '
+               'integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" '
+               'crossorigin="anonymous"></script></svg>')
+        e, w, _n = run(build(cdn="", pre_marker=tag + "\n"))
+        self.assertEqual(e, [], f"unexpected errors: {e}")
+        self.assertEqual(w, [], f"unexpected warnings: {w}")
+
+    def test_a_nomodule_chart_loader_is_not_a_loader(self):
+        # Every module-supporting browser (which is every browser that ships) SKIPS a classic
+        # `nomodule` script, so it never defines Chart.
+        e, _w, _n = run(build(cdn=CDN_VALID.replace("<script ", "<script nomodule ", 1)))
+        self.assertTrue(any("no renderer was found" in x for x in e), e)
+
+    def test_an_svg_chart_loader_ignores_nomodule(self):
+        # `nomodule` (and the legacy `language` / `event`+`for` rules) are HTMLScriptElement
+        # behavior; SVG defines none of them, so a browser still fetches and runs this one.
+        for extra in ("nomodule", 'language="vbscript"', 'event="y" for="x"'):
+            with self.subTest(extra=extra):
+                tag = ('<svg><script %s href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" '
+                       'integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" '
+                       'crossorigin="anonymous"></script></svg>' % extra)
+                e, w, _n = run(build(cdn="", pre_marker=tag + "\n"))
+                self.assertEqual(e, [], f"unexpected errors: {e}")
+                self.assertEqual(w, [], f"unexpected warnings: {w}")
+
+    def test_a_legacy_event_for_chart_loader_is_not_a_loader(self):
+        # HTML skips a CLASSIC script carrying both `event` and `for` unless they name the window
+        # load handler, so this tag never defines Chart.
+        e, _w, _n = run(build(cdn=CDN_VALID.replace("<script ", '<script event="y" for="x" ', 1)))
+        self.assertTrue(any("no renderer was found" in x for x in e), e)
+
+    def test_an_svg_xlink_href_chart_loader_is_a_loader(self):
+        tag = ('<svg><script xlink:href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" '
+               'integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g" '
+               'crossorigin="anonymous"></script></svg>')
+        e, w, _n = run(build(cdn="", pre_marker=tag + "\n"))
+        self.assertEqual(e, [], f"unexpected errors: {e}")
+        self.assertEqual(w, [], f"unexpected warnings: {w}")
+
+    def test_an_empty_svg_href_is_not_overridden_by_xlink_href(self):
+        # SVG 2 gives `href` PRECEDENCE, so a browser resolves the empty `href` and never fetches
+        # the `xlink:href` URL - the canvas has no renderer. Falling through to the second
+        # attribute read this document as carrying a loader that never runs.
+        tag = ('<svg><script href="" xlink:href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/'
+               'dist/chart.umd.min.js"></script></svg>')
+        e, _w, _n = run(build(cdn="", pre_marker=tag + "\n"))
+        self.assertTrue(any("no renderer was found" in x for x in e), e)
+
+    def test_a_mime_parameter_type_is_not_a_chart_loader(self):
+        # HTML matches the type string as a WHOLE against the JavaScript MIME type essences, so a
+        # parameter defeats the match and the tag executes in no modern browser.
+        e, _w, _n = run(build(
+            cdn=CDN_VALID.replace("<script ", '<script type="text/javascript; charset=utf-8" ', 1)))
+        self.assertTrue(any("no renderer was found" in x for x in e), e)
+
+    def test_a_module_chart_loader_ignores_nomodule(self):
+        # `nomodule` blocks a CLASSIC script only; on a module script the spec's test never runs,
+        # so this one still loads Chart and IS the loader (it warns about being a module, which
+        # is the pre-existing deferred/async/module warning, not a "no renderer" error).
+        e, w, _n = run(build(cdn=CDN_VALID.replace("<script ", '<script nomodule type="module" ', 1)))
+        self.assertEqual([x for x in e if "no renderer" in x], [], e)
+        self.assertTrue(any("deferred/async/module" in x for x in w), w)
+
+    def test_a_mathml_chart_init_is_not_executable(self):
+        e, w, _n = run(build(init="<math>" + INIT_VALID + "</math>"))
+        self.assertEqual(e, [], f"unexpected errors: {e}")
+        self.assertTrue(any("no executable `new Chart(` init" in x for x in w), w)
+
+    def test_an_svg_chart_init_is_executable(self):
+        # The SVG control: a browser really runs an inline SVG script, so this init counts.
+        e, w, _n = run(build(init="<svg>" + INIT_VALID + "</svg>"))
+        self.assertEqual(e, [], f"unexpected errors: {e}")
+        self.assertEqual(w, [], f"unexpected warnings: {w}")
+
+    def test_a_nomodule_chart_init_is_not_executable(self):
+        e, w, _n = run(build(init=INIT_VALID.replace("<script>", "<script nomodule>", 1)))
+        self.assertEqual(e, [], f"unexpected errors: {e}")
+        self.assertTrue(any("no executable `new Chart(` init" in x for x in w), w)
+
+    def test_a_mathml_canvas_draw_is_not_a_renderer(self):
+        # The other arm of E3's OR: an inline getContext draw only renders when the script runs.
+        html = build(cdn="", init='<math><script>document.getElementById("c").getContext("2d");'
+                                  "</script></math>")
+        e, _w, _n = run(html)
+        self.assertTrue(any("no renderer was found" in x for x in e), e)
+
+    def test_an_svg_canvas_draw_is_a_renderer(self):
+        html = build(cdn="", init='<svg><script>document.getElementById("c").getContext("2d");'
+                                  "</script></svg>")
+        e, _w, _n = run(html)
+        self.assertEqual([x for x in e if "no renderer" in x], [], e)
+
+    def test_a_mathml_cdn_guard_does_not_satisfy_the_guard_warning(self):
+        # The guard scan is the same execution question: a guard that never runs cannot stop the
+        # init from throwing.
+        init = ('<math><script>if (typeof Chart === "undefined") return;</script></math>\n'
+                "<script>new Chart(z,{});</script>")
+        e, w, _n = run(build(init=init))
+        self.assertEqual(e, [], f"unexpected errors: {e}")
+        self.assertTrue(any("does not guard with" in x for x in w), w)
+
+    def test_a_mathml_chart_data_block_is_still_read(self):
+        # The DELIBERATE namespace-BLIND consumer: chart data is read through
+        # `getElementById(...).textContent`, which is namespace-blind, so a malformed data block
+        # under <math> must still be reported rather than quietly exempted.
+        html = build(json_body="").replace(
+            '<script id="mad" type="application/json"></script>',
+            '<math><script id="mad" type="application/json"></script></math>', 1)
+        e, _w, _n = run(html)
+        self.assertTrue(any("is empty" in x for x in e), e)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

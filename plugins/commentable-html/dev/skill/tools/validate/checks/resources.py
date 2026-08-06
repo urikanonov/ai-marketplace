@@ -9,8 +9,8 @@ import tempfile
 from html.parser import HTMLParser
 from urllib.parse import unquote, urlparse
 from urllib.request import url2pathname
-from .parsing import (REGIONS, FETCHING_LINK_RELS, SPECULATIVE_LINK_RELS, _DocParser, _ascii_lower,
-                      _parse_document, link_rel_tokens)
+from .parsing import (REGIONS, FETCHING_LINK_RELS, SPECULATIVE_LINK_RELS, _DocParser, _HTML_WHITESPACE,
+                      _ascii_lower, _parse_document, link_rel_tokens, script_code_runs)
 
 # A Chart.js loader filename, as a whole path segment: chart(.umd)?(.min)?.js,
 # optionally followed by a query string / fragment; OR the bare pinned form
@@ -2061,16 +2061,78 @@ def _layer_tags(doc, tag):
     return parser.layer_tags.get(tag, [])
 
 
+def _companion_ref_paths(doc, tag, attr, suffix):
+    """Every companion reference by NAME and EXTENSION alone, whatever a browser would do with it.
+
+    This is the pre-CMH-VAL-28 filter, kept because the two lists below answer a DIFFERENT
+    question from the one `_check_nonshareable`'s ref-string classification loop asks. Whether a
+    baked absolute path leaks a local directory, points into a temp folder, or carries a non-file
+    scheme is a property of the STRING that is true whether or not a browser ever runs or applies
+    the element - the disclosure is in the shipped bytes either way. Narrowing that loop along
+    with the runnability lists dropped those reports with no second layer to catch them, so the
+    classification loop iterates THIS list and only the "is the runtime/stylesheet here" decisions
+    read the narrowed ones."""
+    return [_ref_path(a[attr]) for a in _layer_tags(doc, tag)
+            if "commentable-html" in (a.get(attr) or "").lower()
+            and _ref_path(a.get(attr) or "").lower().endswith(suffix)]
+
+
+def _companion_refs(doc):
+    """Every companion reference the document names, deduplicated in first-seen order."""
+    seen, out = set(), []
+    for ref in (_companion_ref_paths(doc, "link", "href", ".css")
+                + _companion_ref_paths(doc, "script", "src", ".js")):
+        if ref not in seen:
+            seen.add(ref)
+            out.append(ref)
+    return out
+
+
 def _nonshareable_css_refs(doc):
+    """Every external commentable-html companion STYLESHEET a browser would really APPLY.
+
+    Three attributes decide that, and the `rel` one is the CSS half of the question
+    `_nonshareable_js_refs` asks below (CMH-VAL-28): a `<link>` is a stylesheet only because its
+    `rel` list says so, so a `rel="preload"` / `rel="modulepreload"` / no-`rel` link pointing at
+    the companion CSS left the layer unstyled while satisfying "the stylesheet is here" - and,
+    through `_is_nonshareable`, deciding the document mode. The list is read through the shared
+    `link_rel_tokens` tokenizer, the way every other `rel` in this file is read, so a whitespace
+    form `str.split()` would mis-tokenize cannot smuggle one in. `disabled` is the second: it is
+    the one attribute whose whole meaning is "not applied", and nothing in the runtime enables
+    such a sheet, so a disabled companion link leaves the layer exactly as unstyled as a missing
+    one. `type` is the third: a browser obtains a stylesheet link only when the attribute is
+    absent, empty, or a CSS MIME type essence match, so `<link rel="stylesheet" type="text/plain">`
+    is fetched-and-ignored. All three are fail-CLOSED with no realistic false rejection - a
+    document cannot disable, mistype or mis-`rel` the companion stylesheet and still expect it to
+    style the layer.
+
+    One shape is deliberately NOT tested: `rel="alternate stylesheet"`, which a browser applies
+    only once the user picks it by title. Refusing it would be defensible, but "which alternate is
+    active" is a user preference this reader cannot know, and no generator emits one - so it is
+    left alone rather than guessed at."""
     return [_ref_path(a["href"]) for a in _layer_tags(doc, "link")
             if "commentable-html" in a.get("href", "").lower()
-            and _ref_path(a.get("href", "")).lower().endswith(".css")]
+            and _ref_path(a.get("href", "")).lower().endswith(".css")
+            and "stylesheet" in link_rel_tokens(a.get("rel"))
+            and "disabled" not in a
+            and _ascii_lower((a.get("type") or "").strip(_HTML_WHITESPACE)) in ("", "text/css")]
 
 
 def _nonshareable_js_refs(doc):
+    """Every external commentable-html companion SCRIPT a browser would really RUN (CMH-VAL-28).
+
+    `_layer_tags` already restricts this to HTML-namespace tags outside the authored content
+    region, which settles WHERE and in what namespace. `script_code_runs` settles the remaining
+    half: a `type="application/json"` / `text/plain` tag, a MIME-parameter type, or a `nomodule`
+    one every module-supporting browser skips, fetches nothing a browser executes - so it must not
+    satisfy "the runtime is here" while the layer never loads. The loader search in `charts.py`
+    already asked this about the same kind of tag; this list did not. `ns="html"` is passed
+    explicitly even though it is the default, because the reason it is right lives HERE:
+    `_layer_tags` restricts this list to HTML-namespace elements (CMH-VAL-19)."""
     return [_ref_path(a["src"]) for a in _layer_tags(doc, "script")
             if "commentable-html" in a.get("src", "").lower()
-            and _ref_path(a.get("src", "")).lower().endswith(".js")]
+            and _ref_path(a.get("src", "")).lower().endswith(".js")
+            and script_code_runs(a, "html")]
 
 
 def _nonshareable_meta_versions(doc):
@@ -2125,13 +2187,25 @@ def _check_nonshareable(doc, base_dir, id_counts):
     # ../ path, or an absolute file:// URL), so a subfolder / parent reference is
     # allowed. Network URLs and non-file schemes are rejected, absolute filesystem
     # paths are warned about, and a missing target errors.
+    # It walks `_companion_refs` - every reference the document NAMES - not the runnability-gated
+    # lists above (CMH-VAL-28). What follows is a property of the ref STRING: a baked absolute
+    # path leaks a local directory, and a temp path or a non-file scheme is wrong, whether or not
+    # a browser would ever run or apply that element. Iterating the narrowed lists dropped those
+    # reports for an inert-typed or non-`stylesheet` reference sitting BESIDE a working one, and
+    # nothing else in the validator reports a local path on a `script`/`link`.
+    # The BOUNDARY of that, recorded rather than implied: these are NonShareable-mode diagnostics
+    # (every message says so), and this whole function runs only when the document IS NonShareable
+    # - which, by CMH-VAL-28's own rule, it is not when EVERY companion reference it names is one
+    # a browser cannot use. Such a file has no companion contract to violate: it is a Shareable
+    # document carrying a stray inert reference, and reporting it against a contract it never
+    # entered is the misclassification CMH-VAL-28 exists to stop.
     # The remote-URL and absolute-path checks are structural (they inspect the ref
     # string only), so they always run. Only the on-disk existence check needs a
     # base_dir; when base_dir is None the placement is deferred (e.g. generation-time
     # validation of a not-yet-placed document), so existence is not checked - the
     # structure is still validated.
     doc_dir = os.path.abspath(base_dir) if base_dir is not None else None
-    for ref in css_refs + js_refs:
+    for ref in _companion_refs(parser):
         # CLASSIFY (is this remote? a non-file scheme? a drive letter?) on the ref as the URL
         # PARSER reads it, the same value `_file_url_to_path` resolves. These regexes are anchored,
         # so reading the raw ref instead let the parser's own leading C0-or-space padding hide a

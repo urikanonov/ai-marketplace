@@ -1551,6 +1551,36 @@ class _BrowserBoundaries(_BrowserStartTag):
             return self._unterminated(i + 2, self.handle_comment)
         return k
 
+    def unknown_decl(self, data):
+        """A CDATA section's payload is CHARACTER DATA, so route it exactly where text goes.
+
+        `parse_html_declaration` above already decides WHERE `<![CDATA[ ... ]]>` is a real section
+        (only when the current node is foreign - everywhere else a browser makes a BOGUS COMMENT
+        that ends at the first `>`); this decides what a real one CONTRIBUTES. A browser emits the
+        content as character tokens and inserts them into the current node, so
+        `<svg><script><![CDATA[..]]></script>` builds the same DOM - and runs the same script - as
+        `<svg><script>..</script>`. The base handler is a no-op, so the payload was dropped and a
+        bootstrap watchdog written that way was reported MISSING on a document whose watchdog
+        really does arm (CMH-VAL-29).
+
+        It lives on the SHARED base, not on `_DocParser`, for the reason CMH-VAL-21 exists: every
+        tool beside the validator - the TOC generator, the section hasher, the density, contrast
+        and deck scanners, and the egress tag index - draws its element boundaries here, and an
+        override one class lower made them disagree about one document (measured: `_DocParser`
+        collected a heading from `<h2><svg><![CDATA[Alpha]]></svg></h2>` that `_TocParser` did not,
+        so the generated TOC would have been missing a heading the validator counts). Routing it
+        through `handle_data` rather than into any one view keeps that agreement by construction.
+
+        Three properties survive: a section builds no COMMENT node, so a region marker inside one
+        is still not a boundary; its content is RAW, so no character reference resolves and no `<`
+        opens a tag; and the namespace rule still gates execution, so a MathML `<script>` body
+        written as a section is captured but runs nothing.
+
+        The `CDATA[` prefix is `html.parser`'s convention for what it hands this hook; anything
+        else reaching here is a marked section this parser never produces and is left alone."""
+        if data.startswith("CDATA["):
+            self.handle_data(data[len("CDATA["):])
+
     def _unterminated(self, start, handler):
         """A construct with no closer: a browser consumes the rest of the document."""
         if not self._final:
@@ -1904,7 +1934,7 @@ class _DocParser(_BrowserBoundaries):
         self.template_comment_spans = []    # the same, parked inside an inert <template>
         self.shadow_comment_spans = []      # real comments parsed inside a shadow tree
         self.all_ids = []        # every element id value, in document order
-        # The same values filtered to the HTML namespace (CMH-VAL-26). `all_ids` answers "could
+        # The same values filtered to the HTML namespace (CMH-VAL-27). `all_ids` answers "could
         # `getElementById` return an element with this id?", which is namespace-BLIND and is the
         # right view for a DUPLICATE. It is the wrong view for PRESENCE: the layer's companion UI
         # and its content root are HTML, and `hidden` - the toggle the layer uses to reveal and
@@ -2072,20 +2102,37 @@ class _DocParser(_BrowserBoundaries):
         per-namespace rule rather than "reject every foreign namespace". A script that loads
         EXTERNALLY is excluded for the same reason in the other direction: a browser fetches the
         external resource and ignores the element's own child text, so a token folded into the
-        companion `<script src>` tag (or an SVG `<script href>`) is inert."""
+        companion `<script src>` tag (or an SVG `<script href>`) is inert. All three facts, plus
+        the `nomodule` skip, are the shared `script_runs_inline_body()` predicate every other
+        will-it-execute consumer now reads (CMH-VAL-27), so they cannot drift apart.
+
+        The token is matched across CHUNK boundaries, not within one `handle_data` call. A
+        browser runs the element's whole text, and this parser delivers that text in as many
+        pieces as the source happens to have - foreign content splits it at every child element,
+        and a CDATA section is a piece of its own (CMH-VAL-29), so
+        `<svg><script><![CDATA[__commentable]]>HtmlReady...</script></svg>` really does arm a
+        watchdog that a per-chunk match would report missing. A bounded rolling TAIL (the last
+        `len(READY_TOKEN) - 1` characters already credited to this capture) is carried instead of
+        re-joining the body, so the cost stays linear in the body. It is kept on the capture, so
+        it dies with the element, and it is only ever extended from text this same element owns -
+        exactly the pieces `parts` collects, which is the body every other consumer reads."""
         if self.layer_ready_token or self._in_shadow_tree():
             return
         cap = self._current_raw_capture()
         if cap is None or cap["tag"] != "script" or cap["in_content"]:
             return
-        if cap["ns"] not in _EXECUTING_SCRIPT_NAMESPACES:
+        if not script_runs_inline_body(cap["attrs"], cap["ns"]):
             return
-        if _script_loads_externally(cap["attrs"], cap["ns"]):
+        combined = cap.get("ready_tail", "") + (text or "")
+        if READY_TOKEN in combined:
+            if not self._in_commentable_content():
+                self.layer_ready_token = True
+            # Either way the tail is dropped rather than carried: a token this branch REFUSED
+            # (because a browser reads its text as the author's own content) must not lend its
+            # trailing characters to a later out-of-content chunk and compose a second match.
+            cap["ready_tail"] = ""
             return
-        if not _is_executable_js(cap["attrs"]):
-            return
-        if READY_TOKEN in (text or "") and not self._in_commentable_content():
-            self.layer_ready_token = True
+        cap["ready_tail"] = combined[1 - len(READY_TOKEN):] if len(READY_TOKEN) > 1 else ""
 
     def _open_raw_capture(self, tag, ad, ns):
         """Start collecting a `<script>`/`<style>` body. Recorded BEFORE the element is pushed, so
@@ -2106,11 +2153,17 @@ class _DocParser(_BrowserBoundaries):
         authored CONTENT region (what `layer_tags` excludes), `in_content_root` is the whole
         `#commentRoot` subtree (what the runtime's `cmhLayerBlocks` excludes). They are recorded on
         `styles` too and deliberately unread there: a `<style>` counts wherever it sits, because
-        one an author puts in their own content is still live CSS (CMH-VAL-20)."""
+        one an author puts in their own content is still live CSS (CMH-VAL-20).
+
+        `ns` rides along for the same reason (CMH-VAL-27): whether a browser RUNS a script body,
+        and whether it loads one at all, is decided per namespace, and the namespace is only known
+        while the capture is open. Dropping it here left every consumer outside the layer views
+        answering "will a browser execute this?" by tag NAME - so a `<math><script src="chart.js">`
+        was accepted as the Chart.js loader though a browser loads nothing."""
         while self._raw_captures and self._raw_captures[-1]["depth"] >= depth:
             cap = self._raw_captures.pop()
             sink = self.scripts if cap["tag"] == "script" else self.styles
-            sink.append({"pos": cap["pos"], "attrs": cap["attrs"],
+            sink.append({"pos": cap["pos"], "attrs": cap["attrs"], "ns": cap["ns"],
                          "body": "".join(cap["parts"]), "in_content": cap["in_content"],
                          "in_content_root": cap["in_content_root"]})
 
@@ -2129,11 +2182,17 @@ class _DocParser(_BrowserBoundaries):
 
     def _flush_template_raw(self, depth=0):
         """Record each template-parked <script>/<style> body the element at `depth` (or an ancestor
-        of it) closed, innermost first, in its own view."""
+        of it) closed, innermost first, in its own view.
+
+        `ns` rides along here for PARITY with the live records (CMH-VAL-27), not because anything
+        reads it today: the one consumer, the offline egress scan, is deliberately over-inclusive
+        and type-only. Leaving it off would make this the one place the same name-based defect
+        could return, the moment someone reused an execution predicate on these records."""
         while self._tpl_captures and self._tpl_captures[-1]["depth"] >= depth:
             cap = self._tpl_captures.pop()
             sink = self.template_scripts if cap["tag"] == "script" else self.template_styles
-            sink.append({"pos": None, "attrs": cap["attrs"], "body": "".join(cap["parts"])})
+            sink.append({"pos": None, "attrs": cap["attrs"], "ns": cap["ns"],
+                         "body": "".join(cap["parts"])})
 
     def _truncate_stacks(self, depth):
         # Every truncation path - an end tag, an implicit </p>/</li> close, a foreign-content
@@ -2184,7 +2243,7 @@ class _DocParser(_BrowserBoundaries):
         # property whose UA `[hidden]` rule is namespace-scoped, so a foreign element carrying
         # that id is found by `getElementById` and can then never be shown or hidden. `all_ids`
         # stays namespace-blind, because `getElementById` itself is; `html_ids` is the
-        # namespace-scoped view the PRESENCE checks need (CMH-VAL-26).
+        # namespace-scoped view the PRESENCE checks need (CMH-VAL-27).
         is_html = ns == "html"
         if tag in self.layer_tags and is_html and not self._in_commentable_content():
             self.layer_tags[tag].append(ad)
@@ -2327,8 +2386,8 @@ class _DocParser(_BrowserBoundaries):
             # keeps a raw-text element open to EOF, which matches a browser, but if any future path
             # ever left one open past `</template>` the next parked block's body would silently be
             # concatenated onto it and the offline check would read a body no browser would see.
-            self._tpl_captures.append({"tag": tag, "attrs": ad, "depth": len(self.stack),
-                                       "parts": []})
+            self._tpl_captures.append({"tag": tag, "attrs": ad, "ns": ns,
+                                       "depth": len(self.stack), "parts": []})
         if (tag in _HEADING_TAGS and self._cur_heading is None and self._cr_depth is not None
                 and not self._cr_closed and len(self.stack) > self._cr_depth and not own_skip
                 and not self._skip_ancestor() and not self._in_template()):
@@ -2851,7 +2910,128 @@ _JS_TYPES = frozenset(
 
 
 def _is_executable_js(ad):
+    """Whether the `type` STRING alone names JavaScript, with MIME parameters ignored.
+
+    Deliberately TYPE-ONLY and deliberately over-inclusive, and NOT the predicate to reach for
+    when the question is "will a browser run this". It is the validator half of a pair pinned to
+    the exporter's `_offlineIsRunnableScriptType` (`assets/js/68-export-offline.js`, pinned by
+    `tests/test_vendored_libs.py`), and both are used where over-inclusion is the SAFE direction:
+    the offline egress scan (a body it skipped would be a network import nobody looked at) and
+    `_csp_predecessor_fetches` (a predecessor it missed would bless a policy that really is too
+    late). For an EXECUTION decision use `script_code_runs()` / `script_runs_inline_body()` /
+    `script_external_load()` below, which apply HTML's actual rule and whose over-inclusion would
+    be the fail-OPEN direction instead."""
     return (ad.get("type", "") or "").split(";")[0].strip().lower() in _JS_TYPES
+
+
+def script_code_runs(ad, ns="html"):
+    """Whether a browser would run this `<script>`'s CODE at all (CMH-VAL-27).
+
+    This is HTML's "prepare the script element" reduced to the questions a static reader can
+    answer, and the details are the whole point of the predicate:
+
+    - An ABSENT or explicitly EMPTY `type` is a classic script. With no `type` at all, a NON-EMPTY
+      `language` makes the block type `text/<language>`, so `language="javascript"` still runs and
+      `language="vbscript"` does not. `language` is an HTMLScriptElement attribute, so - like
+      `nomodule` below - it is read only in the HTML namespace; an SVG script carrying one is
+      still a classic script, and applying the fallback there would REFUSE a document that works.
+    - Otherwise the type string is the attribute value with leading and trailing ASCII whitespace
+      stripped, and it must be an "essence match" - an ASCII case-insensitive match for a whole
+      JavaScript MIME type essence, or `module`. Matching is on the WHOLE string, so a MIME
+      PARAMETER defeats it: `type="text/javascript; charset=utf-8"` executes in no modern browser.
+      A whitespace-only `type=" "` is not a match either, and the asymmetry with `type=""` is
+      deliberate rather than an oversight: the algorithm tests the RAW value against the empty
+      string BEFORE it strips, so only a literally empty value takes the classic branch and a
+      value that merely strips to empty falls through to the essence match and fails it. Do not
+      "simplify" the two branches together. This is also where the predicate deliberately DIVERGES
+      from `_is_executable_js` above, which splits at `;` because its callers need over-inclusion;
+      here over-inclusion is fail-OPEN.
+    - `nomodule`: the algorithm returns early for an element carrying it when the script block
+      type is CLASSIC, so every module-supporting browser - which is every browser that ships -
+      skips it. The test is on the classic branch only, so it does nothing to a `type="module"`
+      script. It is an HTMLScriptElement attribute too, so the skip is scoped to the HTML
+      namespace rather than applied to every namespace that executes.
+    - The legacy `event` + `for` pair, also classic-only and HTML-only: an element carrying BOTH
+      is skipped unless `for` trims to `window` and `event` to `onload` or `onload()`. Shipping
+      engines still implement it, and omitting it left the fail-OPEN spelling
+      `<script src="chart.js" for="x" event="y">` accepted as a loader no browser runs.
+
+    One boundary is deliberately NOT decided here: whether an SVG `<script type="module">` runs.
+    It is treated as runnable, the same as an HTML one. Engine support for module scripts on
+    `SVGScriptElement` could not be verified from this repository, and the two errors are not
+    symmetric - calling it inert would REFUSE a document that may work (the failure mode this
+    validator must avoid most, since it withholds the validated stamp), while calling it runnable
+    only fails to notice dead code in a shape no generator emits. If a browser fact settles it,
+    scope `block == "module"` to the HTML namespace here and add the SVG control beside the
+    `nomodule` one; do not guess it either way in the meantime.
+
+    `ns` defaults to `"html"` for the one caller whose elements are HTML by construction
+    (`_nonshareable_js_refs`, whose list comes from the HTML-only `layer_tags` of CMH-VAL-19; it
+    passes `"html"` explicitly anyway so the intent is visible there). ANY caller iterating
+    `parser.scripts` must pass that record's own `ns` - the sibling predicates require it - or the
+    HTML-only rules above would be applied to an SVG script that does not obey them.
+
+    `_ascii_lower`, not `str.lower()`: HTML folds ASCII only, and a Unicode fold that mapped a
+    look-alike onto an ASCII letter would accept a type a browser never matches - fail-OPEN."""
+    html_ns = ns == "html"
+    typ = ad.get("type")
+    if typ is None:
+        lang = (ad.get("language") or "") if html_ns else ""
+        block = ("text/" + _ascii_lower(lang)) if lang else ""
+    elif typ == "":
+        block = ""
+    else:
+        block = _ascii_lower(typ.strip(_HTML_WHITESPACE))
+        if not block:
+            return False
+    if block not in _JS_TYPES:
+        return False
+    if block == "module" or not html_ns:
+        return True
+    if "nomodule" in ad:
+        return False
+    if "event" in ad and "for" in ad:
+        return (_ascii_lower((ad.get("for") or "").strip(_HTML_WHITESPACE)) == "window"
+                and _ascii_lower((ad.get("event") or "").strip(_HTML_WHITESPACE))
+                in ("onload", "onload()"))
+    return True
+
+
+def script_runs_inline_body(ad, ns):
+    """Whether a browser runs THIS `<script>` element's own child text as script (CMH-VAL-27).
+
+    Three independent facts, each already spelled out above: the insertion NAMESPACE must be one
+    that defines `script` and runs it (`_EXECUTING_SCRIPT_NAMESPACES`), the element must not load
+    EXTERNALLY (a browser that fetches a source ignores the element's own child text), and the
+    code must run at all (`script_code_runs`). Every consumer whose question is "will this inline
+    body execute" asks HERE, so the answer cannot drift between them."""
+    return (ns in _EXECUTING_SCRIPT_NAMESPACES
+            and not _script_loads_externally(ad, ns)
+            and script_code_runs(ad, ns))
+
+
+def script_external_load(ad, ns):
+    """The URL a browser really FETCHES and runs for this `<script>`, or None (CMH-VAL-27).
+
+    The load attribute is per namespace (`src` on an HTML script; `href`/`xlink:href` on an SVG
+    one, which has no `src` at all; MathML defines no `script`, so nothing loads), and the code
+    still has to be runnable - a `type="application/json"` or `nomodule` tag fetches nothing a
+    browser executes. Asking for `attrs.get("src")` instead accepted a foreign or inert tag as
+    the Chart.js loader and reported a document with no renderer as complete.
+
+    The attribute is chosen by PRESENCE, not by having a value, and the first one present wins
+    with no fallback - the same test `_script_loads_externally` applies, so the two agree that an
+    element carrying an empty source attribute loads nothing AND does not run its own child text.
+    SVG 2 gives `href` precedence over the legacy `xlink:href`, so a browser handed
+    `<script href="" xlink:href="chart.js">` resolves the EMPTY `href` and never fetches
+    `chart.js`; falling through to the second attribute would have read that document as carrying
+    a loader a browser never runs."""
+    if ns not in _EXECUTING_SCRIPT_NAMESPACES or not script_code_runs(ad, ns):
+        return None
+    for attr in _EXTERNAL_SCRIPT_SRC_ATTRS.get(ns, ()):
+        if attr in ad:
+            return ad[attr] or None
+    return None
 
 
 def _csp_predecessor_fetches(tag, ad):
