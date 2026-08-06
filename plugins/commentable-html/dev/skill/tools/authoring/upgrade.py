@@ -719,6 +719,9 @@ def main(argv):
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(new_html.replace("\r\n", "\n").replace("\n", newline))
+            # Flush all the way to the disk before the swap: the rename is only as durable as
+            # the bytes it points at (see _atomic_io.fsync_file).
+            _atomic_io.fsync_file(fh)
 
         # Self-check the result with the validator when it is importable, so the
         # automated path never silently emits a broken file. An ImportError just means
@@ -757,8 +760,7 @@ def main(argv):
         # without this an upgrade of a 0644 report would silently make it owner-only. A brand-new
         # --out file has no mode to preserve, so it takes the SOURCE document's mode rather than a
         # process default that could widen a private report.
-        _atomic_io.preserve_mode(tmp_path, real_out, fallback=args.file)
-        os.replace(tmp_path, real_out)
+        _atomic_io.commit_staged(tmp_path, real_out, fallback=args.file)
         tmp_path = None
     finally:
         if tmp_path is not None and os.path.exists(tmp_path):

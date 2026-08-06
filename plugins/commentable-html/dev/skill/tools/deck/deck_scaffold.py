@@ -29,6 +29,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _atomic_io  # noqa: E402
 import _brand_profile  # noqa: E402
 import _deck_theme  # noqa: E402
 from deck_common import esc, slide_id  # noqa: E402
@@ -303,7 +304,10 @@ def main(argv=None):
     for w in list(warnings) + brand_warnings:
         print(f"deck_scaffold: warning: {w}", file=sys.stderr)
 
-    out.write_text(html, encoding="utf-8")
+    # fallback: when the deck content came from a FILE, a new --out inherits its visibility
+    # rather than the process umask default.
+    content_source = args.content if args.content and args.content != "-" else None
+    _atomic_io.atomic_write(os.fspath(out), html, fallback=content_source)
     print(f"deck_scaffold: wrote {out} ({len(_ids)} slide(s))")
     return 0
 

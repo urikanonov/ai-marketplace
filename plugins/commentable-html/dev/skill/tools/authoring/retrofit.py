@@ -230,13 +230,15 @@ def _write_atomic(path, text, copy_assets=False, newline="\n", source=None):
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as fh:
             fh.write(text)
+            # Flush all the way to the disk before the swap: the rename is only as durable as
+            # the bytes it points at (see _atomic_io.fsync_file).
+            _atomic_io.fsync_file(fh)
         if copy_assets:
             new_document._copy_companions(asset_dir)
         # mkstemp creates 0600 and os.replace carries the staged inode's mode to the target, so
         # retrofitting a 0644 host page in place would otherwise make it owner-only. A brand-new
         # --out file takes the source page's mode rather than a process default.
-        _atomic_io.preserve_mode(tmp_path, real_path, fallback=source)
-        os.replace(tmp_path, real_path)
+        _atomic_io.commit_staged(tmp_path, real_path, fallback=source)
         tmp_path = None
     finally:
         if tmp_path is not None and os.path.exists(tmp_path):

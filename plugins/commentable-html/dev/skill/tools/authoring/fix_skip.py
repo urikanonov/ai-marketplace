@@ -26,6 +26,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _atomic_io  # noqa: E402
 import _browser_attrs  # noqa: E402
 import _browser_boundaries  # noqa: E402
 
@@ -149,12 +150,12 @@ def main(argv):
 
     out_path = args.out if args.out else args.file
     if count:
-        with open(out_path, "w", encoding="utf-8", newline="") as fh:
-            fh.write(new_html)
+        # fallback: a new --out inherits the SOURCE document's visibility rather than the
+        # process umask default, so fixing a private document cannot widen it.
+        _atomic_io.atomic_write(out_path, new_html, fallback=args.file)
         print("fixed %d mermaid block(s) in %s" % (count, out_path))
     elif args.out:
-        with open(out_path, "w", encoding="utf-8", newline="") as fh:
-            fh.write(new_html)
+        _atomic_io.atomic_write(out_path, new_html, fallback=args.file)
         print("no mermaid blocks missing cm-skip in %s" % args.file)
     else:
         print("no mermaid blocks missing cm-skip in %s" % args.file)

@@ -13,10 +13,12 @@ import shutil
 import stat
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
 import _paths  # noqa: E402
+import _io_faults  # noqa: E402
 sys.path.insert(0, _paths.TOOLS)
 import _atomic_io  # noqa: E402
 
@@ -189,6 +191,196 @@ class PreserveModeTests(unittest.TestCase):
         _atomic_io.preserve_mode(missing, os.path.join(self.tmp, "also-gone.html"))
         p = self._file()
         _atomic_io.preserve_mode(missing, p)  # destination readable, staged file absent
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission-bit semantics")
+    def test_atomic_write_passes_the_fallback_through_to_a_new_destination(self):
+        # The `--out` CLIs name their SOURCE document as the fallback, so writing a transformed
+        # copy to a path that does not exist yet keeps the source's visibility instead of
+        # landing at the (possibly wider) process default.
+        source = self._file("private.html")
+        os.chmod(source, 0o600)
+        umask = os.umask(0o022)
+        self.addCleanup(os.umask, umask)
+        dest = os.path.join(self.tmp, "out.html")
+        _atomic_io.atomic_write(dest, "<html>new</html>", fallback=source)
+        self.assertEqual(stat.S_IMODE(os.stat(dest).st_mode), 0o600)
+
+
+class ReplaceRetryTests(unittest.TestCase):
+    """CMH-PORT-04: a Windows sharing violation on the swap is retried, briefly and boundedly.
+
+    `os.replace` is the one step of the atomic write that a truncating write did not have. On
+    Windows it fails with a sharing violation while another process holds the destination open
+    (a virus scanner, an editor, a sync client) - a case where the old truncating write would
+    have succeeded - so widening the shared writer to every tool must not turn a transient lock
+    into a failed run. It must not paper over a REAL one either: the loop is bounded, so a
+    genuinely locked file still fails loudly, and POSIX (which has no sharing violation) never
+    waits at all.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="cmh-atomic-replace-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.path = os.path.join(self.tmp, "doc.html")
+        with open(self.path, "w", encoding="utf-8", newline="") as fh:
+            fh.write("<html>original</html>")
+        self.slept = []
+
+    def _run(self, replace, system="nt"):
+        with mock.patch.object(os, "name", system), \
+                mock.patch.object(os, "replace", replace), \
+                mock.patch.object(time, "sleep", self.slept.append):
+            _atomic_io.atomic_write(self.path, "<html>new</html>")
+
+    def _read(self):
+        with open(self.path, encoding="utf-8") as fh:
+            return fh.read()
+
+    @staticmethod
+    def _sharing_violation():
+        # The attribute is set explicitly rather than passed to the constructor: `winerror` is a
+        # Windows-only member, so a constructor form that carries it would not reproduce the
+        # Windows failure when this test runs on the Linux CI matrix.
+        exc = PermissionError(13, "the process cannot access the file")
+        exc.winerror = 32
+        return exc
+
+    def _staged(self):
+        return sorted(n for n in os.listdir(self.tmp) if n.startswith(".cmh-"))
+
+    def test_a_transient_sharing_violation_is_retried_until_the_swap_lands(self):
+        real = os.replace
+        calls = []
+
+        def flaky(src, dst):
+            calls.append(1)
+            if len(calls) < 3:
+                raise self._sharing_violation()
+            return real(src, dst)
+
+        self._run(flaky)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(self._read(), "<html>new</html>")
+        self.assertEqual(self._staged(), [])
+        self.assertEqual(self.slept, [0.05, 0.1], "the wait must back off, not spin")
+
+    def test_a_persistently_locked_destination_fails_loudly_and_leaks_nothing(self):
+        calls = []
+
+        def locked(src, dst):
+            calls.append(1)
+            raise self._sharing_violation()
+
+        with self.assertRaises(PermissionError):
+            self._run(locked)
+        self.assertEqual(len(calls), _atomic_io._REPLACE_ATTEMPTS,
+                         "the retry must be bounded, not an unbounded wait")
+        # Pin the total wait too: a bounded ATTEMPT count with unbounded delays would still hang.
+        self.assertEqual(self.slept, [0.05, 0.1, 0.2, 0.4])
+        self.assertEqual(self._read(), "<html>original</html>")
+        self.assertEqual(self._staged(), [], "a failed swap must clean up its staged file")
+
+    def test_a_posix_permission_error_is_raised_at_once(self):
+        # No sharing violation exists on POSIX: there a PermissionError is a real permission
+        # problem, and retrying it would only add three quarters of a second to every failure.
+        calls = []
+
+        def denied(src, dst):
+            calls.append(1)
+            raise PermissionError(13, "denied")
+
+        with self.assertRaises(PermissionError):
+            self._run(denied, system="posix")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self.slept, [], "POSIX must not wait before failing")
+        self.assertEqual(self._staged(), [])
+
+    def test_a_windows_access_denied_is_not_retried(self):
+        # Only a sharing/lock violation (winerror 32/33) is transient. An access-denied - a
+        # read-only destination, or one that is a directory - is deterministic, so waiting only
+        # delays the report the caller needs.
+        calls = []
+
+        def denied(src, dst):
+            calls.append(1)
+            exc = PermissionError(13, "access is denied")
+            exc.winerror = 5
+            raise exc
+
+        with self.assertRaises(PermissionError):
+            self._run(denied)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self.slept, [])
+        self.assertEqual(self._staged(), [])
+
+
+class AtomicCopyTests(unittest.TestCase):
+    """CMH-TOOL-22: the companion COPY is crash-safe too.
+
+    A NonShareable document loads its runtime and stylesheet from companion files beside it.
+    `shutil.copyfile` truncates the destination first, so a failed refresh left the document
+    loading a half-written runtime - the same class as a truncating document write, on a file the
+    user cannot re-author by hand.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="cmh-atomic-copy-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.src = os.path.join(self.tmp, "src.js")
+        with open(self.src, "wb") as fh:
+            fh.write(b"var fresh = 1;\n")
+        self.dst = os.path.join(self.tmp, "dst.js")
+        with open(self.dst, "wb") as fh:
+            fh.write(b"var previous = 1;\n")
+
+    def _read(self, path):
+        with open(path, "rb") as fh:
+            return fh.read()
+
+    def test_a_clean_copy_replaces_the_destination(self):
+        _atomic_io.atomic_copy(self.src, self.dst)
+        self.assertEqual(self._read(self.dst), b"var fresh = 1;\n")
+        self.assertEqual(sorted(os.listdir(self.tmp)), ["dst.js", "src.js"])
+
+    def test_a_failed_copy_leaves_the_destination_untouched(self):
+        patcher = mock.patch.object(shutil, "copyfileobj", side_effect=IOError("simulated disk-full"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        with self.assertRaises(IOError):
+            _atomic_io.atomic_copy(self.src, self.dst)
+        self.assertEqual(self._read(self.dst), b"var previous = 1;\n")
+        self.assertEqual(sorted(os.listdir(self.tmp)), ["dst.js", "src.js"],
+                         "a failed copy must clean up its staged file")
+
+    def test_a_half_written_copy_leaves_the_destination_untouched(self):
+        # The same fault the document harness injects, so the copy path is proven against a
+        # partial WRITE and not only against a helper that refuses to start.
+        with contextlib.ExitStack() as stack:
+            for target, real in (("io.open", io.open), ("builtins.open", open)):
+                stack.enter_context(mock.patch(target, _io_faults.half_writing_opener(real)))
+            with self.assertRaises(IOError):
+                _atomic_io.atomic_copy(self.src, self.dst)
+        self.assertEqual(self._read(self.dst), b"var previous = 1;\n")
+        self.assertEqual(sorted(os.listdir(self.tmp)), ["dst.js", "src.js"])
+
+    def test_a_new_destination_is_not_given_the_sources_mode_by_default(self):
+        # A copy's source is usually the skill's own installed dist/, whose mode says how the
+        # plugin was extracted - not what the user wants beside their document. A read-only one
+        # would land a companion that can never be refreshed again.
+        fresh = os.path.join(self.tmp, "fresh.js")
+        _atomic_io.atomic_copy(self.src, fresh)
+        self.assertEqual(self._read(fresh), b"var fresh = 1;\n")
+
+    def test_staging_a_copy_does_not_touch_the_destination(self):
+        # The companion set is staged in full before ANY of it is swapped in, so a failure part
+        # way through cannot leave a document pairing a new runtime with an old stylesheet.
+        staged = _atomic_io.stage_copy(self.src, self.tmp, self.dst)
+        self.addCleanup(_atomic_io.quiet_remove, staged)
+        self.assertEqual(self._read(self.dst), b"var previous = 1;\n")
+        self.assertEqual(self._read(staged), b"var fresh = 1;\n")
+        _atomic_io.commit_staged(staged, self.dst)
+        self.assertEqual(self._read(self.dst), b"var fresh = 1;\n")
+        self.assertEqual(sorted(os.listdir(self.tmp)), ["dst.js", "src.js"])
 
 
 if __name__ == "__main__":

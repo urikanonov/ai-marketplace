@@ -120,10 +120,12 @@ def main(argv=None):
         # up too, not just a failed replace.
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as fh:
             fh.write(themed)
+            # Flush all the way to the disk before the swap: the rename is only as durable as
+            # the bytes it points at (see _atomic_io.fsync_file).
+            _atomic_io.fsync_file(fh)
         # The staging file is created 0600 and os.replace carries that mode to the target, so
         # re-theming a 0644 deck in place would otherwise make it owner-only.
-        _atomic_io.preserve_mode(tmp, real_out, fallback=args.deck)
-        os.replace(tmp, real_out)
+        _atomic_io.commit_staged(tmp, real_out, fallback=args.deck)
         tmp = None
     finally:
         if tmp is not None:

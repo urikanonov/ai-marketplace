@@ -58,7 +58,6 @@ import importlib.util
 import os
 from pathlib import Path
 import re
-import shutil
 import sys
 import tempfile
 
@@ -66,6 +65,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 import _toolpath  # noqa: E402
 _toolpath.ensure()
 _TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+import _atomic_io  # noqa: E402
 import _brand_profile  # noqa: E402
 import _browser_attrs  # noqa: E402
 import doc_stamp  # noqa: E402
@@ -599,9 +599,29 @@ def _companion_prefix(out_path, assets_href, copy_assets, assets_relative=False)
 
 
 def _copy_companions(dest_dir):
+    """Refresh the layer companions beside a NonShareable document.
+
+    Staged as a SET and only then swapped in: a document loads all three together, so a failure
+    DURING staging must not leave it pairing a new runtime with an old stylesheet. The renames
+    themselves are still separate, which is the residual CMH-TOOL-22 records."""
     dist = os.path.join(_skill_root(), "dist")
-    for name in COMPANIONS:
-        shutil.copyfile(os.path.join(dist, name), os.path.join(dest_dir, name))
+    staged = []
+    try:
+        for name in COMPANIONS:
+            # Resolve the destination first: an existing companion may be a symlink, and
+            # replacing the LINK would strand its real target with stale bytes (the same
+            # follow-the-symlink rule atomic_write and atomic_copy apply). Staging must then
+            # happen in the RESOLVED file's directory, or the swap would cross filesystems.
+            destination = os.path.realpath(os.path.join(dest_dir, name))
+            directory = os.path.dirname(os.path.abspath(destination)) or "."
+            staged.append((_atomic_io.stage_copy(os.path.join(dist, name), directory, destination),
+                           destination))
+        while staged:
+            path, destination = staged.pop()
+            _atomic_io.commit_staged(path, destination)
+    finally:
+        for path, _destination in staged:
+            _atomic_io.quiet_remove(path)
 
 
 def _derive_auto_key(seed):
@@ -933,9 +953,18 @@ def main(argv):
                                  % (out_path, exc))
                 return 1
         try:
-            mode = "w" if args.force else "x"
-            with open(out_path, mode, encoding="utf-8", newline="") as fh:
-                fh.write(out_html)
+            if args.force:
+                # --force overwrites an EXISTING document, which is the losable case: stage the
+                # new bytes and swap them in rather than truncating it first. fallback: --force
+                # also accepts an --out that does not exist yet, and a document derived from a
+                # private content file must not land at the process default.
+                source = args.content if args.content and args.content != "-" else None
+                _atomic_io.atomic_write(out_path, out_html, fallback=source)
+            else:
+                # Exclusive create: it refuses to touch an existing file, so a failed write can
+                # only lose bytes this run just created.
+                with open(out_path, "x", encoding="utf-8", newline="") as fh:
+                    fh.write(out_html)
         except OSError as exc:
             sys.stderr.write("new_document: cannot write %s: %s\n" % (out_path, exc))
             return 1

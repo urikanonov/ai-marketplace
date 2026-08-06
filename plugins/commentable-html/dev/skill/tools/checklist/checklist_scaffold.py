@@ -23,6 +23,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _atomic_io  # noqa: E402
+
 _STATE_BY_MARK = {" ": "blank", "": "blank", "v": "check", "x": "cross", "?": "question"}
 
 
@@ -158,8 +161,10 @@ def main(argv):
         sys.stderr.write("checklist_scaffold: %s\n" % exc)
         return 1
     if args.out:
-        with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(out)
+        # fallback: a new --out inherits the outline's visibility when one was read from a file,
+        # so scaffolding from a private outline cannot widen it.
+        _atomic_io.atomic_write(args.out, out,
+                                fallback=args.infile if args.infile != "-" else None)
     else:
         sys.stdout.write(out)
     return 0

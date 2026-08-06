@@ -12,10 +12,12 @@ import unittest
 import _paths  # noqa: E402  adds the tool buckets to sys.path via the shipped tools/_toolpath.py
 
 # The modules that legitimately sit at the tools/ ROOT: not tools, but the shared bootstrap every
-# bucket imports (`_toolpath`) and the shared browser tag/attribute names the tools outside the
-# validator's `checks` package read (`_browser_attrs`, CMH-VAL-21). A module here must be
-# importable from ANY bucket, which is exactly why it cannot live in one.
-ROOT_SHARED_MODULES = ("_toolpath.py", "_browser_attrs.py", "_browser_boundaries.py")
+# bucket imports (`_toolpath`), the shared browser tag/attribute names the tools outside the
+# validator's `checks` package read (`_browser_attrs`, CMH-VAL-21), and the crash-safe document
+# writer every bucket that rewrites a document in place goes through (`_atomic_io`, CMH-TOOL-22).
+# A module here must be importable from ANY bucket, which is exactly why it cannot live in one.
+ROOT_SHARED_MODULES = ("_toolpath.py", "_browser_attrs.py", "_browser_boundaries.py",
+                       "_atomic_io.py")
 
 # The intended bucket layout. Every shipped tool module is listed exactly once under its topic.
 EXPECTED = {

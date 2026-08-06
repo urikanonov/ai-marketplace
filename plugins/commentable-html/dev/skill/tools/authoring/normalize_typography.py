@@ -27,6 +27,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _atomic_io  # noqa: E402
 import _browser_attrs  # noqa: E402
 
 # Unicode "smart" characters AI tools emit, mapped to their plain-ASCII replacement. Kept as \u
@@ -237,8 +238,9 @@ def main(argv):
     out_path = args.out if args.out else args.file
     if count or args.out:
         try:
-            with open(out_path, "w", encoding="utf-8", newline="") as fh:
-                fh.write(new_html)
+            # fallback: a new --out inherits the SOURCE document's visibility rather than the
+            # process umask default, so normalizing a private report cannot widen it.
+            _atomic_io.atomic_write(out_path, new_html, fallback=args.file)
         except OSError as exc:
             sys.stderr.write("normalize_typography: %s\n" % exc)
             return 1

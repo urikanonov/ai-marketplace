@@ -24,6 +24,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _atomic_io  # noqa: E402
 import _browser_attrs  # noqa: E402
 
 _BUNDLE_RE = re.compile(r"^\s*NOTES_STATE_JSON:\s*(\{.*\})\s*$", re.MULTILINE)
@@ -137,8 +138,7 @@ def apply_notes(path, state_map, warn=None):
         out = out[:start] + escaped + out[end:]
     if nl != "\n":
         out = out.replace("\n", nl)
-    with open(path, "w", encoding="utf-8", newline="") as fh:
-        fh.write(out)
+    _atomic_io.atomic_write(path, out)
     return changed
 
 

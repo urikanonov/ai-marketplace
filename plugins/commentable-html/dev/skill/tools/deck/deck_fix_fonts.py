@@ -19,6 +19,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _atomic_io  # noqa: E402
 
 SERIF_STACK = '"Iowan Old Style","Palatino Linotype","Georgia",serif'
 DISPLAY_STACK = '"Impact","Rockwell","Arial Black",sans-serif'
@@ -348,8 +349,9 @@ def main(argv=None):
     out_path = args.out or args.file
     if changed or args.out:
         try:
-            with open(out_path, "w", encoding="utf-8", newline="") as fh:
-                fh.write(fixed)
+            # fallback: a new --out inherits the SOURCE deck's visibility rather than the
+            # process umask default, so fixing a private deck cannot widen it.
+            _atomic_io.atomic_write(out_path, fixed, fallback=args.file)
         except OSError as exc:
             print("deck_fix_fonts: %s" % exc, file=sys.stderr)
             return 1
