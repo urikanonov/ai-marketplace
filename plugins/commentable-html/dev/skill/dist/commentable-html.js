@@ -379,7 +379,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.784.0";
+const CMH_VERSION = "1.790.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -4506,6 +4506,46 @@ let pendingLink = null;
 let linkAddHideTimer = null;
 let linkActiveEl = null;
 
+// What the WHATWG URL parser removes from the ENDS of a URL before it parses it: every C0 control
+// plus space (U+0000-U+0020) and NOTHING else. The JS twin of the validator's `url_ends_trim`
+// (tools/validate/checks/parsing.py), written as an explicit range for the same reason
+// `_OFFLINE_REL_WS_RE` is a literal class: neither engine's own trim is this set, and the two
+// disagree in BOTH directions. JS `.trim()` reaches past ASCII and takes NBSP, U+2028, U+2029,
+// every Zs and U+FEFF, which the parser KEEPS - so `href="&#xa0;#frag"` read as a same-page
+// fragment although a browser resolves it to a DIFFERENT document (`%C2%A0#frag`), and the
+// author's `target="_self"` stood and navigated the reviewer's tab away from the report and their
+// comments (#1170). In the other direction JS `.trim()` KEEPS a non-whitespace C0 control the
+// parser removes, so `href="&#x1;#frag"` was read as a document reference and stamped, although a
+// browser navigates it within this document. (U+0085 is kept by BOTH, so it needs no correction.)
+const _CMH_URL_ENDS_TRIM_RE = /^[\u0000-\u0020]+|[\u0000-\u0020]+$/g;
+function _cmhUrlEndsTrim(value) {
+  return String(value == null ? "" : value).replace(_CMH_URL_ENDS_TRIM_RE, "");
+}
+// Whether a click on `a` STAYS in this document, asked of the URL a browser RESOLVES rather than of
+// the raw href. An empty or `#fragment` href is only same-page when it resolves against the
+// document's OWN URL: a `<base href>` re-points both at a DIFFERENT document, which a click then
+// navigates the current tab to - the exact harm the stamp exists to prevent - so the string shape
+// alone cannot decide the exemption. The end trim above is still load-bearing beside this: it is
+// what stops a padded `#frag` (which a browser resolves elsewhere) from reaching this test at all,
+// and what lets a C0-padded one reach it.
+function _cmhSamePageHref(a) {
+  const bare = (u) => { const i = u.indexOf("#"); return i === -1 ? u : u.slice(0, i); };
+  return bare(String(a.href || "")) === bare(location.href);
+}
+// The reading of an `<a href>` used as a comment's ANCHOR KEY: the classifier's own end trim, after
+// ASCII tab/CR/LF are collapsed to a space so a stored href can never break the one-line Copy-all
+// and sidebar renderings. It must be the classifier's trim: a link the classifier admits because
+// the parser keeps its padding (`href="&#xa0;#frag"`) would otherwise store a JS-trimmed key that
+// can never equal its own attribute, silently disabling href healing for exactly the links this
+// reading newly admits, and storing an EMPTY key for `href="&#xa0;"`.
+function _cmhLinkHrefKey(value) {
+  return _cmhUrlEndsTrim(String(value == null ? "" : value).replace(/[\r\n\t]+/g, " "));
+}
+// The reading a runtime BEFORE 1.790.0 wrote, kept solely so a comment stored by one still resolves.
+function _cmhLegacyLinkHrefKey(value) {
+  return String(value == null ? "" : value).replace(/[\r\n\t]+/g, " ").trim();
+}
+
 // Author-facing reference links only: real href, not UI chrome, not an in-page
 // fragment (those navigate within the document, so a new tab would be wrong and
 // commenting on a TOC entry is not the intent). Classification is by the browser-
@@ -4515,11 +4555,19 @@ let linkActiveEl = null;
 // URL that inherits the document's http(s)/file protocol. Everything else
 // (javascript:, mailto:, tel:, data:, blob:, ...) is excluded, so a mailto/tel link
 // is never stamped target=_blank (which would strand the reader on a dead tab).
+//
+// The EMPTINESS and leading-`#` tests read the href through `_cmhUrlEndsTrim`, the URL parser's
+// own end trim, because both decide the EARLY RETURN - so an over-broad trim makes the stamp apply
+// to FEWER links, the unsafe direction (contrast the `rel` stamp below, whose JS `.trim()` on the
+// target only ever makes that stamp apply to MORE links and is deliberately left alone). The
+// exemption they gate is then confirmed against the URL a browser RESOLVES (`_cmhSamePageHref`),
+// so a `<base href>` that re-points an empty or `#fragment` href at another document cannot buy an
+// exemption from a navigation that really does leave this page.
 function _cmhCommentableLink(a) {
   if (!a || a.tagName !== "A" || !a.hasAttribute("href")) return false;
   if (a.closest(".cm-skip")) return false;
-  const raw = (a.getAttribute("href") || "").trim();
-  if (!raw || raw.charAt(0) === "#") return false; // same-page fragment
+  const raw = _cmhUrlEndsTrim(a.getAttribute("href"));
+  if ((!raw || raw.charAt(0) === "#") && _cmhSamePageHref(a)) return false; // same-page fragment
   let proto = "";
   try { proto = new URL(a.href, document.baseURI).protocol.toLowerCase(); }
   catch (e) { proto = (a.protocol || "").toLowerCase(); }
@@ -4618,7 +4666,15 @@ function stampLinkTargets() {
 function indexLinks() {
   linkEls.length = 0;
   root.querySelectorAll("a[href]").forEach((a) => {
-    if (!_cmhCommentableLink(a)) return;
+    if (!_cmhCommentableLink(a)) {
+      // A document saved or exported by an older runtime carries the marks IT stamped, and this
+      // classifier admits a different set. Clearing them is not cosmetic: `findLinkEl` falls back to
+      // `[data-cm-link-index="N"]`, so a stale attribute left on a link this runtime does not index
+      // would resolve a comment onto it.
+      a.classList.remove("cm-link-commentable");
+      a.removeAttribute("data-cm-link-index");
+      return;
+    }
     const i = linkEls.length;
     a.classList.add("cm-link-commentable");
     a.dataset.cmLinkIndex = String(i);
@@ -4632,19 +4688,34 @@ function findLinkEl(index) {
 // Resolve a link comment to its current element: by index first, then heal by stored
 // href if the index is stale (the document re-ordered). Used everywhere a link anchor
 // is looked up (highlight, jump, edit, section review) so all consumers relocate the
-// same way - not just the highlight restore.
+// same way - not just the highlight restore. The stored key is compared AS WRITTEN against the live
+// attribute, read the CURRENT way first and the pre-1.790.0 way only as a fallback, so a record
+// either runtime wrote finds its own link and an exact match always wins a stale one. Normalizing
+// the STORED side instead would conflate keys that were distinct when they were written: a
+// pre-1.790.0 record for `href="&#x1;#frag"` would match a `href="&#x9;#frag"` link, because the
+// parser trim empties both paddings, and the comment would silently relocate to a DIFFERENT link.
+// The legacy reading has the mirror hazard (it empties the paddings the parser keeps), which is why
+// it runs only after the current reading has found nothing.
 function resolveLinkEl(comment) {
   if (!comment) return null;
   let a = findLinkEl(comment.linkIndex);
-  if ((!a || (comment.linkHref && a.getAttribute("href") !== comment.linkHref)) && comment.linkHref) {
-    const byHref = linkEls.find((l) => l.getAttribute("href") === comment.linkHref);
+  const key = comment.linkHref;
+  if (!key) return a || null;
+  const exact = (l) => _cmhLinkHrefKey(l.getAttribute("href")) === key;
+  const legacy = (l) => _cmhLegacyLinkHrefKey(l.getAttribute("href")) === key;
+  if (!a || !exact(a)) {
+    const byHref = linkEls.find(exact);
     if (byHref) a = byHref;
+    else if (!a || !legacy(a)) {
+      const byLegacy = linkEls.find(legacy);
+      if (byLegacy) a = byLegacy;
+    }
   }
   return a || null;
 }
 function linkInfo(a) {
   const i = parseInt(a.dataset.cmLinkIndex, 10) || 0;
-  const href = (a.getAttribute("href") || "").replace(/[\r\n\t]+/g, " ").trim();
+  const href = _cmhLinkHrefKey(a.getAttribute("href"));
   const text = (a.textContent || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   const shortHref = href.length > 120 ? href.slice(0, 117) + "..." : href;
   const quote = text || ("link: " + (shortHref || "(no href)"));

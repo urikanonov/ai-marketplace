@@ -56,6 +56,61 @@ const BASE_CONTENT = `
 <svg id="bsvg" width="10" height="10"><a id="bsvga" href="#base-section"><title>svg link</title></a></svg>
 <h2 id="base-section">Base section</h2>`;
 
+// Hrefs whose ENDS carry padding the two candidate readings disagree about, so a test can measure
+// which trim the classifier uses. The first group pads with a character JS `.trim()` REMOVES but the
+// URL parser KEEPS (so a browser resolves each to a DIFFERENT document than the bare `#fragment` it
+// resembles); the second pads with one the parser removes and JS keeps, or with one both remove, so
+// each really is the same-page fragment it looks like. Every link authors `target="_self"`, which is
+// exactly the harm CMH-LINK-01 exists to prevent on a document reference and exactly what a real
+// same-page fragment is entitled to keep. `#cctl` additionally authors the marks an OLDER runtime
+// stamped on it (it classified a C0-padded fragment as a document reference), which this one must
+// clear - see the stale-mark test below.
+//
+// The padding is written as a JS `\uXXXX` escape, NOT an HTML numeric character reference: HTML maps
+// a reference in the 0x80-0x9F range to its Windows-1252 equivalent, so `&#x85;` would have staged
+// U+2026 (an ellipsis) and quietly tested a character other than the U+0085 it names. PAD_CODE below
+// pins what actually reached the DOM.
+const PADS = {
+  pnbsp: 0x00a0, pls: 0x2028, pps: 0x2029, pideo: 0x3000, pbom: 0xfeff, pnel: 0x0085,
+  ponly: 0x00a0, ctab: 0x0009, cvt: 0x000b, cspace: 0x0020, cctl: 0x0001, cctlonly: 0x0001,
+};
+const pad = (id) => String.fromCharCode(PADS[id]);
+const PADDED_CONTENT = `
+<h2 id="padded-lead">Padded hrefs</h2>
+<p id="padded-p">
+<a id="pnbsp" href="${pad("pnbsp")}#padded-section" target="_self">nbsp</a>
+<a id="pls" href="${pad("pls")}#padded-section" target="_self">line separator</a>
+<a id="pps" href="${pad("pps")}#padded-section" target="_self">paragraph separator</a>
+<a id="pideo" href="${pad("pideo")}#padded-section" target="_self">ideographic space</a>
+<a id="pbom" href="${pad("pbom")}#padded-section" target="_self">zero width no-break space</a>
+<a id="pnel" href="${pad("pnel")}#padded-section" target="_self">next line</a>
+<a id="ponly" href="${pad("ponly")}" target="_self">nbsp only</a>
+<a id="ctab" href="${pad("ctab")}#padded-section" target="_self">tab</a>
+<a id="cvt" href="${pad("cvt")}#padded-section" target="_self">vertical tab</a>
+<a id="cspace" href="${pad("cspace")}#padded-section" target="_self">space</a>
+<a id="cctl" href="${pad("cctl")}#padded-section" target="_self" class="cm-link-commentable" data-cm-link-index="42">c0 control</a>
+<a id="cctlonly" href="${pad("cctlonly")}" target="_self">c0 control only</a>
+<a id="cfrag" href="#padded-section" target="_self">plain fragment</a>
+<a id="cdoc" href="doc-target.html" target="_self">unique document reference</a>
+<span class="cm-skip"><a id="pskip" href="#padded-section" target="_self">chrome fragment</a></span>
+</p>
+<h2 id="padded-section">Padded section</h2>`;
+
+// `head` is raw markup injected into <head>, so a test can give the document a `<base href>`;
+// `init` is an init script (seeded storage, as the poisoned-metadata test does).
+async function stagePadded(page, head = null, init = null) {
+  const { html } = stageContent(PADDED_CONTENT, { key: KEY + "-padded" });
+  if (head !== null) {
+    const src = fs.readFileSync(html, "utf8");
+    const injected = src.replace("<head>", "<head>\n" + head);
+    if (injected === src) throw new Error("stagePadded: no <head> to inject into");
+    fs.writeFileSync(html, injected);
+  }
+  if (init) await page.addInitScript(init);
+  await page.goto(fileUrl(html));
+  await ready(page);
+}
+
 // The `<base>` shapes a browser never applies. Shared with the validator's own parked-base test
 // (`tests/test_validate_kql.py` - `PARKED_BASES`), pinned to it as TEXT by
 // `tests/test_vendored_libs.py` so the two readers can never be checked against different corpora.
@@ -156,6 +211,194 @@ test.describe("link handling", () => {
     const selfRel = await page.locator("#self").getAttribute("rel");
     expect(selfRel).toContain("noopener");
     expect(selfRel).toContain("noreferrer");
+  });
+
+  test("an href padded with characters the URL parser keeps is not a same-page fragment (CMH-LINK-01)", async ({ page }) => {
+    await stagePadded(page);
+    // Pin the character that actually reached the DOM before measuring anything with it: an HTML
+    // numeric reference in the 0x80-0x9F range is remapped to Windows-1252, so a test that names
+    // U+0085 can silently be exercising U+2026 - and pass, because both are kept by both readings.
+    const staged = await page.evaluate(() => {
+      const out = {};
+      document.querySelectorAll("#padded-p a[href]").forEach((a) => {
+        if (a.closest(".cm-skip")) return; // runtime chrome is never classified
+        out[a.id] = (a.getAttribute("href") || "").charCodeAt(0);
+      });
+      return out;
+    });
+    for (const id of Object.keys(PADS)) {
+      expect(staged[id], id + " staged padding code point").toBe(PADS[id]);
+    }
+    // The browser's own resolution, applied OFF the classifier: `a.href` is the URL a click
+    // navigates to, so a link that resolves to a URL other than this document's is not a same-page
+    // fragment however much its markup looks like one - and the author's `target="_self"` on it
+    // navigates the reviewer's own tab away from the report and their comments. The classifier now
+    // asks the same question internally, so this is a cross-check rather than an independent
+    // oracle; the real assertions are the `target`, `rel` and `cm-link-commentable` ones below,
+    // whose expected values are the hard-coded `away`/`stay` lists.
+    const samePage = await page.evaluate(() => {
+      const doc = location.href.split("#")[0];
+      const out = {};
+      document.querySelectorAll("#padded-p a[href]").forEach((a) => {
+        if (a.closest(".cm-skip")) return; // runtime chrome is never classified
+        out[a.id] = a.href.split("#")[0] === doc;
+      });
+      return out;
+    });
+    // Padded with a character the URL parser KEEPS: a different document, so the stamp must apply.
+    // JS `.trim()` removes NBSP, U+2028, U+2029, every Zs (U+3000 stands for the category) and
+    // U+FEFF, so the classifier read all of these as same-page fragments and stamped none of them.
+    // U+0085 is in the list for the opposite reason: JS `.trim()` does NOT take it (it is neither a
+    // LineTerminator nor Zs), so it is a non-regression control on the same side of the boundary.
+    const away = ["pnbsp", "pls", "pps", "pideo", "pbom", "pnel", "ponly", "cdoc"];
+    // Padded with a character the parser REMOVES: really is this document, so the exemption stands.
+    // U+0001 is the other direction of the same defect - JS `.trim()` keeps a non-whitespace C0
+    // control, so the classifier used to call `href="&#x1;#frag"` a document reference and stamp a
+    // fragment navigation - while tab, VT and space are the ASCII controls both readings trim, and
+    // must keep behaving exactly as they do today.
+    const stay = ["ctab", "cvt", "cspace", "cctl", "cctlonly", "cfrag"];
+    // Every staged link is accounted for, so a link added to PADDED_CONTENT cannot be silently
+    // skipped by both loops below.
+    expect(Object.keys(samePage).sort(), "every staged link is classified")
+      .toEqual([...away, ...stay].sort());
+    for (const id of away) expect(samePage[id], id + " resolves to another document").toBe(false);
+    for (const id of stay) expect(samePage[id], id + " resolves to this document").toBe(true);
+    for (const id of away) {
+      const a = page.locator("#" + id);
+      expect(await a.getAttribute("target"), id + " target").toBe("_blank");
+      const rel = await a.getAttribute("rel");
+      expect(rel, id + " rel").toContain("noopener");
+      expect(rel, id + " rel").toContain("noreferrer");
+      // The same predicate gates INDEXING, so an unstamped link was also never commentable.
+      await expect(a, id + " commentable").toHaveClass(/cm-link-commentable/);
+    }
+    for (const id of stay) {
+      const a = page.locator("#" + id);
+      expect(String(await a.getAttribute("target")).toLowerCase(), id + " target").toBe("_self");
+      // The newly-EXEMPT direction (the C0-padded pair) must lose the secure rel along with the
+      // target, since a same-tab in-page navigation is what it is entitled to.
+      expect(await a.getAttribute("rel"), id + " rel").toBeNull();
+      await expect(a, id + " not commentable").not.toHaveClass(/cm-link-commentable/);
+    }
+  });
+
+  test("a padded link's comment stores the href the classifier read (CMH-LINK-02)", async ({ page }) => {
+    await stagePadded(page);
+    await commentLink(page, "pnbsp", "note on the padded link");
+    await commentLink(page, "ponly", "note on the nbsp-only link");
+    // The anchor key must be the href the CLASSIFIER read, padding and all. A JS-trimmed key
+    // ("#padded-section") is a string no commentable link's attribute can ever equal, so href
+    // healing would be silently dead for exactly the links the parser trim newly admits - and an
+    // NBSP-only href would store an EMPTY key, which the healing branch skips entirely.
+    const stored = await page.evaluate(() => window.__cmhStorageCodec.read());
+    const keys = stored.filter((c) => c.anchorType === "link").map((c) => c.linkHref);
+    expect(keys, "stored anchor keys").toContain("\u00a0#padded-section");
+    expect(keys, "an NBSP-only href stores a non-empty key").toContain("\u00a0");
+  });
+
+  test("a padded link's comment heals by that href when its index is stale (CMH-LINK-02)", async ({ page }) => {
+    // The key exists to relocate a comment whose index went stale, so measure that it does. The
+    // seeded index resolves to nothing, so only the href can find the link - and the target is
+    // deliberately NOT the first commentable link, so a "fell back to linkEls[0]" bug fails here.
+    await stagePadded(page, null, () => {
+      localStorage.setItem("cmh-link-test-padded", JSON.stringify([{
+        id: "cpadheal1", anchorType: "link", linkIndex: 99, linkHref: "\ufeff#padded-section",
+        linkText: "bom", quote: "bom", note: "healed by href",
+        createdAt: new Date().toISOString(),
+      }]));
+    });
+    await expect(page.locator('a.cm-link-hl[data-cid="cpadheal1"]#pbom')).toHaveCount(1);
+    await expect(page.locator('a.cm-link-hl[data-cid="cpadheal1"]')).toHaveCount(1);
+  });
+
+  test("a comment stored by an older runtime still finds its own link (CMH-LINK-02)", async ({ page }) => {
+    // A pre-1.790.0 record carries a JS-trimmed key. Two things must hold. (1) It must still
+    // resolve after its index shifts (the classifier newly admits the padded links before it):
+    // an ordinary link's key reads the same under both readings, so the exact search finds it.
+    // (2) It must not resolve to the WRONG link: `href="&#x1;#frag"` and `href="&#x9;#frag"` are
+    // distinct attributes that the CURRENT reading collapses to the same key, so normalizing the
+    // stored side as well would silently move an old `&#x1;` comment onto the `&#x9;` link.
+    // Staged under a `<base href>` so both of those links are commentable and the collision is
+    // reachable.
+    await stagePadded(page, '<base href="elsewhere/">', () => {
+      localStorage.setItem("cmh-link-test-padded", JSON.stringify([
+        { id: "coldplain1", anchorType: "link", linkIndex: 99, linkHref: "doc-target.html",
+          linkText: "unique document reference", quote: "unique", note: "old ordinary key",
+          createdAt: new Date().toISOString() },
+        { id: "coldctrl1", anchorType: "link", linkIndex: 99, linkHref: "\u0001#padded-section",
+          linkText: "c0 control", quote: "c0 control", note: "old c0 key",
+          createdAt: new Date().toISOString() },
+      ]));
+    });
+    await expect(page.locator('a.cm-link-hl[data-cid="coldplain1"]#cdoc')).toHaveCount(1);
+    await expect(page.locator('a.cm-link-hl[data-cid="coldctrl1"]#cctl')).toHaveCount(1);
+    // ...and never on the link whose padding the current reading collapses to the same key.
+    await expect(page.locator('a.cm-link-hl[data-cid="coldctrl1"]#ctab')).toHaveCount(0);
+  });
+
+  test("marks an older runtime left on a link this one does not index are cleared (CMH-LINK-02)", async ({ page }) => {
+    // `#cctl` is authored with the `cm-link-commentable` class and a `data-cm-link-index` an older
+    // runtime stamped, the way a saved or exported document carries them. This classifier does not
+    // admit that link, and `findLinkEl` falls back to `[data-cm-link-index]`, so leaving the mark in
+    // place would resolve an index-only comment onto a link that is not commentable at all.
+    await stagePadded(page, null, () => {
+      localStorage.setItem("cmh-link-test-padded", JSON.stringify([{
+        id: "cstalemark1", anchorType: "link", linkIndex: 42, linkHref: "",
+        linkText: "c0 control", quote: "c0 control", note: "index-only comment",
+        createdAt: new Date().toISOString(),
+      }]));
+    });
+    const marks = await page.evaluate(() => {
+      const a = document.getElementById("cctl");
+      return { cls: a.classList.contains("cm-link-commentable"), idx: a.getAttribute("data-cm-link-index") };
+    });
+    expect(marks.cls, "stale cm-link-commentable class").toBe(false);
+    expect(marks.idx, "stale data-cm-link-index").toBeNull();
+    // ...and with the mark gone the index-only comment rings no link at all (the sidebar card still
+    // lists it, so scope the assertion to the anchor).
+    await expect(page.locator('a[data-cid="cstalemark1"]')).toHaveCount(0);
+    await expect(page.locator("a.cm-link-hl")).toHaveCount(0);
+  });
+
+  test("a <base href> makes an empty or fragment href a cross-document navigation (CMH-LINK-01)", async ({ page }) => {
+    // The same-page exemption is about where a click GOES, not what the href looks like. With a
+    // `<base href>` pointing elsewhere, a browser resolves BOTH an empty href and a bare `#fragment`
+    // against the base, so a click leaves this document - and the author's `target="_self"` would
+    // take the reviewer's tab, and their comments, with it. Deciding the exemption on the string
+    // alone (as the classifier's early return did) exempts exactly those navigations.
+    await stagePadded(page, '<base href="elsewhere/">');
+    const samePage = await page.evaluate(() => {
+      const doc = location.href.split("#")[0];
+      const out = {};
+      document.querySelectorAll("#padded-p a[href]").forEach((a) => {
+        if (a.closest(".cm-skip")) return; // runtime chrome is never classified
+        out[a.id] = a.href.split("#")[0] === doc;
+      });
+      return out;
+    });
+    for (const id of Object.keys(samePage)) {
+      expect(samePage[id], id + " resolves away from this document under <base href>").toBe(false);
+      const a = page.locator("#" + id);
+      expect(await a.getAttribute("target"), id + " target").toBe("_blank");
+      await expect(a, id + " commentable").toHaveClass(/cm-link-commentable/);
+    }
+    // Runtime chrome is exempt BEFORE any of this: a `.cm-skip` link is never touched however a
+    // browser resolves it, so the new rule cannot start stamping the layer's own navigation.
+    expect(await page.locator("#pskip").getAttribute("target"), "pskip target").toBe("_self");
+    await expect(page.locator("#pskip")).not.toHaveClass(/cm-link-commentable/);
+    // The control: with no `<base href>` the same links stay in the document and keep the
+    // exemption, so this is not a blanket "stamp every fragment" rewrite.
+    await stagePadded(page);
+    for (const id of ["ctab", "cvt", "cspace", "cctl", "cctlonly", "cfrag"]) {
+      expect(await page.locator("#" + id).getAttribute("target"), id + " without base").toBe("_self");
+    }
+    // ...and a `<base href>` that re-points at this very document is a no-op, so it must not move
+    // the exemption either (a comparison written on `location.pathname` would pass the test above
+    // and fail here). Note `test-doc.html`, the staged file's own name, not `.` - a bare `.` points
+    // at the DIRECTORY, which a fragment click really does navigate to.
+    await stagePadded(page, '<base href="test-doc.html">');
+    expect(await page.locator("#cfrag").getAttribute("target"), "cfrag with a no-op base").toBe("_self");
+    await expect(page.locator("#cfrag")).not.toHaveClass(/cm-link-commentable/);
   });
 
   test("an author-set target=_blank without rel gains the secure rel regardless of scheme (CMH-LINK-01)", async ({ page }) => {
