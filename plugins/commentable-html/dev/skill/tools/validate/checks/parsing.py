@@ -3163,15 +3163,18 @@ def _is_executable_js(ad):
     policy that really is too late - and that caller is namespace-BLIND, where the HTML-only rules
     below would be fail-OPEN on an SVG script, which runs with `nomodule` and ignores `language`).
 
-    The self-contained gate's `src` arm no longer asks here (issue #1171). It DECIDES A LOAD, and
-    the offline strip DELETES an element behind that decision, so both moved together to the
-    spec-exact `script_code_runs` below: every shape where this predicate is broader - a MIME
-    PARAMETER, `nomodule`, the legacy `event`+`for` pair, a whitespace-only `type`, the `language`
-    fallback - is a script a browser does not run, and reporting its `src` refused a document over a
-    dead attribute while the export deleted the author's element and its body. The PAIRING is
-    unchanged in kind, only re-pointed: the exporter's `_offlineScriptCodeRuns` is the JS mirror of
-    `script_code_runs`, pinned over a shared corpus of ATTRIBUTE SETS evaluated in a real JS engine,
-    so the gate and the strip still call the same scripts loaders (CMH-OFFLINE-04).
+    The self-contained gate's `src` arm no longer asks here (issue #1171). It decides whether a
+    browser REQUESTS the resource, and the offline strip acts on that decision, so both moved
+    together to `script_src_fetches` below - which is a different question from EXECUTION and is
+    settled by MEASUREMENT, not by reading the algorithm. Four shapes where this predicate is
+    broader are genuinely never requested (a MIME PARAMETER, `nomodule`, a whitespace-only `type`,
+    a non-JavaScript `language`), and reporting one refused a document over a dead attribute while
+    the export deleted the author's element and its body. The legacy `event`+`for` pair is NOT in
+    that list: it stops execution but the preload scanner requests the script anyway, so calling it
+    inert would have been fail-OPEN. The PAIRING is unchanged in kind, only re-pointed: the
+    exporter's `_offlineScriptSrcIsFetched` is the JS mirror of `script_src_fetches`, pinned over a
+    shared corpus of ATTRIBUTE SETS evaluated in a real JS engine, so the gate and the strip still
+    call the same scripts loaders (CMH-OFFLINE-04).
 
     The trim is HTML's own ASCII whitespace class, not `str.strip()`, for the same reason the
     exporter's copy spells it out: the two engines' defaults disagree in BOTH directions (JS
@@ -3179,9 +3182,9 @@ def _is_executable_js(ad):
     between the two sides of a pinned pair is a document one side blesses and the other mutates. A
     browser trims ASCII whitespace only, so both spellings are data blocks and both sides say so.
 
-    For an EXECUTION decision use `script_code_runs()` / `script_runs_inline_body()` /
-    `script_external_load()` below, which apply HTML's actual rule and whose over-inclusion would
-    be the fail-OPEN direction instead."""
+    For a FETCH decision use `script_src_fetches()`; for an EXECUTION decision use
+    `script_code_runs()` / `script_runs_inline_body()` / `script_external_load()` below, which apply
+    HTML's actual rule and whose over-inclusion would be the fail-OPEN direction instead."""
     return (ad.get("type", "") or "").split(";")[0].strip(_HTML_WHITESPACE).lower() in _JS_TYPES
 
 
@@ -3237,7 +3240,9 @@ def script_code_runs(ad, ns="html"):
       from `_is_executable_js` above, which splits at `;` because its remaining callers need
       over-inclusion; here over-inclusion is fail-OPEN. It is mirrored in the exporter by
       `_offlineScriptCodeRuns`, pinned over a shared attribute-set corpus in a real JS engine, so
-      the self-contained gate's `src` arm and the offline strip's delete cannot drift (#1171).
+      the passes that DELETE or MOVE an element on a body decision cannot drift (#1171). The
+      self-contained gate's `src` arm does NOT ask here - a request is not an execution; see
+      `script_src_fetches` below.
     - `nomodule`: the algorithm returns early for an element carrying it when the script block
       type is CLASSIC, so every module-supporting browser - which is every browser that ships -
       skips it. The test is on the classic branch only, so it does nothing to a `type="module"`
@@ -3301,7 +3306,7 @@ def script_src_fetches(ad):
 
     That blindness is what lets the flat, namespace-less tokenizer answer this question exactly,
     and it is why this predicate takes no `ns` at all: there is no namespace to consult, by
-    construction rather than by omission. The exporter's `_offlineScriptSrcFetches` mirrors it,
+    construction rather than by omission. The exporter's `_offlineScriptSrcIsFetched` mirrors it,
     pinned by `test_the_python_and_js_script_src_fetches_predicates_agree`, and the browser fact
     itself is pinned by the `CMH-VAL-08: a browser requests exactly the script shapes the gate
     calls a load` spec, which re-measures the corpus in a real engine.

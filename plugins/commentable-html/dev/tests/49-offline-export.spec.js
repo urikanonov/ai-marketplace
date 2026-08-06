@@ -2064,14 +2064,15 @@ test("CMH-OFFLINE-04: the offline strips cover every executable script MIME type
     // The control: a script a browser RUNS loses the whole element, not just the attribute.
     expect(exportedHtml, "a runnable script with a network src goes entirely").not.toContain("cmh-runnable-src");
     expect(exportedHtml, "a runnable script's src target").not.toContain("runnable-src.js");
-    // ...including the three shapes only the measured FETCH reading gets right in this direction.
+    // ...and so do the two shapes only the measured FETCH reading gets right in this direction.
     expect(exportedHtml, "nomodule does nothing to a module script").not.toContain("cmh-runnable-nomodule-module");
     expect(exportedHtml, "...and its src target").not.toContain("runnable-nomodule.js");
     expect(exportedHtml, "the legacy window/onload pair really loads").not.toContain("cmh-runnable-onload");
     expect(exportedHtml, "...and its src target").not.toContain("runnable-onload.js");
-    // event+for stops EXECUTION but not the REQUEST, so the reference must not survive.
-    expect(exportedHtml, "a skipped event+for script is still REQUESTED").not.toContain("cmh-fetched-eventfor");
-    expect(exportedHtml, "...and its src target").not.toContain("fetched-eventfor.js");
+    // event+for stops EXECUTION but not the REQUEST, so the REFERENCE must go - but the element is
+    // an author's inert body, so it stays and only the dead attribute is taken (issue #1171).
+    expect(exportedHtml, "a skipped event+for script keeps its element").toContain("cmh-fetched-eventfor");
+    expect(exportedHtml, "...and loses the requested src").not.toContain("fetched-eventfor.js");
     // CMH-OFFLINE-04 / CMH-VAL-08 (#1171): a script whose `src` a browser never REQUESTS carries a
     // dead attribute exactly like a data block's. The gate stopped reporting it, so the strip must
     // stop deleting the element behind it - otherwise the export mutates a file the gate has just
@@ -2132,6 +2133,18 @@ const FETCH_PROBE_SHAPES = [
   ["language-vbscript", '<script language="vbscript" src="URL"></script>', false],
   ["json", '<script type="application/json" src="URL"></script>', false],
   ["svg-nomodule", '<svg width="1" height="1"><script nomodule src="URL"></script></svg>', false],
+  // The namespace-blindness is MEASURED across the rules, not extrapolated from the two SVG rows
+  // above: `language` and the essence match are HTMLScriptElement concepts, and the scanner applies
+  // them in a foreign namespace too. MathML is covered as well, so no rule is asserted for HTML and
+  // merely assumed elsewhere.
+  ["svg-language-js", '<svg width="1" height="1"><script language="javascript" src="URL"></script></svg>', true],
+  ["svg-event-for-bad", '<svg width="1" height="1"><script type="text/javascript" for="x" event="y" src="URL"></script></svg>', true],
+  ["svg-language-vbscript", '<svg width="1" height="1"><script language="vbscript" src="URL"></script></svg>', false],
+  ["svg-mime-param", '<svg width="1" height="1"><script type="text/javascript; charset=utf-8" src="URL"></script></svg>', false],
+  ["svg-ws-type", '<svg width="1" height="1"><script type=" " src="URL"></script></svg>', false],
+  ["math-nomodule", '<math><script nomodule src="URL"></script></math>', false],
+  ["math-language-vbscript", '<math><script language="vbscript" src="URL"></script></math>', false],
+  ["math-mime-param", '<math><script type="text/javascript; charset=utf-8" src="URL"></script></math>', false],
 ];
 
 test("CMH-VAL-08: a browser requests exactly the script shapes the gate calls a load", async ({ page }) => {
@@ -2180,6 +2193,69 @@ test("CMH-VAL-08: a browser requests exactly the script shapes the gate calls a 
   // Both directions are genuinely exercised, so neither loop can pass vacuously.
   expect(FETCH_PROBE_SHAPES.some(([, , e]) => e)).toBe(true);
   expect(FETCH_PROBE_SHAPES.some(([, , e]) => !e)).toBe(true);
+});
+
+// A MathML `<script>`: an inert unknown element whose body does NOT run where it sits (measured).
+// The chart hoist selects `script:not([src])` by local name in every namespace, so before #1171 a
+// matching one was MOVED into `<body>` - and an HTML-serialized copy of that document runs it on
+// reparse. The export must never grant execution the source did not have, so this element must
+// stay where it is. Its SVG twin is the control: an SVG script's body really does run, so hoisting
+// it is correct.
+const NAMESPACED_HOIST_CONTENT = [
+  "<h1>Namespaced scripts</h1>",
+  '<p id="ns-note">A MathML script is inert where it sits; an SVG one is not.</p>',
+  '<math id="cmh-math-host"><script type="text/javascript">',
+  "/* cmh-mathml-body */",
+  'window.__cmhMathmlRan = true; new Chart(document.getElementById("nsChart"), {});',
+  "</script></math>",
+].join("\n");
+
+test("CMH-OFFLINE-04: the export never hoists a MathML script, which would start running it", async ({ page, browser }) => {
+  test.setTimeout(60000);
+  const staged = stageContent(NAMESPACED_HOIST_CONTENT, { key: "cmh-offline-ns-hoist", source: "offline-ns-hoist.html" });
+  let ctx = null;
+  try {
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // The source document does NOT run it - the premise the export must preserve.
+    expect(await page.evaluate(() => window.__cmhMathmlRan)).toBeUndefined();
+
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+    // Kept, and still inside its <math> host rather than appended to <body>.
+    expect(exportedHtml, "the MathML script survives").toContain("cmh-mathml-body");
+    const mathAt = exportedHtml.indexOf("cmh-math-host");
+    const bodyAt = exportedHtml.indexOf("cmh-mathml-body");
+    expect(mathAt, "the <math> host survives").toBeGreaterThan(-1);
+    expect(bodyAt - mathAt, "the script stayed inside its <math> host, not hoisted to <body>")
+      .toBeGreaterThan(0);
+    expect(bodyAt - mathAt).toBeLessThan(400);
+
+    // The decisive check: reopening the EXPORT must not run it either.
+    const outDir = fs.mkdtempSync(path.join(DEV, "tmp-ns-hoist-"));
+    const outFile = path.join(outDir, "exported.html");
+    fs.writeFileSync(outFile, exportedHtml, "utf8");
+    try {
+      ctx = await browser.newContext();
+      const p2 = await ctx.newPage();
+      await p2.route(/^https?:\/\//, (route) => route.abort());
+      await p2.goto(fileUrl(outFile));
+      await p2.waitForTimeout(300);
+      expect(await p2.evaluate(() => window.__cmhMathmlRan),
+        "the export must not start running a script the source left inert").toBeUndefined();
+    } finally {
+      fs.rmSync(outDir, { recursive: true, force: true });
+    }
+  } finally {
+    if (ctx) await ctx.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
 });
 
 const FORGERY_CONTENT = `

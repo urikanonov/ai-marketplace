@@ -1869,7 +1869,16 @@ class RuntimeParityTests(unittest.TestCase):
                  lambda ns, a: a.get("for") == "window" and a.get("event") == "onload"),
                 ("an SVG-namespace row", lambda ns, a: ns == self._SVG_NS),
                 ("a MathML-namespace row", lambda ns, a: ns == self._MATHML_NS),
-                ("a null-namespace row", lambda ns, a: ns is None)):
+                ("a null-namespace row", lambda ns, a: ns is None),
+                # These two classes are why the trim and the fold are spelled out literally rather
+                # than left to `trim()` / `toLowerCase()`, so losing them would quietly retire the
+                # only corpus evidence that the two engines' defaults disagree.
+                ("a non-ASCII-whitespace type",
+                 lambda ns, a: any(c in (a.get("type") or "")
+                                   for c in "\ufeff\u00a0\u2028\u3000\u001c\u001f\u0085")),
+                ("a mixed-case type",
+                 lambda ns, a: (a.get("type") or "").lower() != (a.get("type") or "")
+                               and ";" not in (a.get("type") or ""))):
             self.assertTrue(present(pred),
                             "the shape corpus no longer covers %s, so the parity test would pass "
                             "while that class drifts unchecked" % label)
@@ -1907,10 +1916,12 @@ class RuntimeParityTests(unittest.TestCase):
     def _script_predicate_sources(self, *names):
         """The runtime helpers the element-level predicates need, as one JS region."""
         source = self._read("68-export-offline.js")
-        fns = self._runtime_string_const(source, "_OFFLINE_HTML_NS") + "\n" + "\n".join(
-            self._runtime_fn(source, name) for name in
-            ("_offlineIsJsTypeEssence", "_offlineAsciiLower", "_offlineTrimHtmlWs",
-             "_offlineScriptBlockType") + names)
+        fns = "\n".join(
+            [self._runtime_string_const(source, "_OFFLINE_HTML_NS"),
+             self._runtime_string_const(source, "_OFFLINE_SVG_NS")]
+            + [self._runtime_fn(source, name) for name in
+               ("_offlineIsJsTypeEssence", "_offlineAsciiLower", "_offlineTrimHtmlWs",
+                "_offlineScriptBlockType") + names])
         self.assertNotIn(".toLowerCase()", fns,
                          "an element-level predicate is on Unicode `toLowerCase()`, whose fold "
                          "differs from the validator's ASCII-only `_ascii_lower`")
@@ -1918,6 +1929,64 @@ class RuntimeParityTests(unittest.TestCase):
                          "an element-level predicate is on `trim()`, whose whitespace class "
                          "differs from HTML's in both directions")
         return fns
+
+    def test_the_python_and_js_script_runs_inline_body_predicates_agree(self):
+        """The two INLINE-BODY predicates - `script_runs_inline_body` and
+        `_offlineScriptRunsInlineBody` - must agree about whose child text a browser runs.
+
+        This is the question every pass that acts on what a script's BODY says has to ask, and
+        `script_code_runs` alone answers it wrongly in two ways. The insertion NAMESPACE must be one
+        that defines `script` AND runs it: a MathML `<script>` is an inert unknown element, measured
+        not to run. That is not a theoretical difference - the chart HOIST moves a matching element
+        into `<body>`, and a MathML script that ran nowhere in the source really does run once
+        hoisted and reparsed as HTML, so asking the wrong predicate makes the EXPORT grant execution
+        the source never had. And an element with an external source never runs its own child text,
+        so deleting one over what its inert body says costs an author a loader that works.
+
+        The corpus is the shared shape corpus crossed with the load attributes, in every namespace,
+        so the two sides cannot drift on either rule.
+        """
+        fns = self._script_predicate_sources("_offlineScriptCodeRuns",
+                                             "_offlineScriptRunsInlineBody")
+        base = self._script_shape_corpus()
+        corpus = []
+        for spec in base:
+            corpus.append(spec)
+            for attr in ("src", "href", "xlink:href"):
+                loaded = dict(spec["attrs"])
+                loaded[attr] = "x.js"
+                corpus.append({"ns": spec["ns"], "attrs": loaded})
+                empty = dict(spec["attrs"])
+                empty[attr] = ""
+                corpus.append({"ns": spec["ns"], "attrs": empty})
+        self._assert_corpus_covers_every_shape_class(corpus)
+        ns_name = {self._HTML_NS: "html", self._SVG_NS: "svg", self._MATHML_NS: "mathml",
+                   None: "html"}
+        expected = [parsing.script_runs_inline_body(spec["attrs"], ns_name[spec["ns"]])
+                    for spec in corpus]
+        self.assertIn(True, expected)
+        self.assertIn(False, expected)
+        # The two rules this predicate adds over `script_code_runs`, pinned by value.
+        self.assertTrue(parsing.script_code_runs({"type": "text/javascript"}, "mathml"))
+        self.assertFalse(parsing.script_runs_inline_body({"type": "text/javascript"}, "mathml"))
+        self.assertTrue(parsing.script_runs_inline_body({"type": "text/javascript"}, "html"))
+        self.assertFalse(
+            parsing.script_runs_inline_body({"type": "text/javascript", "src": "x.js"}, "html"))
+        self.assertTrue(parsing.script_runs_inline_body({"type": "text/javascript", "src": "x.js"},
+                                                        "svg"))
+        self.assertFalse(parsing.script_runs_inline_body({"href": "x.js"}, "svg"))
+
+        verdicts = self._run_predicate_in_node(
+            fns, "_offlineScriptRunsInlineBody(el)", corpus, "the inline-body predicate")
+        for spec, want, got in zip(corpus, expected, verdicts):
+            self.assertEqual(
+                got, want,
+                "the REAL JS engine's _offlineScriptRunsInlineBody and the validator's "
+                "script_runs_inline_body disagree about ns=%r attrs=%r (JS says %r, Python says "
+                "%r). Update BOTH: this predicate decides whether a pass may DELETE or MOVE an "
+                "element on what its body says, and moving one whose body does not run where it is "
+                "can START it running in the export."
+                % (spec["ns"], spec["attrs"], got, want))
 
     def test_the_python_and_js_script_code_runs_predicates_agree(self):
         """The two EXECUTION predicates - `script_code_runs` and `_offlineScriptCodeRuns` - must
@@ -2100,6 +2169,7 @@ class RuntimeParityTests(unittest.TestCase):
             self._runtime_fn(source, "_offlineAsciiLower"),
             self._runtime_fn(source, "_offlineTrimHtmlWs"),
             self._runtime_fn(source, "_offlineScriptBlockType"),
+            self._runtime_fn(source, "_offlineScriptCodeRuns"),
             self._runtime_fn(source, "_offlineScriptSrcIsFetched"),
             self._runtime_fn(source, "_offlineScriptSrcFetches"),
             'const _offlineIsNetworkUrl = (v) => /^https?:\\/\\//i.test(v || "");',
@@ -3828,14 +3898,17 @@ class RuntimeParityTests(unittest.TestCase):
         region = source[start:end + 2]
         # The `\n}` terminator is a contract with the formatter (a column-0 closing brace and no
         # column-0 inner one). A truncation is usually LOUD - node fails to parse the fragment - but
-        # a reformat could in principle truncate to something still valid, so check the balance
-        # here rather than trusting the shape. Braces inside strings, comments and regex literals
-        # would fool a raw count, so only the imbalance direction that truncation produces is an
-        # error: a fragment that closes more than it opens, or leaves one open.
+        # a reformat could in principle truncate to something still valid, so check the balance here
+        # rather than trusting the shape. The count is over the RAW text, so it also assumes an
+        # extracted function carries no brace inside a string, comment or regex literal; none of
+        # them does today, and a future one that must would need this guard taught about literals
+        # rather than loosened.
         self.assertEqual(region.count("{"), region.count("}"),
                          "the extracted source of %s is not brace-balanced, so the `\\n}` "
-                         "terminator truncated it (or ran past it); re-point the extraction or "
-                         "restore the column-0 closing brace" % name)
+                         "terminator truncated it (or ran past it); re-point the extraction, "
+                         "restore the column-0 closing brace, or - if %s legitimately carries a "
+                         "brace inside a string or regex literal - teach this guard to blank "
+                         "literals before counting" % (name, name))
         return region
 
     def _runtime_active_data_source(self):

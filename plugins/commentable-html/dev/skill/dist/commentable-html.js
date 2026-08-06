@@ -14978,6 +14978,25 @@ function _offlineScriptCodeRuns(s) {
   }
   return true;
 }
+// Whether a browser runs THIS `<script>` element's own child text as script - the exporter mirror
+// of the validator's `script_runs_inline_body`, pinned by
+// `test_the_python_and_js_script_runs_inline_body_predicates_agree`.
+//
+// Three independent facts, and asking `_offlineScriptCodeRuns` alone gets two of them wrong. The
+// insertion NAMESPACE must be one that defines `script` AND runs it: HTML and SVG do, MathML does
+// NOT - a MathML `<script>` is an inert unknown element whose body never executes (measured). That
+// matters most for a pass that MOVES an element: hoisting a MathML script into `<body>` and then
+// serializing makes it an HTML script on reparse, so the export would START RUNNING code the source
+// document never ran, and an exporter must never add behavior the source did not have. The element
+// must also not load EXTERNALLY - a browser that fetches a source ignores the element's own child
+// text - so deleting such an element over what its inert body says costs an author their loader.
+function _offlineScriptRunsInlineBody(s) {
+  const ns = s.namespaceURI || _OFFLINE_HTML_NS;
+  if (ns !== _OFFLINE_HTML_NS && ns !== _OFFLINE_SVG_NS) return false;
+  const loadAttrs = ns === _OFFLINE_SVG_NS ? ["href", "xlink:href"] : ["src"];
+  if (loadAttrs.some(function (a) { return s.hasAttribute(a); })) return false;
+  return _offlineScriptCodeRuns(s);
+}
 // Whether a browser really REQUESTS this `<script>`'s `src`. A DIFFERENT question from execution
 // above, and the difference is MEASURED rather than reasoned: Chromium issues the request from its
 // speculative PRELOAD SCANNER, which reads the tag soup ahead of the parser under a rule of its
@@ -16389,6 +16408,12 @@ function _offlinePingTargets(value) {
 // export for a classic script carrying the legacy `event`+`for` pair, which Chromium requests.
 // The `neutralized` branch has no validator counterpart on purpose: the gate reads the document as
 // AUTHORED, where such a block is still a runnable script, so both sides call it a loader.
+//
+// NOTE the one-word difference from `_offlineScriptSrcIsFetched` above, which is the PURE predicate
+// pinned to the validator. THIS function is the caller wrapper, and the `neutralized` short-circuit
+// it adds is security-relevant: calling the pure predicate here instead would let a decoy that
+// borrowed a reserved layer id keep a network `src` the export must remove. Every strip pass asks
+// THIS one; only the parity test asks the pure one.
 function _offlineScriptSrcFetches(s, neutralized) {
   // A block the exporter itself neutralized was RUNNABLE as authored, so its `src` was a real load
   // and the element goes - a decoy that borrowed a reserved layer id must not buy itself the
@@ -16414,8 +16439,19 @@ function _offlineScriptSrcFetches(s, neutralized) {
 // whether the ELEMENT was removed, so one carrying two network attributes is counted exactly once.
 function _offlineStripScriptLoad(s, neutralized) {
   if (_offlineIsNetworkUrl(s.getAttribute("src"))) {
-    if (_offlineScriptSrcFetches(s, neutralized)) { s.remove(); return true; }
-    if (!_offlineActiveDataScriptType(s.getAttribute("type"))) s.removeAttribute("src");
+    if (_offlineScriptSrcFetches(s, neutralized)) {
+      // FETCHED and RUNNABLE: the element is a live loader, so it goes.
+      // FETCHED but NOT runnable is a real shape - a classic script carrying the legacy
+      // `event`+`for` pair is requested and then never run (measured, issue #1171) - and there the
+      // dead ATTRIBUTE alone is enough: taking it reaches zero network, while deleting the element
+      // would destroy an author's inert body for a resource nobody executes. That is the same
+      // treatment the data-block and inert-`href` branches below already give. The `neutralized`
+      // decoy keeps the whole-element treatment: it was runnable as authored.
+      if ((neutralized && neutralized.has(s)) || _offlineScriptCodeRuns(s)) { s.remove(); return true; }
+      s.removeAttribute("src");
+    } else if (!_offlineActiveDataScriptType(s.getAttribute("type"))) {
+      s.removeAttribute("src");
+    }
   }
   const loading = ["href", "xlink:href"].filter(function (attr) {
     return _offlineIsNetworkUrl(s.getAttribute(attr));
@@ -16856,11 +16892,12 @@ function _stripOfflineRichRenderers(doc, neutralized) {
     }
   });
   doc.querySelectorAll("script").forEach(function (s) {
-    // This pass DELETES an element on what its body says, so it asks the exact question - a
-    // MIME-parameter, `nomodule`, `event`+`for`, whitespace-only-`type` or `language`-fallback
-    // block is a stale shim no browser ever ran, and removing it costs an author content for
-    // nothing (issue #1171). Same reasoning as the `script[src]` arm above, one step further in.
-    if (!_offlineScriptCodeRuns(s)) return;
+    // This pass DELETES an element on what its BODY says, so it asks whether that body runs at all
+    // (issue #1171). A MIME-parameter, `nomodule`, `event`+`for`, whitespace-only-`type` or
+    // `language`-fallback block is a stale shim no browser ever ran; a MathML script's body never
+    // runs either; and a script with an external source never runs its own child text, so reading
+    // that text and deleting the element costs an author a loader that works.
+    if (!_offlineScriptRunsInlineBody(s)) return;
     const body = s.textContent || "";
     if (_OFFLINE_LAYER_SCRIPT_RE.test(body)) return;
     if (/mermaid/i.test(body) && (/\bimport\s*\(/.test(body) || /\bmermaid\.(?:initialize|run)\b/i.test(body) || /\.run\s*\(/.test(body))) {
@@ -17152,10 +17189,12 @@ function _offlineHoistChartScripts(doc) {
     // EXECUTING code the source document never ran. (The chart EVIDENCE scan is left alone: a false
     // positive there only costs bytes, which is the trade that row already documents.)
     if (_offlineInHtmlNoscript(s)) return false;
-    // The EXACT predicate, because this pass MOVES an element (issue #1171). Hoisting exists to
-    // order code relative to the inlined library, which is meaningless for a block that never
-    // runs, and relocating one shifts an author's content and the comment anchors around it.
-    if (!_offlineScriptCodeRuns(s)) return false;
+    // The INLINE-BODY predicate, because this pass MOVES an element on what its body says (issue
+    // #1171). Hoisting exists to order code against the inlined library, which is meaningless for a
+    // block that never runs, and relocating one shifts an author's content and the comment anchors
+    // around it. It must also never move a MathML script, whose body does NOT run where it is but
+    // WOULD run once hoisted into `<body>` and reparsed - the export must not add behavior.
+    if (!_offlineScriptRunsInlineBody(s)) return false;
     const text = s.textContent || "";
     if (_OFFLINE_LAYER_DECL_RE.test(text)) return false;
     if (_OFFLINE_CHART_CTOR_RE.test(text)) return true;
