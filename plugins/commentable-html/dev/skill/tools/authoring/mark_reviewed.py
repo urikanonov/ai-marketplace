@@ -32,6 +32,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _atomic_io  # noqa: E402
 import _browser_attrs  # noqa: E402
 import section_hash  # noqa: E402
 
@@ -140,8 +141,7 @@ def _read(path):
 def _write(path, text, nl):
     if nl != "\n":
         text = text.replace("\n", nl)
-    with open(path, "w", encoding="utf-8", newline="") as fh:
-        fh.write(text)
+    _atomic_io.atomic_write(path, text)
 
 
 def _load_markers(html):

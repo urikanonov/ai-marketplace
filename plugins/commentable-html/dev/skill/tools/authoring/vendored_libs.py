@@ -30,7 +30,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
-
+import _atomic_io  # noqa: E402
 import _browser_attrs  # noqa: E402
 import new_document  # noqa: E402
 
@@ -321,8 +321,7 @@ def apply_file(path, source_blob=None):
     state = content_state(html)
     out, changed = apply(html, source_blob)
     if changed:
-        with open(path, "w", encoding="utf-8", newline="") as fh:
-            fh.write(out)
+        _atomic_io.atomic_write(path, out)
     return changed, state
 
 
@@ -366,8 +365,7 @@ def main(argv):
 
     out, changed = apply(html, source_blob)
     if changed:
-        with open(args.file, "w", encoding="utf-8", newline="") as fh:
-            fh.write(out)
+        _atomic_io.atomic_write(args.file, out)
     print("vendored_libs: content=%s -> %s" % (state, "rewritten" if changed else "unchanged"))
     return 0
 

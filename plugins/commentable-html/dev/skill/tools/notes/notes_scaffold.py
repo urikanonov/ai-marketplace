@@ -17,8 +17,12 @@ tools/authoring/new_document.py or paste it into an existing document.
 """
 import argparse
 import html as _html
+import os
 import re
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _atomic_io  # noqa: E402
 
 
 def _attr(name, value):
@@ -59,8 +63,7 @@ def main(argv):
     text = sys.stdin.read() if args.text == "-" else args.text
     out = scaffold(args.id, args.label, text, multiline=args.multiline, foldable=args.foldable)
     if args.out:
-        with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(out)
+        _atomic_io.atomic_write(args.out, out)
     else:
         sys.stdout.write(out)
     return 0

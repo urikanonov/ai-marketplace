@@ -25,6 +25,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _atomic_io  # noqa: E402
 import _browser_attrs  # noqa: E402
 
 SAFE_ID_RE = re.compile(r"^c[a-z0-9]{6,63}$")
@@ -163,8 +164,7 @@ def mark_handled(path, new_ids):
     out = html[:content_start] + "\n" + _format_array(merged) + "\n" + html[endtag_start:]
     if nl != "\n":
         out = out.replace("\n", nl)
-    with open(path, "w", encoding="utf-8", newline="") as fh:
-        fh.write(out)
+    _atomic_io.atomic_write(path, out)
     return added
 
 

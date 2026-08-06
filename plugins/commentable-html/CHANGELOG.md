@@ -4,6 +4,64 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.748.0] - 2026-08-05
+
+### Fixed
+
+- Every tool that rewrites a file the user could lose now writes it ATOMICALLY, through the same
+  shared crash-safe writer the validated stamp already used (CMH-TOOL-22, CMH-PORT-04). The tools
+  `mark_handled`, `mark_reviewed`, `notes_apply`, `checklist_apply`, `generate_toc`, `doc_stats`,
+  `normalize_typography`, `wrap_sections`, `fix_skip`, `inline_images`, `vendored_libs`,
+  `content_extract`, `notes_scaffold`, `checklist_scaffold`, `highlight_document`,
+  `deck_fix_fonts`, `deck_scaffold`, `pptx_to_fragment` and `new_document --force` all used a
+  truncating write, which empties the target BEFORE the replacement bytes exist. SKILL.md points
+  an agent straight at a real document, so a full disk, an encoding error, a killed run or a
+  Ctrl+C left the user's only copy half written - or empty. The new bytes are now staged in the
+  target's own directory and swapped in with `os.replace`, so a failed or interrupted write leaves
+  the original byte for byte, leaks no staged file, and is reported rather than silently
+  half-applied. The NonShareable companions `new_document --copy-assets` refreshes beside a
+  document are copied the same way, because a half-copied runtime breaks a document just as
+  effectively; the whole set is staged before any of it is swapped in, so a failure DURING
+  staging cannot leave a document pairing a new runtime with an old stylesheet (the renames
+  themselves are still separate, which CMH-TOOL-22 records as a residual).
+- The three tools that stage their own replacement (`upgrade`, `retrofit`, `deck_theme`) now
+  flush the staged bytes to the disk before the swap and share the same commit step. A rename is
+  only as durable as the bytes it points at, so without that a power failure could leave the new
+  name pointing at blocks that were never written.
+- `content_replace` now removes its staging work file from a `finally` rather than an
+  `except Exception`, and through the shared helper that clears a read-only bit first, so neither
+  a Ctrl+C mid-transaction nor a Windows read-only attribute can leave a full copy of the user's
+  document sitting beside it (CMH-CONTENT-IO-02).
+- A CLI that writes to `--out` now names its SOURCE document (or, for a scaffold or a converter,
+  its input file when it is not stdin) as the permission fallback, so a transformed copy written
+  to a path that does not exist yet keeps the source's visibility instead of landing at the
+  (possibly wider) process default.
+- A destination whose DIRECTORY cannot be written is now reported in terms of the document and
+  the directory, rather than as a failure on a `.cmh-write-` path the user has never seen.
+- The swap is retried on Windows, where `os.replace` fails with a sharing violation while another
+  process holds the destination open (a virus scanner, an editor, a sync client) and the old
+  truncating write would have succeeded. The retry is short and BOUNDED (four backed-off waits,
+  ~0.75s), so a genuinely locked file still fails loudly and leaks nothing, and any other
+  `PermissionError` - a POSIX one, or a Windows access-denied - is still raised at once. `upgrade`,
+  `retrofit` and `deck_theme`, which stage their own replacement, share the same retried swap.
+
+### Changed
+
+- The shared writer moved from `tools/authoring/_atomic_io.py` to the `tools/` ROOT, beside the
+  other cross-bucket modules: tools in five buckets plus the validator's stamp now depend on it,
+  and a shared guarantee must not be reachable only from inside one bucket.
+- A new static guard parses every shipped tool and FAILS CLOSED on any call that can empty a named
+  file - a truncating or non-literal `open` mode, `Path.write_text`/`write_bytes`, a `shutil`
+  copy or move (including one imported under a bare or renamed name), or `os.open` whose flags
+  cannot be shown to be read-only - unless it is explicitly marked as a write to a file the tool
+  staged itself. Its own detection surface is pinned by a test, in both directions: the spellings
+  it must catch, and the ones it must not (a `dict.copy()` is not a file write, and a guard that
+  cries wolf gets silenced).
+- One consequence of replacing rather than truncating: because it is the containing DIRECTORY's
+  write permission that permits the swap, these tools can now rewrite a document whose own file
+  permissions are read-only, where a truncating write would have failed. The replacement keeps the
+  original's permission bits.
+
 ## [1.747.0] - 2026-08-05
 
 ### Changed

@@ -64,6 +64,9 @@ def _read(path):
 
 
 def _write(path, text, newline=""):
+    # atomic-write: `path` here is the .cmh-replace- work file this module staged itself, so it
+    # holds no bytes a failure could lose; the user's document is only ever swapped in by
+    # `_atomic_write` below.
     with io.open(path, "w", encoding="utf-8", newline=newline) as fh:
         fh.write(text)
 
@@ -245,10 +248,9 @@ def replace(path, fragment, handled_ids=None, strict=True):
             if strict:
                 _stamp(work)
         final = _read(work)
-    except Exception:
-        _quiet_remove(work)
-        raise
-    else:
+    finally:
+        # A finally, not `except Exception`: the work file holds a full copy of the user's
+        # document, so a KeyboardInterrupt mid-transaction must not leave it behind either.
         _quiet_remove(work)
 
     if _without_validated_timestamp(final) == _without_validated_timestamp(original):
@@ -282,10 +284,10 @@ def _stamp(path):
 
 
 def _quiet_remove(path):
-    try:
-        os.remove(path)
-    except OSError:
-        pass
+    """Delete the work file, clearing a read-only bit first (see `_atomic_io.quiet_remove`): the
+    work file holds a full copy of the user's document, so a Windows read-only attribute must not
+    turn cleanup into a silent leak."""
+    _atomic_io.quiet_remove(path)
 
 
 def _read_fragment(source):

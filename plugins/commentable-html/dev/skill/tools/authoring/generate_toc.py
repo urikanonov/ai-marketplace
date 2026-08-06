@@ -7,6 +7,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _atomic_io  # noqa: E402
 import _browser_boundaries  # noqa: E402
 import _browser_attrs  # noqa: E402
 
@@ -425,8 +426,7 @@ def main(argv):
             source = handle.read()
         if args.in_place:
             rewritten = rewrite_html(source)
-            with open(args.file, "w", encoding="utf-8", newline="") as handle:
-                handle.write(rewritten)
+            _atomic_io.atomic_write(args.file, rewritten)
             print("updated %s" % args.file)
         else:
             print(build_toc(source))

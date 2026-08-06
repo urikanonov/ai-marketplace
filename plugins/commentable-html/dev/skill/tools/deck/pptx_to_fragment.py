@@ -37,6 +37,7 @@ import zipfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _atomic_io  # noqa: E402
 from deck_common import esc, slide_id  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -283,7 +284,10 @@ def main(argv=None):
         print(f"pptx_to_fragment: {exc}", file=sys.stderr)
         return 1
     if args.out:
-        Path(args.out).write_text(fragment, encoding="utf-8")
+        # fallback: when the slides came from a FILE, a new --out inherits its visibility rather
+        # than the process umask default.
+        source = args.pptx or (args.input if args.input and args.input != "-" else None)
+        _atomic_io.atomic_write(args.out, fragment, fallback=source)
     else:
         sys.stdout.buffer.write(fragment.encode("utf-8"))
     return 0

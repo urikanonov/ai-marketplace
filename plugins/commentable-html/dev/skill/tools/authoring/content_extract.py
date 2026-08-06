@@ -29,6 +29,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _atomic_io  # noqa: E402
 import _highlight_core as _core  # noqa: E402
 import highlight_code  # noqa: E402
 import highlight_document  # noqa: E402
@@ -158,8 +159,9 @@ def main(argv):
             % (len(refusals), ", ".join(sorted(set(refusals)))))
 
     if args.out:
-        with io.open(args.out, "w", encoding="utf-8", newline="") as fh:
-            fh.write(fragment + "\n")
+        # fallback: the fragment carries the document's own CONTENT region, so a new --out
+        # inherits the SOURCE document's visibility rather than the process umask default.
+        _atomic_io.atomic_write(args.out, fragment + "\n", fallback=args.file)
         sys.stderr.write("content_extract: wrote %d byte(s) to %s\n"
                          % (len(fragment), args.out))
     else:

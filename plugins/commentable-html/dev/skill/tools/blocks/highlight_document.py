@@ -24,6 +24,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
+import _atomic_io  # noqa: E402
 import _browser_attrs  # noqa: E402
 _toolpath.ensure()
 import highlight_code  # noqa: E402
@@ -91,8 +92,7 @@ def _read(path):
 
 
 def _write(path, text):
-    with open(path, "w", encoding="utf-8", newline="") as fh:
-        fh.write(text)
+    _atomic_io.atomic_write(path, text)
 
 
 def main(argv=None):
