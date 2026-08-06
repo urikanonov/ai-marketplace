@@ -75,9 +75,22 @@ def _check_kql_blocks(html, parser):
         if "cmh-kql-run" not in class_tokens(a.get("class")):
             continue
         href = a.get("href", "")
-        if not href.startswith("https://dataexplorer.azure.com/"):
+        # The ORIGIN half asks the same question CMH-KQL-07's hard gate asks, so it asks it through
+        # the same predicate (#1156). A literal prefix test on the raw value was the FALSE-POSITIVE
+        # direction of the very differential this reader was fixed for: it is case-sensitive and
+        # path-bound, so `HTTPS://DataExplorer.Azure.Com/x`, `https://dataexplorer.azure.com:443/x`,
+        # `https://dataexplorer.azure.com?q` and a bare `https://dataexplorer.azure.com` all warned -
+        # fatal under `--strict` - about links a browser really does open in ADX. Nothing the prefix
+        # accepted is lost: it pinned the authority exactly, so every href it cleared the predicate
+        # clears too, and a non-default port (`:444`), which the prefix DID warn about, is still an
+        # origin the predicate refuses.
+        if not _is_adx_run_href(href):
+            # `%r` for the same reason the two diagnostics below use it: this branch now catches
+            # exactly the paddings a browser-accurate parse rejects, so the value routinely carries
+            # a raw newline or control character that would break the line or drive a terminal.
             warnings.append('a "cmh-kql-run" link does not point at https://dataexplorer.azure.com/ '
-                            "(build it with tools/kusto_link.py): " + (href[:80] or "(empty href)"))
+                            "(build it with tools/kusto_link.py): "
+                            + (repr(href[:80]) if href else "(empty href)"))
         # The condition is the one a BROWSER actually applies: does this target CREATE an auxiliary
         # browsing context, whose `window.opener` points back at this document? The operand is the
         # EFFECTIVE target HTML resolves (`effective_link_target`, the one reading the render-time

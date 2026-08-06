@@ -561,6 +561,49 @@ class ValidateDiffAndKqlTests(ValidateAssertions, unittest.TestCase):
         fig = self._kql_figure('<a class="cmh-kql-run" href="&#106;avascript:alert(1)">Run</a>')
         self.assertError(self._kql_doc(fig), "https://dataexplorer.azure.com/")
 
+    def test_kql_figure_run_link_href_is_read_the_way_a_browser_reads_it(self):
+        # #1156: the run-link href is classified by PARSING it, so the parse has to be the one a
+        # browser does. Python's argument-less `str.strip()` reaches past ASCII and removes NBSP,
+        # U+2028, U+3000 and U+0085, which the URL parser KEEPS: `urlparse` then saw the https
+        # scheme and the exact ADX host, so the gate cleared a link a browser resolves RELATIVE to
+        # the document - it goes somewhere else entirely.
+        for pad in ("\u00a0", "\u2028", "\u3000", "\u0085"):
+            fig = self._kql_figure('<a class="cmh-kql-run" href="%shttps://dataexplorer.azure.com/x" '
+                                   'target="_blank" rel="noopener noreferrer">Run</a>' % pad)
+            self.assertError(self._kql_doc(fig), "https://dataexplorer.azure.com/")
+        # A backslash is the other half of the same reading: for a SPECIAL scheme the URL parser
+        # treats `\` as `/`, so a browser reads the authority as `evil.example` and the ADX host as
+        # a path segment. `urlparse` keeps the backslash in the netloc and takes the host from
+        # AFTER the `@`, which reported the exact ADX host for a link that never goes there.
+        fig = self._kql_figure('<a class="cmh-kql-run" href="https://evil.example\\@dataexplorer.azure.com/x" '
+                               'target="_blank" rel="noopener noreferrer">Run</a>')
+        self.assertError(self._kql_doc(fig), "https://dataexplorer.azure.com/")
+        # An invalid or out-of-range PORT is a URL the parser fails on, so a browser opens nothing
+        # at all; a valid but NON-DEFAULT port is a different origin, which does not serve the ADX
+        # web UX. `urlparse` reports a hostname without ever looking at the port, so all of these
+        # named the exact ADX host and cleared the hard gate.
+        for port in (":abc", ":65536", ":444", ":0"):
+            fig = self._kql_figure('<a class="cmh-kql-run" href="https://dataexplorer.azure.com%s/x" '
+                                   'target="_blank" rel="noopener noreferrer">Run</a>' % port)
+            self.assertError(self._kql_doc(fig), "https://dataexplorer.azure.com/")
+        # The controls: characters the URL parser really does remove - a leading C0 control or
+        # space, and a tab anywhere - still leave a genuine ADX link, which must stay clean. So do
+        # the backslash spellings a SPECIAL scheme resolves to the same authority, and the
+        # case-, port- and path-insensitivity of a real URL parse, which the literal prefix test
+        # this reader used to run got wrong in the false-positive direction.
+        for spelling in ("\u0001https://dataexplorer.azure.com/x",
+                         " https://dataexplorer.azure.com/x",
+                         "https://dataexplorer.azure.com/&#9;x",
+                         "https:\\\\dataexplorer.azure.com/x",
+                         "https://dataexplorer.azure.com\\x",
+                         "HTTPS://DataExplorer.Azure.Com/x",
+                         "https://dataexplorer.azure.com:443/x",
+                         "https://dataexplorer.azure.com?q=1",
+                         "https://dataexplorer.azure.com"):
+            fig = self._kql_figure('<a class="cmh-kql-run" href="%s" '
+                                   'target="_blank" rel="noopener noreferrer">Run</a>' % spelling)
+            self.assertOkNoWarn(self._kql_doc(fig))
+
     def test_kql_figure_run_link_only_in_query_text_errors_missing(self):
         # CMH-KQL-07: the run link must be a real <a class="cmh-kql-run"> element, not a raw
         # substring. A figure whose QUERY TEXT merely mentions "cmh-kql-run" (with no real link)

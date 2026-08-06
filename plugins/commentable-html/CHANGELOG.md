@@ -4,6 +4,51 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.775.0] - 2026-08-06
+
+### Fixed
+
+- The validator now trims an `<a href>`'s ENDS the way the URL parser trims them, in the two
+  remaining readers that still used Python's argument-less `str.strip()`. (The end trim is
+  the only part of the browser's reading claimed here: neither reader models WHATWG host
+  canonicalization or the parser's authority-slash tolerance, gaps that can only reject a
+  link a browser would open, never clear one.) The URL parser trims only C0
+  controls and space (U+0000-U+0020) from a URL's ends, and the two sets differ in BOTH
+  directions. `str.strip()` reaches past ASCII and also removes NBSP, U+2028, U+3000 and U+0085,
+  which the parser KEEPS - the PERMISSIVE half, where the differential SUPPRESSED a check rather
+  than firing it spuriously - while it does NOT remove a non-whitespace C0 control that the parser
+  does, which fired one spuriously.
+  (1) The new-tab check (CMH-LINK-05) stripped the NBSP off `href="&#xa0;mailto:x"`, saw the
+  `mailto:` scheme, and exempted the link, where the render-time stamper resolves the same href
+  through `new URL(...)`, reads the document's own protocol, and treats it as the document
+  reference it is. The same trim also made `href="&#xa0;#frag"` look like a same-page fragment: it
+  is not, because the parser keeps the NBSP, so a browser resolves a DIFFERENT document and an
+  author-set `target="_self"` navigates the reviewer away from the report and their comments.
+  Conversely `href="&#x1;mailto:x"` was reported as a same-tab document reference although a
+  browser trims the control and reads the exempt `mailto:` link it is - that false positive is
+  gone too. (2) The ADX run-link check (CMH-KQL-07) parsed the stripped value, so an
+  `href="&#xa0;https://dataexplorer.azure.com/..."` reported the exact ADX host for a link a
+  browser resolves relative to the document. That reader now goes through the existing
+  `normalize_url_value`, which also closes a second, unrelated differential in the same predicate:
+  `urlparse` keeps a backslash inside the netloc and takes the host from AFTER an `@`, so
+  `https://evil.example\@dataexplorer.azure.com/x` was accepted as an ADX link, while a browser
+  maps the backslash onto a slash for a special scheme and reads the authority as `evil.example`.
+  It reads the PORT as well, since `urlparse` reports a hostname without ever looking at one, so
+  neither a `:abc` / `:65536` ADX-looking URL - which the URL parser fails on outright - nor a
+  valid but non-default `:444`, which is a different origin that does not serve the ADX web UX,
+  clears the gate any more. The end trim now has ONE definition (`url_ends_trim` in
+  `checks/parsing.py`), which the favicon emptiness test, the new-tab classification and
+  `normalize_url_value` all share.
+- The CMH-KQL-05 run-link warning asked CMH-KQL-07's question with its own literal
+  `https://dataexplorer.azure.com/` prefix test on the raw href, which was the FALSE-POSITIVE
+  direction of the same defect: being case-sensitive and path-bound, it warned about
+  `HTTPS://DataExplorer.Azure.Com/x`, `https://dataexplorer.azure.com:443/x`,
+  `https://dataexplorer.azure.com?q` and a bare `https://dataexplorer.azure.com` - all links a
+  browser really does open in ADX, and a warning is fatal under `--strict`. It now calls the same
+  predicate, so the two readers cannot disagree, and it reports the offending href with `%r` like
+  its neighbours (this branch now catches exactly the control-character paddings that would
+  otherwise break the diagnostic across lines).
+
 ## [1.765.0] - 2026-08-06
 
 ### Fixed
