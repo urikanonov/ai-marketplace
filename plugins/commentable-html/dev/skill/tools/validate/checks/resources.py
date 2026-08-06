@@ -151,11 +151,18 @@ CSS_NETWORK_IMAGE_SET_RE = re.compile(
 # reading below - the one used when the list never closed.
 _CSS_IMAGE_SET_MARKUP = "<>"
 _CSS_IMAGE_SET_STOP = "<>;{}"
-# A whole `url(...)` function, blanked out of a candidate list before the bare-string reading looks
-# at it, so the two readings do not both report ONE `image-set(url(https://h/x) 1x)`. The escape arm
-# keeps a `\)` inside the reference from ending it early; an UNCLOSED `url(` runs to the end of the
-# args, which is the fail-safe direction here (the `url()` reading has already seen it).
-_CSS_URL_FUNC_RE = re.compile(r"url\((?:\\.|[^()\\])*\)?", re.IGNORECASE | re.DOTALL)
+# A candidate is read ANCHORED at its own start, exactly as `CSS_NETWORK_URL_RE` anchors immediately
+# after `url(` and its optional quote. Searching the args string for a network prefix ANYWHERE
+# instead was wrong in both directions: it reported a bare `data:image/svg+xml,<svg
+# xmlns='http://www.w3.org/2000/svg'>` candidate - which fetches nothing at all - as egress, while a
+# blanking pass added to keep the two readings from double-reporting one declaration could be made
+# to swallow a LATER remote candidate (`image-set("x.png?q=url(" 1x, "https://evil/x.png" 2x)`
+# validated clean). Reading candidate by candidate removes the need to blank anything: a candidate
+# that IS a function token is simply skipped, because `url(...)` is the other reading's to report
+# and `var(...)` is the recorded residual.
+_CSS_ANCHORED_NETWORK_RE = re.compile(CSS_NETWORK_PREFIX + CSS_HOST_CHAR, re.IGNORECASE | re.ASCII)
+_CSS_FUNC_START_RE = re.compile(r"[A-Za-z-][A-Za-z0-9-]*\(", re.ASCII)
+_CSS_WS_CHARS = "\t\n\f\r "
 
 
 def _css_image_set_scan(text, start, markup_ends_a_string):
@@ -211,18 +218,84 @@ def css_image_set_args(text):
         pos = stop + 1
 
 
+def _css_image_set_candidates(args):
+    """Split one `image-set(...)` argument list on its TOP-LEVEL commas.
+
+    Quote-, paren- and escape-aware, so a comma inside `url("a,b.png")` or inside a quoted `data:`
+    payload does not start a new candidate.
+    """
+    out, start, i, depth, quote, end = [], 0, 0, 0, "", len(args)
+    while i < end:
+        ch = args[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            out.append(args[start:i])
+            start = i + 1
+        i += 1
+    out.append(args[start:])
+    return out
+
+
+def _css_quoted_string_body(text):
+    """The contents of the quoted string `text` STARTS with, honoring backslash escapes."""
+    quote, i, end = text[0], 1, len(text)
+    body = []
+    while i < end:
+        ch = text[i]
+        if ch == "\\":
+            body.append(text[i:i + 2])
+            i += 2
+            continue
+        if ch == quote:
+            break
+        body.append(ch)
+        i += 1
+    return "".join(body)
+
+
+def _css_image_set_candidate_is_network(candidate):
+    """True when ONE `image-set()` candidate is a network reference."""
+    text = candidate.strip(_CSS_WS_CHARS)
+    if not text:
+        return False
+    func = _CSS_FUNC_START_RE.match(text)
+    if func:
+        # A well-formed function candidate belongs to another reading: `url(...)` is what
+        # `CSS_NETWORK_URL_RE` reports, and `var(...)` is the recorded residual. One that never
+        # CLOSES is a bad token whose declaration a browser drops, but it is read with the
+        # unanchored pattern anyway - over-reporting is the safe direction for a malformed list.
+        if _css_image_set_scan(text, func.end(), False)[1]:
+            return False
+        return bool(CSS_NETWORK_IMAGE_SET_RE.search(text))
+    if text[0] in "'\"":
+        text = _css_quoted_string_body(text)
+    return bool(_CSS_ANCHORED_NETWORK_RE.match(text))
+
+
 def css_network_image_set(text):
     """True when a BARE `image-set()` candidate in `text` is a network reference.
 
-    A candidate wrapped in `url(...)` is deliberately NOT counted: `CSS_NETWORK_URL_RE` already
-    reports it, and the caller runs both readings over the same body. Blanking the `url(...)` spans
-    is what lets the two readings be INDEPENDENT rather than an `elif` - suppressing the whole body
-    on a `url()` hit hid a network `image-set()` in an unrelated rule, so the author fixed the
-    `url()`, re-ran, and only then learned about the second reference (round-1 multi-duck panel).
+    Read candidate by candidate and ANCHORED at each candidate's start, the way
+    `CSS_NETWORK_URL_RE` anchors after `url(`. A candidate that is itself a function token is left
+    to the reading that owns it, so one declaration spelling both is reported once without any
+    blanking pass - and a `data:` payload that merely CONTAINS a URL further in cannot be mistaken
+    for egress.
     """
     for args in css_image_set_args(text or ""):
-        if CSS_NETWORK_IMAGE_SET_RE.search(_CSS_URL_FUNC_RE.sub("url()", args)):
-            return True
+        for candidate in _css_image_set_candidates(args):
+            if _css_image_set_candidate_is_network(candidate):
+                return True
     return False
 
 # The `localhost` exclusion is spelled as the URL PARSER compares a host, not as a literal, because

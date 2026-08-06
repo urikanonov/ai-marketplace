@@ -34,10 +34,11 @@ from deck_common import SLIDE_ID_RE  # noqa: E402
 try:
     from checks.resources import (CSS_HOST_CHAR, CSS_NETWORK_IMAGE_SET_RE,  # noqa: E402
                                   CSS_NETWORK_IMPORT_RE, CSS_NETWORK_PREFIX, CSS_NETWORK_URL_RE,
-                                  CSS_WS, css_image_set_args, is_network_url, srcset_candidate_urls)
+                                  CSS_WS, css_image_set_args, css_network_image_set,
+                                  is_network_url, srcset_candidate_urls)
 except Exception:  # pragma: no cover - only a broken/partial install reaches this
     CSS_HOST_CHAR = CSS_NETWORK_IMAGE_SET_RE = CSS_NETWORK_IMPORT_RE = CSS_NETWORK_PREFIX = None
-    CSS_NETWORK_URL_RE = css_image_set_args = None
+    CSS_NETWORK_URL_RE = css_image_set_args = css_network_image_set = None
     CSS_WS = is_network_url = srcset_candidate_urls = None
     _toolpath.warn_missing_tool(
         "checks.resources", "the shared network-URL predicate and srcset candidate tokenization")
@@ -168,8 +169,13 @@ def _css_url_is_remote(bodies):
     pattern = CSS_NETWORK_URL_RE or _CSS_URL_FALLBACK_RE
     if any(pattern.search(b) for b in bodies):
         return True
-    image_set = _CSS_IMAGE_SET_RE or _CSS_IMAGE_SET_FALLBACK_RE
-    return any(image_set.search(args) for b in bodies for args in _image_set_args(b))
+    if css_network_image_set is not None:
+        return any(css_network_image_set(b) for b in bodies)
+    # The degraded reading: the shared per-candidate one is gone, so every candidate list is
+    # searched whole with the over-inclusive fallback pattern. That over-reports where the shared
+    # reading is precise, which is the safe direction for a broken install.
+    return any(_CSS_IMAGE_SET_FALLBACK_RE.search(args)
+               for b in bodies for args in _image_set_args(b))
 
 
 

@@ -640,10 +640,10 @@ class DeckValidateTests(unittest.TestCase):
     # calls remote, the fallback must too, or the degraded gate fails OPEN.
     def test_a_broken_install_falls_back_to_the_over_inclusive_css_reading(self):
         saved = (deck_validate.CSS_NETWORK_URL_RE, deck_validate.CSS_NETWORK_IMPORT_RE,
-                 deck_validate._CSS_IMAGE_SET_RE)
+                 deck_validate.css_network_image_set)
         deck_validate.CSS_NETWORK_URL_RE = None
         deck_validate.CSS_NETWORK_IMPORT_RE = None
-        deck_validate._CSS_IMAGE_SET_RE = None
+        deck_validate.css_network_image_set = None
         try:
             for snippet in ('<div style="background:url(https:evil.example/bg.png)">x</div>',
                             '<div style="background:url(//evil.example/bg.png)">x</div>',
@@ -660,7 +660,7 @@ class DeckValidateTests(unittest.TestCase):
                     self.assertEqual(_errors(_inject(self.html, snippet)), [], snippet)
         finally:
             (deck_validate.CSS_NETWORK_URL_RE, deck_validate.CSS_NETWORK_IMPORT_RE,
-             deck_validate._CSS_IMAGE_SET_RE) = saved
+             deck_validate.css_network_image_set) = saved
 
     # The `url()` and `@import` readings must BE the shared objects, not copies that agree today.
     def test_the_deck_gate_holds_the_shared_css_pattern_objects(self):
@@ -668,22 +668,24 @@ class DeckValidateTests(unittest.TestCase):
         self.assertIs(deck_validate.CSS_NETWORK_URL_RE, resources.CSS_NETWORK_URL_RE)
         self.assertIs(deck_validate.CSS_NETWORK_IMPORT_RE, resources.CSS_NETWORK_IMPORT_RE)
         self.assertIs(deck_validate.is_network_url, resources.is_network_url)
-        # ...and so must the image-set reading, both its candidate pattern and its argument-list
-        # READER: the strict gate asks the same question in shareable mode (#1166), so a copy here
-        # that merely agreed today is exactly the drift that split the two gates in the first place.
-        self.assertIs(deck_validate._CSS_IMAGE_SET_RE, resources.CSS_NETWORK_IMAGE_SET_RE)
+        # ...and so must the image-set reading: the whole PREDICATE, not just its pattern, because
+        # the strict gate asks the same question in shareable mode (#1166) and a copy here that
+        # merely agreed today is exactly the drift that split the two gates in the first place.
+        self.assertIs(deck_validate.css_network_image_set, resources.css_network_image_set)
         self.assertIs(deck_validate.css_image_set_args, resources.css_image_set_args)
+        self.assertIs(deck_validate._CSS_IMAGE_SET_RE, resources.CSS_NETWORK_IMAGE_SET_RE)
         self.assertIn(resources.CSS_NETWORK_PREFIX, deck_validate._CSS_IMAGE_SET_RE.pattern)
         self.assertIn(resources.CSS_HOST_CHAR, deck_validate._CSS_IMAGE_SET_RE.pattern)
 
     # The degraded ARGUMENT-LIST reader has the same superset duty as the degraded pattern: with the
-    # shared reader gone it must still see a candidate the shared reader sees. The `;`, `{` and `<`
+    # shared reading gone it must still see a candidate the shared one sees. The `;`, `{` and `<`
     # cases are the ones a regex-shaped fallback got WRONG - each of those characters is legal
     # inside a quoted candidate (a `data:` payload carries `;`), and stopping there dropped every
     # candidate after it, so the degraded path failed OPEN (round-1 multi-duck panel, 6 of 8 ducks).
     def test_a_broken_install_falls_back_to_the_over_inclusive_image_set_reader(self):
-        saved = deck_validate.css_image_set_args
+        saved = (deck_validate.css_image_set_args, deck_validate.css_network_image_set)
         deck_validate.css_image_set_args = None
+        deck_validate.css_network_image_set = None
         try:
             for snippet in (
                     '<div style="background:image-set(\'a.png\' 1x, \'//evil.example/x\' 2x)">x</div>',
@@ -691,13 +693,40 @@ class DeckValidateTests(unittest.TestCase):
                     '<div style="background:image-set(\'data:image/png;base64,AAAA\' 1x, '
                     "'//evil.example/x' 2x)\">x</div>",
                     '<div style="background:image-set(\'a{b.png\' 1x, \'//evil.example/x\' 2x)">x</div>',
-                    '<div style="background:image-set(\'a<b.png\' 1x, \'//evil.example/x\' 2x)">x</div>'):
+                    '<div style="background:image-set(\'a<b.png\' 1x, \'//evil.example/x\' 2x)">x</div>',
+                    # An escaped delimiter inside a candidate exercises the scanner's `\\` arm, the
+                    # branch most likely to be lost if the two copies ever diverge.
+                    '<div style="background:image-set(\'a\\)b.png\' 1x, \'//evil.example/x\' 2x)">x</div>'):
                 with self.subTest(snippet=snippet, remote=True):
                     self._assert_error(_inject(self.html, snippet), "remote CSS url()")
             clean = '<div style="background:image-set(\'local.png\' 1x)">x</div>'
             self.assertEqual(_errors(_inject(self.html, clean)), [], clean)
         finally:
-            deck_validate.css_image_set_args = saved
+            (deck_validate.css_image_set_args, deck_validate.css_network_image_set) = saved
+
+    # The duplicated degraded scanner is the one place the deck can silently drift from the shared
+    # reader, and it is the path whose whole purpose is to fail closed - so the two are pinned to
+    # each other over a corpus rather than by a handful of literals (round-2 panel, 4 ducks).
+    def test_the_degraded_scanner_reads_the_same_argument_lists_as_the_shared_one(self):
+        from checks import resources
+        corpus = (
+            "image-set('a.png' 1x, '//evil.example/x' 2x)",
+            'image-set(url("a.png") 1x, "https://evil.example/x" 2x)',
+            "image-set('data:image/png;base64,AAAA' 1x, '//evil/x' 2x)",
+            "image-set('a{b.png' 1x, '//evil/x' 2x)",
+            "image-set('a<b.png' 1x, '//evil/x' 2x)",
+            "image-set('a\\)b.png' 1x, '//evil/x' 2x)",
+            "image-set(url(a.png) type('image/png'), 'https:evil/x' 2x)",
+            "image-set('a(b.png' 1x, 'https:/evil/x' 2x)",
+            "background:image-set('local.png' 1x",          # never closes
+            "image-set(",                                    # nothing after the open paren
+            "image-set('x' 1x); background:image-set('//evil/y' 1x)",   # two lists
+            "a { background: image-set('//evil/x' 1x) } b { color: red }",
+        )
+        for text in corpus:
+            with self.subTest(text=text):
+                self.assertEqual(deck_validate._image_set_args_fallback(text),
+                                 resources.css_image_set_args(text))
 
     # Declared, deliberate behavior, pinned so a later change is a decision rather than an
     # accident. (a) The CSS reads are a whole-body TEXT search, not a parse of style contexts, so a
