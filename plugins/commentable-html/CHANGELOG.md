@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.802.0] - 2026-08-06
+
+### Fixed
+
+- A report-mode mermaid diagram is now VERIFIED after it renders instead of being laid out
+  unconditionally (CMH-MMD-12). A bad render draws node boxes too small for their HTML labels (the
+  labels clip mid-word) and a `viewBox` far larger than what was actually drawn (the diagram sits
+  small in a corner with the rest blank). The runtime now measures both after the render - every
+  label's laid-out box against the box that was sized for it (an HTML label against its
+  `<foreignObject>`, an SVG `<text>` label against its node shape), and `getBBox()` intersected with
+  the `viewBox` - and repairs a failing diagram once by re-rendering that ONE diagram with SVG
+  `<text>` labels (the deck-proven path, which cannot re-flow) plus, if the bounds are still wrong,
+  a SHRINK-ONLY re-fit of the `viewBox` to the content that lands inside it. The re-render works
+  from a pristine pre-render snapshot of the diagram element, so authored `<br/>` line breaks in a
+  node label survive the repair. The repair is bounded to one attempt per diagram and rolls back to
+  the original SVG unless the re-render is no worse on every measured axis and actually achieved
+  something, so a diagram is never left worse than it rendered. Because the fault is
+  scale-dependent, a diagram is re-checked when its rendered scale moves materially (a resize,
+  rotation or reveal), not only at load. The same protection is mirrored into the Export Offline
+  vendored re-init.
+
 ## [1.800.0] - 2026-08-06
 
 ### Fixed

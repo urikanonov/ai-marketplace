@@ -290,14 +290,19 @@ class UpgradeUnitTests(unittest.TestCase):
         # from the template so the deck gate reaches already-generated documents.
         tpl = _tpl()
         gate_line = 'const htmlLabels = !document.querySelector(".deck-stage");'
-        new_init = ('m.initialize({ startOnLoad: false, theme, securityLevel: "strict", '
-                    'htmlLabels, flowchart: { htmlLabels, curve: "basis" } });')
         old_init = ('m.initialize({ startOnLoad: false, theme, securityLevel: "strict", '
                     'flowchart: { htmlLabels: true, curve: "basis" } });')
         tb, te = upgrade._mermaid_bootstrap_span(tpl, "tpl")
         self.assertIn(gate_line, tpl[tb:te])
-        # Simulate a pre-fix deck: strip the gate line and revert the init call to the old form.
-        legacy = tpl.replace("      " + gate_line + "\n", "", 1).replace(new_init, old_init, 1)
+        # Simulate a pre-fix deck: strip the gate line and revert the label init to the old
+        # hardcoded form. The init is matched by PATTERN, not by a literal copy of the current
+        # template line, so a later change to the init's shape cannot silently turn this
+        # simulation into a no-op (which would leave the test asserting nothing).
+        legacy = tpl.replace("      " + gate_line + "\n", "", 1)
+        legacy, n = re.subn(
+            r"      const initLabels = \(v\) => m\.initialize\(\{[^\n]*\n      initLabels\(htmlLabels\);\n",
+            "      " + old_init + "\n", legacy, count=1)
+        self.assertEqual(n, 1, "the template's mermaid label init no longer matches this simulation")
         lb, le = upgrade._mermaid_bootstrap_span(legacy, "legacy")
         self.assertNotIn(gate_line, legacy[lb:le])
         self.assertIn("htmlLabels: true", legacy[lb:le])

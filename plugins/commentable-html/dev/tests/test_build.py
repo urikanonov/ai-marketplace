@@ -1030,6 +1030,116 @@ class PackageTests(unittest.TestCase):
                 build.build_resources_zip_bytes(stage)
 
 
+class MermaidRerenderMirrorTests(unittest.TestCase):
+    """CMH-MMD-12: the Export Offline re-init is a hand-written MIRROR of the shell mermaid loader.
+
+    Both must carry the same render self-check contract - a pristine pre-render snapshot of every
+    diagram element, the `window.__cmhMermaidRerender` repair hook, a re-published
+    `window.__cmhMermaidReady`, and the label-mode restore - or an exported document silently loses
+    the protection the live document has. Nothing else compares the two, so pin both that the shared
+    steps are present AND that the two hook bodies stay STRUCTURALLY equivalent, which is what
+    catches a step added to only one side.
+    """
+
+    # (name, shell spelling, offline spelling) for each step that must exist on BOTH sides.
+    STEPS = (
+        ("pristine snapshot map", "const pristine = new WeakMap();", "var pristine = new WeakMap();"),
+        ("snapshot before render",
+         "pristine.set(el, el.cloneNode(true))", "pristine.set(el, el.cloneNode(true))"),
+        ("repair hook", "window.__cmhMermaidRerender =", "window.__cmhMermaidRerender ="),
+        ("render from the snapshot, not serialized text",
+         "src.cloneNode(true)", "src.cloneNode(true)"),
+        ("label-mode switch", "initLabels(want)", "initLabels(want)"),
+        ("readiness covers the repair", "window.__cmhMermaidReady = chain", "window.__cmhMermaidReady = chain"),
+    )
+
+    # Spellings that legitimately differ between an ES-module loader and the emitted ES5 string.
+    NORMALIZE = (
+        ("() => false", "() => { return false; }"),
+        ("window.mermaid.run", "m.run"),
+        ("var ", "const "),
+        ("let ", "const "),
+        ("function (", "("),
+        (") =>", ")"),
+        ("initLabels(base)", "initLabels(htmlLabels)"),
+        ("'", '"'),
+    )
+    # Applied after whitespace is stripped. The offline bootstrap has no enclosing `htmlLabels`
+    # const to close over (it re-derives the document's default label mode per call), so that one
+    # extra statement is dropped rather than treated as drift.
+    POST_NORMALIZE = ('constbase=!document.querySelector(".deck-stage");',)
+
+    def setUp(self):
+        self.shell = _read(os.path.join(_paths.ASSETS, "template.shell.html"))
+        self.offline = _read(os.path.join(_paths.ASSETS, "js", "68-export-offline.js"))
+
+    @staticmethod
+    def _offline_bootstrap(text):
+        """Join the emitted mermaid re-init back into the script it becomes at export time."""
+        start = text.index('_offlineAppendInlineScript(doc, head,\n      "(function(){')
+        end = text.index('{ "data-cmh-offline-lib-init": "mermaid" }', start)
+        parts = re.findall(r'^\s*\+?\s*"((?:[^"\\]|\\.)*)"\s*$', text[start:end], re.M)
+        if not parts:
+            raise AssertionError("could not extract the offline mermaid bootstrap string")
+        return "".join(p.encode().decode("unicode_escape") for p in parts)
+
+    @classmethod
+    def _hook_body(cls, text):
+        """The `window.__cmhMermaidRerender` body, normalized to a comparable token sequence."""
+        start = text.index("window.__cmhMermaidRerender =")
+        depth, i, opened = 0, text.index("{", start), False
+        while i < len(text):
+            if text[i] == "{":
+                depth += 1
+                opened = True
+            elif text[i] == "}":
+                depth -= 1
+                if opened and depth == 0:
+                    break
+            i += 1
+        body = text[start:i + 1]
+        body = re.sub(r"//[^\n]*", "", body)
+        for src, dst in cls.NORMALIZE:
+            body = body.replace(src, dst)
+        body = re.sub(r"\s+", "", body)
+        for drop in cls.POST_NORMALIZE:
+            body = body.replace(drop, "")
+        return body
+
+    def test_offline_reinit_mirrors_the_shell_rerender_hook_cmh_mmd_12(self):
+        for name, shell_spelling, offline_spelling in self.STEPS:
+            with self.subTest(step=name):
+                self.assertIn(shell_spelling, self.shell,
+                              "the shell mermaid loader lost its %s" % name)
+                self.assertIn(offline_spelling, self.offline,
+                              "the Export Offline re-init lost its %s" % name)
+
+    def test_offline_rerender_hook_is_structurally_identical_cmh_mmd_12(self):
+        # A substring check only catches a REMOVED step; this catches a step added to one side, a
+        # reordering, or a changed argument, which is the drift a hand-written mirror actually risks.
+        shell_body = self._hook_body(self.shell)
+        offline_body = self._hook_body(self._offline_bootstrap(self.offline))
+        self.assertEqual(
+            offline_body, shell_body,
+            "the Export Offline mermaid re-render hook has drifted from the shell loader's; keep "
+            "the two bodies in step (see CMH-MMD-12)")
+
+    def test_neither_loader_rerenders_from_serialized_text_cmh_mmd_12(self):
+        # mermaid reads a diagram from innerHTML (it normalizes `<br/>` in a node label), so
+        # re-rendering from a textContent round-trip would drop the authored line breaks and produce
+        # a DIFFERENT diagram. Both loaders must snapshot the element itself instead, so pin the
+        # shapes an actual regression would take.
+        offline_script = self._offline_bootstrap(self.offline)
+        for name, text in (("shell", self.shell), ("offline", offline_script)):
+            with self.subTest(loader=name):
+                self.assertNotIn("pristine.set(el, el.textContent", text)
+                self.assertNotIn("pristine.set(el, el.innerHTML", text)
+                hook = self._hook_body(text)
+                self.assertNotIn(".textContent)", hook)
+                self.assertNotIn("data-cmh-md-src", hook)
+                self.assertIn("src.cloneNode(true)", hook)
+
+
 class ReleaseDateTests(unittest.TestCase):
     """read_release_date single-sources the examples' 'Generated on' build date from the dated
     CHANGELOG heading, deterministically (CMH-BUILD-15)."""
