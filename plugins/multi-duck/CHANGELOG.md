@@ -4,6 +4,18 @@ All notable changes to the multi-duck plugin are documented here. The format fol
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to semantic
 versioning.
 
+## [1.3.0] - 2026-08-06
+
+### Changed
+
+- Raised the bar for turning a panel finding into a tracked issue (MDUCK-SCOPE-12). A duck's scope is
+  the CHANGE under review, so a PRE-EXISTING defect noticed incidentally - one equally present on the
+  base revision - now goes to `SCOPED-OUT:` rather than `FINDINGS:`, unless it is user-observable
+  breakage, data loss, or a security issue reachable under the declared threat model. Incidental
+  pre-existing findings were 47 percent of the issues filed in one two-day window and were what held
+  the issue branching factor at 1.52 - above the 1.0 at which a backlog stops growing - so a panel
+  was manufacturing work faster than it could be done.
+
 ## [1.2.0] - 2026-08-04
 
 ### Added

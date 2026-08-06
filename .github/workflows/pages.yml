@@ -140,20 +140,24 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
 
-  # Alert if the pipeline fails on main (the site build or the deploy, including workflow_dispatch
-  # runs and cancellations), so a broken build or a failed deploy never silently leaves the site
-  # wrong. Opens a tracking issue, or comments on the open one, noting that the published site may
-  # be stale because a failed site check now blocks deploy.
+  # Alert if the pipeline genuinely fails on main (the site build or the deploy), so a broken build
+  # or a failed deploy never silently leaves the site wrong - and CLOSE that alert once a later run
+  # succeeds. Both halves matter: this notifier is automated issue creation, and without them it
+  # manufactured tracked issues out of noise. A CANCELLED run is deliberately NOT a failure (it is
+  # almost always a concurrency-superseded run, the normal result of pushing twice), and because the
+  # old version deduped only against OPEN issues and never closed one, closing a stale alert
+  # guaranteed the next blip filed a duplicate - the #1148 -> #1190 sequence, where the second was a
+  # GitHub infrastructure outage with the site job already green.
   notify:
     needs: [site, deploy]
-    if: ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (contains(fromJSON('["failure", "cancelled"]'), needs.site.result) || contains(fromJSON('["failure", "cancelled"]'), needs.deploy.result)) }}
+    if: ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       issues: write
     steps:
-      - name: Open or update the failure issue
+      - name: Open, update, or close the failure issue
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           SITE_RESULT: ${{ needs.site.result }}
@@ -166,6 +170,27 @@ jobs:
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             const siteResult = process.env.SITE_RESULT;
             const deployResult = process.env.DEPLOY_RESULT;
+            // Only a real failure counts. `cancelled` is excluded on purpose (superseded run), and
+            // `skipped` is normal for deploy when site did not run.
+            const failed = [siteResult, deployResult].includes("failure");
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", per_page: 100,
+            });
+            const existing = open.find((i) => !i.pull_request && i.title === title);
+            if (!failed) {
+              // Recovered: retire the alert so a later blip does not file a duplicate beside it.
+              if (existing && siteResult === "success" && deployResult === "success") {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: existing.number,
+                  body: `Recovered: the \`pages\` workflow succeeded on \`main\` (${runUrl}). Closing.`,
+                });
+                await github.rest.issues.update({
+                  owner, repo, issue_number: existing.number,
+                  state: "closed", state_reason: "completed",
+                });
+              }
+              return;
+            }
             const body = [
               `The \`pages\` workflow failed on \`main\` (site: ${siteResult}, deploy: ${deployResult}).`,
               ``,
@@ -176,10 +201,6 @@ jobs:
               ``,
               `Re-run the workflow (Actions -> pages -> Run workflow) or push a fix.`,
             ].join("\n");
-            const open = await github.paginate(github.rest.issues.listForRepo, {
-              owner, repo, state: "open", per_page: 100,
-            });
-            const existing = open.find((i) => !i.pull_request && i.title === title);
             if (existing) {
               await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
             } else {

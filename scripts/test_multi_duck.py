@@ -330,6 +330,21 @@ class MultiDuckScopeGateTests(unittest.TestCase):
         self.assertIn("never in `FINDINGS:`", t)
 
 
+    def test_an_incidental_pre_existing_finding_is_not_filed_as_an_issue(self):
+        # MDUCK-SCOPE-12: the highest-volume generator. A panel reviewing a change kept spinning off
+        # PRE-EXISTING defects it noticed in passing - 47% of the issues filed in one two-day window -
+        # which is what held the branching factor at 1.52, above 1.0. Scope is the CHANGE under
+        # review; a problem equally present on the base revision is routed to SCOPED-OUT instead.
+        t = _read(SKILL)
+        self.assertIn("Nor is a PRE-EXISTING defect you noticed incidentally", t)
+        self.assertIn("equally present on the base revision", t)
+        # The narrow exception must survive, so the rule cannot silence genuine breakage.
+        self.assertIn(
+            "unless it is user-observable breakage, data loss, or a security issue reachable under"
+            " the declared threat model", t,
+        )
+
+
 class MultiDuckHouseStyleTests(unittest.TestCase):
     def test_docs_are_lf_ascii_and_free_of_forbidden_punctuation(self):
         # MDUCK-STYLE-04: every multi-duck doc uses LF line endings, plain ASCII, and none of the
