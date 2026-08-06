@@ -49,23 +49,16 @@ _SAME_CONTEXT_TARGETS = frozenset(("", "_self", "_parent", "_top"))
 # The elements that DECLARE a named browsing context inside this document. A `target` naming one of
 # them navigates a context that already exists (an `<iframe name="win1">`), which gets no opener -
 # so the gate below must not call that reverse-tabnabbing. Names are matched EXACTLY, as HTML
-# matches a browsing-context name (only the four keywords are case-insensitive).
-_NAMED_CONTEXT_TAGS = ("iframe", "frame", "object")
-
-
-def _named_browsing_contexts(html):
-    """The browsing-context names this document declares."""
-    names = set()
-    for tag in _NAMED_CONTEXT_TAGS:
-        for el in _find_tag_attrs(html, tag):
-            if el.get("name"):
-                names.add(el["name"])
-    return names
+# matches a browsing-context name (only the four keywords are case-insensitive). The set itself is
+# collected by the document PARSER (`_DocParser.named_contexts`), which is namespace-aware and skips
+# inert `<template>` / declarative-shadow content: a name scan of the markup counted an `<iframe>` a
+# browser never instantiates, so a parked one made an unresolvable name look resolvable and silenced
+# this gate on a link that really does open a new auxiliary context.
 
 
 def _check_kql_blocks(html, parser):
     errors, warnings = [], []
-    named_contexts = _named_browsing_contexts(html)
+    named_contexts = parser.named_contexts
     # The document's first LIVE HTML `<base target>` - what an anchor with no `target` of its own
     # inherits. Read off the document PARSER, not a name scan of the markup: the parser is
     # namespace-aware and skips inert `<template>` / declarative-shadow content, so a `<base>` a
@@ -73,8 +66,12 @@ def _check_kql_blocks(html, parser):
     base_target = parser.base_targets[0] if parser.base_targets else None
     # 11c) "Run in Azure Data Explorer" links (class cmh-kql-run) must point at the ADX web UX over
     #      https and open safely. This fires ONLY on the explicit run-link class, so
-    #      it never false-positives on a plain KQL code block or a syntax example.
-    for a in _find_tag_attrs(html, "a"):
+    #      it never false-positives on a plain KQL code block or a syntax example. The anchors come
+    #      from the PARSER rather than a name scan for the same reason the two sets above do: a run
+    #      link parked in an inert `<template>` is one a browser never navigates, so inheriting the
+    #      document's `<base target>` on its behalf invented a warning - fatal under `--strict`.
+    for anchor in parser.anchors:
+        a = anchor["attrs"]
         if "cmh-kql-run" not in class_tokens(a.get("class")):
             continue
         href = a.get("href", "")
@@ -102,7 +99,12 @@ def _check_kql_blocks(html, parser):
         # (`assets/js/31-links.js` returns early on `.cm-skip`) and `checks/links.py` (which skips a
         # skip-marked anchor) pass it by.
         own_target = a.get("target")
-        raw_target = effective_link_target(own_target, base_target)
+        # Only an HTML anchor INHERITS: HTML's "get an element's target" is defined for an HTML
+        # `a`/`area`/`form`, so a foreign (SVG/MathML) run link inherits nothing - the same rule the
+        # render-time stamper applies. Without it a `<base target="_blank">` document warned about
+        # every foreign run link, which `--strict` turns into a hard failure.
+        inherited = None if anchor["foreign"] else base_target
+        raw_target = effective_link_target(own_target, inherited)
         target = _ascii_lower(raw_target)
         opens_auxiliary = (target not in _SAME_CONTEXT_TARGETS
                            and (target == "_blank" or raw_target not in named_contexts))
@@ -114,12 +116,12 @@ def _check_kql_blocks(html, parser):
             # what decided it. `%r` because the value is authored text: the covered spellings
             # include control characters (a tab, a newline, a vertical tab), and interpolating one
             # raw would break the diagnostic across lines or drive the reader's terminal.
-            if own_target is None:
-                shown = "inherited target=%r from <base target>" % raw_target[:40]
-            elif own_target != raw_target:
-                shown = "target=%r, which HTML coerces to %r" % (own_target[:40], raw_target)
+            authored = own_target if own_target is not None else inherited
+            source = "target" if own_target is not None else "inherited <base target>"
+            if authored == raw_target:
+                shown = "%s=%r" % (source, authored[:40])
             else:
-                shown = "target=%r" % raw_target[:40]
+                shown = "%s=%r, which HTML coerces to %r" % (source, authored[:40], raw_target)
             warnings.append('a "cmh-kql-run" link opens an auxiliary browsing context '
                             '(%s) without rel="noopener" (reverse-tabnabbing risk); '
                             'add rel="noopener noreferrer"' % shown)
