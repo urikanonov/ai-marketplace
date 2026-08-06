@@ -28,3 +28,14 @@
   outline-offset: -2px;
 }
 
+/* The sidebar header's bounded region (CMH-RESP-16) takes a keyboard tab stop WHILE it scrolls, so
+   it needs the same treatment: without it the landing falls back to the UA ring, whose contrast on
+   these surfaces this file exists to fix. Inset for the same reason as the list - the region spans
+   the pane's whole padding box, so an outset ring's end segment lands on the viewport edge and is
+   never painted. Keyed off the attribute the stamping writes, so it only ever applies while the
+   region is genuinely focusable. */
+.cm-sidebar .head-aux[data-cmh-scroll-a11y]:focus-visible {
+  outline: 2px solid var(--cp-accent);
+  outline-offset: -2px;
+}
+

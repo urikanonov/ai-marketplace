@@ -93,6 +93,25 @@ function _identityEditing(on) {
   els.editBox.hidden = !on;
   if (els.nameEl) els.nameEl.hidden = on;
   if (els.editBtn) els.editBtn.hidden = on;
+  // The identity row is the last child of the sidebar header's bounded `.head-aux` scroll region
+  // (CMH-RESP-16), so REVEALING the editor is not enough on a landscape phone - it can open below
+  // the region's fold. Focusing the input scrolls it in, but the NUDGE path deliberately opens the
+  // editor WITHOUT focus, so scroll it in explicitly. The adjustment is CLAMPED to the region's own
+  // `scrollTop` rather than delegated to `scrollIntoView`, which walks every scrollable ancestor:
+  // the nudge can fire while the pane is still closed (translated fully off screen), and a reveal
+  // that could move the DOCUMENT to chase an element the transform keeps off screen is a bigger
+  // side effect than the one it fixes.
+  if (on) {
+    try {
+      const aux = els.editBox.closest(".head-aux");
+      if (aux && aux.scrollHeight > aux.clientHeight + 1) {
+        const box = aux.getBoundingClientRect();
+        const row = els.editBox.getBoundingClientRect();
+        if (row.bottom > box.bottom) aux.scrollTop += row.bottom - box.bottom;
+        else if (row.top < box.top) aux.scrollTop -= box.top - row.top;
+      }
+    } catch (e) {}
+  }
   if (returnFocus && els.editBtn) { try { els.editBtn.focus(); } catch (e) {} }
 }
 function beginEditIdentity(focus) {

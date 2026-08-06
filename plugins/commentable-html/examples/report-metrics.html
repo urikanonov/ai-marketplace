@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.798.0" />
+<meta name="commentable-html-version" content="1.800.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.798.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.800.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -487,7 +487,49 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-sidebar header {
   padding: var(--cp-chrome-header-y) var(--cp-chrome-header-x); border-bottom: 1px solid var(--cp-border);
   display: flex; flex-direction: column; gap: var(--cp-chrome-gap);
+  /* The header is the pane's only unshrinkable block, and on a landscape phone its six rows can
+     total more than the pane is tall - which pushed the comment list past the bottom edge with a
+     non-zero layout height a reviewer could see none of (issue #1180). Let it shrink, and give the
+     shrink one place to land: `.head-aux` below. The three CHROME rows above it stay pinned,
+     which is also what keeps the Export and More dropdowns out of a clipping context - scrolling
+     the header itself would have clipped them, since they are absolutely positioned inside it. */
+  min-height: 0;
 }
+.cm-sidebar .head-top,
+.cm-sidebar .head-ribbon,
+.cm-sidebar .head-primary { flex: none; }
+/* The header rows that grow TRANSIENTLY (the reader-toggled search field, the document-info lines
+   and the identity editor) own no popup, so bounding them costs nothing: this is the one region
+   that absorbs the header's shrink, and it scrolls rather than pushing the list off the bottom.
+   The negative inline margin plus matching padding pushes the clip edge out to the header's own
+   padding box, so a control's focus ring is not shaved off at the region's edge and its scrollbar
+   sits flush with the pane exactly as the comment list's does. It deliberately does NOT reserve a
+   scrollbar gutter: `scrollbar-gutter: stable` would stop the rows shifting inline the moment the
+   region starts scrolling, but on a CLASSIC-scrollbar platform it reserves that width permanently,
+   which narrows the region enough to wrap the metadata onto another line and grow the header - it
+   was measured pushing a grown reply editor's Save button off screen in the pinned Linux renderer.
+   A shift that only happens once the region is already scrolling is the smaller cost.
+   `overflow-x` is pinned because `overflow-y: auto` alone would compute
+   the other axis to `auto`, and a long localized "Generated on" line would then grow a horizontal
+   scrollbar INSIDE the header, spending the very vertical budget this region exists to protect;
+   `hidden` rather than `clip` because a browser without `clip` support drops the declaration
+   entirely and falls straight back into that scrollbar, and the two compute identically here.
+   `box-sizing` is explicit because the `border-box` reset lives in the document theme rather than
+   the layer (the same reason CMH-RESP-14's controls carry it): under a reset-free host the padding
+   would otherwise be ADDED to every floor below and the region would overlap the list. It takes no
+   `min-height` on purpose - see the list's floor in `20-chrome.css` for the ordering. */
+.cm-sidebar .head-aux {
+  box-sizing: border-box;
+  display: flex; flex-direction: column; gap: var(--cp-chrome-gap);
+  flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain;
+  margin-inline: calc(-1 * var(--cp-chrome-header-x));
+  padding-inline: var(--cp-chrome-header-x);
+}
+/* The metadata lines wrap in the pane rather than running off it: with the region now clipping the
+   inline axis, a `nowrap` line that outgrew the pane would simply be cut instead of overflowing
+   harmlessly as it did while the header had no clip edge at all. */
+.cm-sidebar .cm-side-info > span { white-space: normal; }
 .cm-sidebar .head-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: var(--cp-chrome-gap) var(--cp-chrome-wide-gap); }
 .cm-sidebar header h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; flex: 1 1 8rem; min-width: 0; }
 .cm-sidebar.is-narrow .head-top { align-items: stretch; }
@@ -746,6 +788,31 @@ body.sidebar-open .cm-scroll-progress { right: calc(var(--cm-sidebar-w, 400px) +
   .cm-sidebar .cm-ribbon-btn,
   .cm-sidebar .head-primary > button,
   .cm-sidebar .head-primary .cm-sidebar-export-toggle { min-height: 44px; }
+  /* At this width the `set name` link wears an OVERLAID 44px tap target (CMH-RESP-14) that
+     overhangs its box by `(44px - link height) / 2`, about 16px at a browser-default root font and
+     ~17px at a very small one. The identity row is the LAST child of the bounded `.head-aux`
+     region, so without room for that overhang the region would clip the bottom of the target -
+     and, on a viewport with space to spare, carry ~14px of scrollable overflow for a region that
+     has nothing to scroll. The room is reserved INSIDE the scrollport, and the header's own bottom
+     padding is handed over to it so a portrait phone pays nothing for it: the 18px lands where the
+     header's padding used to be, the border below it does not move, and on a landscape phone -
+     where the region scrolls - the header gets that padding back as list. */
+  .cm-sidebar header { padding-bottom: 0; }
+  .cm-sidebar .head-aux { padding-bottom: 18px; }
+}
+/* A landscape phone is the one viewport where the header's own padding is worth more than its
+   breathing room: it is charged twice over, and what it costs is the scroll window `.head-aux`
+   has left after the pinned chrome and the comment list's floor are paid (issue #1180). */
+@media (max-height: 480px) {
+  .cm-sidebar header {
+    padding-top: var(--cp-chrome-button-y);
+    padding-bottom: var(--cp-chrome-button-y);
+  }
+}
+/* ...but at phone WIDTH the region owns the header's bottom padding (above), and this rule follows
+   the height trim so the handover wins in the overlap - a landscape phone is both. */
+@media (max-width: 640px) {
+  .cm-sidebar header { padding-bottom: 0; }
 }
 /* Attribution footer (runtime-generated, cm-skip) - appears whenever the layer is
    active, and is correctly absent from a Plain HTML export where the layer is removed.
@@ -831,7 +898,20 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 #commentRoot section.cmh-section-collapsed > * { display: none; }
 #commentRoot section.cmh-section-collapsed > .cmh-section-heading { display: revert; }
 
-.cm-sidebar .list { flex: 1; overflow-y: auto; padding: var(--cp-chrome-card-y); display: flex; flex-direction: column; gap: var(--cp-chrome-gap); }
+/* The floor is what makes the header's shrink land on `.head-aux` (see `10-layout.css`) rather
+   than on the cards: without it the list is `flex: 1 1 0` and collapses to its own padding, which
+   is how a landscape phone's header pushed it past the pane's bottom edge (issue #1180). 96px is
+   a card's meta line plus the start of its body - a usable scroll window, not a whole card, which
+   no header can promise at 320px since a rendered card is ~250px tall. It is capped at 30vh so it
+   YIELDS on a viewport shorter than the 320px this targets (30vh is exactly 96px at 320px, so the
+   shipped guarantee is unchanged): a fixed floor there would leave the pinned chrome no room and
+   it would paint over the list instead. `box-sizing` is explicit because the `border-box` reset
+   lives in the document theme rather than the layer, and under a reset-free host the card padding
+   would otherwise be ADDED to the floor and re-create the overlap this exists to prevent. The
+   ORDERING under pressure is deliberate: the chrome is pinned, this floor is next, and the region
+   absorbs whatever is left - it carries no floor of its own, because one would only ever bind when
+   the header cannot fit anyway, and there it would force the chrome to overlap the cards. */
+.cm-sidebar .list { box-sizing: border-box; flex: 1; min-height: min(96px, 30vh); overflow-y: auto; padding: var(--cp-chrome-card-y); display: flex; flex-direction: column; gap: var(--cp-chrome-gap); }
 .cm-empty { text-align: center; padding: 2rem 1rem; color: var(--cp-text-muted); font-size: var(--cp-chrome-font); line-height: 1.55; }
 .cm-empty kbd { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 4px; padding: 1px 5px; font-family: inherit; font-size: var(--cp-chrome-body-font); color: var(--cp-text); }
 
@@ -2082,6 +2162,17 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code
    (issue #897), so the landing has to look intentional. Inset, since an outset ring on a
    full-height scroll container is clipped by the panel edge. */
 #commentList:focus-visible {
+  outline: 2px solid var(--cp-accent);
+  outline-offset: -2px;
+}
+
+/* The sidebar header's bounded region (CMH-RESP-16) takes a keyboard tab stop WHILE it scrolls, so
+   it needs the same treatment: without it the landing falls back to the UA ring, whose contrast on
+   these surfaces this file exists to fix. Inset for the same reason as the list - the region spans
+   the pane's whole padding box, so an outset ring's end segment lands on the viewport edge and is
+   never painted. Keyed off the attribute the stamping writes, so it only ever applies while the
+   region is genuinely focusable. */
+.cm-sidebar .head-aux[data-cmh-scroll-a11y]:focus-visible {
   outline: 2px solid var(--cp-accent);
   outline-offset: -2px;
 }
@@ -4123,25 +4214,27 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
         </div>
       </div>
     </div>
-    <div class="head-search" id="cmSearchRow" role="search" hidden>
-      <svg class="cm-search-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-      <input type="text" id="cmSearchInput" class="cm-search-input" placeholder="Search comments" aria-label="Search comments" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <button type="button" id="cmSearchClear" class="cm-search-clear" aria-label="Clear comment search" title="Clear search" hidden><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
-      <span id="cmSearchCount" class="cm-search-count" aria-live="polite" title="Comments shown by the current search out of the total"></span>
-    </div>
-    <div class="cm-side-info" title="Document info">
-      <span id="cmGenerated"></span>
-      <span id="cmLastComment"></span>
-    </div>
-    <div class="cm-identity" id="cmIdentity" title="The name attached to comments you add. Editing it applies to new comments only; it does not change past comments.">
-      <span class="cm-identity-label">Commenting as</span>
-      <span class="cm-identity-name" id="cmIdentityName" aria-live="polite"></span>
-      <button type="button" id="btnEditIdentity" class="cm-identity-btn" title="Set or change the name attached to your new comments">set name</button>
-      <span class="cm-identity-edit" id="cmIdentityEdit" hidden>
-        <input type="text" id="cmIdentityInput" class="cm-identity-input" maxlength="60" placeholder="Your name" aria-label="Your reviewer name" autocomplete="off" autocapitalize="words" spellcheck="false">
-        <button type="button" id="btnSaveIdentity" class="cm-identity-save" title="Save this name for your new comments">Save</button>
-        <button type="button" id="btnCancelIdentity" class="cm-identity-cancel" title="Cancel">Cancel</button>
-      </span>
+    <div class="head-aux">
+      <div class="head-search" id="cmSearchRow" role="search" hidden>
+        <svg class="cm-search-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="text" id="cmSearchInput" class="cm-search-input" placeholder="Search comments" aria-label="Search comments" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button type="button" id="cmSearchClear" class="cm-search-clear" aria-label="Clear comment search" title="Clear search" hidden><svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12 M18 6L6 18"/></svg></button>
+        <span id="cmSearchCount" class="cm-search-count" aria-live="polite" title="Comments shown by the current search out of the total"></span>
+      </div>
+      <div class="cm-side-info" title="Document info">
+        <span id="cmGenerated"></span>
+        <span id="cmLastComment"></span>
+      </div>
+      <div class="cm-identity" id="cmIdentity" title="The name attached to comments you add. Editing it applies to new comments only; it does not change past comments.">
+        <span class="cm-identity-label">Commenting as</span>
+        <span class="cm-identity-name" id="cmIdentityName" aria-live="polite"></span>
+        <button type="button" id="btnEditIdentity" class="cm-identity-btn" title="Set or change the name attached to your new comments">set name</button>
+        <span class="cm-identity-edit" id="cmIdentityEdit" hidden>
+          <input type="text" id="cmIdentityInput" class="cm-identity-input" maxlength="60" placeholder="Your name" aria-label="Your reviewer name" autocomplete="off" autocapitalize="words" spellcheck="false">
+          <button type="button" id="btnSaveIdentity" class="cm-identity-save" title="Save this name for your new comments">Save</button>
+          <button type="button" id="btnCancelIdentity" class="cm-identity-cancel" title="Cancel">Cancel</button>
+        </span>
+      </div>
     </div>
   </header>
   <div class="list" id="commentList" role="region" tabindex="-1" aria-label="Comments list">
@@ -4735,7 +4828,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.798.0";
+const CMH_VERSION = "1.800.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -11135,6 +11228,25 @@ function _identityEditing(on) {
   els.editBox.hidden = !on;
   if (els.nameEl) els.nameEl.hidden = on;
   if (els.editBtn) els.editBtn.hidden = on;
+  // The identity row is the last child of the sidebar header's bounded `.head-aux` scroll region
+  // (CMH-RESP-16), so REVEALING the editor is not enough on a landscape phone - it can open below
+  // the region's fold. Focusing the input scrolls it in, but the NUDGE path deliberately opens the
+  // editor WITHOUT focus, so scroll it in explicitly. The adjustment is CLAMPED to the region's own
+  // `scrollTop` rather than delegated to `scrollIntoView`, which walks every scrollable ancestor:
+  // the nudge can fire while the pane is still closed (translated fully off screen), and a reveal
+  // that could move the DOCUMENT to chase an element the transform keeps off screen is a bigger
+  // side effect than the one it fixes.
+  if (on) {
+    try {
+      const aux = els.editBox.closest(".head-aux");
+      if (aux && aux.scrollHeight > aux.clientHeight + 1) {
+        const box = aux.getBoundingClientRect();
+        const row = els.editBox.getBoundingClientRect();
+        if (row.bottom > box.bottom) aux.scrollTop += row.bottom - box.bottom;
+        else if (row.top < box.top) aux.scrollTop -= box.top - row.top;
+      }
+    } catch (e) {}
+  }
   if (returnFocus && els.editBtn) { try { els.editBtn.focus(); } catch (e) {} }
 }
 function beginEditIdentity(focus) {
@@ -12316,6 +12428,57 @@ function saveComposerElementInner(el) {
 }
 
 
+/* ---------- Sidebar header scroll region (`.head-aux`) keyboard reachability ---------- */
+// The header's transient/meta rows live in a BOUNDED scroll region so the header can never push
+// the comment list off the bottom of the pane (CMH-RESP-16). Every CONTROL in it is focusable, so
+// tabbing already scrolls a control into view - but `.cm-side-info` (Generated / Last comment) is
+// plain text with nothing to focus, which would leave a sighted keyboard-only reviewer unable to
+// scroll it into view once the region genuinely scrolls. So the region takes a tab stop and a name
+// WHILE it scrolls, and gives them back when it does not, exactly as the table-scroll wrapper does
+// (`61-table-scroll.js`, CMH-RESP-11). Unlike that wrapper this element is the layer's own - it
+// only ever comes from the shell template - so there is no author attribute to negotiate over.
+(function () {
+  const aux = document.querySelector(".cm-sidebar .head-aux");
+  if (!aux) return;
+  const A11Y = [
+    ["tabindex", "0"],
+    ["role", "group"],
+    // Named for what is ALWAYS in it. The search row and the identity editor are both hidden most
+    // of the time, so enumerating them would announce a "search" that is not there.
+    ["aria-label", "Panel details"],
+    ["aria-description", "Scrollable region. Use the arrow keys to scroll."],
+  ];
+  let on = null;
+  function sync() {
+    // Observe any row added since the last pass; `observe` on an already-observed element is a
+    // no-op, so this stays idempotent.
+    if (ro) Array.prototype.forEach.call(aux.children, function (row) { ro.observe(row); });
+    const scrolls = aux.scrollHeight > aux.clientHeight + 1;
+    if (scrolls === on) return;
+    on = scrolls;
+    A11Y.forEach(function (pair) {
+      if (scrolls) aux.setAttribute(pair[0], pair[1]);
+      else aux.removeAttribute(pair[0]);
+    });
+    if (scrolls) aux.setAttribute("data-cmh-scroll-a11y", "");
+    else aux.removeAttribute("data-cmh-scroll-a11y");
+  }
+  // The region scrolls when its own box shrinks (a short viewport) OR when a transient row opens
+  // and grows its content, so watch both the region and each row it holds.
+  const ro = typeof ResizeObserver === "function" ? new ResizeObserver(sync) : null;
+  if (ro) ro.observe(aux);
+  sync();
+  window.addEventListener("resize", sync);
+  // A row is shown/hidden with the `hidden` attribute, which a ResizeObserver reports only once the
+  // box actually changes; observing the attribute too makes the toggle synchronous with the click.
+  // `childList` covers a row added or removed later, which neither observer would otherwise see.
+  if (typeof MutationObserver === "function") {
+    new MutationObserver(sync).observe(aux, {
+      attributes: true, subtree: true, childList: true,
+      attributeFilter: ["hidden", "style", "class"],
+    });
+  }
+})();
 /* ---------- Sidebar rendering ---------- */
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
