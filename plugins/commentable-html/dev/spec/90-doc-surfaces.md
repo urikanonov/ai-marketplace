@@ -126,6 +126,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-CONTENT-IO-04 | opt-out: an agent-facing export-reading format for the peer-review handoff | opt-out: agent-side tooling, already covered by the documented peer-review loop |
 | CMH-BUILD-21 | opt-out: an internal CI gate over the spec-to-test mapping; a reader of a document sees no new capability | opt-out: a spec-hygiene gate, with nothing to show on a slide |
 | CMH-BUILD-22 | opt-out: an internal drift guard over three egress lists; a reader of a document sees no new capability | opt-out: a cross-surface consistency guard, with nothing to show on a slide |
+| CMH-BUILD-23 | opt-out: an internal source/build invariant over the runtime bundle (one declaration per name in the shared IIFE scope); a reader of a document sees no new capability | opt-out: a build-hygiene guard against a duplicated declaration, with nothing to show on a slide |
 | CMH-DECK-43 | opt-out: a deck-theme hover affordance a reviewer discovers by pointing at a cell; the same behavior the renamed row always described | deck |
 | CMH-KQL-09 | opt-out: an internal dispatch unification; KQL blocks already rendered highlighted, so readers see no change | opt-out: an internal refactor with no visible behavior change |
 | CMH-KQL-10 | site | opt-out: the deck's KQL slide already shows a runnable block; the fix is that the link stays correct after an edit, which a slide cannot show |
