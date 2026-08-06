@@ -32,10 +32,14 @@ import _browser_attrs  # noqa: E402
 import _browser_boundaries  # noqa: E402
 from deck_common import SLIDE_ID_RE  # noqa: E402
 try:
-    from checks.resources import srcset_candidate_urls  # noqa: E402
+    from checks.resources import (CSS_HOST_CHAR, CSS_NETWORK_IMPORT_RE,  # noqa: E402
+                                  CSS_NETWORK_PREFIX, CSS_NETWORK_URL_RE, CSS_WS,
+                                  is_network_url, srcset_candidate_urls)
 except Exception:  # pragma: no cover - only a broken/partial install reaches this
-    srcset_candidate_urls = None
-    _toolpath.warn_missing_tool("checks.resources", "srcset candidate tokenization")
+    CSS_HOST_CHAR = CSS_NETWORK_IMPORT_RE = CSS_NETWORK_PREFIX = CSS_NETWORK_URL_RE = None
+    CSS_WS = is_network_url = srcset_candidate_urls = None
+    _toolpath.warn_missing_tool(
+        "checks.resources", "the shared network-URL predicate and srcset candidate tokenization")
 from cmhval import contrast  # noqa: E402
 
 PKG = Path(_toolpath.SKILL_ROOT)
@@ -53,11 +57,124 @@ BEGIN_MARK = "<!-- BEGIN: commentable-html - CONTENT"
 END_MARK = "<!-- END: commentable-html - CONTENT -->"
 
 REMOTE_FONT_RE = re.compile(r"fonts\.googleapis\.com|fonts\.gstatic\.com|api\.fontshare\.com", re.I)
+# A remote @font-face, for the self-host-fonts MESSAGE. It is deliberately scheme-literal and is
+# NOT the remote-detection backstop: a slash-run font spelling (`@font-face{src:url(//h/f.woff)}`)
+# is caught by the shared `url()` reading below, under the generic remote-CSS message.
 FONTFACE_REMOTE_RE = re.compile(r"@font-face[^}]*url\(\s*['\"]?https?:", re.I | re.S)
-IMPORT_REMOTE_RE = re.compile(r"@import\s+(?:url\()?['\"]?\s*(?:https?:)?//", re.I)
-CSS_URL_REMOTE_RE = re.compile(r"url\(\s*['\"]?\s*(?:https?:)?//", re.I)
-# image-set() can carry a bare remote string (no url() wrapper) that CSS_URL_REMOTE_RE misses.
-CSS_IMAGE_SET_RE = re.compile(r"image-set\(\s*['\"]?\s*(?:https?:)?//", re.I)
+# The SHARED CSS readings, not this gate's own: the strict validator's `url()` and `@import`
+# patterns take `https?:/*`, so `url(https:host/x.png)` and `url(https:/host/x.png)` - which the
+# URL parser resolves to the same host as `url(https://host/x.png)` - are seen here too (#1129).
+# A broken install (the import above already warned) degrades to a strictly OVER-inclusive local
+# reading (no host character required), so the gate still fails CLOSED on egress. The choice is
+# made per CALL, not bound here, so the degraded reading is reachable from a test.
+_CSS_FALLBACK_PREFIX = r"(?:https?:/*|[/\\]{2,})"
+_CSS_URL_FALLBACK_RE = re.compile(
+    r"url\([\t\n\f\r ]*['\"]?[\t\n\f\r ]*" + _CSS_FALLBACK_PREFIX, re.IGNORECASE | re.ASCII)
+_CSS_IMPORT_FALLBACK_RE = re.compile(
+    r"@import[\t\n\f\r ]*(?:url\([\t\n\f\r ]*)?['\"]?[\t\n\f\r ]*" + _CSS_FALLBACK_PREFIX,
+    re.IGNORECASE | re.ASCII)
+# `image-set()` can carry a bare remote string with no `url()` wrapper, which the shared `url()`
+# pattern cannot see and no other surface reads - so the READER is deck-only, but its prefix and
+# host-character rule come from the shared fragments rather than a hand copy. It scans EVERY
+# candidate, not just the one abutting `image-set(`: `image-set('local.png' 1x, '//h/x.png' 2x)`
+# really does fetch the second one at 2x DPR, and anchoring on the open paren saw only the first.
+_IMAGE_SET_OPEN_RE = re.compile(r"image-set\(", re.IGNORECASE | re.ASCII)
+# An unquoted one of these ends a CSS declaration or is markup, so the scan stops there. A `<` or
+# `>` inside a QUOTE is a legal CSS string character, so it only stops the scan on the SECOND
+# reading below - the one used when the list never closed.
+_IMAGE_SET_MARKUP = "<>"
+_IMAGE_SET_STOP = "<>;{}"
+_IMAGE_SET_TOKEN_START = r"(?:^|['\",(]|" + (CSS_WS or r"[\t\n\f\r ]") + r")"
+_CSS_IMAGE_SET_FALLBACK_RE = re.compile(
+    _IMAGE_SET_TOKEN_START + _CSS_FALLBACK_PREFIX, re.IGNORECASE | re.ASCII)
+_CSS_IMAGE_SET_RE = None if CSS_NETWORK_PREFIX is None else re.compile(
+    _IMAGE_SET_TOKEN_START + CSS_NETWORK_PREFIX + CSS_HOST_CHAR, re.IGNORECASE | re.ASCII)
+# The characters the URL parser removes from a reference that CSS also permits inside a quoted
+# string. It removes ASCII tab (and LF/CR) from ANYWHERE, but every OTHER C0 control only from the
+# LEADING run - so the two are normalized differently: deleting a mid-token `\x01` would turn the
+# local `url("/\x01/host")` into `url("//host")` and reject a reference that loads nothing.
+# Searching a copy normalized this way is what lets the shared patterns - whose host-character
+# class excludes tab, and whose whitespace class is CSS's, not the parser's C0-or-space - see
+# `url("//<TAB>host/x")` and `url("<VT>//host/x")`, both of which really load. LF and CR are
+# deliberately KEPT: a newline inside a CSS string makes a bad-string token and the declaration is
+# dropped, so nothing loads.
+_CSS_LEADING_C0_RE = re.compile(r"([('\",\t\n\f\r ])[\x00-\x08\x0b\x0c\x0e-\x1f]+")
+
+
+def _scan_image_set(text, start, markup_ends_a_string):
+    """Where one `image-set(` argument list ends, and whether it CLOSED with its own `)`."""
+    depth, i, quote, end = 1, start, "", len(text)
+    while i < end:
+        ch = text[i]
+        if ch == "\\":       # a CSS escape: whatever follows is a literal, never a delimiter
+            i += 2
+            continue
+        if quote:
+            if ch == quote:
+                quote = ""
+            elif markup_ends_a_string and ch in _IMAGE_SET_MARKUP:
+                return i, False
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i, True
+        elif ch in _IMAGE_SET_STOP:
+            return i, False
+        i += 1
+    return end, False
+
+
+def _image_set_args(text):
+    """Every `image-set(...)` argument list, read with a depth counter rather than a regex.
+
+    A `[^)]*` capture stopped at the FIRST `)`, which in real CSS is the `)` of a nested
+    `url(...)`/`type(...)` or a literal `)` inside a quoted candidate - so
+    `image-set(url("a.png") 1x, "//evil/x.png" 2x)` hid the candidate a 2x browser fetches.
+
+    A list that never CLOSES is re-read with markup as a hard boundary, even inside a quote: the
+    open quote is then almost certainly the one ending the `style` attribute rather than a CSS
+    string, and reading on would swallow the rest of the slide and report an allowed `<a href>`
+    further down as a remote CSS reference. A CLOSED list keeps the quote-faithful reading, so a
+    legal `<` inside a candidate (`image-set("a<b.png" 1x, "//evil/x.png" 2x)`) cannot hide the
+    candidate after it.
+    """
+    out, pos = [], 0
+    while True:
+        m = _IMAGE_SET_OPEN_RE.search(text, pos)
+        if not m:
+            return out
+        stop, closed = _scan_image_set(text, m.end(), False)
+        if not closed:
+            stop = _scan_image_set(text, m.end(), True)[0]
+        out.append(text[m.end():stop])
+        pos = stop + 1
+
+
+def _css_bodies(body):
+    # The body as written AND with the parser-removed controls normalized away, computed ONCE per
+    # check: a deck can be megabytes of inlined base64, so neither copy is made per pattern.
+    normalized = _CSS_LEADING_C0_RE.sub(r"\1", body.replace("\t", ""))
+    return (body,) if normalized == body else (body, normalized)
+
+
+def _css_import_is_remote(bodies):
+    pattern = CSS_NETWORK_IMPORT_RE or _CSS_IMPORT_FALLBACK_RE
+    return any(pattern.search(b) for b in bodies)
+
+
+def _css_url_is_remote(bodies):
+    pattern = CSS_NETWORK_URL_RE or _CSS_URL_FALLBACK_RE
+    if any(pattern.search(b) for b in bodies):
+        return True
+    image_set = _CSS_IMAGE_SET_RE or _CSS_IMAGE_SET_FALLBACK_RE
+    return any(image_set.search(args) for b in bodies for args in _image_set_args(b))
+
+
+
 # The upstream inline editor ships as an <edit-toggle> custom element / .edit-toggle control;
 # match the actual element or class, not the bare substring (which can occur in slide prose).
 EDIT_TOGGLE_RE = re.compile(r"<\s*edit-toggle\b|class\s*=\s*['\"][^'\"]*\bedit-toggle\b", re.I)
@@ -114,13 +231,36 @@ _EGRESS_ATTRS = {
 _EGRESS_ANY_ATTRS = {"background", "lowsrc"}
 _DANGER_SCHEME_RE = re.compile(r"^\s*(?:javascript|vbscript|livescript|mocha)\s*:", re.I)
 _DATA_HTML_RE = re.compile(r"^\s*data\s*:\s*text/html", re.I)
-_REMOTE_URL_RE = re.compile(r"^\s*(?:https?:)?//", re.I)
+# The strictly OVER-inclusive stand-in for the shared network predicate, used only by a broken or
+# partial install (the import above already warned): no non-empty authority is required and the
+# `file:` local-name exclusions are not applied, so it fails CLOSED rather than waving a reference
+# through. The tab/LF/CR removal is the URL parser's own input cleanup, so `ht<TAB>tps:host/x` -
+# which a browser fetches - is not read as a relative reference.
+_REMOTE_URL_FALLBACK_RE = re.compile(r"[\x00-\x20]*(?:https?:|file:|[/\\]{2,})",
+                                     re.IGNORECASE | re.ASCII)
+_URL_INNER_REMOVE_RE = re.compile(r"[\t\n\r]")
 _SKIP_AUTHORED_CONTENT_TAGS = {"script", "style", "template", "noscript", "pre"}
 _AUTHORED_ELEMENT_TAGS = {
     "article", "blockquote", "canvas", "dd", "dt", "figcaption", "figure",
     "h1", "h2", "h3", "h4", "h5", "h6", "img", "li", "ol", "p", "pre",
     "svg", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
 }
+def _is_remote_url(value):
+    # The SHARED network predicate, not a fourth reading of the same question: this gate used to
+    # ask its own `^(?:https?:)?//`, which REQUIRES the two slashes. The URL parser does not - its
+    # special-authority states CONSUME the slash run after a special scheme - so `https:host/x.png`,
+    # `https:/host/x.png` and `https:\host/x.png` all resolve to the same host as
+    # `https://host/x.png` and really are fetched (measured in Chromium from `img srcset` and
+    # `source srcset`; this helper governs EVERY egress fetch attribute, not only those two). The
+    # strict validator and the offline strip were widened for exactly those
+    # spellings in #961 (CMH-OFFLINE-04); the deck gate never was, and outside descriptor mode
+    # `offline` it is the ONLY checker a deck's `source[srcset]` gets, so the miss was egress
+    # (#1129).
+    if is_network_url is None:
+        return bool(_REMOTE_URL_FALLBACK_RE.match(_URL_INNER_REMOVE_RE.sub("", str(value or ""))))
+    return is_network_url(value)
+
+
 def _srcset_urls(value):
     # The SHARED candidate reader, not a third hand copy: `srcset` is a list, and a comma split
     # cuts a `data:` URL in half at its own media-type separator, so this gate used to reject a
@@ -208,7 +348,7 @@ class _ActiveContentScanner(_browser_boundaries.BrowserBoundaries):
                     self.errors.append("deck: dangerous URL scheme (javascript:/vbscript:/data:text/html) in the deck body")
                 if "../" in cand.replace("\\", "/"):
                     self.errors.append("deck: parent-directory (../) asset reference in the deck body")
-                if (name in egress or name in _EGRESS_ANY_ATTRS) and _REMOTE_URL_RE.match(cand):
+                if (name in egress or name in _EGRESS_ANY_ATTRS) and _is_remote_url(cand):
                     self.errors.append("deck: remote media/resource in the deck body - vendor it locally")
 
 
@@ -446,9 +586,10 @@ def deck_checks_with_options(html: str, contrast_threshold=contrast.DEFAULT_MIN_
 
     if REMOTE_FONT_RE.search(body) or FONTFACE_REMOTE_RE.search(body):
         errors.append("deck: remote font reference in the deck body - self-host fonts (no egress)")
-    if IMPORT_REMOTE_RE.search(body):
+    css_bodies = _css_bodies(body)
+    if _css_import_is_remote(css_bodies):
         errors.append("deck: remote CSS @import in the deck body")
-    if CSS_URL_REMOTE_RE.search(body) or CSS_IMAGE_SET_RE.search(body):
+    if _css_url_is_remote(css_bodies):
         errors.append("deck: remote CSS url() in the deck body - vendor the asset locally")
     # Parser-based active-content / egress checks (event handlers, dangerous schemes, remote
     # media, iframe/object/embed, ../ traversal) - robust to solidus, entities, and quoting.

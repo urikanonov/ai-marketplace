@@ -380,6 +380,242 @@ class DeckValidateTests(unittest.TestCase):
                 self.assertEqual(deck_validate._srcset_urls(value),
                                  srcset_candidate_urls(value), value)
 
+    # The deck gate used to decide "is this remote" with its own `^(?:https?:)?//`, which REQUIRES
+    # the two slashes. The URL parser does not: its special-authority states CONSUME the slash run
+    # after a special scheme, so `https:host/x.png`, `https:/host/x.png` and `https:\host/x.png`
+    # all resolve to the same host as `https://host/x.png` and really are fetched. Outside
+    # descriptor mode `offline` the base validator's media rules do not run, so for a deck this
+    # gate is the only checker for `source[srcset]` - the miss was egress (#1129).
+    def test_scheme_only_and_single_slash_remote_media_fails(self):
+        for value in ("https:evil.example/x.png", "https:/evil.example/x.png",
+                      "https:\\evil.example/x.png", "http:evil.example/x.png"):
+            for snippet in ('<img src="%s">' % value,
+                            '<img src="local.png" srcset="%s 1x">' % value,
+                            '<picture><source srcset="%s 1x"></picture>' % value):
+                with self.subTest(snippet=snippet):
+                    self._assert_error(_inject(self.html, snippet), "remote media/resource")
+
+    # ...and it must be the SHARED predicate, not a fourth reading that merely agrees on those
+    # spellings: `checks/resources.py`'s `is_network_url` is what the strict validator and the
+    # offline strip both ask, so all three surfaces agree about what a browser fetches.
+    def test_the_deck_gate_decides_remote_with_the_shared_network_predicate(self):
+        from checks.resources import is_network_url
+        for value in ("https:host/x.png", "https:/host/x.png", "https:\\host/x.png",
+                      "https://host/x.png", "//host/x.png", "\\\\host/x.png", "https://",
+                      "https:", "HTTPS:host/x.png", "//", "///", "//?q", "//#f",
+                      "////host/x.png", "assets/local.png", "./img/local.png", "local.png",
+                      "data:image/png;base64,AAAA", "data:text/plain,//host/x", "",
+                      "file://host/x.png", "file:///C:/x.png", "file://localhost/x.png",
+                      "file://localhost//host/x.png", "file:////host/x.png", "file://C:/x.png",
+                      "file:///C:/a//b.png", "#anchor", "?q=1", "ftp://host/x.png",
+                      "ws://host/x", "\thttps:/host/x.png", "\u00a0//host/x.png",
+                      "\x01\x0bhttps://host/x.png", "  //host/x.png"):
+            with self.subTest(value=value):
+                self.assertEqual(deck_validate._is_remote_url(value), is_network_url(value), value)
+
+    # Widening the predicate must add no FALSE rejection: the existing deck controls still pass.
+    def test_widening_the_remote_predicate_adds_no_false_rejection(self):
+        for snippet in ('<img src="assets/local.png" alt="">',
+                        '<img src="./img/local.png" alt="">',
+                        '<img src="data:image/png;base64,AAAA" alt="">',
+                        '<img src="local.png" srcset="local.png 1x, ./img/local.png 2x">',
+                        '<picture><source srcset="data:image/png;base64,AAAA 1x"></picture>',
+                        '<a href="https:evil.example/x">doc</a>'):
+            with self.subTest(snippet=snippet):
+                self.assertEqual(_errors(_inject(self.html, snippet)), [], snippet)
+
+    # A broken/partial install warns and degrades to the strictly OVER-inclusive local reading, so
+    # the gate still fails CLOSED on egress rather than crashing or waving a reference through.
+    def test_a_broken_install_falls_back_to_the_over_inclusive_remote_reading(self):
+        saved = deck_validate.is_network_url
+        deck_validate.is_network_url = None
+        try:
+            for value in ("https:evil.example/x.png", "https:/evil.example/x.png",
+                          "https:\\evil.example/x.png", "https://evil.example/x.png",
+                          "//evil.example/x.png", "\\\\evil.example\\x.png",
+                          "  https:evil.example/x.png", "ht\ttps:evil.example/x.png"):
+                with self.subTest(value=value, remote=True):
+                    self.assertTrue(deck_validate._is_remote_url(value), value)
+            for value in ("assets/local.png", "./img/local.png", "local.png", "",
+                          "data:image/png;base64,AAAA", "#anchor"):
+                with self.subTest(value=value, remote=False):
+                    self.assertFalse(deck_validate._is_remote_url(value), value)
+        finally:
+            deck_validate.is_network_url = saved
+
+    # The same slash-run blindness sat in the gate's CSS readings one line above the attribute one.
+    # They now ask the SHARED `url()` / `@import` patterns the strict validator asks, and the
+    # deck-only `image-set()` reader carries the same prefix.
+    def test_scheme_only_and_single_slash_remote_css_fails(self):
+        for snippet in ('<div style="background:url(https:evil.example/bg.png)">x</div>',
+                        "<style>.x{background:url(https:/evil.example/bg.png)}</style>",
+                        '<div style="background:image-set(\'https:evil.example/x.png\' 1x)">x</div>',
+                        '<div style="background:image-set(\'https:/evil.example/x.png\' 1x)">x</div>'):
+            with self.subTest(snippet=snippet):
+                self._assert_error(_inject(self.html, snippet), "remote CSS url()")
+        for snippet in ("<style>@import url(https:evil.example/x.css);</style>",
+                        '<style>@import "https:/evil.example/x.css";</style>'):
+            with self.subTest(snippet=snippet):
+                self._assert_error(_inject(self.html, snippet), "remote CSS @import")
+
+    def test_local_css_url_and_import_are_not_reported(self):
+        for snippet in ('<div style="background:url(assets/bg.png)">x</div>',
+                        "<style>.x{background:url('./img/bg.png')}</style>",
+                        "<style>@import url(local.css);</style>",
+                        '<div style="background:image-set(\'local.png\' 1x)">x</div>',
+                        '<div style="background:image-set(url(\'a.png\') 1x, \'b.png\' 2x)">x</div>',
+                        '<div style="background:image-set(\'data:image/png;base64,AAAA\' 1x, \'b.png\' 2x)">x</div>'):
+            with self.subTest(snippet=snippet):
+                self.assertEqual(_errors(_inject(self.html, snippet)), [], snippet)
+
+    # An ASCII TAB inside a quoted CSS URL: the URL parser DELETES it, and CSS allows a raw tab
+    # inside a string, so `url("//<TAB>host/x.png")` really is fetched from `//host/x.png` - but
+    # the shared host-character class excludes tab, so the pattern only sees it in a tab-free copy
+    # of the body. LF/CR need no such pass (a newline in a CSS string is a bad-string token and the
+    # declaration is dropped). Found by the round-1 multi-duck panel: swapping in the shared
+    # patterns without this pass DROPPED a spelling the gate's own regex used to catch.
+    def test_a_tab_inside_a_quoted_css_url_is_still_remote(self):
+        for snippet in ('<style>.x{background:url("//\tevil.example/x.png")}</style>',
+                        '<style>.x{background:url("https://\tevil.example/x.png")}</style>',
+                        '<div style=\'background:image-set("//\tevil.example/x.png" 1x)\'>x</div>'):
+            with self.subTest(snippet=snippet):
+                self._assert_error(_inject(self.html, snippet), "remote CSS url()")
+        self._assert_error(_inject(self.html, '<style>@import "//\tevil.example/x.css";</style>'),
+                           "remote CSS @import")
+
+    # `image-set()` is a candidate LIST. Anchoring on the open paren read only the first one, so a
+    # remote candidate at 2x sailed through while the 1x candidate was local.
+    def test_a_later_image_set_candidate_is_still_remote(self):
+        for value in ("'local.png' 1x, 'https://evil.example/x.png' 2x",
+                      "'local.png' 1x, 'https:evil.example/x.png' 2x",
+                      "'local.png' 1x, '//evil.example/x.png' 2x",
+                      "local.png 1x, //evil.example/x.png 2x"):
+            with self.subTest(value=value):
+                self._assert_error(
+                    _inject(self.html, '<div style="background:image-set(%s)">x</div>' % value),
+                    "remote CSS url()")
+
+    # The CSS reads pick their pattern per CALL, so a broken install's degraded reading is
+    # reachable here. It must be a strict SUPERSET of the shared one: anything the shared pattern
+    # calls remote, the fallback must too, or the degraded gate fails OPEN.
+    def test_a_broken_install_falls_back_to_the_over_inclusive_css_reading(self):
+        saved = (deck_validate.CSS_NETWORK_URL_RE, deck_validate.CSS_NETWORK_IMPORT_RE,
+                 deck_validate._CSS_IMAGE_SET_RE)
+        deck_validate.CSS_NETWORK_URL_RE = None
+        deck_validate.CSS_NETWORK_IMPORT_RE = None
+        deck_validate._CSS_IMAGE_SET_RE = None
+        try:
+            for snippet in ('<div style="background:url(https:evil.example/bg.png)">x</div>',
+                            '<div style="background:url(//evil.example/bg.png)">x</div>',
+                            "<style>.x{background:url(https:/evil.example/bg.png)}</style>",
+                            '<div style="background:image-set(\'a.png\' 1x, \'https:e.example/x\' 2x)">x</div>'):
+                with self.subTest(snippet=snippet, remote=True):
+                    self._assert_error(_inject(self.html, snippet), "remote CSS url()")
+            self._assert_error(_inject(self.html, "<style>@import url(https:evil.example/x.css);</style>"),
+                               "remote CSS @import")
+            for snippet in ('<div style="background:url(assets/bg.png)">x</div>',
+                            "<style>@import url(local.css);</style>",
+                            '<div style="background:image-set(\'local.png\' 1x)">x</div>'):
+                with self.subTest(snippet=snippet, remote=False):
+                    self.assertEqual(_errors(_inject(self.html, snippet)), [], snippet)
+        finally:
+            (deck_validate.CSS_NETWORK_URL_RE, deck_validate.CSS_NETWORK_IMPORT_RE,
+             deck_validate._CSS_IMAGE_SET_RE) = saved
+
+    # The `url()` and `@import` readings must BE the shared objects, not copies that agree today.
+    def test_the_deck_gate_holds_the_shared_css_pattern_objects(self):
+        from checks import resources
+        self.assertIs(deck_validate.CSS_NETWORK_URL_RE, resources.CSS_NETWORK_URL_RE)
+        self.assertIs(deck_validate.CSS_NETWORK_IMPORT_RE, resources.CSS_NETWORK_IMPORT_RE)
+        self.assertIs(deck_validate.is_network_url, resources.is_network_url)
+        # ...and the deck-only image-set reader is BUILT from the shared fragments, so it cannot
+        # drift from the `url()` reading it sits beside.
+        self.assertIn(resources.CSS_NETWORK_PREFIX, deck_validate._CSS_IMAGE_SET_RE.pattern)
+        self.assertIn(resources.CSS_HOST_CHAR, deck_validate._CSS_IMAGE_SET_RE.pattern)
+
+    # Declared, deliberate behavior, pinned so a later change is a decision rather than an
+    # accident. (a) The CSS reads are a whole-body TEXT search, not a parse of style contexts, so a
+    # slide that merely DISPLAYS remote CSS text is reported - the fail-closed direction, and the
+    # gate's behavior before this change too. (b) An EMPTY authority is not reported: no browser
+    # fetches from one, and reporting it would delete an author's value over a reference that
+    # loads nothing (the shared predicate's own documented rule, now inherited here).
+    def test_declared_css_reading_boundaries(self):
+        self._assert_error(_inject(self.html, "<pre><code>url(https:example.test/x.png)</code></pre>"),
+                           "remote CSS url()")
+        for snippet in ('<div style="background:url(//)">x</div>',
+                        '<div style="background:image-set(\'//\' 1x)">x</div>',
+                        "<style>@import url(https://);</style>"):
+            with self.subTest(snippet=snippet):
+                self.assertEqual(_errors(_inject(self.html, snippet)), [], snippet)
+
+    # An `image-set()` argument list is not `[^)]*`: the first `)` in real CSS is usually the one
+    # closing a nested `url(...)` / `type(...)`, or a literal `)` inside a quoted candidate. A
+    # regex that stopped there hid every candidate after it - the same missed 2x-DPR fetch, one
+    # level out. Found by the round-2 multi-duck panel (6 of 8 ducks).
+    def test_an_image_set_candidate_after_a_nested_paren_is_still_remote(self):
+        for value in ('url("local.png") 1x, "https://evil.example/x.png" 2x',
+                      "url(local.png) 1x, '//evil.example/x.png' 2x",
+                      'url(a.png) type("image/png"), "https:evil.example/x.png" 2x',
+                      '"a).png" 1x, "//evil.example/x.png" 2x',
+                      # ...and a `data:` candidate's own `;` separator must not truncate the list
+                      # before a later remote candidate either.
+                      '"data:image/png;base64,AAAA" 1x, "//evil.example/x.png" 2x',
+                      "'a(b.png' 1x, 'https:/evil.example/x.png' 2x"):
+            with self.subTest(value=value):
+                self._assert_error(
+                    _inject(self.html, '<div style="background:image-set(%s)">x</div>' % value),
+                    "remote CSS url()")
+
+    # ...and the same reader must not run away: an UNCLOSED `image-set(` (in a code sample, say)
+    # stops at the declaration boundary instead of swallowing the rest of the slide, where an
+    # allowed external hyperlink would otherwise be reported as a remote CSS reference.
+    def test_an_unclosed_image_set_does_not_swallow_the_rest_of_the_slide(self):
+        for snippet in ('<pre><code>background:image-set(</code></pre>'
+                        '<a href="https://learn.microsoft.com/x">doc</a>',
+                        '<div style="background:image-set(\'local.png\' 1x">x</div>'
+                        '<a href="https://learn.microsoft.com/x">doc</a>'):
+            with self.subTest(snippet=snippet):
+                self.assertEqual(_errors(_inject(self.html, snippet)), [], snippet)
+
+    # Every C0 control the URL parser REMOVES from a reference, which CSS also permits inside a
+    # quoted string: the old `\s*` reading caught the vertical tab and U+001C-U+001F, and CSS's own
+    # whitespace class does not, so the normalized copy has to cover them all - not just the tab.
+    def test_a_c0_control_inside_a_quoted_css_url_is_still_remote(self):
+        for ctrl in ("\t", "\x0b", "\x0c", "\x01", "\x1c", "\x1f"):
+            for snippet in ('<style>.x{background:url("%s//evil.example/x.png")}</style>',
+                            '<div style=\'background:image-set("%s//evil.example/x.png" 1x)\'>x</div>'):
+                with self.subTest(ctrl=repr(ctrl), snippet=snippet):
+                    self._assert_error(_inject(self.html, snippet % ctrl), "remote CSS url()")
+            with self.subTest(ctrl=repr(ctrl), at_import=True):
+                self._assert_error(
+                    _inject(self.html, '<style>@import "%s//evil.example/x.css";</style>' % ctrl),
+                    "remote CSS @import")
+
+    # A `<` is a legal CSS string character, so a CLOSED candidate list must keep the
+    # quote-faithful reading: stopping at it would let `image-set("a<b.png" 1x, "//evil/x" 2x)`
+    # hide the candidate a browser selects. (Raised by the Copilot reviewer on PR #1155.)
+    def test_a_markup_character_inside_a_closed_image_set_candidate_does_not_hide_the_next_one(self):
+        for value in ('"local<file.png" 1x, "//evil.example/x.png" 2x',
+                      "'a>b.png' 1x, 'https:evil.example/x.png' 2x"):
+            with self.subTest(value=value):
+                self._assert_error(
+                    _inject(self.html, '<div style="background:image-set(%s)">x</div>' % value),
+                    "remote CSS url()")
+
+    # The URL parser removes ASCII tab from ANYWHERE but every other C0 control only from the
+    # LEADING run, so a mid-token control leaves a LOCAL reference local: normalizing it away would
+    # reject a reference that loads nothing. (Raised by the Copilot reviewer on PR #1155.)
+    def test_a_mid_token_c0_control_does_not_make_a_local_css_url_remote(self):
+        for snippet in ('<style>.x{background:url("/\x01/evil.example/x.png")}</style>',
+                        '<style>.x{background:url("/\x0b/evil.example/x.png")}</style>',
+                        '<div style=\'background:image-set("/\x01/evil.example/x.png" 1x)\'>x</div>'):
+            with self.subTest(snippet=snippet):
+                self.assertEqual(_errors(_inject(self.html, snippet)), [], snippet)
+        # ...while the tab, which the parser removes from anywhere, still is.
+        self._assert_error(
+            _inject(self.html, '<style>.x{background:url("/\t/evil.example/x.png")}</style>'),
+            "remote CSS url()")
+
     def test_external_hyperlink_is_allowed(self):
         # A hyperlink to a remote page is NOT egress (nothing fetches on load); it must not be flagged.
         self.assertEqual(_errors(_inject(self.html, '<a href="https://learn.microsoft.com/x">doc</a>')), [])

@@ -108,22 +108,27 @@ _CSP_ASCII_WS_RE = re.compile(r"[\t\n\f\r ]+")
 # engine over a shared corpus. What NEITHER side reads is a CSS ESCAPE (`url(https:\65 vil/x)`) or a
 # comment between the at-keyword and its URL, so they agree there too; issue #1029 tracks giving
 # both a CSS-token-aware reader.
-_CSS_WS = r"[\t\n\f\r ]"
+# `CSS_WS`, `CSS_NETWORK_PREFIX` and `CSS_HOST_CHAR` are PUBLIC because the deck gate builds its
+# deck-only `image-set()` reader from them (`deck/deck_validate.py`): that reader answers a question
+# no other surface asks, but hand-spelling the prefix and host-character rule there would be exactly
+# the drift #1129 closed. `_CSS_AT_SEP` stays private - it is an `@import` assembly detail with no
+# other consumer.
+CSS_WS = r"[\t\n\f\r ]"
 # The at-keyword's separator: whitespace, OR nothing at all when a quote follows. `@import"x.css";`
 # is valid CSS - a `"` cannot continue an ident, so the at-keyword ends there - and really fetches,
 # while a whitespace-only separator read it as unremarkable text. The lookahead is what keeps a
 # DIFFERENT at-keyword (`@importurl(...)`) from matching.
-_CSS_AT_SEP = _CSS_WS + r"+|(?=['\"])"
+_CSS_AT_SEP = CSS_WS + r"+|(?=['\"])"
 # The same CLOSED scheme set as `NETWORK_URL_RE` below, for the same measured reason: a
 # `url(ftp://host/x)` or `@import "ws://host/t.css"` fetches nothing from a `file:` document.
-_CSS_NETWORK_PREFIX = r"(?:https?:/*|/{2,})"
-_CSS_HOST_CHAR = r"[^/?#'\")\t\n\f\r ]"
+CSS_NETWORK_PREFIX = r"(?:https?:/*|/{2,})"
+CSS_HOST_CHAR = r"[^/?#'\")\t\n\f\r ]"
 CSS_NETWORK_URL_RE = re.compile(
-    r"url\(" + _CSS_WS + r"*(?:['\"]" + _CSS_WS + r"*)?" + _CSS_NETWORK_PREFIX + _CSS_HOST_CHAR,
+    r"url\(" + CSS_WS + r"*(?:['\"]" + CSS_WS + r"*)?" + CSS_NETWORK_PREFIX + CSS_HOST_CHAR,
     re.IGNORECASE | re.ASCII)
 CSS_NETWORK_IMPORT_RE = re.compile(
-    r"@import(?:" + _CSS_AT_SEP + r")(?:url\(" + _CSS_WS + r"*)?(?:['\"]" + _CSS_WS + r"*)?("
-    + _CSS_NETWORK_PREFIX + _CSS_HOST_CHAR + r"[^;'\")]*)",
+    r"@import(?:" + _CSS_AT_SEP + r")(?:url\(" + CSS_WS + r"*)?(?:['\"]" + CSS_WS + r"*)?("
+    + CSS_NETWORK_PREFIX + CSS_HOST_CHAR + r"[^;'\")]*)",
     re.IGNORECASE | re.ASCII)
 
 # The `localhost` exclusion is spelled as the URL PARSER compares a host, not as a literal, because
