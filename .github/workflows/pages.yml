@@ -140,20 +140,26 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
 
-  # Alert if the pipeline fails on main (the site build or the deploy, including workflow_dispatch
-  # runs and cancellations), so a broken build or a failed deploy never silently leaves the site
-  # wrong. Opens a tracking issue, or comments on the open one, noting that the published site may
-  # be stale because a failed site check now blocks deploy.
+  # Alert if the pipeline fails on main (the site build or the deploy), and CLOSE that alert once a
+  # later run succeeds. Both halves matter: this notifier is automated issue creation, and without
+  # the close it deduped only against OPEN issues while never retiring one, so closing a stale alert
+  # guaranteed the next blip filed a duplicate - the #1148 -> #1190 sequence.
+  #
+  # A `cancelled` result IS treated as a failure here, deliberately. On main `cancel-in-progress` is
+  # false (see the concurrency block), so a main run is never superseded and a cancellation is not
+  # routine: it means the job hit `timeout-minutes` or someone cancelled it by hand. GitHub reports a
+  # timed-out job as `cancelled`, not `failure` - run 31111831920's deploy ran 14:45:07 to 14:55:09,
+  # exactly the configured 10 minutes - so dropping `cancelled` would silence a genuinely stale site.
   notify:
     needs: [site, deploy]
-    if: ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (contains(fromJSON('["failure", "cancelled"]'), needs.site.result) || contains(fromJSON('["failure", "cancelled"]'), needs.deploy.result)) }}
+    if: ${{ always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       issues: write
     steps:
-      - name: Open or update the failure issue
+      - name: Open, update, or close the failure issue
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           SITE_RESULT: ${{ needs.site.result }}
@@ -166,6 +172,30 @@ jobs:
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             const siteResult = process.env.SITE_RESULT;
             const deployResult = process.env.DEPLOY_RESULT;
+            // `cancelled` counts: on main it means a timeout or a manual cancel, never a supersede.
+            // `skipped` does not - that is deploy's normal result when site did not succeed, and the
+            // site failure itself already alerts.
+            const bad = ["failure", "cancelled"];
+            const failed = bad.includes(siteResult) || bad.includes(deployResult);
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", per_page: 100,
+            });
+            const existing = open.find((i) => !i.pull_request && i.title === title);
+            if (!failed) {
+              // Retire the alert only on a FULL recovery, so it is never closed while the site is
+              // still stale. Both jobs must have succeeded: deploy is skipped whenever site did not.
+              if (existing && siteResult === "success" && deployResult === "success") {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: existing.number,
+                  body: `Recovered: the \`pages\` workflow succeeded on \`main\` (${runUrl}). Closing.`,
+                });
+                await github.rest.issues.update({
+                  owner, repo, issue_number: existing.number,
+                  state: "closed", state_reason: "completed",
+                });
+              }
+              return;
+            }
             const body = [
               `The \`pages\` workflow failed on \`main\` (site: ${siteResult}, deploy: ${deployResult}).`,
               ``,
@@ -176,10 +206,6 @@ jobs:
               ``,
               `Re-run the workflow (Actions -> pages -> Run workflow) or push a fix.`,
             ].join("\n");
-            const open = await github.paginate(github.rest.issues.listForRepo, {
-              owner, repo, state: "open", per_page: 100,
-            });
-            const existing = open.find((i) => !i.pull_request && i.title === title);
             if (existing) {
               await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
             } else {

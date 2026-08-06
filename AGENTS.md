@@ -57,8 +57,7 @@ reading or investigating and will never make a change.
    creation PR. NEVER start work that is not tracked by an issue. Record any follow-up or newly
    discovered work the moment it comes up so nothing lives only in the chat session - but FILE it as
    an issue only once it clears the reachability and confirmation gate in "GitHub Issues workflow"
-   below; a finding that fails that gate is dismissed in one line in the PR body instead.
-   Prefer the in-repo task-management skill, which wraps these `gh` calls. See "GitHub Issues workflow"
+   below; a finding that fails that gate is dismissed in one line in the PR body instead.   Prefer the in-repo task-management skill, which wraps these `gh` calls. See "GitHub Issues workflow"
    for the full workflow.
 3. **Write the test first, then the code (TDD).** Every feature or user-visible behavior change ships with a
    covering automated test in the SAME pull request, and for bug fixes the test is written FIRST, run, and
@@ -983,6 +982,21 @@ finding (your own, a reviewer's, or a multi-duck panel's), it must clear this ba
    fresh issue per newly discovered spelling. Undecidable problems have infinitely many instances;
    enumerating them is not progress.
 3. **Would fixing it change observable behavior for a real user, or only satisfy a pattern?**
+4. **Is it about the change you are actually working on?** A PRE-EXISTING defect noticed incidentally
+   while reviewing something unrelated does NOT earn an issue. Record it in the PR body and move on.
+   This is the single highest-volume source of unbounded backlog growth here: of the 59 issues filed
+   in the two days after the reachability gate landed, 28 (47%) declared themselves pre-existing and
+   34 said "found on the PR for #N", and the branching factor was still 1.52 - above 1.0, so the
+   backlog grew no matter how fast it was worked (`#1191` alone spawned six). A defect that has
+   shipped without a single user report is, by revealed preference, not urgent; it will resurface
+   when someone works that area deliberately. The narrow exception, which still needs the bar above:
+   user-observable breakage, data loss, or a security issue reachable under the declared threat
+   model. "It is cheap to fix" is NOT an exception - the fix is never the expensive part; the issue,
+   spec row, red-first test, two review rounds and CI cycle are, and the median such issue consumed
+   all of them within 8.6 hours of being filed. Note the boundary carefully: a defect the change
+   newly makes REACHABLE, triggers, or relocates is a property of THAT change and stays in scope,
+   even when the defective line itself is untouched (a latent null-deref only a newly added caller
+   can reach is not "pre-existing" in any useful sense).
 
 A finding that fails the bar is DISMISSED IN ONE LINE in the PR body (or the panel summary), citing
 the spec row that makes it out of scope. Do not open an issue for it, and do not "capture it just in
