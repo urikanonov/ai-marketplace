@@ -474,6 +474,25 @@ class RetrofitCliTests(unittest.TestCase):
                          "retrofit must not add a second favicon when the host already has one")
         self._strict_clean(out)
 
+    def test_a_non_ascii_whitespace_href_favicon_is_not_duplicated(self):
+        # End to end (#1140): an href of a single NBSP is a URL a browser resolves and fetches, so
+        # the host already HAS a favicon. Read with Python's Unicode `.strip()` it looked empty and
+        # retrofit injected a second favicon beside the author's.
+        host = HOST_HTML.replace("<title>Host Report</title>",
+                                 '<title>Host Report</title>\n<link rel="icon" href="&#xa0;">')
+        d = self._tmpdir()
+        src = self._write(d, "host.html", host)
+        out = os.path.join(d, "fav.html")
+        code, _stdout, stderr = self._run([
+            "retrofit.py", src, "--label", "Fav Host", "--shareable", "--out", out])
+        self.assertEqual(code, 0, stderr)
+        html = _read_text(out)
+        self.assertIn('href="&#xa0;"', html,
+                      "retrofit must keep the author's own favicon link, not replace it")
+        self.assertEqual(len(re.findall(r'<link\b[^>]*\brel="icon"', html)), 1,
+                         "retrofit added a second favicon beside an href a browser fetches")
+        self._strict_clean(out)
+
     def test_apple_touch_icon_only_host_still_gets_a_real_favicon(self):
         # A host whose only icon-ish link is rel="apple-touch-icon" has no browser-tab favicon, so
         # retrofit must still inject the CMH favicon (detection is token-exact, matching the
@@ -782,6 +801,26 @@ class FaviconHelperTests(unittest.TestCase):
     def test_empty_or_missing_href_is_not_a_favicon(self):
         self.assertFalse(self.f.head_has_favicon('<head><link rel="icon" href=""></head>'))
         self.assertFalse(self.f.head_has_favicon('<head><link rel="icon"></head>'))
+
+    def test_href_emptiness_is_measured_the_way_html_measures_it(self):
+        # The href half of CMH-KIND-05, kept in step with the validator (#1140). The URL parser
+        # trims only the C0 controls and space from a URL's ends, so an href of a single NBSP (or
+        # U+2028, or any other non-ASCII space) is a URL a browser resolves and fetches: the host
+        # ALREADY declares a favicon and must not get a second one. Python's argument-less
+        # `.strip()` read those as empty, so retrofit / upgrade injected the CMH favicon beside
+        # the author's.
+        for ws in ("\u00a0", "\u2028", "\u3000"):
+            self.assertTrue(self.f.head_has_favicon(
+                '<head><link rel="icon" href="%s"></head>' % ws), repr(ws))
+        # ...and the same href written as a character reference, which is how it reaches a
+        # document: the decode happens before the emptiness test.
+        self.assertTrue(self.f.head_has_favicon('<head><link rel="icon" href="&#xa0;"></head>'))
+        # The controls: an href the URL parser's end trim empties declares no icon resource (it
+        # resolves to the document itself), and that is EVERY C0 control, not just HTML's
+        # whitespace.
+        for ws in ("", " ", "\t\n\f\r ", "\u000b", "\u001c\u001f", "\u0001"):
+            self.assertFalse(self.f.head_has_favicon(
+                '<head><link rel="icon" href="%s"></head>' % ws), repr(ws))
 
     def test_apple_touch_icon_is_not_a_favicon(self):
         self.assertFalse(self.f.head_has_favicon('<head><link rel="apple-touch-icon" href="/a.png"></head>'))

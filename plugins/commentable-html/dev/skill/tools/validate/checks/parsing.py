@@ -265,6 +265,40 @@ _CSP_HEAD_CLOSERS = frozenset(("body", "html", "br"))
 # one as whitespace would keep the head open for exactly the character that closes it.
 _HTML_WHITESPACE = "\t\n\f\r "
 
+# What the URL parser removes from the ENDS of a URL before parsing it: a superset of
+# `_HTML_WHITESPACE` - every C0 control (U+0000-U+001F) plus space - and still ASCII-only, which
+# is the whole point: Python's `str.strip()` reaches past ASCII into U+00A0, U+2028 and U+3000,
+# which the URL parser KEEPS.
+_URL_ENDS_TRIM = "".join(chr(c) for c in range(0x21))
+
+
+def link_href_is_set(value):
+    """True when an `href` attribute still names something once a browser trims its ends.
+
+    The EMPTINESS half of the favicon decision, and the reading both sides share - the validator's
+    `check_favicon` and the authoring tools' `tools/authoring/_favicon.py` (through
+    `tools/_browser_attrs.link_href_is_set`), so a document the validator calls favicon-bearing is
+    exactly the one `retrofit` / `upgrade` decline to inject a second favicon into.
+
+    The trim is the URL parser's own (`_URL_ENDS_TRIM`). Python's argument-less `str.strip()`
+    reaches past ASCII and takes U+00A0, U+2028, U+3000 and U+0085, which the URL parser keeps: a
+    browser resolves and fetches `href="&#xa0;"`, so reading it as EMPTY warned `no favicon` about
+    a document that declares one a browser honors, and had the tools inject a second icon beside
+    the author's (#1140).
+
+    An href the trim empties is NOT called set - and that is a statement about what it DECLARES,
+    not about whether a request happens. Resolving an empty reference against the document's base
+    URL yields the document's own URL, which a browser will duly request as an icon; what it never
+    yields is a distinct icon RESOURCE, which is what this check is asking about. That is why
+    `href=""` and `href=" "` have always warned, and the trim keeps the non-whitespace C0 controls
+    in the same bucket instead of splitting a distinction a browser does not make.
+
+    Callers pass a decoded attribute value; `None` (an absent or valueless attribute) reads as
+    unset. This measures EMPTINESS only - it says nothing about whether the URL is reachable,
+    same-origin, or inert, so a gate where over-counting is unsafe needs its own predicate.
+    """
+    return bool((value or "").strip(_URL_ENDS_TRIM))
+
 # A start tag that implicitly closes an open <p> (a pragmatic HTML5 subset).
 P_CLOSERS = {
     "address", "article", "aside", "blockquote", "details", "div", "dl",

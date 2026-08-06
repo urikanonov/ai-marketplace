@@ -150,6 +150,24 @@ class FaviconTests(ValidateAssertions, unittest.TestCase):
         doc = build().replace(FAVICON_LINK, '<link rel="icon x" href="/f.ico" />', 1)
         self.assertOkNoWarn(doc)
 
+    def test_href_emptiness_is_measured_the_way_a_browser_measures_it(self):
+        # CMH-KIND-05, the href half. The URL parser trims only the C0 controls and space from a
+        # URL's ends, so an icon link whose href is a single NBSP (or U+2028, or any other
+        # non-ASCII space) names a URL the browser resolves and fetches - the document declares a
+        # favicon a browser honors. Python's argument-less `.strip()` reaches past ASCII and takes
+        # those too, so the check called such an href EMPTY and the mandatory --strict finalize
+        # warned "no favicon" about a document that has one (#1140).
+        for ws in ("\u00a0", "\u2028", "\u3000"):
+            doc = build().replace(FAVICON_LINK, '<link rel="icon" href="%s" />' % ws, 1)
+            self.assertOkNoWarn(doc)
+        # The controls, which really are no favicon declaration: an absent href, an empty one, and
+        # one the URL parser's end trim empties - which is EVERY C0 control, not just HTML's
+        # whitespace. An href that trims away resolves to the document's own URL, not to an icon.
+        for attr in ("", 'href=""', 'href=" "', 'href="\t\f\r "', 'href="\u000b"',
+                     'href="\u001c\u001f"', 'href="\u0001"'):
+            doc = build().replace(FAVICON_LINK, '<link rel="icon" %s />' % attr, 1)
+            self.assertWarn(doc, "no favicon")
+
     def test_body_only_favicon_warns(self):
         # A favicon only satisfies the check when it is in the head (before <body>); a
         # <link rel="icon"> placed in the body is not a tab favicon, so the document still warns.

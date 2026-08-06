@@ -164,6 +164,21 @@ class UpgradeUnitTests(unittest.TestCase):
                          "upgrade duplicated the favicon link")
         self.assertIn(reordered, out)
 
+    def test_a_non_ascii_whitespace_href_favicon_is_not_duplicated_on_upgrade(self):
+        # #1140: an href of a single NBSP is a URL a browser resolves and fetches, so the document
+        # already HAS a favicon and upgrade must report no favicon change. Python's Unicode
+        # `.strip()` read it as empty, so upgrade added the template favicon beside the author's.
+        tpl = _tpl()
+        favicon = upgrade._template_favicon(tpl)
+        authored = '<link rel="icon" href="&#xa0;" />'
+        legacy = tpl.replace(favicon, authored, 1)
+        self.assertTrue(upgrade._has_favicon(legacy))
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertNotIn("favicon", changed)
+        self.assertEqual(len(re.findall(r'<link\b[^>]*\brel=["\'][^"\']*icon', out, re.I)), 1,
+                         "upgrade added a second favicon beside an href a browser fetches")
+        self.assertIn(authored, out)
+
     def test_apple_touch_icon_only_document_gets_a_real_favicon_on_upgrade(self):
         # A document whose head declares only rel="apple-touch-icon" has no tab favicon (that rel
         # token is not "icon"), so upgrade must still add the CMH favicon rather than treating the

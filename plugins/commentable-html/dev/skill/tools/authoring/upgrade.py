@@ -236,10 +236,11 @@ def _insert_kind_meta(html, kind):
 
 
 def _has_favicon(html):
-    """True when the document's head declares a usable favicon (rel token `icon` + non-empty
-    href). Detection matches the validator (see tools/authoring/_favicon.py); it is head-scoped,
-    so `apple-touch-icon` / `mask-icon`, an empty-href icon, a commented-out link, and a body-level
-    icon link do NOT count."""
+    """True when the document's head declares a usable favicon (rel token `icon` plus an href that
+    survives the URL parser's end trim). Detection matches the validator through the ONE shared
+    reading (see tools/authoring/_favicon.py); it is head-scoped, so `apple-touch-icon` /
+    `mask-icon`, an icon link whose href trims away to nothing, a commented-out link, and a
+    body-level icon link do NOT count."""
     return _favicon.head_has_favicon(html or "")
 
 

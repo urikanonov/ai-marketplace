@@ -106,6 +106,7 @@ _shared_attrs_dict = getattr(_parsing, "browser_attrs_dict", None)
 _shared_ascii_lower = getattr(_parsing, "ascii_lower", None)
 _shared_can_host_shadow_root = getattr(_parsing, "can_host_shadow_root", None)
 _shared_link_rel_tokens = getattr(_parsing, "link_rel_tokens", None)
+_shared_link_href_is_set = getattr(_parsing, "link_href_is_set", None)
 _shared_tag_names = getattr(_parsing, "BrowserTagNames", None)
 
 # The fallback's copy of the shared `rel` split, for a partial install only. HTML tokenizes a `rel`
@@ -114,6 +115,12 @@ _shared_tag_names = getattr(_parsing, "BrowserTagNames", None)
 # as literal escapes, like the shared one it degrades from, and pinned to it by a parity test.
 _FALLBACK_REL_WS_RE = _re.compile(r"[\t\n\f\r ]+")
 _FALLBACK_ASCII_UPPER_RE = _re.compile(r"[A-Z]")
+
+# The fallback's copy of the URL parser's end trim, for the href emptiness test. Python's
+# argument-less `str.strip()` reaches past ASCII into U+00A0, U+2028, U+3000 and U+0085, which the
+# URL parser KEEPS, so it calls an href a browser resolves and fetches EMPTY (#1140). Pinned to the
+# shared reading BEHAVIOR-for-behavior by a parity test, like the split above.
+_FALLBACK_URL_ENDS_TRIM = "".join(chr(c) for c in range(0x21))
 
 
 def ascii_lower(name):
@@ -139,6 +146,19 @@ def link_rel_tokens(value):
         return set(_FALLBACK_ASCII_UPPER_RE.sub(lambda m: m.group(0).lower(), t)
                    for t in _FALLBACK_REL_WS_RE.split(value or "") if t)
     return _shared_link_rel_tokens(value)
+
+
+def link_href_is_set(value):
+    """True when an `href` still names something once the URL parser trims its ends.
+
+    The shared reading (`checks/parsing.link_href_is_set`), so the favicon helper the authoring
+    tools inject from measures an href's emptiness exactly the way the gate that would warn about
+    the same document does. EMPTINESS only - it says nothing about reachability, scheme, or
+    inertness.
+    """
+    if _shared_link_href_is_set is None:
+        return bool((value or "").strip(_FALLBACK_URL_ENDS_TRIM))
+    return _shared_link_href_is_set(value)
 
 
 def can_host_shadow_root(tag, namespace="html"):
