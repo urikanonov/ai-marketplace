@@ -42,11 +42,13 @@ WHAT THIS TEST DOES NOT CLAIM, stated so nobody reads it as more than it is:
   `SHAPE_DIFFERENCES` rather than reconciled.
 - The two non-pair egress contracts - a `<meta http-equiv=refresh>` and the CSS `url()`/`@import`
   reads (#961) - are outside the comparison, because neither is keyed on a (tag, attribute) pair.
-  They are pinned by their own tests, named in `EXPORT_EXTRA_STRIPS`. Note what the CSS reads
-  do NOT cover: an SVG PRESENTATION ATTRIBUTE (`<rect mask="url(https://...)">`) is neither a
-  (tag, attribute) pair in this contract nor part of a stylesheet the CSS reads inspect, and
-  `clip-path` / `mask` really do fetch (measured in Chromium; `filter` does not) - tracked as
-  issue #1186, and named here so nobody reads this comparison as covering it.
+  They are pinned by their own tests, named in `EXPORT_EXTRA_STRIPS`. The SVG PRESENTATION
+  ATTRIBUTES (`<rect mask="url(https://...)">`) joined that group in #1186: their value is a CSS
+  declaration value, so the shared CSS `url()` reading judges it rather than the network-URL
+  predicate, and the rule is keyed on the ATTRIBUTE alone on both sides. They are outside the PAIR
+  comparison for that reason, and pinned instead by
+  `test_the_presentation_url_attribute_lists_agree`, which holds the gate's measured list and the
+  exporter's strip list to each other.
 - The exporter side proves a pass EXISTS for a pair, not that the pass works. What each strip
   actually does to a document is pinned by the offline-export Playwright suite
   (`tests/49-offline-export.spec.js`, CMH-OFFLINE-04).
@@ -152,6 +154,14 @@ LAYER_ATTRS_NOT_SUBRESOURCE = {
     "formaction": "user-initiated egress: a form POST needs a submit (checked on a dynamic tag, "
                   "so it is classified by attribute rather than by pair)",
 }
+# ... plus the SVG presentation attributes, whose value is a CSS declaration value rather than a
+# URL, so the shared CSS `url()` reading judges them and the rule is keyed on the ATTRIBUTE alone
+# (#1186). Read from the gate's own measured list so a widening lands here automatically, and held
+# to the exporter's strip list by `test_the_presentation_url_attribute_lists_agree`.
+LAYER_ATTRS_NOT_SUBRESOURCE.update(
+    (attr, "CSS egress in an SVG presentation attribute, read through the shared url() pattern "
+           "rather than the network-URL predicate (#1186)")
+    for attr in resources.SVG_URL_PRESENTATION_ATTRS)
 
 # The exporter reaches some pairs through a DIFFERENT selector than the tag name, because the DOM it
 # walks is not the token stream the gates read. Each entry maps a layer pair to the strip that
@@ -181,6 +191,12 @@ EXPORT_EXTRA_STRIPS = {
     (ANY_TAG, "referrerpolicy"): "a per-element referrer override, not itself a fetch",
     (ANY_TAG, "style"): "CSS egress, read through the shared url()/@import patterns",
 }
+# ... and the presentation attributes beside it, for the same reason `style` is here: the strip
+# neutralizes a CSS VALUE rather than clearing a URL attribute (#1186).
+EXPORT_EXTRA_STRIPS.update(
+    ((ANY_TAG, attr), "CSS egress in an SVG presentation attribute, neutralized through the shared "
+                      "`_offlineCssNoNetwork` reading (#1186)")
+    for attr in resources.SVG_URL_PRESENTATION_ATTRS)
 
 
 def _layer_pairs():
@@ -209,6 +225,71 @@ def _deck_reaches(attr):
     return attr == "srcset" or attr in deck_validate._URL_ATTRS
 
 
+def _loop_bound_sequences(src):
+    """Loop variables bound to a module constant that is a sequence of strings.
+
+    `for pres_attr in SVG_URL_PRESENTATION_ATTRS:` makes `pres_attr` stand for every member of that
+    list, so a rule written over the list is read as a rule over each attribute in it. A name counts
+    only when EVERY `for ... in <NAME>:` that binds it in this file names the SAME module constant
+    and that constant is a sequence of strings: a name bound twice (or bound once to a constant and
+    once to a local list) is ambiguous, and taking the union would attribute one loop's attributes
+    to the other loop's rule - over-stating coverage in a guard whose whole job is to catch
+    under-coverage (round-2 review panel). An ambiguous or unresolvable name is simply absent, so
+    its call site is reported verbatim and lands in the unclassified list, where a human looks at it.
+    """
+    seen = {}
+    for var, name in re.findall(r"for\s+(\w+)\s+in\s+([A-Za-z_][A-Za-z0-9_]*)\s*:", src):
+        seen.setdefault(var, set()).add(name)
+    bound = {}
+    for var, names in seen.items():
+        if len(names) != 1:
+            continue
+        value = getattr(layer, next(iter(names)), None)
+        if isinstance(value, (tuple, list, set, frozenset)) and value and all(
+                isinstance(item, str) for item in value):
+            bound[var] = set(value)
+    return bound
+
+
+def _presentation_selector_attrs(text, helper, is_code=None, offset=0):
+    """The `[attr]` predicates of the `all(...)` call whose block invokes `helper`.
+
+    `_export_pairs()` answers "does a strip clear this attribute", and for a DELEGATED pass it
+    folds the helper's whole attribute list onto every selector in the call - so it cannot tell a
+    selector that reaches every attribute from one that lost a predicate while the helper kept it.
+    That difference is exactly the CMH-OFFLINE-04 drift the presentation pass has to be held to
+    (an element carrying only the dropped attribute is never walked, the export keeps its network
+    reference, and the gate then rejects the export's own output), so the selector is read on its
+    own terms here.
+
+    Reads through the SAME two exclusions `_export_pairs` uses: comments are already blanked in
+    `text`, and `is_code` (when given) rejects a call or a helper mention that sits inside a STRING
+    literal, so a selector quoted in a sample cannot stand in for the real one. Raises rather than
+    guessing if more than one pass invokes the helper - two passes would make "the selector" an
+    ambiguous question, and a silent pick would be the vacuous answer this reading exists to avoid.
+    """
+    start, _end = _function_span(text, "_stripOfflineNetworkLoads")
+    strip = _function_source(text, "_stripOfflineNetworkLoads")
+    code = is_code or (lambda _index: True)
+    calls = [m for m in _ALL_CALL_RE.finditer(strip) if code(offset + start + m.start())]
+    found = []
+    for i, call in enumerate(calls):
+        block_at = call.end()
+        block_end = calls[i + 1].start() if i + 1 < len(calls) else len(strip)
+        body = strip[block_at:block_end]
+        if not any(code(offset + start + block_at + m.start())
+                   for m in re.finditer(r"\b%s\(" % re.escape(helper), body)):
+            continue
+        found.append({p.strip().lower()
+                      for selector in call.group(2).split(",")
+                      for p in re.findall(r"\[([^\]]+)\]", selector)
+                      if not re.search(r"[=~|^$*]", p)})
+    if len(found) > 1:
+        raise AssertionError("%s is invoked from %d strip passes, so its selector is ambiguous"
+                             % (helper, len(found)))
+    return found[0] if found else frozenset()
+
+
 def _layer_source_rules():
     """The tag, attribute and `(tag, attr)` literals the layer gate's own source names.
 
@@ -224,15 +305,28 @@ def _layer_source_rules():
     through the imported module), and the per-attribute check itself (`_check_network_attr`, whose
     tag is often a loop VARIABLE - those contribute the attribute alone rather than a pair, which
     is what stops a dynamic-tag rule from being invisible).
+
+    A universal rule that runs over a LIST of attributes (`for attr in SVG_URL_PRESENTATION_ATTRS:`,
+    #1186) passes a loop VARIABLE, so the argument resolves to nothing on its own. Such a variable
+    is followed back to the `for ... in <NAME>:` that binds it and the named sequence is expanded,
+    which keeps every member classified; an argument that resolves to neither a string nor a bound
+    sequence is still contributed VERBATIM, so an unreadable rule shows up as unclassified rather
+    than vanishing.
     """
     tags, attrs, pairs = set(), set(), set()
     for path in sorted(glob.glob(os.path.join(LAYER_PARTS, "*.py"))):
         with open(path, encoding="utf-8") as handle:
             src = handle.read()
+        bound = _loop_bound_sequences(src)
         tags |= set(re.findall(r'_find_tag_attrs_egress\(\s*\w+\s*,\s*["\']([^"\']+)["\']', src))
         for arg in re.findall(r"_find_attr_egress\(\s*\w+\s*,\s*([^)\s]+)\s*\)", src):
             value = arg.strip("\"'") if arg[:1] in "\"'" else getattr(layer, arg, None)
-            attrs.add(value if isinstance(value, str) else arg)
+            if isinstance(value, str):
+                attrs.add(value)
+            elif arg in bound:
+                attrs |= bound[arg]
+            else:
+                attrs.add(arg)
         pairs |= set(re.findall(
             r'_check_network_attr\(\s*["\']([^"\']+)["\']\s*,\s*[^,]+,\s*["\']([^"\']+)["\']', src))
         attrs |= set(re.findall(
@@ -251,7 +345,7 @@ _FOREACH_PARAM_RE = re.compile(r"forEach\(\s*(?:function\s*\(\s*(\w+)|\(?\s*(\w+
 # The one strip pass that does not clear its attributes inline: a `<script>` load is judged by
 # TYPE and namespace, so the walk hands each element to a helper. Its body is read as part of the
 # block, which keeps this reading derived from the real code rather than from a claim about it.
-_EXPORT_DELEGATES = ("_offlineStripScriptLoad",)
+_EXPORT_DELEGATES = ("_offlineStripScriptLoad", "_offlineStripPresentationUrl")
 # A bracketed run with no nested bracket, and the quoted items inside it. Deliberately two simple
 # patterns rather than one with a nested quantifier: the nested form is exponential on a crafted
 # input, and this walks a whole source file.
@@ -778,6 +872,33 @@ class EgressListParityTests(unittest.TestCase):
         self.assertIn("background", attrs, "the universal `_find_attr_egress` idiom is no longer "
                                            "seen by this reading - a universal widening would be "
                                            "invisible again")
+
+    def test_the_presentation_url_attribute_lists_agree(self):
+        # The #1186 contract, which is keyed on the ATTRIBUTE rather than on a (tag, attribute)
+        # pair: the strict gate reports a network `url(...)` in an SVG presentation attribute, and
+        # the offline export neutralizes the same attributes - so a list that grows on one side
+        # only would either leave the gate rejecting a file the export just produced, or let the
+        # export keep a fetch the gate then blesses. Both sides are READ from their real sources.
+        gate = set(resources.SVG_URL_PRESENTATION_ATTRS)
+        spans = []
+        text = _strip_js_comments(_read_export_source(), string_spans=spans)
+        is_code = _code_test(spans)
+        stripped = _delegate_attrs(text, "_offlineStripPresentationUrl", is_code)
+        self.assertEqual(gate, set(stripped),
+                         "the gate's SVG presentation-attribute list and the offline export's "
+                         "strip list disagree: gate-only %s, export-only %s"
+                         % (sorted(gate - set(stripped)), sorted(set(stripped) - gate)))
+        # The strip has to REACH those elements too: its `all(...)` SELECTOR is what decides which
+        # nodes the helper ever sees, so a selector that lost an attribute would leave the helper
+        # correct and the pass narrower than the gate - and `_export_pairs()` cannot see that,
+        # because it folds a delegate's attributes onto every selector in the call (round-1 panel,
+        # 2 of 8 ducks). So the selector is read LITERALLY, from the one `all(...)` call whose block
+        # invokes the helper.
+        selected = _presentation_selector_attrs(text, "_offlineStripPresentationUrl", is_code)
+        self.assertEqual(gate, selected,
+                         "the exporter's presentation-attribute selector does not reach every "
+                         "attribute the gate reports: selector-only %s, gate-only %s"
+                         % (sorted(selected - gate), sorted(gate - selected)))
 
     def test_the_exporter_reading_names_every_strip_it_finds(self):
         # The exporter runs strips that are rules of their own (a `ping`, a form target, a

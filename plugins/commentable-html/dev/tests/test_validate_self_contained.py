@@ -2068,6 +2068,93 @@ class NewCheckTests(unittest.TestCase):
                 self.assertTrue(any("self-contained guarantee" in e and "<%s background" % tag in e
                                     for e in errors), (markup, errors))
 
+    # An SVG PRESENTATION ATTRIBUTE whose value is a `url(...)` reference reached the network past
+    # every egress surface (issue #1186): the CSS reads look at a `style=` attribute and a `<style>`
+    # body, and the element rules are keyed on (tag, attribute) pairs whose whole VALUE is a URL -
+    # so `<rect mask="url(https://evil.example/x.svg#m)">` validated STRICT-CLEAN, was stamped, and
+    # fetched the moment a recipient opened it. Which attributes carry the channel is decided by
+    # MEASUREMENT (tests/62-deck-regressions.spec.js) and not by the spec's list of properties that
+    # accept a `<url>`.
+    def test_shareable_mode_rejects_a_network_url_in_a_presentation_attribute(self):
+        for attr in resources.SVG_URL_PRESENTATION_ATTRS:
+            for value in ('url(https://evil.example/x.svg#r)',
+                          "url(&quot;//evil.example/x.svg#r&quot;)",
+                          "url(https:evil.example/x.svg#r)"):
+                markup = ('<svg width="10" height="10" aria-label="p"><rect width="10" '
+                          'height="10" %s="%s"/></svg>' % (attr, value))
+                with self.subTest(attr=attr, value=value):
+                    errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                    needle = "presentation attribute %s on <rect>" % attr
+                    self.assertTrue(any("self-contained guarantee" in e and needle in e
+                                        and "url(" in e for e in errors), (attr, value, errors))
+
+    def test_offline_mode_rejects_a_network_url_in_a_presentation_attribute(self):
+        markup = ('<svg width="10" height="10" aria-label="p"><rect width="10" height="10" '
+                  'clip-path="url(https://evil.example/x.svg#c)"/></svg>')
+        errors, _ = self._errs_warns(with_offline_mode(build(body=self._body(MAIN, markup))))
+        self.assertTrue(any("offline mode" in e and "presentation attribute clip-path on <rect>"
+                            in e for e in errors), errors)
+
+    # The no-false-positive control: the ordinary way these attributes are written points INSIDE
+    # the document (`url(#clip)`) or names a paint that is not a reference at all, and a gate that
+    # rejected those would break every legitimate SVG in a report.
+    def test_a_local_presentation_attribute_reference_is_clean(self):
+        markup = ('<svg width="10" height="10" aria-label="p">'
+                  '<defs><clipPath id="c"><rect width="5" height="5"/></clipPath></defs>'
+                  '<rect width="10" height="10" clip-path="url(#c)" fill="#336699" '
+                  'stroke="none" mask="url(\'#m\')" '
+                  'marker-start="url(&quot;data:image/gif;base64,R0lGODlhAQABAAAAACw=&quot;)"/>'
+                  "</svg>")
+        errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
+    # `mask` takes an IMAGE, so a bare remote string inside `image-set(...)` fetches from it with
+    # no `url()` wrapper at all (measured). The reading is deliberately NARROWER than the `url()`
+    # one - only the attributes measured to fetch an image carry it, because reporting a candidate
+    # on a paint or a shape reference would reject a document that fetches nothing - and it is
+    # SHAREABLE-only for the reason the `style=` one is (CMH-VAL-08): offline has the zero-network
+    # CSP behind it, and widening the offline gate alone would reject a file the export's
+    # `_offlineCssNoNetwork` just produced.
+    def test_shareable_mode_rejects_a_network_image_set_in_a_presentation_attribute(self):
+        # Both image-taking attributes, each written the way a browser HONOURS it - `cursor` needs
+        # its fallback keyword, and probing it without one is what hid this leak in round 2.
+        for attr, value in (
+                ("mask", "image-set(&quot;https://evil.example/m.png&quot; 1x)"),
+                ("cursor", "image-set(&quot;https://evil.example/c.cur&quot; 1x), auto")):
+            markup = ('<svg width="10" height="10" aria-label="p"><rect width="10" height="10" '
+                      '%s="%s"/></svg>' % (attr, value))
+            with self.subTest(attr=attr):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("self-contained guarantee" in e and "image-set(" in e
+                                    and "presentation attribute %s on <rect>" % attr in e
+                                    for e in errors), errors)
+                errors, _ = self._errs_warns(
+                    with_offline_mode(build(body=self._body(MAIN, markup))))
+                self.assertEqual([e for e in errors if "image-set(" in e], [], errors)
+
+    # ... and the no-false-positive control the scope exists for: an attribute that takes a PAINT or
+    # a shape reference fetches nothing from an `image-set()` candidate (measured), so reporting one
+    # would refuse a document with no egress at all.
+    def test_an_image_set_on_a_non_image_presentation_attribute_is_clean(self):
+        for attr in ("fill", "stroke", "clip-path", "marker-start", "filter"):
+            markup = ('<svg width="10" height="10" aria-label="p"><rect width="10" height="10" '
+                      '%s="image-set(&quot;https://evil.example/x.png&quot; 1x)"/></svg>' % attr)
+            with self.subTest(attr=attr):
+                errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertEqual([e for e in errors if "image-set(" in e], [], errors)
+                self.assertEqual(warnings, [], warnings)
+
+    # The nested walk mirrors the top-level set, so the same reference written inside an
+    # `<iframe srcdoc>` is reported too (CMH-VAL-25).
+    def test_a_nested_presentation_attribute_inside_a_srcdoc_is_an_error(self):
+        nested = ("&lt;svg&gt;&lt;rect mask=&quot;url(https://evil.example/m.svg#m)&quot;/&gt;"
+                  "&lt;/svg&gt;")
+        markup = '<iframe srcdoc="%s"></iframe>' % nested
+        errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertTrue(any("carries a nested presentation attribute mask on <rect>" in e
+                            for e in errors), errors)
+
     def test_shareable_mode_rejects_network_css_egress(self):
         css = CSS_REGION.replace(
             ":root { --cp-bg: #ffffff; --cp-text: #000000; }",
