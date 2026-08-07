@@ -4,6 +4,47 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.811.0] - 2026-08-07
+
+### Fixed
+
+- The deck contract now gates WHICH slide opens the deck. `deck_validate.deck_checks` gained a
+  fifth structural check: exactly one `section.slide` must carry the `active` class and it must be
+  the FIRST slide, and no slide other than the first may carry `visible` (CMH-DECK-04).
+  `deck_scaffold` has always promised "the first slide is `.active`" (CMH-DECK-02), but the gate it
+  runs on the final HTML before writing `--out` could not see that promise: it read only the
+  presence, format and uniqueness of `data-slide-id`, so a deck with `.active` on slide two, on
+  several slides, or on none at all passed with a zero exit and simply opened on the wrong slide.
+  `visible` rides along because `viewport-base.css` shows a slide on `.slide.active, .slide.visible`
+  and the runtime toggles the two in lockstep, so a later slide left `visible` paints stacked over
+  the slide the deck opens on. Membership goes through the shared class reading, so any quoting form
+  and any character-reference spelling counts. Unlike the four structural checks beside it, this one
+  is asked the way the RUNTIME asks it: over the slides inside the FIRST `.deck-stage` (the set
+  `stage.querySelectorAll(".slide")` returns, which matches any tag, so a `<div class="slide">` is
+  counted here even though the `<section>`-only id checks never see it), and its POSITIONAL half
+  over the scripting-ENABLED reading rather than unioned across both passes - body-wide it was wrong
+  in both directions for an order-dependent question, and unioned it reported a correct deck as
+  broken while numbering a slide the author's document does not have. The order-INDEPENDENT half
+  ("at most one slide is shown at once") stays unioned, because a `<noscript>`-parked slide carrying
+  `active` really does paint for a scripting-disabled reader; that count is taken over every
+  `.slide` in the body rather than the stage's list, since the CSS rule is global and a second
+  active slide parked outside the stage paints beside the one the deck opens on. A first stage that
+  holds no slides is reported too, since the runtime installs no deck chrome at all for such a deck.
+- `deck_scaffold.prepare_slides` normalizes to match: the first LIVE slide gains `active` and every
+  later slide has `active` and `visible` removed, so an input fragment that already marks a later
+  slide active is corrected rather than carried through into a deck the contract refuses. "First"
+  is the first slide a browser renders, taken from the gate's own parse (newly exported as
+  `deck_validate.first_live_slide_offset`, so the scaffold and the gate it must satisfy hold one
+  reading): the tag walk added in 1.810.0 already keeps a `<section>` inside a comment or a
+  raw-text body out of the rewrite, but a `<template>` subtree is tokenized all the same while a
+  browser renders it nowhere, so a templated slide would otherwise consume the first-slide
+  position, put `.active` on markup nothing shows, and leave every real slide without it - turning
+  a fragment that scaffolded cleanly into a hard refusal. That parse also decides which slides are
+  STRIPPED, so a `<section class="slide active">` an author displays as sample text is left alone
+  rather than being rewritten to satisfy a rule that does not apply to it.
+- The deck-contract reference (`references/deck-contract.md`) showed a first slide without
+  `.active`, so a deck hand-authored exactly to the shipped recipe would have been rejected by the
+  new gate; the snippet and the visibility rule beside it now state the contract the gate enforces.
 ## [1.810.0] - 2026-08-06
 
 ### Fixed

@@ -324,7 +324,7 @@ class DeckValidateTests(unittest.TestCase):
         # check then inspected nothing (#1159).
         body = _wrap(
             "<div class=\"deck-viewport theme-dark\"><div class=deck-stage>"
-            "<section class='slide' data-slide-id='slide-00000001'><p>x</p></section>"
+            "<section class='slide active' data-slide-id='slide-00000001'><p>x</p></section>"
             "</div></div>prefers-reduced-motion")
         self.assertEqual(_errors(body), [])
         # ...and the editor guard misses nothing for the same reason: an unquoted `.edit-toggle`
@@ -409,7 +409,7 @@ class DeckValidateTests(unittest.TestCase):
             "expected exactly one .deck-stage, found 2")
         self.assertEqual(_errors(_wrap(
             '<template class="deck-viewport"></template><div class="deck-stage">'
-            '<section class="slide" data-slide-id="slide-00000001"></section>'
+            '<section class="slide active" data-slide-id="slide-00000001"></section>'
             "</div>prefers-reduced-motion")), [])
 
     def test_structure_in_a_foreign_namespace_is_still_structure(self):
@@ -418,7 +418,7 @@ class DeckValidateTests(unittest.TestCase):
         # disagree with the query it models.
         self.assertEqual(_errors(_wrap(
             '<div class="deck-viewport"><div class="deck-stage">'
-            '<svg><section class="slide" data-slide-id="slide-00000001"></section></svg>'
+            '<svg><section class="slide active" data-slide-id="slide-00000001"></section></svg>'
             "</div></div>prefers-reduced-motion")), [])
 
     def test_a_class_or_slide_id_is_read_the_way_a_browser_resolves_the_attribute(self):
@@ -426,7 +426,7 @@ class DeckValidateTests(unittest.TestCase):
         # decoded - both the shared reading, and neither visible to a raw double-quoted regex.
         self.assertEqual(_errors(_wrap(
             '<div class="deck&#45;viewport"><div class="deck&#45;stage">'
-            '<section class="slide" data-slide-id="slide-00000001"'
+            '<section class="slide active" data-slide-id="slide-00000001"'
             ' data-slide-id="not-valid"></section>'
             "</div></div>prefers-reduced-motion")), [])
         self._assert_error(
@@ -444,6 +444,125 @@ class DeckValidateTests(unittest.TestCase):
                 self.assertTrue(any("missing data-slide-id" in e for e in errs), errs)
                 self.assertFalse(any("duplicate slide id" in e for e in errs), errs)
                 self.assertFalse(any("invalid data-slide-id" in e for e in errs), errs)
+
+    def _active_deck(self, *actives):
+        # A minimal structurally-valid deck whose Nth slide carries `active` iff actives[N] is set.
+        slides = "".join(
+            '<section class="slide%s" data-slide-id="slide-0000000%d"></section>'
+            % (" active" if a else "", i + 1)
+            for i, a in enumerate(actives))
+        return _wrap('<div class="deck-viewport"><div class="deck-stage">'
+                     + slides + "</div></div>prefers-reduced-motion")
+
+    def test_cmh_deck_04_exactly_one_first_slide_is_active(self):
+        # The deck contract promises "the first slide is .active" (CMH-DECK-02), so the gate that
+        # runs on the final HTML has to be able to see it: a deck that opens on the wrong slide, on
+        # several at once, or on none is corrupt and must fail closed.
+        self.assertEqual(_errors(self._active_deck(True, False, False)), [])
+        for actives, needle in (
+                ((False, True, False), "the first slide"),
+                ((True, True, False), "exactly one"),
+                ((False, False, False), "no slide"),
+        ):
+            with self.subTest(actives=actives):
+                self._assert_error(self._active_deck(*actives), needle)
+
+    def test_cmh_deck_04_the_active_class_is_read_the_way_a_browser_reads_it(self):
+        # Membership goes through the SHARED class reading, so any quoting form and any character
+        # reference counts - and a substring like `inactive` does not.
+        self.assertEqual(_errors(_wrap(
+            "<div class=deck-viewport><div class='deck-stage'>"
+            "<section class='slide &#97;ctive' data-slide-id=\"slide-00000001\"></section>"
+            '<section class="slide" data-slide-id="slide-00000002"></section>'
+            "</div></div>prefers-reduced-motion")), [])
+        self._assert_error(_wrap(
+            '<div class="deck-viewport"><div class="deck-stage">'
+            '<section class="slide inactive" data-slide-id="slide-00000001"></section>'
+            "</div></div>prefers-reduced-motion"), "no slide")
+
+    def test_cmh_deck_04_the_active_gate_reads_the_slides_the_runtime_enumerates(self):
+        # The runtime builds its slide list from `root.querySelector(".deck-stage")` then
+        # `stage.querySelectorAll(".slide")`, so a `<section class="slide">` parked OUTSIDE the
+        # stage is not a slide the deck opens on. The body-wide scope the id checks keep is
+        # order-INDEPENDENT, so it never answered wrongly before; this check is the first
+        # order-dependent one, and body-wide it was wrong in both directions.
+        stray_before = _wrap(
+            '<section class="slide" data-slide-id="slide-00000009"></section>'
+            '<div class="deck-viewport"><div class="deck-stage">'
+            '<section class="slide active" data-slide-id="slide-00000001"></section>'
+            "</div></div>prefers-reduced-motion")
+        self.assertEqual(_errors(stray_before), [])
+        stray_active = _wrap(
+            '<section class="slide active" data-slide-id="slide-00000009"></section>'
+            '<div class="deck-viewport"><div class="deck-stage">'
+            '<section class="slide" data-slide-id="slide-00000001"></section>'
+            "</div></div>prefers-reduced-motion")
+        self._assert_error(stray_active, "no slide carries the active class")
+
+    def test_cmh_deck_04_which_slide_opens_is_a_scripting_enabled_question(self):
+        # The other structural checks union both readings because a stage or a duplicate id parked
+        # in a <noscript> is real to a scripting-disabled reader. WHICH slide the deck opens on is
+        # not that kind of question - the layer only runs with scripting ENABLED - so unioning it
+        # reported a correct deck as broken, and numbered a slide the author's document does not
+        # have ("found slide #2" for a deck whose slide #1 exists only with scripting off).
+        self.assertEqual(_errors(_wrap(
+            '<div class="deck-viewport"><div class="deck-stage">'
+            '<noscript><section class="slide" data-slide-id="slide-00000002"></section></noscript>'
+            '<section class="slide active" data-slide-id="slide-00000001"></section>'
+            "</div></div>prefers-reduced-motion")), [])
+
+    def test_cmh_deck_04_only_the_first_slide_may_be_visible(self):
+        # `viewport-base.css` shows a slide on `.slide.active, .slide.visible` and the runtime
+        # toggles the two in lockstep, so a later slide left `visible` paints stacked over the
+        # slide the deck opens on - the same "every gate green, wrong thing on screen" failure the
+        # active check exists to close.
+        self.assertEqual(_errors(self._active_deck(True, False)), [])
+        self._assert_error(_wrap(
+            '<div class="deck-viewport"><div class="deck-stage">'
+            '<section class="slide active" data-slide-id="slide-00000001"></section>'
+            '<section class="slide visible" data-slide-id="slide-00000002"></section>'
+            "</div></div>prefers-reduced-motion"), "visible class")
+
+    def test_cmh_deck_04_the_gate_reads_every_slide_the_runtime_shows(self):
+        # `stage.querySelectorAll(".slide")` matches ANY tag, so a `<div class="slide active">`
+        # beside the section the deck opens on really does paint stacked. The body-wide
+        # `<section>`-only list the ID checks keep would have passed this deck with zero errors.
+        self._assert_error(_wrap(
+            '<div class="deck-viewport"><div class="deck-stage">'
+            '<section class="slide active" data-slide-id="slide-00000001"></section>'
+            '<div class="slide active"></div>'
+            "</div></div>prefers-reduced-motion"), "expected exactly one")
+
+    def test_cmh_deck_04_a_stage_that_holds_no_slides_is_reported(self):
+        # An empty first stage made the whole gate silent, because it had nothing to say "first"
+        # about - so a deck whose slides all sit OUTSIDE the stage (the runtime installs no deck
+        # chrome at all) passed with zero errors.
+        self._assert_error(_wrap(
+            '<div class="deck-viewport"><hr class="deck-stage">'
+            '<section class="slide active" data-slide-id="slide-00000001"></section>'
+            "</div>prefers-reduced-motion"), "holds no slides")
+
+    def test_cmh_deck_04_a_noscript_slide_that_paints_is_still_reported(self):
+        # Only the POSITIONAL half of the question is scripting-enabled-only. "At most one slide is
+        # shown at once" is real to a scripting-disabled reader too, because the CSS paints every
+        # `.active`/`.visible` slide whether or not the layer ever runs - so a <noscript>-parked
+        # slide carrying `active` is a finding, while one that merely shifts the INDEX is not.
+        self._assert_error(_wrap(
+            '<div class="deck-viewport"><div class="deck-stage">'
+            '<section class="slide active" data-slide-id="slide-00000001"></section>'
+            '<noscript><section class="slide active" data-slide-id="slide-00000002"></section>'
+            "</noscript></div></div>prefers-reduced-motion"), "more than one slide is shown")
+
+    def test_cmh_deck_04_a_shown_slide_outside_the_stage_is_still_shown(self):
+        # `viewport-base.css` reveals `.slide.active, .slide.visible` GLOBALLY, so a second active
+        # slide parked OUTSIDE the stage paints beside the one the deck opens on even though the
+        # runtime never enumerates it. Scoping the "at most one shown" count to the stage's list
+        # made that deck pass with zero errors while both elements painted.
+        self._assert_error(_wrap(
+            '<section class="slide active" data-slide-id="slide-00000009"></section>'
+            '<div class="deck-viewport"><div class="deck-stage">'
+            '<section class="slide active" data-slide-id="slide-00000001"></section>'
+            "</div></div>prefers-reduced-motion"), "more than one slide is shown")
 
     def test_an_editor_named_only_in_script_text_is_not_the_editor(self):
         # The editor guard is an ELEMENT reading like the other three, so the upstream control's

@@ -590,9 +590,13 @@ class _DeckStructureScanner(_browser_boundaries.BrowserBoundaries):
         self.viewports = 0
         self.stages = 0
         self.slides = []      # the browser-decoded attribute dict of each <section class=slide>
+        self.stage_slides = []  # the subset the runtime enumerates: inside the FIRST .deck-stage
+        self.shown_slides = []  # every `.slide` the CSS can reveal, any tag, anywhere in the body
         self.editor = False
         self._stack = []
         self._templates = []  # stack indices of the open <template> elements
+        self._stage = None    # stack index of the FIRST .deck-stage, while it is open
+        self._stage_done = False
         self._fallback = _fallback
 
     def _truncate_stacks(self, depth):
@@ -600,6 +604,11 @@ class _DeckStructureScanner(_browser_boundaries.BrowserBoundaries):
         del self._stack[depth:]
         while self._templates and self._templates[-1] >= depth:
             self._templates.pop()
+        if self._stage is not None and self._stage >= depth:
+            # A LATER `.deck-stage` never becomes the runtime's stage: `querySelector` returns the
+            # first one, so once it has closed its slide set is final.
+            self._stage = None
+            self._stage_done = True
 
     def _push_element(self, tag, ad, ns, info):
         self._stack.append(tag)
@@ -620,12 +629,28 @@ class _DeckStructureScanner(_browser_boundaries.BrowserBoundaries):
             self._templates.append(len(self._stack))
         if inside_template:
             return
+        # Read BEFORE this element can become the stage: `stage.querySelectorAll(".slide")`
+        # returns DESCENDANTS, so a section that is itself the stage is not one of its slides.
+        in_stage = self._stage is not None
         if "deck-viewport" in classes:
             self.viewports += 1
         if "deck-stage" in classes:
             self.stages += 1
+            if opens and not self._stage_done and self._stage is None:
+                self._stage = len(self._stack)
         if tag == "section" and "slide" in classes:
             self.slides.append(ad)
+        if "slide" in classes:
+            # `viewport-base.css` reveals `.slide.active, .slide.visible` GLOBALLY, not only below
+            # the stage, so this is the set the "at most one slide is shown" count reads.
+            self.shown_slides.append(ad)
+        if in_stage and "slide" in classes:
+            # ANY tag, unlike `self.slides` above: the runtime enumerates the stage's slides with
+            # `stage.querySelectorAll(".slide")`, which matches a `<div class="slide">` too, and
+            # this list is what the POSITIONAL half of the active check reads. The body-wide
+            # `self.slides` keeps its `<section>`-only scope, because that is what the id checks
+            # have always had.
+            self.stage_slides.append(ad)
 
 
 def _structure_pass_errors(structure):
@@ -658,6 +683,118 @@ def _structure_pass_errors(structure):
     return errors
 
 
+def live_slide_offsets(fragment):
+    """Character offsets of the `<section class="slide">` start tags a BROWSER renders.
+
+    Asked of a PARSE rather than of a raw-text search. `deck_scaffold`'s tag WALK already keeps a
+    `<section>` inside a comment or a raw-text body out of its rewrite (#1197), but it still visits
+    a slide inside a `<template>` subtree - tokenized all the same, yet rendered nowhere and not
+    counted by this module's structure scan. Exported so the scaffold normalizes `.active` against
+    exactly the slides this gate judges, rather than approximating the same rule a second time:
+    letting inert markup consume the first-slide position put the class on something nothing shows
+    and left every real slide without it, and stripping it from inert markup rewrote authored
+    sample text that is not a slide at all.
+    """
+    scanner = _LiveSlideScanner(fragment or "")
+    try:
+        scanner.parse_document(fragment or "")
+    except Exception:  # pragma: no cover - HTMLParser is lenient; fail closed if it ever raises
+        return []
+    return scanner.starts
+
+
+def first_live_slide_offset(fragment):
+    """The offset of the first slide a browser renders, or None. See `live_slide_offsets`."""
+    starts = live_slide_offsets(fragment)
+    return starts[0] if starts else None
+
+
+class _LiveSlideScanner(_DeckStructureScanner):
+    # NOT named `offset`: `HTMLParser` keeps the current column there, and shadowing it breaks
+    # `getpos()` (and so `_off()`) for the whole parse.
+    def __init__(self, html=""):
+        super().__init__(html)
+        self.starts = []
+
+    def _visit_start(self, tag, ad, ns, opens):
+        before = len(self.slides)
+        super()._visit_start(tag, ad, ns, opens)
+        if len(self.slides) > before:
+            self.starts.append(self._off())
+
+
+def _active_slide_errors(structure, positional=True):
+    """WHICH slide the deck opens on, read the way the RUNTIME reads it.
+
+    The deck contract promises the FIRST slide is `.active` (CMH-DECK-02), and `deck_checks` is the
+    gate the scaffold runs on the final HTML before it writes `--out` - but that gate could not SEE
+    the promise, so a deck with `.active` on slide two, on several slides, or on none at all passed
+    with a zero exit and simply opened on the wrong slide.
+
+    Two boundaries make this check agree with the runtime rather than with the other structural
+    checks beside it. (1) It is scoped to the slides inside the FIRST `.deck-stage`, because that is
+    the set the runtime enumerates (`root.querySelector(".deck-stage")` then
+    `stage.querySelectorAll(".slide")`). The body-wide scope the id checks keep is
+    order-INDEPENDENT, so it never answered wrongly there; this is the first ORDER-dependent check,
+    and body-wide it was wrong in both directions - a stray `<section class="slide">` before the
+    stage made a correct deck fail, and a stray ACTIVE one outside the stage made a deck with no
+    active slide pass.     (2) It is asked of the scripting-ENABLED reading for the POSITIONAL half: a stage or a
+    duplicate id parked in a `<noscript>` is real to a scripting-disabled reader, but which slide
+    is FIRST is not that kind of question - the layer only runs with scripting enabled - and
+    unioning it reported a correct deck as broken, numbering a slide the author's document does not
+    have. The order-INDEPENDENT half ("at most one slide is shown at once") IS unioned, because a
+    `<noscript>`-parked slide carrying `active` really does paint stacked for that reader.
+
+    `visible` rides along with `active` because `viewport-base.css` shows a slide on
+    `.slide.active, .slide.visible` and the runtime toggles the two in lockstep, so a later slide
+    left `visible` paints stacked over the slide the deck opens on - the same "every gate green,
+    wrong thing on screen" failure. Membership is the SHARED class reading, so any quoting form and
+    any character-reference spelling counts and a substring such as `inactive` does not.
+
+    `positional=False` selects the scripting-DISABLED reading, where only the ORDER-INDEPENDENT
+    half of the question survives. Which slide is FIRST is meaningless there - a `<noscript>`-parked
+    slide shifts every index without changing what any reader sees - but "at most one slide is
+    shown at once" is real to that reader, because the CSS above paints every `.active`/`.visible`
+    slide whether or not the layer ever runs. That count is taken over EVERY `.slide` in the body,
+    not over the stage's list: `.slide.active, .slide.visible` is a global rule, so a second active
+    slide parked OUTSIDE the stage paints beside the one the deck opens on even though the runtime
+    never enumerates it.
+    """
+    shown = [a for a in structure.shown_slides
+             if "active" in _classes(a) or "visible" in _classes(a)]
+    if not positional:
+        if len(shown) > 1:
+            return ["deck: more than one slide is shown at once, found %d" % len(shown)]
+        return []
+    errors = []
+    if len(shown) > 1 and len(shown) > len(structure.stage_slides):
+        # Reported here only when the stage's own list cannot see it; otherwise the sharper
+        # positional messages below say the same thing about the same slides.
+        errors.append("deck: more than one slide is shown at once, found %d" % len(shown))
+    slides = structure.stage_slides
+    if not slides:
+        # A stage with no slides is a deck the runtime renders nothing from. Reported only when the
+        # author actually shipped slides that ended up outside it, so the "no slides at all" case
+        # keeps its own single, more direct message.
+        if structure.stages and structure.slides:
+            errors.append("deck: the first .deck-stage holds no slides; the runtime renders nothing")
+        return errors
+    actives = [i for i, attrs in enumerate(slides) if "active" in _classes(attrs)]
+    if not actives:
+        errors.append("deck: no slide carries the active class; the first slide must be .active"
+                      " (add `active` to the first slide's class)")
+    elif len(actives) > 1:
+        errors.append("deck: expected exactly one .active slide, found %d" % len(actives))
+    elif actives[0] != 0:
+        errors.append(
+            "deck: the active slide must be the first slide, found slide #%d" % (actives[0] + 1))
+    later = [i + 1 for i, attrs in enumerate(slides[1:]) if "visible" in _classes(attrs)]
+    if later:
+        errors.append("deck: only the first slide may carry the visible class, found slide(s) "
+                      + ", ".join("#%d" % (i + 1) for i in later))
+    return errors
+
+
 def _structure_errors(body):
     """The structural errors of BOTH readings of the body, unioned.
 
@@ -671,17 +808,22 @@ def _structure_errors(body):
     """
     passes = (False, True) if "<noscript" in (body or "").lower() else (False,)
     scans = []
+    active = []
     for fallback in passes:
         scanner = _DeckStructureScanner(body, _fallback=fallback)
         try:
             scanner.parse_document(body)
         except Exception:  # pragma: no cover - HTMLParser is lenient; fail closed if it ever raises
             scans.append(["deck: could not parse the deck body for the structural checks"])
+            active.append([])
             continue
         scans.append(_structure_pass_errors(scanner))
-    errors = list(scans[0])
+        # Deliberately NOT part of `_structure_pass_errors` - see `_active_slide_errors` for why
+        # only the order-independent half of this question survives the scripting-disabled reading.
+        active.append(_active_slide_errors(scanner, positional=not fallback))
+    errors = list(scans[0]) + list(active[0])
     seen = set(errors)
-    for extra in scans[1:]:
+    for extra in scans[1:] + active[1:]:
         for e in extra:
             if e in seen:
                 continue

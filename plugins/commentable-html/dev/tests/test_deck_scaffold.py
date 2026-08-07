@@ -24,6 +24,7 @@ sys.path.insert(0, DECK)
 sys.path.insert(0, _paths.TOOLS)
 import _browser_attrs  # noqa: E402
 import deck_scaffold  # noqa: E402
+import deck_validate  # noqa: E402
 import validate as cmh_validate  # noqa: E402
 from deck_common import SLIDE_ID_RE, slide_id  # noqa: E402
 
@@ -184,6 +185,69 @@ class DeckScaffoldTests(unittest.TestCase):
             '<section title=\' class="slide"\'><p>decoy</p></section>')
         self.assertEqual(sids, [])
         self.assertNotIn("data-slide-id", prepared)
+
+    def test_the_active_class_lands_only_on_the_first_slide(self):
+        # CMH-DECK-02 promises the FIRST slide is `.active`. An input fragment that already marks a
+        # later slide active must be NORMALIZED, not carried through: a deck with `active` on two
+        # slides (or on the wrong one) opens on the wrong slide, and the deck contract now refuses
+        # it (CMH-DECK-04), so the scaffold has to emit the deck that contract accepts. `visible`
+        # goes with it - the runtime toggles the two in lockstep, and the vendored
+        # `viewport-base.css` shows a slide on EITHER, so a later slide left `visible` paints
+        # stacked over the one the deck opens on.
+        prepared, sids = deck_scaffold.prepare_slides(
+            '<section class="slide"><p>one</p></section>'
+            '<section class="slide active"><p>two</p></section>'
+            "<section class='slide &#97;ctive'><p>three</p></section>"
+            '<section class="slide visible"><p>four</p></section>')
+        self.assertEqual(len(sids), 4)
+        self.assertEqual(prepared.count(" active"), 1)
+        self.assertNotIn("visible", prepared)
+        self.assertIn('class="slide active"', prepared)
+        frag = os.path.join(self.tmp, "later-active.html")
+        Path(frag).write_text(
+            '<section class="slide"><p>one</p></section>'
+            '<section class="slide active"><p>two</p></section>\n', encoding="utf-8")
+        html = self._make("--content", frag, "--force")
+        self.assertEqual(html.count('class="slide active"'), 1)
+        self.assertEqual(deck_validate.deck_checks(html), [])
+
+    def test_the_active_class_lands_only_on_the_first_live_slide(self):
+        # The first slide is the first one a BROWSER renders, decided by the SHARED parse
+        # (`deck_validate.first_live_slide_offset`). `_section_tags` already keeps a `<section>`
+        # inside a comment or a raw-text body out of the walk (#1197), but a `<template>` SUBTREE
+        # is tokenized all the same while a browser renders it nowhere - so letting a templated
+        # slide consume the FIRST-slide position would put `.active` on markup nothing shows and
+        # leave every real slide without it, which the deck contract then REFUSES.
+        for inert in (
+                '<template><section class="slide"><p>tpl</p></section></template>',
+                '<template><template><section class="slide"><p>in</p></section></template>'
+                '<section class="slide"><p>tail</p></section></template>',
+                '<!-- dropped: <section class="slide"><p>old</p></section> -->',
+                "<script>var s = '<section class=\"slide\">x</section>';</script>",
+                '<title><section class="slide">x</section></title>',
+        ):
+            with self.subTest(inert=inert[:24]):
+                prepared, _ = deck_scaffold.prepare_slides(
+                    inert + '<section class="slide"><p>one</p></section>'
+                            '<section class="slide"><p>two</p></section>')
+                self.assertEqual(prepared.count(" active"), 1, prepared)
+                # ...and it is on the section that holds the first LIVE slide's content.
+                head = prepared.partition("<p>one</p>")[0]
+                self.assertIn("active", head[head.rindex("<section"):], prepared)
+
+    def test_normalizing_deck_state_does_not_rewrite_a_non_live_sample(self):
+        # Only a LIVE slide is normalized. A `<section class="slide active">` an author DISPLAYS as
+        # sample text is not a slide, so stripping `active` from it would rewrite the document's
+        # own content to satisfy a rule that does not apply to it.
+        for sample in ('<title><section class="slide active">sample</section></title>',
+                       '<textarea><section class="slide visible">sample</section></textarea>',
+                       '<template><section class="slide active">tpl</section></template>'):
+            with self.subTest(sample=sample[:12]):
+                prepared, _ = deck_scaffold.prepare_slides(
+                    '<section class="slide"><p>one</p></section>' + sample)
+                self.assertIn("sample" if "sample" in sample else "tpl", prepared)
+                tail = prepared[prepared.index(sample[:9]):]
+                self.assertIn("active" if "active" in sample else "visible", tail, prepared)
 
     def test_a_slide_class_is_decoded_before_it_is_read_and_rewritten(self):
         # CMH-VAL-21 clause 11 (#1139): the start tag is PARSED, so a character reference is

@@ -290,7 +290,7 @@ def _section_tags(fragment):
 
 
 def prepare_slides(fragment: str):
-    """Ensure every slide <section> has a stable data-slide-id and the first is .active.
+    """Ensure every slide <section> has a stable data-slide-id and ONLY the first is .active.
     Returns (rewritten_fragment, [slide_ids])."""
     sections = _section_tags(fragment)
     taken = set()
@@ -311,7 +311,21 @@ def prepare_slides(fragment: str):
         if sid:
             taken.add(sid)
     ids = []
-    first = True
+    # `_section_tags` walks the fragment the way a browser tokenizes it, so a `<section>` inside a
+    # comment or a raw-text body is already not here (#1197). It still visits a slide inside a
+    # `<template>` subtree, which is tokenized all the same yet rendered nowhere, and it visits a
+    # `<section>` in an RCDATA-ish body a browser keeps as text. The gate's OWN parse says which
+    # slides are LIVE, so the scaffold and the gate it must satisfy hold one reading: only a live
+    # slide can take `.active`, and only a live slide has it stripped - normalizing deck state must
+    # not rewrite an authored sample that is not a slide at all.
+    live = set(deck_validate.live_slide_offsets(fragment))
+    slide_starts = [sec.start for sec in sections if _is_slide(sec.pairs)]
+    ordered_live = [s for s in slide_starts if s in live]
+    if not ordered_live:
+        # The two readings disagree about which slides exist. Degrade to the slides this rewrite
+        # can reach rather than marking nothing active, which would emit a deck the gate refuses.
+        ordered_live, live = slide_starts, set(slide_starts)
+    first_start = ordered_live[0] if ordered_live else None
     out, cursor = [], 0
     for sec in sections:
         # The start tag is PARSED, not searched: a `class=` search matches one spelled inside
@@ -326,9 +340,17 @@ def prepare_slides(fragment: str):
         if not sid:
             sid = slide_id(_strip_tags(fragment[sec.tag_end:sec.inner_end]), taken)
         ids.append(sid)
-        if first and "active" not in classes:
-            classes.append("active")
-        first = False
+        # ONLY the first slide is `.active` (CMH-DECK-02). An input fragment that marks a LATER
+        # slide active is NORMALIZED rather than carried through: two active slides, or an active
+        # one that is not the first, is a deck that opens on the wrong slide, which the deck
+        # contract refuses (CMH-DECK-04). `visible` goes with it - the runtime toggles the two in
+        # lockstep and `viewport-base.css` shows a slide on EITHER, so a later slide left `visible`
+        # paints stacked over the slide the deck opens on.
+        if sec.start == first_start:
+            if "active" not in classes:
+                classes.append("active")
+        elif sec.start in live:
+            classes = [c for c in classes if c not in ("active", "visible")]
         # The start tag is RE-SERIALIZED from the parsed attributes for EVERY slide, so the class
         # is written back in one canonical form and every value is re-escaped exactly once from its
         # DECODED form - escaping the raw text instead turned an authored `x&amp;y` into the
