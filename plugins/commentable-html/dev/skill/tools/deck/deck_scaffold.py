@@ -34,7 +34,7 @@ import _atomic_io  # noqa: E402
 import _brand_profile  # noqa: E402
 import _browser_attrs  # noqa: E402
 import _deck_theme  # noqa: E402
-from deck_common import esc, slide_id  # noqa: E402
+from deck_common import slide_id  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 PKG = Path(_toolpath.SKILL_ROOT)

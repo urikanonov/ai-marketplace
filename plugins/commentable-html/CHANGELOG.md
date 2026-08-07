@@ -4,6 +4,48 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.814.0] - 2026-08-07
+
+### Fixed
+
+- The value GENERATORS no longer downgrade an authored CR to LF. `#1196` made the attribute round
+  trip faithful for every tool that RE-SERIALIZES a start tag, but it did not reach the places that
+  BUILD a value from a CLI argument or a JSON field: those still wrote a literal CR, which HTML's
+  input-stream preprocessing folds to a single LF before the browser tokenizes, so the CR the input
+  genuinely carried was silently lost. Worse, once the shared writer applied the rule, ONE
+  `--label` could reach a browser as TWO different values in the same document -
+  `data-doc-label="a&#13;b"` (a CR) beside a `<title>` a browser reads as `a\nb`.
+- A shared TEXT escape, `_browser_attrs.escape_text()`, now lives beside `escape_attr_value()` and
+  applies the same CR rule for a text run: no quote escaping (`"` and `'` are ordinary characters
+  in text, and a reader would otherwise see `&quot;` spelled out), the same `&#13;` for a CR, and
+  the same U+FFFD fold for the two code points an HTML document cannot hold, so both escapes are
+  TOTAL over the code-point space. The one visible serialization change is that a `"` in a
+  generated `<title>`, lede header, checklist item or note seed is now written literally instead of
+  as `&quot;`; a browser reads the same value either way.
+- Every generator now goes through the shared pair: `retrofit`'s content-root attributes and its
+  inserted `<title>`, `new_document`'s lede header and `<title>` substitution,
+  `checklist_scaffold` and `notes_scaffold` (attributes and text), `diff_block`'s
+  `data-diff-label` / `data-diff-lang`, `chart_block`'s figcaption and ARIA label,
+  `highlight_code`'s language class, `_brand_profile`'s `data-cmh-brand`,
+  `doc_stamp.set_meta()` (which hand-rolled a third private copy of the escape, so a
+  `--session-id` carrying a CR was stamped literally), `kql_highlight`'s
+  caption title, and `deck_common.esc()` (the slide title and paragraph text
+  `pptx_to_fragment` builds from a JSON field; its one attribute caller, the image `src`, moves
+  to the attribute escape, since the text rule leaves a `"` alone and that would end the value).
+- `notes_apply.py` cements a note with the shared text escape too. On `html.escape` it wrote a
+  literal CR that its own read then folded to LF - and because it compares the escaped value
+  against the file to decide whether anything changed, a note carrying a `&#13;` was reported as
+  changed and rewritten on EVERY run.
+- The spec now lists the REMAINING plain-escape write sites in full, each with its reason, so the
+  enumeration can be checked rather than re-derived - including the ones spelled through the
+  `html_lib` alias, which an earlier pass of the list missed. Four are provably CR-free at the
+  write (the deck theme label, the code-body escape, the diff body, and the document-overview
+  `aria-label` synthesized from integer counts). The fifth, `generate_toc.py`'s TOC `href` and
+  link text, is a REAL residual left deliberately unfixed: it reads with `newline=""` and splices
+  by offsets, and its parsed attribute view does not apply input-stream preprocessing, so moving
+  it onto the escape ALONE would write back a CR the input never meant - the inverse of this bug.
+  What it owes is the read-boundary pairing, which is tracked with the rest of that work.
+
 ## [1.812.0] - 2026-08-07
 
 ### Fixed

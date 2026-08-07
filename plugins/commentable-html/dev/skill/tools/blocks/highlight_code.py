@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Author-time syntax highlighter for static commentable-html reports."""
 import argparse
-import html as _html
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # this bucket
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
 import _highlight_core as _core  # noqa: E402
 
 
@@ -848,7 +849,7 @@ def highlight_code(language, code):
 
 def highlight_block(language, code):
     """Return a highlighted pre/code block."""
-    lang = _html.escape(_class_language(language), quote=True)
+    lang = _browser_attrs.escape_attr_value(_class_language(language))
     return '<pre><code class="language-%s">%s</code></pre>' % (lang, highlight_code(language, code))
 
 

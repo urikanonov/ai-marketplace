@@ -18,13 +18,13 @@ The result is a ready-to-paste fragment (stdout, or --out FILE). Wrap it into a 
 with tools/new_document.py or paste it into an existing checklist-bearing document.
 """
 import argparse
-import html as _html
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _atomic_io  # noqa: E402
+import _browser_attrs  # noqa: E402
 
 _STATE_BY_MARK = {" ": "blank", "": "blank", "v": "check", "x": "cross", "?": "question"}
 
@@ -86,7 +86,7 @@ def parse_outline(text):
 
 
 def _attr(name, value):
-    return ' %s="%s"' % (name, _html.escape(value, quote=True))
+    return ' %s="%s"' % (name, _browser_attrs.escape_attr_value(value))
 
 
 def render_list(items, cid, label):
@@ -103,7 +103,7 @@ def render_list(items, cid, label):
         for it in kids:
             state = "" if it["is_branch"] else _attr("data-cmh-state", it["state"])
             out += ("\n" + pad + "  <li" + _attr("data-cmh-item", it["id"]) + state + ">"
-                    + _html.escape(it["label"]))
+                    + _browser_attrs.escape_text(it["label"]))
             out += block(it["id"], depth + 1)
             out += "</li>"
         out += "\n" + pad + "</ul>"
@@ -127,7 +127,8 @@ def render_table(items, cid, label):
         state = "" if it["is_branch"] else _attr("data-cmh-state", it["state"])
         pad = (' style="padding-left:%.2grem"' % (it["depth"] * 1.2)) if it["depth"] else ""
         rows += ("\n    <tr" + _attr("data-cmh-item", it["id"]) + parent + state + ">"
-                 + "<td></td><td" + pad + ">" + _html.escape(it["label"]) + "</td></tr>")
+                 + "<td></td><td" + pad + ">" + _browser_attrs.escape_text(it["label"])
+                 + "</td></tr>")
     return head + rows + "\n  </tbody>\n</table>\n"
 
 

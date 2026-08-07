@@ -17,7 +17,6 @@ Usage (run from the skill root):
 Exit code 0 on success (including "nothing to change"), 1 on error.
 """
 import argparse
-import html as _html
 import json
 import os
 import re
@@ -124,7 +123,13 @@ def apply_notes(path, state_map, warn=None):
         if not n:
             warn('note "%s": no data-cmh-note element found, skipping' % key)
             continue
-        escaped = _html.escape(value, quote=False)
+        # The SHARED text escape, the same one `notes_scaffold` writes a seed with, so cementing a
+        # note does not rewrite an authored `&#13;` into a literal CR that this tool's own read
+        # (line 110) then folds to LF - which would also make the comparison below report a change
+        # on every run. It is a lossy escape (NUL and a lone surrogate fold to U+FFFD), which is
+        # correct for the comparison too: a browser holds U+FFFD for both, so no change a reader
+        # could see is missed.
+        escaped = _browser_attrs.escape_text(value)
         if html[n["start"]:n["end"]] != escaped:
             edits.append((n["start"], n["end"], escaped))
             changed += 1

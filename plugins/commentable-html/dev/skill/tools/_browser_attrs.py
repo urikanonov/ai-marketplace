@@ -230,6 +230,43 @@ def escape_attr_value(value):
     return _html.escape(text, quote=True).replace("\r", "&#13;")
 
 
+def escape_text(text):
+    """A TEXT RUN escaped for element content - the companion of `escape_attr_value`, with the
+    same CR rule and the same totality.
+
+    A text run needs its own rule rather than the attribute one: `"` and `'` are ordinary
+    characters in text, so escaping them would spell `&quot;` out for a reader in the tools that
+    write a `<title>`, a lede header or a checklist item. But input-stream preprocessing folds a
+    CR in TEXT exactly as it folds one in an attribute value, so the `&#13;` half is shared - and
+    that shared half is what stops ONE authored label from reaching a browser as TWO different
+    values when a tool writes it into both an attribute and the text beside it (#1224).
+
+    Everything `escape_attr_value` documents about the fold applies here, and a NUL cannot
+    survive in EITHER text state - just by different machinery, which is worth writing down
+    because it is easy to get backwards. RCDATA (which is what `<title>` is) folds it in the
+    TOKENIZER: the RCDATA state emits a U+FFFD character token. The DATA state - the lede
+    header, a checklist `<li>`/`<td>`, a note `<div>`, a chart `<figcaption>` - emits the NUL
+    character token instead, and the "in body" TREE-CONSTRUCTION stage then IGNORES it, so the
+    DOM holds nothing at all. Folding to U+FFFD up front is therefore not stricter than a
+    browser in any way a reader could see; it is the one spelling that survives both states
+    identically, which is what makes the escape TOTAL.
+
+    The PRECONDITION is `escape_attr_value`'s, unchanged: the value must come from a CLI argument,
+    a JSON field, or text that already had input-stream preprocessing applied. So is the
+    change-detector prohibition, with one clarification its callers need: diffing this output
+    against the INPUT is unsound (the fold is lossy), but diffing it against a value this escape
+    PREVIOUSLY WROTE is sound and is what `notes/notes_apply.py` does - the escape is idempotent
+    on its own image, so re-cementing an unchanged value is correctly a no-op.
+    """
+    if text is None:
+        body = ""
+    elif isinstance(text, str):
+        body = _ATTR_UNHOLDABLE_RE.sub("\ufffd", text)
+    else:
+        raise TypeError("text must be a str or None, got %r" % type(text).__name__)
+    return _html.escape(body, quote=False).replace("\r", "&#13;")
+
+
 def visible_text(text):
     """`text` with the characters a reader cannot SEE removed, by the shared rule every check
     uses. Degrades to `text` unchanged."""

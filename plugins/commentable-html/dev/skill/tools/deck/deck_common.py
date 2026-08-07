@@ -6,8 +6,12 @@ pptx_to_fragment.py, and deck_validate.py so all three agree on the same contrac
 (see references/deck-contract.md).
 """
 import hashlib
-import html
+import os
 import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
 
 SLIDE_ID_RE = re.compile(r"^slide-[0-9a-f]{8}(-[0-9]+)?$")
 
@@ -33,5 +37,12 @@ def slide_id(text: str, taken) -> str:
 
 
 def esc(text: str) -> str:
-    """Escape text for safe insertion as HTML text content (quotes included)."""
-    return html.escape(text or "", quote=True)
+    """Escape a value for insertion as HTML TEXT content.
+
+    The shared text escape (`_browser_attrs.escape_text`), not `html.escape`: a CR written
+    literally is folded to LF by input-stream preprocessing before a browser tokenizes, so a
+    slide title or paragraph built from a JSON field would otherwise carry a value the rendered
+    DOM never has (#1224). Quotes are deliberately left alone - they are ordinary characters in
+    text; an ATTRIBUTE takes `_browser_attrs.escape_attr_value` instead.
+    """
+    return _browser_attrs.escape_text(text)

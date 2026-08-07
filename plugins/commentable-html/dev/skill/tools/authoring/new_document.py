@@ -53,7 +53,6 @@ real validation failure. Output goes to stdout unless --out is given.
 """
 import argparse
 import hashlib
-import html as _html
 import importlib.util
 import os
 from pathlib import Path
@@ -195,7 +194,7 @@ def ensure_doc_title(content, label):
     if _has_active_title(content or ""):
         return content
     header = ('<header class="cmh-lede">\n  <h1>%s</h1>\n</header>'
-              % _html.escape((label or "").strip()))
+              % _browser_attrs.escape_text((label or "").strip()))
     body = (content or "").strip("\n")
     return header + ("\n\n" + body if body else "")
 
@@ -365,7 +364,10 @@ def make_document(template_html, content, key, label, source=None, generated=Non
         + template_html[end_idx:]
     )
     # Best-effort: keep the browser tab / fallback label in sync with the doc label.
-    out = _TITLE_RE.sub(lambda mo: mo.group(1) + _html.escape(label) + mo.group(2), out, count=1)
+    # The SHARED text escape, the CR-rule companion of the one `_build_main_tag` writes
+    # `data-doc-label` with, so one `--label` cannot reach a browser as two different values.
+    out = _TITLE_RE.sub(
+        lambda mo: mo.group(1) + _browser_attrs.escape_text(label) + mo.group(2), out, count=1)
     if kind is not None:
         out = _set_kind_meta(out, kind)
     return out
