@@ -2279,8 +2279,10 @@ class RuntimeParityTests(unittest.TestCase):
         # `file:` with an AUTHORITY is an off-machine load: on Windows it resolves to an SMB UNC
         # path, so it beacons exactly like an http one, and no `file://` document's CSP stops the
         # navigation it can carry. How many separators open that authority was CHECKED in a real
-        # Chromium rather than read off the spec: exactly two, or four-or-more, give a host, while
-        # THREE is the empty host of an ordinary local path.
+        # Chromium rather than read off the spec: two, or four-or-more, give a host from ANY base,
+        # while THREE is the empty host of an ordinary local path. Those two are counted because they
+        # are the BASE-INDEPENDENT set, not because no other spelling reaches a host - see the
+        # zero/one-separator rows below and issue #1229.
         ("file://evil.example/x.js", True), ("FILE://evil.example/x.js", True),
         ("file:\\\\evil.example/x.js", True), ("file:////evil.example/x.js", True),
         ("file://///evil.example/x.js", True), ("file:///\\evil.example/x.js", True),
@@ -2339,7 +2341,10 @@ class RuntimeParityTests(unittest.TestCase):
         ("file:////localhost./x.js", True), ("file://///localhost./x.js", True),
         # A SECOND slash after the host is not a local path - it is the four-separator UNC form
         # wearing a `localhost` disguise. The host is emptied and `//not-a-host/x.js` stays as the
-        # PATH, so the value canonicalizes to `file:////not-a-host/x.js` (checked), which the rows
+        # PATH, so the value canonicalizes to `file:////not-a-host/x.js` (checked in a
+        # spec-conformant WHATWG parser; Chromium 149 instead KEEPS host `localhost` for that exact
+        # spelling, and re-parsing the canonical form is what reaches host `not-a-host`, so counting
+        # it is the fail-CLOSED reading either way), which the rows
         # above already reject. A DOT SEGMENT reaches the same place from further along the path -
         # `/.//x.js` and `/a/..//x.js` both canonicalize to `file:////x.js`, and a `..` inside the
         # four-separator form pops the `localhost` segment itself out - so every spelling of a
@@ -2383,7 +2388,11 @@ class RuntimeParityTests(unittest.TestCase):
         ("file://\uff4cocalhost/x.js", True), ("file://%EF%BD%8Cocalhost/x.js", True),
         ("file://LOCALHO\u017FT/x.js", True), ("file://local%C2%ADhost/x.js", True),
         # A SINGLE leading slash or backslash is a path, not an authority, and a backslash deeper
-        # inside a relative reference leaves it relative.
+        # inside a relative reference leaves it relative. The `file:x.js` and `file:/x.js` rows are
+        # the ZERO- and ONE-separator controls: parsed ABSOLUTE, Chromium 149 gives both the host
+        # `x.js`, but against the `file:` base a document actually has they inherit that base's host
+        # and are local, so they carry no authority of their own and are deliberately not counted.
+        # Issue #1229 tracks that bound; a widening that counted them would flip these two rows.
         ("\\relative\\x.js", False), ("/root\\relative.js", False), ("file:x.js", False),
         ("file:/x.js", False),
         # An authority terminated at once by `?`, `#` or the end of the value is an EMPTY host,

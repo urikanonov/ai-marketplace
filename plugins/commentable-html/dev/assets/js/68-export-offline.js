@@ -257,18 +257,28 @@ function _offlineNormalizeUrlValue(v) {
 }
 // An explicit `file:` authority counts as a network load: on Windows `file://host/x.js` is an SMB
 // fetch off the machine. How many separators open that authority is NOT "two or more" - a real
-// Chromium (checked, not assumed) reads exactly two OR four-or-more as an authority, while THREE is
+// Chromium (checked, not assumed) reads two OR four-or-more as an authority, while THREE is
 // the empty host of an ordinary local path (`file:///C:/x`), so `file:////host/x.js` really
-// does fetch and a `(?!/)` test alone called it local. Two host spellings that stay on the machine
+// does fetch and a `(?!/)` test alone called it local. That count is empirical because Chromium
+// DEVIATES from the spec here, so reading the standard would have got it wrong: measured in Chromium
+// 149, `file:////host/x.js` parses to host `host` and re-serializes as `file://host/x.js`, where a
+// spec-conformant parser takes the WHATWG file-host state's EMPTY host and leaves `//host/x.js` as
+// the path.
+// The two counted arms are the BASE-INDEPENDENT set, not a claim that no other spelling reaches a
+// host: the same Chromium 149 gives host `host` to a ZERO- or ONE-separator spelling parsed ABSOLUTE
+// (`file:host/x.js`, `file:/host/x.js`), but resolved against the `file:` base an exported document
+// actually has, those INHERIT the base's host and are local. Counting them would buy only the false
+// positive of calling an authored `file:notes.html` a beacon; issue #1229 tracks it.
+// Two host spellings that stay on the machine
 // are excluded whatever the separator count: `localhost` - in every PERCENT-ENCODED and CASE
 // spelling, see `_OFFLINE_PCT_LOCALHOST` below for what that does and does not cover -
 // and a Windows DRIVE LETTER, which the file-host state turns into a path rather than a host,
 // because reporting either would delete an author's local reference and make the gate reject a file
-// with no egress. The percent-tolerance is right for the FOUR-or-more-slash arm too, even though
-// there is no host there to decode: that arm's UNC name comes out of the PATH, and a real Chromium
-// was measured percent-decoding a `file:` path before it touches the filesystem (a directory named
-// `loc alhost` opened through `loc%20alhost`), so `file:////local%68ost/x.js` reaches the same local
-// name that `file:////localhost/x.js` does. The drive-letter test deliberately does NOT require a separator after the `:` or
+// with no egress. The percent-tolerance is right for the FOUR-or-more-slash arm too: that arm's long
+// run opens a real HOST to Chromium (the same deviation above), and a real Chromium was measured
+// percent-decoding it before comparing, so `file:////local%68ost/x.js` parses to host `localhost` -
+// the same excluded host that `file:////localhost/x.js` reaches.
+// The drive-letter test deliberately does NOT require a separator after the `:` or
 // `|`: a real Chromium resolves EVERY `file://` authority that STARTS with one to a local drive
 // path, so `file://C:/x`, `file://C:foo/x` and even `file://c:not-a-host/x` are all the local file
 // `file:///C:/...` with an empty host, and demanding the separator over-detected the last two.
@@ -332,7 +342,10 @@ const _OFFLINE_PCT_LOCALHOST =
 // What may FOLLOW that host for the exclusion to fire: the end of the value, a `?` or `#`, or a
 // SINGLE path slash. A second slash is an egress MISS, not a local path:
 // `file://localhost//not-a-host/x.js` empties the host and keeps `//not-a-host/x.js` as the PATH, so
-// the parser canonicalizes it to `file:////not-a-host/x.js` (measured) - which the four-or-more-slash
+// the parser canonicalizes it to `file:////not-a-host/x.js` (measured in a spec-conformant WHATWG
+// parser; Chromium 149 instead KEEPS host `localhost` for that exact spelling, but re-parsing the
+// canonical form is what reaches host `not-a-host`, so counting it is the fail-CLOSED reading either
+// way) - which the four-or-more-slash
 // arm above calls an off-machine SMB load. The backslash spelling `file://localhost/\not-a-host/x.js`
 // reaches it too, since the cleanup maps `\` onto `/`. The cost is that `file://localhost//C:/x.js`,
 // canonically the LOCAL `file:////C:/x.js`, is over-reported; that is the fail-CLOSED direction this
