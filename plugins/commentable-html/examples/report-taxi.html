@@ -19809,7 +19809,9 @@ function _offlineNormalizeUrlValue(v) {
 // a host the value names, and that is closed one layer up and unconditionally (a `<base href>` is
 // held to the stricter `_offlineIsNonLocalRef` and the strip removes it).
 // Two host spellings that stay on the machine
-// are excluded whatever the separator count: `localhost` - in every PERCENT-ENCODED and CASE
+// are excluded whatever the separator count of the AUTHORITY arm they appear in - and only
+// there, since both are lookaheads inside that arm, so the `..` and empty-segment arms still
+// strip a value carrying one: `localhost` - in every PERCENT-ENCODED and CASE
 // spelling, see `_OFFLINE_PCT_LOCALHOST` below for what that does and does not cover -
 // and a Windows DRIVE LETTER, which the file-host state turns into a path rather than a host,
 // because reporting either would delete an author's local reference and make the gate reject a file

@@ -439,8 +439,10 @@ _FILE_EMPTY_SEGMENT = r"file:/*(?!/)[^?#]*?//"
 # this predicate's own verdicts, so an engine that ever changed its mind reds a test instead of
 # silently invalidating this paragraph.
 # Two host spellings that stay on the machine are excluded
-# whatever the separator
-# count: `localhost` - in every PERCENT-ENCODED and CASE spelling, see `_PCT_LOCALHOST` above for
+# whatever the separator count of the AUTHORITY arm they appear in - and only there, since
+# both are lookaheads inside that arm, so the `..` and empty-segment arms still count a value
+# carrying one (see above):
+# `localhost` - in every PERCENT-ENCODED and CASE spelling, see `_PCT_LOCALHOST` above for
 # what that does and does not cover - and a Windows DRIVE LETTER, which the
 # file-host state turns into a path rather than a host, because reporting either would reject an
 # offline file with no egress at all - and make the exporter delete the author's local reference.

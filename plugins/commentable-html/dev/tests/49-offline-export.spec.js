@@ -5142,8 +5142,10 @@ test("CMH-OFFLINE-04: the export's connect-src none is what closes the scripted 
 // slash-less `https:host/x` onto a host (the CMH-VAL-08 widening). The scheme state routes it to
 // the FILE state, which resolves against the document's BASE. A BASE-LESS `new URL(value)` parse
 // says otherwise - that is what made these look like an authority - but nothing in a document
-// performs one: an attribute, a CSS `url()` and a refresh target are all resolved against the
-// document's base URL.
+// performs one: an attribute and a refresh target, the two surfaces this test drives, are both
+// resolved against the document's base URL. A CSS `url()` is deliberately not among them: the
+// CSS readers are built from `CSS_NETWORK_PREFIX`, which carries no `file:` arm at all, so they
+// never reach this question and this test does not speak for them (issue #1230).
 // Each row's expected authority is asserted against a REAL engine here and against the SHIPPED
 // PYTHON predicate in the same test, so the browser fact and the gate cannot drift apart; the
 // Python predicate is in turn pinned to the JS mirror by the shared corpus in
