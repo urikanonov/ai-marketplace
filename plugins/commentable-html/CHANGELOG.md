@@ -34,8 +34,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   literal CR that its own read then folded to LF - and because it compares the escaped value
   against the file to decide whether anything changed, a note carrying a `&#13;` was reported as
   changed and rewritten on EVERY run.
-- The spec now lists the REMAINING `html.escape` write sites in full, each with its reason, so
-  the enumeration can be checked rather than re-derived.
+- The spec now lists the REMAINING plain-escape write sites in full, each with its reason, so the
+  enumeration can be checked rather than re-derived - including the ones spelled through the
+  `html_lib` alias, which an earlier pass of the list missed. Four are provably CR-free at the
+  write (the deck theme label, the code-body escape, the diff body, and the document-overview
+  `aria-label` synthesized from integer counts). The fifth, `generate_toc.py`'s TOC `href` and
+  link text, is a REAL residual left deliberately unfixed: it reads with `newline=""` and splices
+  by offsets, and its parsed attribute view does not apply input-stream preprocessing, so moving
+  it onto the escape ALONE would write back a CR the input never meant - the inverse of this bug.
+  What it owes is the read-boundary pairing, which is tracked with the rest of that work.
 
 ## [1.812.0] - 2026-08-07
 

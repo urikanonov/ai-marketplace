@@ -26,7 +26,6 @@ Stdlib-only, local-only, deterministic. Usage:
     python tools/upgrade.py <file.html> --check          # exit 1 if regions are stale, no write
 """
 import argparse
-import html as _html
 import os
 import re
 import sys

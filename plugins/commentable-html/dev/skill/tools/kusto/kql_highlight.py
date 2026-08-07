@@ -142,10 +142,10 @@ def render_block(cluster, database, title, query):
     href = _browser_attrs.escape_attr_value(kusto_link.kusto_link(cluster, database, query))
     # `escape_attr_value` / `escape_text`, not `html.escape`: a CR written literally is folded to
     # LF by input-stream preprocessing before a browser tokenizes, in an ATTRIBUTE and in TEXT
-    # alike, so a `cluster` or `title` carrying one would be emitted as a value the rendered DOM
-    # never has (#1196, #1224). Both halves matter here because the caption writes the SAME
-    # authored value into `data-cmh-copy` and into the button's visible text - the click-to-copy
-    # affordance must copy what it displays.
+    # alike, so either value carrying one would be emitted as something the rendered DOM never
+    # has (#1196, #1224). Both halves are needed because this caption writes TWO generated
+    # values into one element - `cluster` into `data-cmh-copy` and the `title` argument as the
+    # button's visible label - and before this each half had a different rule.
     cluster_attr = _browser_attrs.escape_attr_value(cluster)
     return (
         '<figure class="cmh-kql">\n'

@@ -84,9 +84,13 @@ def _text_a_browser_reads(document, tag):
         raise AssertionError("no <%s> element in %r" % (tag, document[:400]))
     inner = match.group(1)
     stripped = re.sub(r"(?s)<[^>]*>", "", inner)
-    if tag.lower() in ("title", "textarea") and stripped != inner:
+    if "<" in inner:
+        # In RCDATA a `<` is TEXT, and in the DATA state these fragments are known to contain
+        # none - either way a strip here would DELETE an under-escaped `<` and let the caller's
+        # equality assertion pass on markup a browser really built.
         raise AssertionError(
-            "%r is RCDATA: this helper cannot strip tags there without lying" % tag)
+            "<%s> contains a `<`: this helper cannot strip tags without lying about what a "
+            "browser read" % tag)
     return _browser_attrs.unescape_text(stripped)
 
 
@@ -220,7 +224,11 @@ class ScaffoldGeneratorTests(unittest.TestCase):
         self.assertEqual(_text_a_browser_reads(as_list, "li"), quoted)
         self.assertIn(">" + quoted + "<", as_list)
         as_table = checklist_scaffold.scaffold(quoted + "\n", "release", "L", "table")
-        self.assertEqual(_text_a_browser_reads(as_table, "td"), "")
+        # The SECOND `<td>` is the label cell; the first is the always-empty checkbox cell, so
+        # reading the first would assert nothing.
+        label_cell = re.search(r"(?s)<td[^>]*>.*?</td>\s*(<td[^>]*>.*?</td>)", as_table)
+        self.assertIsNotNone(label_cell, as_table)
+        self.assertEqual(_text_a_browser_reads(label_cell.group(1), "td"), quoted)
         self.assertIn(">" + quoted + "<", as_table)
 
     def test_a_notes_label_and_seed_text_keep_their_cr(self):
@@ -273,6 +281,7 @@ class ScaffoldGeneratorTests(unittest.TestCase):
         # `notes_apply` builds a TEXT run from a JSON field - the issue's own definition of a
         # generator. On `html.escape` it wrote a literal CR, which its own read then folds to
         # LF, so the comparison reported a change on EVERY run and the authored CR was lost.
+        import pathlib
         import tempfile
         seed = "a\rb"
         fragment = notes_scaffold.scaffold("risk", "L", seed)
@@ -281,8 +290,20 @@ class ScaffoldGeneratorTests(unittest.TestCase):
             path = os.path.join(tmp, "note.html")
             with io.open(path, "w", encoding="utf-8", newline="") as fh:
                 fh.write(document)
-            first = notes_apply.apply_notes(path, {"risk": seed}, warn=lambda _m: None)
-            self.assertEqual(first, 0, "cementing the value already in the file changed it")
+            before = pathlib.Path(path).read_bytes()
+            # A CONTROL first: the tool really does act, so a later 0 means "nothing to do"
+            # rather than "this implementation never changes anything".
+            self.assertEqual(notes_apply.apply_notes(path, {"risk": "different"},
+                                                     warn=lambda _m: None), 1)
+            self.assertEqual(notes_apply.apply_notes(path, {"risk": seed},
+                                                     warn=lambda _m: None), 1)
+            self.assertEqual(pathlib.Path(path).read_bytes(), before,
+                             "cementing the scaffold's own seed did not restore it byte for byte")
+            # Now the real pin: re-cementing the value already in the file is a no-op, twice.
+            for _ in range(2):
+                self.assertEqual(notes_apply.apply_notes(path, {"risk": seed},
+                                                         warn=lambda _m: None), 0)
+                self.assertEqual(pathlib.Path(path).read_bytes(), before)
             with io.open(path, encoding="utf-8", newline="") as fh:
                 self.assertEqual(_text_a_browser_reads(fh.read(), "div"), seed)
 
@@ -309,9 +330,16 @@ class KqlAndDeckGeneratorTests(unittest.TestCase):
 
     def test_a_deck_image_path_uses_the_attribute_escape_not_the_text_one(self):
         # `esc` is now the TEXT rule, which leaves a `"` alone - in `src="..."` that would end
-        # the value and inject an attribute, so the image path must not go through it.
-        self.assertEqual(deck_common.esc('a"b'), 'a"b')
-        self.assertEqual(_browser_attrs.escape_attr_value('a"b'), "a&quot;b")
+        # the value and inject an attribute, so the image path must not go through it. Exercise
+        # the real generator, not the two helpers: asserting on `esc` vs `escape_attr_value`
+        # alone would still pass if `slides_to_fragment` reverted to `esc(vetted)`.
+        fragment = pptx_to_fragment.slides_to_fragment([
+            {"title": "T", "images": [{"path": 'a"onerror="alert(1)/x.png'}]},
+        ])
+        self.assertIn('src="a&quot;onerror=&quot;alert(1)/x.png"', fragment)
+        self.assertEqual(_attr_a_browser_reads(fragment, "src"),
+                         'a"onerror="alert(1)/x.png')
+        self.assertNotIn("onerror=\"alert", _preprocess(fragment).replace("&quot;", ""))
 
 
 class LabelNormalizationTests(unittest.TestCase):

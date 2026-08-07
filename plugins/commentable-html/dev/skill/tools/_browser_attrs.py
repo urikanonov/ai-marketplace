@@ -250,7 +250,11 @@ def escape_text(text):
     deliberately STRICTER than the tokenizer, not a fidelity fix.
 
     The PRECONDITION is `escape_attr_value`'s, unchanged: the value must come from a CLI argument,
-    a JSON field, or text that already had input-stream preprocessing applied.
+    a JSON field, or text that already had input-stream preprocessing applied. So is the
+    change-detector prohibition, with one clarification its callers need: diffing this output
+    against the INPUT is unsound (the fold is lossy), but diffing it against a value this escape
+    PREVIOUSLY WROTE is sound and is what `notes/notes_apply.py` does - the escape is idempotent
+    on its own image, so re-cementing an unchanged value is correctly a no-op.
     """
     if text is None:
         body = ""
