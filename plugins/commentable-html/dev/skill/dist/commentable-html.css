@@ -3794,6 +3794,60 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
     height: auto !important;
   }
 
+  /* A TALL-NARROW diagram is the one shape that cap mis-scales. Because the cap binds on HEIGHT
+     alone, a diagram at least twice as tall as it is wide prints at `8.4in * aspect` - under half the
+     column, with the rest of the row left empty - even though the same diagram fills the column on
+     screen. Bind such a diagram on WIDTH instead so it fills the printable column, and let its host
+     fragment so a diagram taller than a page flows across pages rather than reserving one whole.
+     (On a paginating driver a diagram taller than a whole page still starts at the top of a page, so
+     a partial page can precede it; no CSS can both fit it on one page AND print it at column width.
+     On the single continuous page - the Save-as-PDF path - nothing is stranded at all.) The runtime
+     marks the host `.cmh-diagram-tall` from the rendered SVG's intrinsic viewBox aspect
+     (assets/js/20-mermaid.js). Naming that marker together with `.cm-mermaid-host` (which every
+     diagram host also carries) is what lets this rule out-specify the cap above WITHOUT re-typing
+     the diagram-host vocabulary the cap is pinned to (CMH-PRINT-07). `max-width` must be re-bound
+     here too, not just `width`: a tall-narrow diagram whose intrinsic width is well under the column
+     is ALSO marked `.cmh-diagram-narrow`, whose screen rule pins the SVG to
+     `max-width: min(100%, var(--cmh-diagram-cap))` (CMH-MMD-10, 30-mermaid.css) - and that pin
+     outranks the measurement mirror's cap, so without this declaration the measured page was sized
+     to the narrow cap while the print used the full column, and the "single continuous page" spilled
+     onto several sheets (CMH-PRINT-06). The measurement mirror in 83-print.js carries ONE extra
+     bound this rule deliberately does not (the diagram is capped to the honored page's content
+     width there); print itself is free to fill whatever column the sheet gives it. */
+  #commentRoot:not([data-cmh-mode="deck"]) .cm-mermaid-host.cmh-diagram-tall svg {
+    max-height: none !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  #commentRoot:not([data-cmh-mode="deck"]) .cm-mermaid-host.cmh-diagram-tall {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  /* A `figure` wrapping such a diagram is itself `break-inside: avoid` (the figure rule above), which
+     would re-impose the very atomicity the host rule just relaxed - an unbreakable block many pages
+     tall. Relax the wrapper too, but ONLY when it actually contains a tall-narrow diagram, so every
+     other figure keeps its caption bound to its content. */
+  #commentRoot:not([data-cmh-mode="deck"]) figure:has(.cm-mermaid-host.cmh-diagram-tall) {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  /* A `.cmh-diagram-gallery` card is a COMPACT THUMBNAIL by design - a grid of uniformly sized cards.
+     Binding one on width would print it at the full column and many pages tall (a 0.17-aspect card
+     measured 77in), and a gallery document is deliberately left on normal pagination, so that lands
+     as whole wasted sheets. A card is not the shape #937 is about: it is bounded by its card, not
+     stranded beside an empty column. Keep the fit-one-page cap there. This rule must out-specify the
+     width binding above, so it names the gallery ancestor on top of the same marker pair. */
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-gallery .cm-mermaid-host.cmh-diagram-tall svg {
+    max-height: 8.4in !important;
+    max-width: 100% !important;
+    width: auto !important;
+    height: auto !important;
+  }
+
   a {
     color: var(--cp-link) !important;
   }

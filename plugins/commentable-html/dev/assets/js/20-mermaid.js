@@ -223,6 +223,18 @@ function mermaidIntrinsicWidth(host) {
   } catch (e) {}
   return svg.getBoundingClientRect().width || 0;
 }
+// A TALL-NARROW diagram (intrinsic aspect w/h <= TALL_ASPECT, i.e. at least twice as tall as it is
+// wide) is the one shape the printable-height cap mis-scales: capping by HEIGHT alone sets the
+// printed WIDTH to `cap * aspect`, so the diagram prints as a sliver beside an empty band (#937).
+// Mark the host so the print stylesheet (92-print.css) and the print-measurement mirror
+// (measureCss in 83-print.js) can bind it on WIDTH instead. The aspect comes from the rendered SVG's
+// viewBox, so the marker is intrinsic - independent of the container width and of the on-screen
+// scale-up below - and it changes nothing on screen.
+const TALL_ASPECT = 0.5;
+function updateMermaidTallClass(host) {
+  const dims = mermaidViewBoxDims(host && host.querySelector && host.querySelector("svg"));
+  host.classList.toggle("cmh-diagram-tall", !!dims && dims.w / dims.h <= TALL_ASPECT);
+}
 // Narrow-diagram scale-up thresholds (#516). Only a diagram whose intrinsic width is BELOW
 // NARROW_ENTER of the column is scaled up; once narrow it stays narrow until it exceeds NARROW_EXIT
 // (hysteresis) so that scaling a diagram taller - which can toggle a document scrollbar and shrink
@@ -231,6 +243,9 @@ function mermaidIntrinsicWidth(host) {
 const NARROW_ENTER = 0.82, NARROW_EXIT = 0.90, NARROW_CAP = 1.4;
 function updateMermaidWidthClass(host) {
   if (!host) return;
+  // Print-only marker, kept in sync on every pass (including for the gallery/deck hosts that return
+  // early below) so it can never go stale against the rendered SVG.
+  updateMermaidTallClass(host);
   // A diagram inside a .cmh-diagram-gallery card is sized by CSS (fixed height + aspect-derived width;
   // the card hugs it). Match the EXACT card hosts the CSS sizes (a direct-child mermaid, or a mermaid
   // inside a direct-child figure), not any descendant, so a mermaid in a stray wrapper keeps normal
@@ -1061,6 +1076,23 @@ function setupMermaidLayer() {
     window.addEventListener("resize", function () {
       mermaidDiagrams.forEach(function (host) { updateMermaidWidthClass(host); refreshDeckDiagram(host); });
     });
+    // The print surfaces read `.cmh-diagram-tall` (CMH-PRINT-09), and print measurement runs
+    // SYNCHRONOUSLY on `beforeprint`. Every other pass that sets the marker is deferred (a rAF after
+    // the render probe, a resize, a ResizeObserver callback), so a print entered before one of those
+    // has run would measure and print a tall-narrow diagram under the plain height cap. Re-classify
+    // every host synchronously on print entry so what is measured is what is printed. Marker-only:
+    // it sets classes from the already-rendered SVG and never resizes anything.
+    window.addEventListener("beforeprint", function () {
+      mermaidDiagrams.forEach(function (host) { updateMermaidTallClass(host); });
+    });
+    if (typeof window.matchMedia === "function") {
+      const printQuery = window.matchMedia("print");
+      const onPrintMedia = function (event) {
+        if (event.matches) mermaidDiagrams.forEach(function (host) { updateMermaidTallClass(host); });
+      };
+      if (printQuery.addEventListener) printQuery.addEventListener("change", onPrintMedia);
+      else if (printQuery.addListener) printQuery.addListener(onPrintMedia);
+    }
     // A deck slide that was inactive (zero-influence layout) when its diagram first rendered is
     // re-fit when it becomes active, so the diagram fills the slide the first time it is shown. Only
     // the now-active slide's diagram(s) are refreshed, not every diagram on the deck.

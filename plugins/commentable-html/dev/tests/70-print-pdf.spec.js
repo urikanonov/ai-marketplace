@@ -4,7 +4,7 @@ import os from "os";
 import path from "path";
 import { PDFParse } from "pdf-parse";
 import { PNG } from "pngjs";
-import { DEV, EXAMPLES, fileUrl, ready } from "./helpers.js";
+import { DEV, EXAMPLES, INLINE, fileUrl, ready } from "./helpers.js";
 
 // Real rendered-PDF checks: these drive the browser's native print (page.pdf, the same path a
 // user's "Save as PDF" / Ctrl+P takes) and inspect the produced PDF - page count, page geometry,
@@ -78,11 +78,13 @@ async function waitForRichContent(page) {
   await page.waitForTimeout(200);
 }
 
-// Temp SRI-stripped example copies created for a test run, cleaned up in afterAll.
+// Temp SRI-stripped example copies created for a test run, cleaned up in afterAll. A staged copy
+// that lives in its own mkdtemp directory pushes THAT DIRECTORY instead of the file, so a run does
+// not leave an empty temp dir behind for every staged document.
 const tmpCopies = [];
 test.afterAll(() => {
   for (const p of tmpCopies) {
-    try { fs.rmSync(p, { force: true }); } catch { /* best effort */ }
+    try { fs.rmSync(p, { force: true, recursive: true }); } catch { /* best effort */ }
   }
   tmpCopies.length = 0;
 });
@@ -135,12 +137,12 @@ async function analyzePdf(pdfBuffer) {
   const textRes = await parser.getText();
   const shotRes = await parser.getScreenshot();
   await parser.destroy();
-  const pages = shotRes.pages.map((pg) => ({
-    width: pg.width,
-    height: pg.height,
-    ratio: pg.width / pg.height,
-    ink: inkFraction(Buffer.from(pg.dataUrl.split(",")[1], "base64")),
-  }));
+  const pages = shotRes.pages.map((pg) => {
+    // Kept so a test that needs a second, more specific measurement (blank-band analysis) can run it
+    // without re-rendering the PDF; the ink pass below already decodes the same bitmap.
+    const png = Buffer.from(pg.dataUrl.split(",")[1], "base64");
+    return { width: pg.width, height: pg.height, ratio: pg.width / pg.height, ink: inkFraction(png), png };
+  });
   return { pages, total: textRes.total, text: (textRes.text || "").replace(/\s+/g, " ") };
 }
 
@@ -151,6 +153,43 @@ async function analyzePdf(pdfBuffer) {
 // page - are prevented structurally by the print CSS: `h1..h4 { break-after: avoid }` keeps a
 // heading with the content that follows it, so this coarse ink check need not detect them.)
 const MIN_INK = 0.003;
+
+// Widest run of consecutive BLANK pixel columns on a page bitmap, as a fraction of the page width.
+// A column counts as blank when almost nothing is painted down its whole height, so the ragged right
+// edge of prose does not read as blank while a genuine empty vertical band - the tell of a diagram
+// printed at a fraction of the column width - does.
+function maxBlankColumnBand(pngBuffer) {
+  const png = PNG.sync.read(pngBuffer);
+  const { data, width, height } = png;
+  const threshold = Math.max(4, Math.round(height * 0.02));
+  let best = 0, run = 0;
+  for (let x = 0; x < width; x++) {
+    let inked = 0;
+    for (let y = 0; y < height; y++) {
+      const i = (y * width + x) * 4;
+      if (data[i] < 245 || data[i + 1] < 245 || data[i + 2] < 245) inked++;
+    }
+    if (inked > threshold) run = 0;
+    else { run++; if (run > best) best = run; }
+  }
+  return best / width;
+}
+
+// Fraction of a page's height that sits BELOW its last inked row - the trailing blank band. A page
+// sized to content it never renders (a measurement taken at the wrong width) shows up here.
+function trailingBlankFraction(pngBuffer) {
+  const png = PNG.sync.read(pngBuffer);
+  const { data, width, height } = png;
+  for (let y = height - 1; y >= 0; y--) {
+    let inked = 0;
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      if (data[i] < 245 || data[i + 1] < 245 || data[i + 2] < 245) { inked++; if (inked > 2) break; }
+    }
+    if (inked > 2) return (height - 1 - y) / height;
+  }
+  return 1;
+}
 
 test("CMH-PRINT-03: the deck prints one landscape 16:9 page per slide, none clipped or blank", async ({ page }) => {
   const deck = path.join(EXAMPLES, "deck-showcase.html");
@@ -266,24 +305,50 @@ test("CMH-PRINT-04: reports print with no blank/stranded pages and dense widgets
     const diagrams = [...document.querySelectorAll("pre.mermaid svg")];
     return { charts: charts.length, chartsShown: charts.filter(shown).length,
       diagrams: diagrams.length, diagramsShown: diagrams.filter(shown).length,
-      // Rendered height of each mermaid diagram in CSS px (1in = 96px under print media).
-      diagramHeights: diagrams.map((el) => el.getBoundingClientRect().height) };
+      // Per diagram: its rendered size in CSS px (1in = 96px under print media), the width of the
+      // column it prints into, and whether it is TALL-NARROW (the aspect the height cap mis-scales,
+      // marked by the runtime; see CMH-PRINT-09).
+      diagramBoxes: diagrams.map((el) => {
+        const host = el.closest("pre.mermaid");
+        const r = el.getBoundingClientRect();
+        return { h: r.height, w: r.width, hostW: host ? host.clientWidth : 0,
+          gallery: !!(host && host.closest(".cmh-diagram-gallery")),
+          tall: !!(host && host.classList.contains("cmh-diagram-tall")) };
+      }) };
   });
   await page.emulateMedia({ media: null });
   expect(richVisible.charts, "report-metrics has chart canvases").toBeGreaterThan(0);
   expect(richVisible.chartsShown, "every chart canvas stays visible in print").toBe(richVisible.charts);
   expect(richVisible.diagrams, "report-metrics has mermaid diagrams").toBeGreaterThan(0);
   expect(richVisible.diagramsShown, "every mermaid diagram stays visible in print").toBe(richVisible.diagrams);
-  // Each mermaid diagram is CONTAINED on one page (the CMH-PRINT-04 promise): the print CSS caps
-  // `pre.mermaid svg` at max-height 8.4in, so a tall state diagram is scaled to fit one page instead
-  // of splitting a node across a page break. 8.4in = 806.4 CSS px under print media; allow a small
-  // rounding tolerance. 8.4in is well under the printable height of both Letter (~9.8in) and A4
-  // (~10.5in) at the 0.6in page margin, so a capped diagram always fits its page.
+  // A diagram of normal aspect is CONTAINED on one page (the CMH-PRINT-04 promise): the print CSS
+  // caps `pre.mermaid svg` at max-height 8.4in, so a tall state diagram is scaled to fit one page
+  // instead of splitting a node across a page break. 8.4in = 806.4 CSS px under print media; allow a
+  // small rounding tolerance. 8.4in is well under the printable height of both Letter (~9.8in) and A4
+  // (~10.5in) at the 0.6in page margin, so a capped diagram always fits its page. A TALL-NARROW
+  // diagram is the documented exception (CMH-PRINT-09): fitting it to the page height would shrink
+  // its width to a sliver, so it binds on WIDTH and flows across pages instead - assert that here
+  // rather than exempting it silently.
   const CAP_PX = 8.4 * 96 + 4;
-  for (let i = 0; i < richVisible.diagramHeights.length; i++) {
-    expect(richVisible.diagramHeights[i],
-      `mermaid diagram ${i + 1} is capped to fit one page (<= 8.4in), not split across a page break`)
-      .toBeLessThanOrEqual(CAP_PX);
+  // The height-cap branch is what THIS feature id promises, so require it to have actually run:
+  // if a future mermaid release laid every one of these diagrams out tall-narrow AND outside a
+  // gallery, every diagram would take the CMH-PRINT-09 branch and the cap would stop being tested
+  // here. A tall-narrow diagram INSIDE a diagram gallery keeps the cap (it is a compact thumbnail,
+  // not the stranded full-column diagram CMH-PRINT-09 is about), so it counts for this branch.
+  expect(richVisible.diagramBoxes.some((b) => !b.tall || b.gallery),
+    "at least one diagram exercises the page-height cap this feature id is about")
+    .toBe(true);
+  for (let i = 0; i < richVisible.diagramBoxes.length; i++) {
+    const box = richVisible.diagramBoxes[i];
+    if (box.tall && !box.gallery) {
+      expect(box.w / box.hostW,
+        `tall-narrow mermaid diagram ${i + 1} prints at the full column width (CMH-PRINT-09)`)
+        .toBeGreaterThan(0.9);
+    } else {
+      expect(box.h,
+        `mermaid diagram ${i + 1} is capped to fit one page (<= 8.4in), not split across a page break`)
+        .toBeLessThanOrEqual(CAP_PX);
+    }
   }
 });
 
@@ -686,4 +751,408 @@ test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-b
   }
   expect(oversized.text, "oversized fallback keeps the closing content (not clipped by the clamp)")
     .toContain("OVERSIZED_TAIL_MARKER_END");
+});
+
+// A synthetic TALL-NARROW diagram: a pre-rendered mermaid SVG whose viewBox is 769 x 2197, the
+// aspect (w/h ~ 0.35) reported in issue #937. Pre-rendered (`data-processed`) so the fixture needs
+// no mermaid run and its geometry is exact. The rows carry ink across the full height, so a page
+// that shows only a slice of the diagram is still clearly not blank, and they run EDGE TO EDGE of
+// the viewBox so the only structural blank band the blank-band metric below can see is the page
+// margin itself - an inset fixture would spend most of that metric's headroom on its own padding.
+const TALL_VB_W = 769, TALL_VB_H = 2197;
+function tallNarrowDiagram(id, vbW = TALL_VB_W, vbH = TALL_VB_H) {
+  const rows = [];
+  const step = vbH / 20;
+  for (let i = 0; i < 20; i++) {
+    const y = Math.round(8 + i * step);
+    rows.push(`<rect x="0" y="${y}" width="${vbW}" height="${Math.round(step * 0.6)}" fill="#e2e2e2" stroke="#222222" stroke-width="4"></rect>`);
+  }
+  return `<pre class="mermaid" id="${id}" data-processed="true">`
+    + `<svg viewBox="0 0 ${vbW} ${vbH}" role="img" aria-label="tall narrow flow">${rows.join("")}</svg></pre>`;
+}
+
+// Stage a self-contained document (from dist/SHAREABLE.html) carrying the tall-narrow diagram plus
+// a heading and lead paragraph before it - the shape that stranded a near-blank page - and enough
+// prose after it that the document genuinely paginates. With `paginating`, a small multi-column
+// gallery is added so the document is deliberately left on NORMAL pagination (a block-stacking
+// container; see CMH-PRINT-06), which is the driver path where a stranded page shows up.
+function stageTallDiagramDoc(key, { paginating = false, vbW, vbH, wideBlock = false } = {}) {
+  const filler = (label, n) => Array.from({ length: n }, (_unused, i) =>
+    `<p>${label} paragraph ${i + 1} - narrative text that gives the printed document real body so pagination is realistic.</p>`).join("");
+  const gallery = '<section><h2>Gallery</h2><div class="visual-grid">'
+    + '<figure><figcaption>Panel one</figcaption></figure>'
+    + '<figure><figcaption>Panel two</figcaption></figure></div></section>';
+  // An unbreakable block wider than the portable 816px page, which drives apply()'s content-width
+  // growth loop. A fixed-width div cannot wrap or shrink, so the page must grow to avoid clipping it.
+  const wide = '<section><h2>Wide</h2><div style="width:900px;height:40px;background:#cccccc"></div></section>';
+  const content = `
+    <header class="cmh-lede"><h1>Tall diagram print</h1><p>A tall-narrow flow diagram in a flat report.</p></header>
+    <section><h2>Before the diagram</h2>${filler("Before", 6)}</section>
+    <section${paginating ? ' data-cmh-test-section="diagram"' : ""}>
+      <h2>Pipeline stages</h2>
+      <p>The stages below are drawn as a tall-narrow flowchart.</p>
+      <p>Each stage names one hop of the ingest pipeline, read top to bottom.</p>
+      ${tallNarrowDiagram("tallHost", vbW, vbH)}
+    </section>
+    <section><h2>After the diagram</h2>${filler("After", 6)}</section>
+    ${wideBlock ? wide : ""}
+    ${paginating ? gallery : ""}`;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_tall_"));
+  let html = fs.readFileSync(INLINE, "utf8");
+  const contentRe = /(<!-- BEGIN: commentable-html - CONTENT[^>]*-->)[\s\S]*?(<!-- END: commentable-html - CONTENT -->)/;
+  html = html.replace(contentRe, (_m, a, b) => a + "\n" + content + "\n" + b);
+  html = html.replace('data-comment-key="commentable-html-demo"', 'data-comment-key="' + key + '"');
+  html = html.replace('data-doc-source="SHAREABLE.html"', 'data-doc-source="tall-diagram.html"');
+  const file = path.join(dir, "tall-diagram.html");
+  fs.writeFileSync(file, html);
+  tmpCopies.push(dir);
+  return file;
+}
+
+// Stage an arbitrary content fragment into a self-contained document, optionally as a DECK. Used by
+// the computed-style pins below, which need an exact authored host shape rather than the prose
+// document above.
+function stageTallHostDoc(contentHtml, key, { deck = false } = {}) {
+  const style = deck
+    ? "<style>.deck-viewport{position:fixed;inset:0;overflow:hidden;}"
+      + ".deck-stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;overflow:hidden;}"
+      + ".slide{position:absolute;inset:0;width:1920px;height:1080px;overflow:hidden;}</style>"
+    : "";
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_tallhost_"));
+  let html = fs.readFileSync(INLINE, "utf8");
+  const contentRe = /(<!-- BEGIN: commentable-html - CONTENT[^>]*-->)[\s\S]*?(<!-- END: commentable-html - CONTENT -->)/;
+  html = html.replace(contentRe, (_m, a, b) => a + "\n" + style + contentHtml + "\n" + b);
+  html = html.replace('data-comment-key="commentable-html-demo"',
+    'data-comment-key="' + key + '"' + (deck ? ' data-cmh-mode="deck"' : ""));
+  html = html.replace('data-doc-source="SHAREABLE.html"', 'data-doc-source="tall-host.html"');
+  const file = path.join(dir, "tall-host.html");
+  fs.writeFileSync(file, html);
+  tmpCopies.push(dir);
+  return file;
+}
+
+test("CMH-PRINT-09: a tall-narrow diagram prints at column width instead of a sliver beside blank space", async ({ page }) => {
+  test.setTimeout(120000); // two real page.pdf renders plus the print-media layout probes
+  // The tall-media print cap used to scale by HEIGHT ONLY (`max-height:8.4in;width:auto`), so a
+  // tall-narrow diagram's printed WIDTH collapsed to `8.4in * aspect` - here 42% of the column, with
+  // the other 58% left empty - and, being an unbreakable ~8.4in block, it could not share a page, so
+  // a paginating driver stranded a near-blank page before it. A tall-narrow diagram must instead bind
+  // on WIDTH (fill the printable column) and be allowed to fragment.
+  const doc = stageTallDiagramDoc("cmh-print-tall-narrow");
+
+  // Print-media layout at a standard printable column (744px ~ a US Letter sheet minus default
+  // margins): the rendered SVG must use essentially the whole width of its host, not a fraction.
+  await page.setViewportSize({ width: 744, height: 900 });
+  await page.goto(fileUrl(doc), { waitUntil: "load" });
+  await ready(page);
+  // Pin the marker itself before probing layout: the runtime sets `.cmh-diagram-tall` from the
+  // rendered SVG's viewBox, and if that never fired the width assertions below would be measuring
+  // the plain cap rather than this feature.
+  await expect(page.locator("#tallHost")).toHaveClass(/cmh-diagram-tall/);
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const printed = await page.evaluate(() => {
+    const host = document.getElementById("tallHost");
+    const svg = host.querySelector("svg");
+    return {
+      hostW: host.clientWidth,
+      svgW: svg.getBoundingClientRect().width,
+      svgH: svg.getBoundingClientRect().height,
+    };
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+  await page.emulateMedia({ media: null });
+  expect(printed.hostW, "premise: the diagram host spans the printable column").toBeGreaterThan(600);
+  // 0.9 is comfortably above the 0.42 the height-only cap produced and below 1.0, so it pins the
+  // width binding without asserting sub-pixel exactness.
+  expect(printed.svgW / printed.hostW,
+    "a tall-narrow diagram prints at (essentially) the full printable column width, not a sliver")
+    .toBeGreaterThan(0.9);
+
+  // Paginating driver (a document deliberately left on normal pagination - a block-stacking gallery
+  // makes it ineligible for the single continuous page; see CMH-PRINT-06). The diagram section flows
+  // NATURALLY here, with the heading and its two lead paragraphs immediately before it - the exact
+  // shape the issue reported as stranding a near-blank page - rather than being forced onto a fresh
+  // sheet, which would have removed the scenario the assertions below are about. The diagram must
+  // FILL the page it lands on - top to bottom AND edge to edge - continuing onto the next page,
+  // instead of printing as a 42%-wide sliver with a full-height empty band beside it.
+  const paginatingDoc = stageTallDiagramDoc("cmh-print-tall-narrow-paged", { paginating: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(fileUrl(paginatingDoc), { waitUntil: "load" });
+  await ready(page);
+  await page.waitForTimeout(300);
+  const paginated = await analyzePdf(await page.pdf({ printBackground: true, format: "Letter" }));
+  expect(paginated.pages.length, "premise: the document paginates onto standard sheets").toBeGreaterThan(1);
+  for (let i = 0; i < paginated.pages.length; i++) {
+    expect(paginated.pages[i].ink, `page ${i + 1} is not blank`).toBeGreaterThan(MIN_INK);
+  }
+  // The reported symptom on a paginating driver was a page carrying only the section heading plus
+  // its lead paragraph and about 7.2in of blank, because the capped diagram was an unbreakable block
+  // that could not share a page. With the diagram bound on width and allowed to fragment, no page is
+  // left mostly empty by it. The bar is per-page ink against a page of pure prose, which this fixture
+  // also contains, so it is a comparison against the document's own baseline rather than a constant.
+  const proseInk = Math.min(...paginated.pages.map((p) => p.ink));
+  expect(proseInk,
+    "no page is stranded nearly blank ahead of the diagram (the capped sliver left one at ~7.2in of white)")
+    .toBeGreaterThan(0.01);
+  // The busiest page is the one the diagram lands on. Its ink is pure geometry (the fixture's gray
+  // rows cover a fixed share of the diagram box), so the threshold is font- and platform-independent:
+  // the width-bound diagram measures ~36% ink, the height-capped sliver measured ~14%.
+  const busiest = paginated.pages.reduce((a, b) => (b.ink > a.ink ? b : a));
+  expect(busiest.ink,
+    "the printed tall-narrow diagram fills its page rather than a sliver of it")
+    .toBeGreaterThan(0.25);
+  expect(maxBlankColumnBand(busiest.png),
+    "no full-height empty band is left beside the printed diagram (the sliver left ~30% of the sheet blank)")
+    .toBeLessThan(0.2);
+
+  // Single continuous page (the CMH-PRINT-06 path): the whole document is one tall page, and the
+  // diagram fills that page's content column rather than leaving a full-height empty band beside it.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(fileUrl(doc), { waitUntil: "load" });
+  await ready(page);
+  // Wait past the LAST early height-cache refresh (the settle timers fire at 0/250/700/1500/3000ms)
+  // so the cache floor is genuinely seated. The trailing-band assertion below is about that floor
+  // over-measuring, so a wait that landed before the cache was populated would make it vacuous.
+  await page.waitForTimeout(1800);
+  const single = await analyzePdf(await page.pdf({ printBackground: true, preferCSSPageSize: true }));
+  expect(single.pages.length, "the eligible tall-diagram document still prints as a single page").toBe(1);
+  expect(single.pages[0].ink, "the single continuous page is not blank").toBeGreaterThan(MIN_INK);
+  // The page must be sized to what the diagram actually PRINTS at, not to its taller on-screen
+  // rendering. The single-page height is the larger of an inline measure taken at the honored page's
+  // content width and a cache floor taken at the wide reading column; a width-bound diagram is
+  // proportionally taller at that wider column, so without bounding it during measurement the floor
+  // won and stamped ~9in of trailing blank onto the page - the same wasted space this issue is about,
+  // moved to the bottom of the sheet.
+  expect(trailingBlankFraction(single.pages[0].png),
+    "the single continuous page is not padded with a large trailing blank band")
+    .toBeLessThan(0.25);
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const onSinglePage = await page.evaluate(() => {
+    const host = document.getElementById("tallHost");
+    const svg = host.querySelector("svg");
+    return { hostW: host.clientWidth, svgW: svg.getBoundingClientRect().width };
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+  await page.emulateMedia({ media: null });
+  expect(onSinglePage.svgW / onSinglePage.hostW,
+    "on the single continuous page the diagram fills the content column (no full-height empty band)")
+    .toBeGreaterThan(0.9);
+});
+
+test("CMH-PRINT-09: a tall-narrow diagram that is also narrow-scaled still measures the page it prints", async ({ page }) => {
+  test.setTimeout(120000); // a real page.pdf render plus the print-media layout probes
+  // A tall-narrow diagram whose INTRINSIC width is far below the column is ALSO marked
+  // `.cmh-diagram-narrow` (CMH-MMD-10), whose screen rule pins the SVG to
+  // `max-width: min(100%, var(--cmh-diagram-cap))` - a modest multiple of the intrinsic width. In
+  // real print that pin is beaten by the tall-media cap's own `max-width:100% !important`, so the
+  // diagram prints at the FULL column. The measurement mirror in `measureCss()` carries no such
+  // competing `max-width`, so it measured the diagram at the NARROW cap instead - a page far shorter
+  // than what prints, which is exactly the CMH-PRINT-06 measured-page-does-not-match-print failure:
+  // the "single continuous page" then spilled onto 3 sheets. Binding `max-width` on both print
+  // surfaces is what keeps the measurement honest.
+  //
+  // `400 x 4000` is the shape that exposes it: aspect 0.10 (tall-narrow), and an intrinsic width of
+  // 400 whose narrow cap (400 * 1.4 = 560px) sits well under the ~1180px measurement column, so the
+  // measured and printed widths differ by more than 2x. The 769-wide fixture above does NOT exercise
+  // this - its narrow cap (1077px) happens to land near the column, so the two agree by luck.
+  const doc = stageTallDiagramDoc("cmh-print-tall-narrow-capped", { vbW: 400, vbH: 4000 });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(fileUrl(doc), { waitUntil: "load" });
+  await ready(page);
+  // Past the last early height-cache refresh (0/250/700/1500/3000ms), so the cache floor is seated.
+  await page.waitForTimeout(1800);
+
+  const narrowState = await page.evaluate(() => {
+    const host = document.getElementById("tallHost");
+    return { tall: host.classList.contains("cmh-diagram-tall"),
+      narrow: host.classList.contains("cmh-diagram-narrow"),
+      cap: host.style.getPropertyValue("--cmh-diagram-cap") };
+  });
+  expect(narrowState.tall, "premise: the fixture is classified tall-narrow").toBe(true);
+  expect(narrowState.narrow, "premise: the fixture is ALSO narrow-scaled, so its screen max-width cap is live").toBe(true);
+  expect(narrowState.cap, "premise: the narrow cap is a real px value well under the print column").toMatch(/^\d+px$/);
+
+  const single = await analyzePdf(await page.pdf({ printBackground: true, preferCSSPageSize: true }));
+  expect(single.pages.length,
+    "the measured single continuous page is tall enough for what actually prints (it spilled onto 3 sheets when measurement kept the narrow cap)")
+    .toBe(1);
+  expect(single.pages[0].ink, "the single continuous page is not blank").toBeGreaterThan(MIN_INK);
+
+  // The printed width itself: the narrow cap must not survive into print media either.
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const printed = await page.evaluate(() => {
+    const host = document.getElementById("tallHost");
+    const svg = host.querySelector("svg");
+    return { hostW: host.clientWidth, svgW: svg.getBoundingClientRect().width,
+      maxW: getComputedStyle(svg).maxWidth };
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+  await page.emulateMedia({ media: null });
+  expect(printed.svgW / printed.hostW,
+    "a narrow-scaled tall diagram still prints at the full column width")
+    .toBeGreaterThan(0.9);
+
+  // The same document plus content too wide to break, so `apply()`'s bounded growth loop pushes the
+  // page's content width PAST the portable 720px cap. Measurement bounds the diagram to that cap
+  // (which is what keeps the height cache honest), so the inline pass has to re-bind it to the GROWN
+  // width - otherwise measurement holds the diagram at 720px while print renders it wider, and wider
+  // means taller, which is the spill direction rather than the merely-wasteful one.
+  const wide = stageTallDiagramDoc("cmh-print-tall-narrow-grown", { vbW: 400, vbH: 4000, wideBlock: true });
+  await page.goto(fileUrl(wide), { waitUntil: "load" });
+  await ready(page);
+  await page.waitForTimeout(1800);
+  const grownPage = await page.evaluate(() => {
+    window.dispatchEvent(new Event("beforeprint"));
+    const el = document.getElementById("cmhPrintSinglePage");
+    const m = el && /@page\{size:([\d.]+)px ([\d.]+)px/.exec(el.textContent || "");
+    window.dispatchEvent(new Event("afterprint"));
+    return m ? { w: Math.round(parseFloat(m[1])), h: Math.round(parseFloat(m[2])) } : null;
+  });
+  expect(grownPage, "the grown document still takes the single continuous page path").not.toBeNull();
+  expect(grownPage.w,
+    "premise: the unbreakable wide block grew the page past the portable 816px width, so the diagram "
+    + "is laid out wider than the 720px measurement bound")
+    .toBeGreaterThan(830);
+  const grown = await analyzePdf(await page.pdf({ printBackground: true, preferCSSPageSize: true }));
+  expect(grown.pages.length,
+    "a page grown past the portable width still measures the widened diagram, so it stays one page")
+    .toBe(1);
+});
+
+test("CMH-PRINT-09: the width-bound override covers a div.mermaid host and never a deck", async ({ page }) => {
+  // The runtime renders diagrams into `pre.mermaid` AND `div.mermaid` (`CMH_MERMAID_SEL`; see
+  // CMH-PRINT-07), so the tall-narrow override must reach BOTH - the PDF cases above only drive the
+  // `pre` host. A deck is the deliberate exception: its slides are fixed-size 16:9 pages with their
+  // own contain-fit sizing (CMH-PRINT-03), so the report-only width binding must NOT apply there.
+  // Assert the computed style directly rather than through a raster, so the pin is exact.
+  const svg = (w, h) => `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="tall narrow">`
+    + `<rect width="${w}" height="${h}" fill="#cccccc"></rect></svg>`;
+  const staged = stageTallHostDoc(
+    `<section><h2>Diagrams</h2>`
+    + `<div class="mermaid" id="divTall" data-processed="true">${svg(400, 2400)}</div>`
+    + `<div class="mermaid" id="divNormal" data-processed="true">${svg(3000, 2400)}</div>`
+    + `<pre class="mermaid" id="preTall" data-processed="true">${svg(400, 2400)}</pre>`
+    + `<pre class="mermaid" id="preNormal" data-processed="true">${svg(3000, 2400)}</pre>`
+    + `</section>`
+    + `<section><h2>Gallery</h2><div class="cmh-diagram-gallery">`
+    + `<pre class="mermaid" id="galTall" data-processed="true">${svg(400, 2400)}</pre>`
+    + `</div></section>`
+    + `<section><h2>Figure</h2><figure id="figWrap">`
+    + `<pre class="mermaid" id="figTall" data-processed="true">${svg(400, 2400)}</pre>`
+    + `<figcaption>A tall-narrow diagram with a caption</figcaption></figure></section>`,
+    "cmh-print-tall-div");
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(fileUrl(staged), { waitUntil: "load" });
+  await ready(page);
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const report = await page.evaluate(() => {
+    const read = (id) => {
+      const host = document.getElementById(id);
+      const s = getComputedStyle(host.querySelector("svg"));
+      return { tall: host.classList.contains("cmh-diagram-tall"), maxH: s.maxHeight,
+        breakInside: getComputedStyle(host).breakInside,
+        w: host.querySelector("svg").getBoundingClientRect().width, hostW: host.clientWidth };
+    };
+    return { tall: read("divTall"), normal: read("divNormal"),
+      preTall: read("preTall"), preNormal: read("preNormal"),
+      galTall: read("galTall"), figTall: read("figTall"),
+      figWrapBreak: getComputedStyle(document.getElementById("figWrap")).breakInside };
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+  await page.emulateMedia({ media: null });
+  expect(report.tall.tall, "the tall-narrow div.mermaid host is marked").toBe(true);
+  expect(report.tall.maxH, "a tall-narrow div.mermaid leaves the 8.4in height cap").toBe("none");
+  expect(report.tall.w / report.tall.hostW, "a tall-narrow div.mermaid prints at column width").toBeGreaterThan(0.9);
+  // The normal-aspect sibling proves the override is SCOPED, not blanket: it keeps the cap.
+  expect(report.normal.tall, "the normal-aspect div.mermaid host is not marked").toBe(false);
+  expect(report.normal.maxH, "a normal-aspect diagram keeps the 8.4in cap").not.toBe("none");
+  // The `pre` host is where the fragmentation override is load-bearing: print marks `#commentRoot pre`
+  // `break-inside: avoid`, so a tall-narrow `pre.mermaid` reaching `auto` means the override actually
+  // beat that rule. On a `div` host there is nothing to beat (`auto` is already the initial value), so
+  // asserting it there alone would pin nothing. The normal-aspect `pre` sibling holds the other side.
+  expect(report.preTall.maxH, "a tall-narrow pre.mermaid leaves the 8.4in height cap").toBe("none");
+  expect(report.preTall.w / report.preTall.hostW, "a tall-narrow pre.mermaid prints at column width").toBeGreaterThan(0.9);
+  expect(report.preTall.breakInside,
+    "a tall-narrow pre.mermaid may fragment across pages, overriding print's break-inside:avoid on pre")
+    .toBe("auto");
+  expect(report.preNormal.breakInside,
+    "a normal-aspect pre.mermaid still keeps print's break-inside:avoid, so the override is scoped")
+    .toBe("avoid");
+  // A GALLERY card is a compact thumbnail, not the stranded full-column diagram this feature is
+  // about, and a gallery document prints on normal pagination - so binding a card on width would
+  // spend whole sheets on one thumbnail (measured 77in for this 0.17-aspect card). It keeps the cap.
+  expect(report.galTall.tall, "the gallery card's diagram is still marked tall").toBe(true);
+  expect(report.galTall.maxH, "a tall-narrow diagram inside a diagram gallery keeps the 8.4in cap")
+    .not.toBe("none");
+  // A FIGURE wrapping a tall-narrow diagram must relax too, or the wrapper's own break-inside:avoid
+  // re-imposes the atomicity the host rule just relaxed - an unbreakable block many pages tall.
+  expect(report.figTall.maxH, "a figure-wrapped tall-narrow diagram still takes the width binding").toBe("none");
+  expect(report.figWrapBreak,
+    "the figure wrapping a tall-narrow diagram may fragment, instead of re-imposing avoid on it")
+    .toBe("auto");
+
+  // Deck: the same tall-narrow shape must keep the deck's own sizing, not the report width binding.
+  const deck = stageTallHostDoc(
+    '<div class="deck-viewport"><div class="deck-stage">'
+    + `<section class="slide active"><h2>Slide</h2><div class="mermaid" id="divTall" data-processed="true">${svg(400, 2400)}</div></section>`
+    + "</div></div>",
+    "cmh-print-tall-deck", { deck: true });
+  await page.goto(fileUrl(deck), { waitUntil: "load" });
+  await ready(page);
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const deckMaxH = await page.evaluate(() => {
+    const host = document.getElementById("divTall");
+    return { maxH: getComputedStyle(host.querySelector("svg")).maxHeight,
+      breakInside: getComputedStyle(host).breakInside };
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+  await page.emulateMedia({ media: null });
+  expect(deckMaxH.maxH,
+    "a deck diagram never takes the report-only width binding (it keeps its own contain-fit sizing)")
+    .not.toBe("none");
+  expect(deckMaxH.breakInside,
+    "a deck diagram host never takes the report-only fragmentation override")
+    .toBe("auto");
+});
+
+test("CMH-PRINT-09: entering print classifies a tall-narrow diagram before the page is measured", async ({ page }) => {
+  // The print surfaces read `.cmh-diagram-tall`, and print measurement runs SYNCHRONOUSLY on
+  // `beforeprint`, while every pass that SETS the marker is deferred (a rAF after the render probe, a
+  // resize, a ResizeObserver callback). A print entered before one of those has run would measure and
+  // print the diagram under the plain height cap - the sliver this feature exists to remove - so the
+  // mermaid layer re-classifies every host on print entry. Simulate the gap by clearing the marker
+  // and driving print entry: if nothing re-classified, the height cap would still be in force.
+  const svg = `<svg viewBox="0 0 400 2400" role="img" aria-label="tall narrow">`
+    + `<rect width="400" height="2400" fill="#cccccc"></rect></svg>`;
+  const staged = stageTallHostDoc(
+    `<section><h2>Diagram</h2><pre class="mermaid" id="raceHost" data-processed="true">${svg}</pre></section>`,
+    "cmh-print-tall-race");
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(fileUrl(staged), { waitUntil: "load" });
+  await ready(page);
+  await expect(page.locator("#raceHost")).toHaveClass(/cmh-diagram-tall/);
+  // Drop the marker to stand in for a print entered before the deferred classification ran.
+  await page.evaluate(() => document.getElementById("raceHost").classList.remove("cmh-diagram-tall"));
+  expect(await page.locator("#raceHost").getAttribute("class"),
+    "premise: the marker really is absent going into print")
+    .not.toMatch(/cmh-diagram-tall/);
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const printed = await page.evaluate(() => {
+    const host = document.getElementById("raceHost");
+    const svgEl = host.querySelector("svg");
+    return { tall: host.classList.contains("cmh-diagram-tall"),
+      maxH: getComputedStyle(svgEl).maxHeight,
+      w: svgEl.getBoundingClientRect().width, hostW: host.clientWidth };
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+  await page.emulateMedia({ media: null });
+  expect(printed.tall, "print entry re-classified the host before anything measured it").toBe(true);
+  expect(printed.maxH, "the re-classified diagram left the 8.4in height cap").toBe("none");
+  expect(printed.w / printed.hostW, "and it prints at the column width, not a sliver").toBeGreaterThan(0.9);
 });
