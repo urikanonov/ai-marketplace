@@ -717,9 +717,10 @@ def _check_self_contained(html, parser):
             # carrying a relative one is a file an export would change. It is also the fail-closed
             # reading of the channel - a refresh is a TOP-LEVEL NAVIGATION no meta-delivered CSP
             # can restrict, and an injected `<base href>` rebases a relative target onto the
-            # network (that rebasing is a WIDER, still-open gap, tracked as issue #924 - every
-            # other relative reference this file accepts is exposed to it too; rejecting the
-            # refresh outright is what takes this ONE channel out of its reach). The network
+            # network (that rebasing was a WIDER gap, tracked as issue #924 and since CLOSED by
+            # holding a `<base href>` to the stricter `offline_is_non_local_ref` in EVERY mode -
+            # see the base-element loop below; rejecting the refresh outright is what took this ONE
+            # channel out of its reach independently of that). The network
             # wording is kept for a target that IS one, so the message still names the beacon when
             # there is one to name.
             if meta_refresh_navigates_to_network(el.get("content", "")):

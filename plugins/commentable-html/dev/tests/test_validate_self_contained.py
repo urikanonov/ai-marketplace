@@ -581,7 +581,16 @@ class NewCheckTests(unittest.TestCase):
         # carrying a relative one is a file an export would change - and a refresh is a TOP-LEVEL
         # NAVIGATION no meta-delivered CSP can restrict, which an injected `<base href>` rebases
         # onto the network. The gate errored only on a network target, so both sides disagreed.
-        for content in ("5;url=./x.html", "0;url=#a", "30", "0;url=data:text/html,x"):
+        # `file:notes.html` is KEPT in this LOCAL list, and the reason is measured rather than
+        # inherited (issue #1229): a slash-poor `file:` target's LEADING RUN IS PATH - the scheme
+        # state routes `file:` to the FILE state, which resolves against the document's BASE,
+        # rather than to the special-authority-(ignore-)slashes states that make `https:evil.example`
+        # a real host. A real Chromium's refresh navigation out of a `file:///C:/dir/report.html`
+        # document was CAPTURED going to `file:///C:/dir/notes.html`, the ordinary local sibling an
+        # author means by it. Counting it would refuse a file with no egress at all and make the
+        # exporter delete the reference.
+        for content in ("5;url=./x.html", "0;url=#a", "30", "0;url=data:text/html,x",
+                        "0;url=file:notes.html", "0;url=file:/notes.html"):
             with self.subTest(content=content):
                 doc = with_offline_mode(build(body=self._body(
                     MAIN, '<meta http-equiv="refresh" content="%s">' % content)))
@@ -632,6 +641,56 @@ class NewCheckTests(unittest.TestCase):
                              "unexpected network meta refresh error for %r: %r" % (content, errors))
             self.assertTrue(any("meta refresh" in e for e in errors),
                             "expected the generic meta refresh error for %r: %r" % (content, errors))
+
+    # The zero- and one-separator `file:` spellings, settled by measurement (issue #1229). The
+    # separator arithmetic in `NETWORK_URL_RE` is an EMPIRICAL statement about which runs open an
+    # authority, and the two runs SHORTER than the counted `//` are excluded for a different reason
+    # than the three-slash empty host: their LEADING RUN IS PATH. `file:` IS a special scheme (so
+    # the backslash mapping applies to it, and `file:\\evil.example/x` really is counted); what it
+    # does not take is the special-authority-(ignore-)slashes states that make `https:evil.example`
+    # a real host. The scheme state routes it to the FILE state, which resolves against the
+    # document's BASE. Measured in a real Chromium (a Windows and a Linux build) from a
+    # `file:///C:/dir/report.html` document, through `<a href>`, `<img src>` and a captured
+    # `meta http-equiv=refresh` NAVIGATION alike: `file:evil.example/x` ->
+    # `file:///C:/dir/evil.example/x` and `file:/evil.example/x` -> `file:///C:/evil.example/x`,
+    # both EMPTY-host local paths. The contrary reading comes from a BASE-LESS `new URL(value)`
+    # parse, which nothing in a document performs. These run in SHAREABLE mode deliberately: that
+    # is the mode where this predicate is the ONLY implementation of the rule (no exporter strip
+    # pass sits behind it), so a false positive here withholds the `commentable-html-validated`
+    # stamp from a file with no egress at all, while a miss blesses a beacon. Only the LEADING run
+    # is exempt - a slash-poor value whose PATH canonicalizes onto the four-separator form is still
+    # counted (see the `..` and empty-segment arms, pinned in the shared corpus). The counted
+    # controls run in the same shape so the boundary cannot move on one side only, and
+    # `tests/49-offline-export.spec.js` re-runs the browser measurement on every CI pass.
+    _FILE_SEPARATOR_LOCAL = ("file:evil.example/x.png", "file:/evil.example/x.png",
+                             "file:notes.png", "file:sub/dir/x.png", "file:localhost/x.png",
+                             "file:C:/local/x.png", "FILE:evil.example/x.png",
+                             "file:\\evil.example/x.png")
+    _FILE_SEPARATOR_NETWORK = ("file://evil.example/x.png", "file:////evil.example/x.png")
+
+    def test_a_slash_poor_file_reference_is_a_relative_path_not_an_authority(self):
+        for value in self._FILE_SEPARATOR_LOCAL:
+            with self.subTest(value=value):
+                main = MAIN.replace("<p>content</p>",
+                                    '<p>content</p>\n  <img src="%s" alt="x">' % value)
+                errors, warnings = self._errs_warns(build(body=self._body(main)))
+                # The whole error list, not just the absence of the network wording: the cost this
+                # guards against is the WITHHELD `commentable-html-validated` stamp, and `--strict`
+                # withholds it for any error or warning, so a different check starting to report
+                # these values would leave a message-scoped assertion green.
+                self.assertEqual(errors, [],
+                                 "%r is a relative reference, not an authority: %r" % (value, errors))
+                self.assertEqual(warnings, [],
+                                 "%r must not draw a warning either: %r" % (value, warnings))
+
+    def test_the_counted_file_authority_spellings_still_error_beside_them(self):
+        for value in self._FILE_SEPARATOR_NETWORK:
+            with self.subTest(value=value):
+                main = MAIN.replace("<p>content</p>",
+                                    '<p>content</p>\n  <img src="%s" alt="x">' % value)
+                errors, _ = self._errs_warns(build(body=self._body(main)))
+                self.assertTrue(any("loads over the network" in e for e in errors),
+                                "%r opens a real authority: %r" % (value, errors))
 
     def test_offline_mode_rejects_an_iframe_srcdoc(self):
         # A `srcdoc` carries a whole nested DOCUMENT as an attribute VALUE, so neither side of the

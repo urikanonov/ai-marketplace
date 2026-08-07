@@ -4,6 +4,33 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.821.0] - 2026-08-07
+
+### Changed
+
+- SETTLED, by measuring a real Chromium rather than by reading the URL spec, the question the
+  previous release left open (issue #1229): whether any surface makes a zero- or one-separator
+  `file:` reference reach a host the VALUE names. It does not, and the two spellings stay uncounted.
+  The reason is now recorded and ENFORCED instead of tracked: their leading run is a PATH. `file:`
+  is a special scheme - its backslashes are mapped like any other's, so `file:\\host/x` really is
+  counted - but the parser routes it to the file state rather than to the states that collapse the
+  slash-less `https:host/x` onto a host, so it resolves them against the document's own base. Every
+  surface that consumes the predicate resolves against that base, including an `iframe srcdoc`,
+  which inherits its parent's. Measured through `<a href>`, `<img src>` and a CAPTURED
+  `meta http-equiv=refresh` navigation out of a `file:///` document, both resolve to an EMPTY-host
+  local path - the ordinary sibling an author means by `file:notes.html` - and from a UNC base they
+  take the document's own host, which the value cannot choose. Counting either would have refused a
+  document with no egress at all and made Export Offline delete the author's reference. The
+  exemption is scoped to the leading run: a value whose path canonicalizes onto the four-separator
+  form is still counted. Two neighbouring contexts were measured rather than assumed - a
+  `<base href>` onto a non-`file:` base, which is closed unconditionally one layer up, and a report
+  served over http(s), where the engine refuses the load outright - and the four-or-more reading is
+  recorded as the WINDOWS one it is (the same engine build reads it as an empty-host local path on
+  Linux), with the gate deliberately fail-closed on both. The measurement is re-run in a real engine
+  on every CI pass and compared to the shipped predicate's verdicts, and the Python predicate and
+  its JavaScript mirror are pinned to the same answers over a shared corpus, so a future widening
+  has to be measured first and has to move both sides at once.
+
 ## [1.820.0] - 2026-08-07
 
 ### Changed

@@ -5132,3 +5132,143 @@ test("CMH-OFFLINE-04: the export's connect-src none is what closes the scripted 
     fs.rmSync(outDir, { recursive: true, force: true });
   }
 });
+// The `file:` separator arithmetic, settled by MEASUREMENT rather than by reading the URL spec
+// (issue #1229). `NETWORK_URL_RE` (and its `_OFFLINE_NETWORK_URL_RE` mirror) counts an authority at
+// exactly TWO separators or FOUR-or-more, and leaves ZERO and ONE alone. The two short runs are
+// excluded for a DIFFERENT reason than the three-slash empty host, and it is the reason this test
+// exists to keep true: their LEADING RUN IS PATH. `file:` IS a special scheme (its backslashes are
+// mapped like any other special scheme's, so `file:\\host/x` really does open an authority); what
+// `file:` does NOT take is the special-authority-(ignore-)slashes states that collapse the
+// slash-less `https:host/x` onto a host (the CMH-VAL-08 widening). The scheme state routes it to
+// the FILE state, which resolves against the document's BASE. A BASE-LESS `new URL(value)` parse
+// says otherwise - that is what made these look like an authority - but nothing in a document
+// performs one: an attribute, a CSS `url()` and a refresh target are all resolved against the
+// document's base URL.
+// Each row's expected authority is asserted against a REAL engine here and against the SHIPPED
+// PYTHON predicate in the same test, so the browser fact and the gate cannot drift apart; the
+// Python predicate is in turn pinned to the JS mirror by the shared corpus in
+// `tests/test_vendored_libs.py`. Widen either predicate to count a `""` row and this goes red.
+// `predicate` is carried SEPARATELY from `authority` because the two answer different questions and
+// one row genuinely differs: `file:////host/x` parses to host `evil.example` on WINDOWS but to the
+// EMPTY-host local `file:///evil.example/x` on LINUX (measured in the same engine build, and the
+// reason `authority` for that row is per-platform). The predicate counts it on BOTH, deliberately
+// fail-CLOSED, because Windows is the platform where the UNC fetch exists - so asserting the engine
+// and the predicate with one column would have failed on the Linux CI runner while telling us
+// nothing about the rule under test.
+const FILE_SEPARATOR_ROWS = [
+  // { value, authority: the host the VALUE itself opens ("" = it takes the DOCUMENT'S OWN base
+  //   authority, i.e. a relative reference), predicate: what the shipped gate must say }
+  { value: "file:evil.example/x.png", authority: "", predicate: false },
+  { value: "file:/evil.example/x.png", authority: "", predicate: false },
+  { value: "file:notes.png", authority: "", predicate: false },
+  { value: "file:sub/dir/x.png", authority: "", predicate: false },
+  { value: "file:localhost/x.png", authority: "", predicate: false },
+  { value: "file:C:/local/x.png", authority: "", predicate: false },
+  { value: "file:///evil.example/x.png", authority: "", predicate: false },
+  { value: "file://evil.example/x.png", authority: "evil.example", predicate: true },
+  { value: "file:////evil.example/x.png",
+    authority: process.platform === "win32" ? "evil.example" : "",
+    predicate: true },
+];
+
+test("CMH-VAL-08: a real Chromium resolves a slash-poor file: reference against the document's own base", async ({ page }) => {
+  test.setTimeout(60000);
+  const dir = makeTmpDir();
+  try {
+    // The refresh TARGET is a real file, so the navigation SUCCEEDS and the assertion reads
+    // `page.url()` rather than a failed request event - a measurement, not a race.
+    const marker = "cmh-local-sibling-reached";
+    fs.mkdirSync(path.join(dir, "evil.example"), { recursive: true });
+    const sibling = path.join(dir, "evil.example", "x.html");
+    fs.writeFileSync(sibling, `<!DOCTYPE html><title>t</title><p id="landed">${marker}</p>`);
+
+    const probe = path.join(dir, "probe.html");
+    fs.writeFileSync(probe, "<!DOCTYPE html><title>probe</title><body>probe</body>");
+    await page.goto(fileUrl(probe));
+    const measured = await page.evaluate((values) => values.map((value) => {
+      // Both readings a document really performs: the URL parser against the document's base, and
+      // the HTML attribute resolution the loader itself uses.
+      const url = new URL(value, document.baseURI);
+      const img = document.createElement("img");
+      img.setAttribute("src", value);
+      // A UNC base is the second context the rule rests on: a value the gate calls local must
+      // never reach a host the VALUE names from one.
+      let uncHost = null;
+      try { uncHost = new URL(value, "file://server.example/share/report.html").host; } catch (e) { uncHost = "ERR"; }
+      return { value, host: url.host, href: url.href, imgSrc: img.src, uncHost };
+    }), FILE_SEPARATOR_ROWS.map((row) => row.value));
+
+    expect(measured.length, "the engine returned fewer rows than were declared, so the assertions "
+                            + "below would silently skip some").toBe(FILE_SEPARATOR_ROWS.length);
+    const baseHost = new URL(await page.evaluate(() => document.baseURI)).host;
+    expect(baseHost, "this probe measures the empty-host case, so it must be opened from an "
+                     + "ordinary local path rather than a UNC share").toBe("");
+    for (const [i, row] of FILE_SEPARATOR_ROWS.entries()) {
+      const got = measured[i];
+      expect(got.value, "the measured rows drifted from the declared ones").toBe(row.value);
+      expect(got.host, `${row.value} resolves to host ${JSON.stringify(got.host)} in this engine, `
+                       + `not the declared ${JSON.stringify(row.authority)} - the predicates' `
+                       + "separator arithmetic is empirical, so re-measure and move BOTH sides together")
+        .toBe(row.authority);
+      // The attribute path must agree with the URL parser: it is the one the loader uses.
+      expect(got.imgSrc, `${row.value} resolves differently through an attribute than through the `
+                         + "URL parser").toBe(got.href);
+      if (row.authority === "") {
+        expect(got.href, `${row.value} must resolve INSIDE the document's own tree`)
+          .toMatch(/^file:\/\/\//);
+      }
+      // From a UNC base, a value the gate calls LOCAL must never reach a host the VALUE names: it
+      // takes the document's OWN host, or none at all. Stated as that invariant rather than as an
+      // exact host, because two rows are platform-dependent (measured): `file:C:/local/x.png` is a
+      // DRIVE path with no host on Windows but an ordinary relative path under `server.example` on
+      // Linux, and `file:////...` opens `evil.example` on Windows but is host-less on Linux.
+      if (!row.predicate) {
+        expect(got.uncHost,
+               `${row.value} must take the UNC document's own host or none, never one it names`)
+          .not.toBe("evil.example");
+        expect(["", "server.example"],
+               `${row.value} reached an unexpected host ${JSON.stringify(got.uncHost)} from a UNC base`)
+          .toContain(got.uncHost);
+      }
+    }
+
+    // The claim this rule is most often misread on: a meta refresh is a TOP-LEVEL NAVIGATION, and a
+    // slash-poor `file:` target navigates to the LOCAL SIBLING, not to an SMB host. `waitUntil:
+    // "commit"` because a zero-delay refresh can abort the initial navigation under load, and a
+    // PREDICATE rather than a string for `waitForURL` because the string form is glob-matched and a
+    // checkout path containing `{`, `[`, `?` or `*` would never match it.
+    const refresh = path.join(dir, "refresh.html");
+    fs.writeFileSync(refresh, '<!DOCTYPE html><meta http-equiv="refresh" '
+                              + 'content="0;url=file:evil.example/x.html"><title>r</title><body>r</body>');
+    await page.goto(fileUrl(refresh), { waitUntil: "commit" });
+    await page.waitForURL((u) => u.href === fileUrl(sibling), { timeout: 20000 });
+    await expect(page.locator("#landed")).toHaveText(marker);
+
+    // ...and the SHIPPED gate must read every row the way the engine just did, or a document is
+    // refused over a load that does not happen (or blessed over one that does). The `sys.path`
+    // entry is ABSOLUTE for the reason the script-shapes probe above records: importing through a
+    // relative `tools` leans on namespace packages resolving the same way on every host, and they
+    // do not.
+    const py = "import json, sys\n"
+      + `sys.path.insert(0, ${JSON.stringify(path.join(SKILL, "tools", "validate"))})\n`
+      + "from checks.resources import is_network_url, meta_refresh_navigates_to_network\n"
+      + "vals = json.loads(sys.argv[1])\n"
+      + "print(json.dumps({v: [is_network_url(v), meta_refresh_navigates_to_network('0;url=' + v)]\n"
+      + "                  for v in vals}))\n";
+    const verdicts = JSON.parse(execFileSync(
+      PYTHON, ["-c", py, JSON.stringify(FILE_SEPARATOR_ROWS.map((row) => row.value))],
+      { cwd: SKILL, encoding: "utf8" }));
+    for (const row of FILE_SEPARATOR_ROWS) {
+      expect(verdicts[row.value], `the python probe returned no verdict for ${row.value}`)
+        .toBeDefined();
+      const [attr, refreshTarget] = verdicts[row.value];
+      expect(attr, `the shipped attribute predicate disagrees with a real engine about ${row.value}`)
+        .toBe(row.predicate);
+      expect(refreshTarget, "the refresh target predicate must inherit the attribute one, not "
+                            + `carry a separator rule of its own (${row.value})`)
+        .toBe(row.predicate);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

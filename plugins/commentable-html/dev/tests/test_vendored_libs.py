@@ -2395,6 +2395,33 @@ class RuntimeParityTests(unittest.TestCase):
         # Issue #1229 tracks that bound; a widening that counted them would flip these two rows.
         ("\\relative\\x.js", False), ("/root\\relative.js", False), ("file:x.js", False),
         ("file:/x.js", False),
+        # ZERO and ONE separator after `file:` have a LEADING RUN THAT IS PATH on both sides, and
+        # that is MEASURED rather than an omission in the separator arithmetic above (issue #1229).
+        # `file:` IS a special scheme, so `normalize_url_value`'s backslash mapping applies to it
+        # identically and `file:\\evil.example/x.js` above is counted; what `file:` does not take is
+        # the special-authority-(ignore-)slashes states that make the slash-less `https:host/x` a
+        # real host. The scheme state routes it to the FILE state, which resolves against the
+        # document's BASE. In a real Chromium (a Windows and a Linux build), from a
+        # `file:///C:/dir/report.html` document and through `<a href>`, `<img src>` and a captured
+        # `meta http-equiv=refresh` NAVIGATION alike, `file:evil.example/x` resolves to
+        # `file:///C:/dir/evil.example/x` and `file:/evil.example/x` to `file:///C:/evil.example/x`
+        # - both EMPTY-host local paths. What makes them look like an authority is a BASE-LESS
+        # `new URL(value)` parse, which nothing in a document performs. The counted two- and
+        # four-separator controls sit right beside them so the boundary cannot be moved on one side
+        # only, and the benign `file:notes.html` row is the false positive that counting the leading
+        # run would create: reporting it would make the gate refuse a file with no egress at all and
+        # the exporter DELETE the author's reference. Only the LEADING run is exempt - the last two
+        # rows are slash-poor values whose PATH canonicalizes onto the four-separator form, so the
+        # `..` and empty-segment arms still count them, and they are pinned here because no
+        # zero-separator-with-`//`-in-path row existed on either side. `tests/49-offline-export.spec.js`
+        # re-runs the measurement in a real engine on every CI pass.
+        ("file:evil.example/x", False), ("file:/evil.example/x", False),
+        ("FILE:evil.example/x", False), ("file:\\evil.example/x", False),
+        ("file:notes.html", False), ("file:sub/dir/img.png", False),
+        ("file:localhost/x.js", False), ("file:localhost./x.js", False),
+        ("file:C:/local/x.js", False), ("file:/C:/local/x.js", False),
+        ("file://evil.example/x", True), ("file:////evil.example/x", True),
+        ("file:a//b.png", True), ("file:evil.example//x.png", True),
         # An authority terminated at once by `?`, `#` or the end of the value is an EMPTY host,
         # which nothing fetches from: a special scheme fails to parse outright (checked in a real
         # Chromium), and from a `file:` document it is the local root. The third of these is the
