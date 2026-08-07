@@ -83,8 +83,26 @@ def raw_attrs_pairs(attrs):
     attribute TEXT and needs more of it than the class - the deck scaffold, which REWRITES the
     start tag and so must not locate an attribute by searching the raw text.
     """
-    found = _tokenize_raw_tag("<x " + (attrs or "") + ">", "x")
-    return list(found[0]) if found is not None else []
+    return raw_attrs_pairs_consumed(attrs)[0]
+
+
+def raw_attrs_pairs_consumed(attrs):
+    """`raw_attrs_pairs(attrs)` paired with whether the tokenizer CONSUMED the whole region.
+
+    For a caller that REWRITES the start tag from these pairs and so must not re-serialize a
+    reading that stopped short: attribute tokenization ends at the first shape `_ATTR_RE` cannot
+    match, and everything after that point is simply not in the pairs. Consumed means nothing but
+    the tag's own close (HTML whitespace, the self-closing solidus, the `>`) is left over, which is
+    what says the tokenizer and the character-by-character `scan_start_tag` below read the SAME
+    start tag. A caller that finds this False fails closed rather than writing back a start tag
+    with attributes silently dropped.
+    """
+    raw = "<x " + (attrs or "") + ">"
+    found = _tokenize_raw_tag(raw, "x")
+    if found is None:
+        return [], False
+    pairs, k = found
+    return list(pairs), all(c in _TAG_WS_SLASH for c in raw[k:len(raw) - 1])
 
 
 def raw_attrs_class_tokens(attrs):
@@ -1159,6 +1177,18 @@ browser_attrs_dict = _browser_attrs_dict
 # document does.
 attrs_have_class = _attrs_have_class
 
+# The start-tag EXTENT scan is public for the third half of the same problem: a tool that LOCATES
+# an element by scanning the source text has to end its start tag where a browser ends it, or it
+# reads a different set of elements than the attribute reading above then reads FROM. The deck
+# scaffold's own `<section ...>` regex opened a quoted run at any `"` or `'`, where HTML opens one
+# only AFTER an `=` and takes a stray quote INTO the attribute name - so it MISSED a tag a browser
+# builds (`<section class="slide" a"b>`) and REWROTE one a browser discards (`<section class=slide
+# foo" bar="x>`, which reaches EOF inside a value) into a live slide (#1197). `end_tag_close` is
+# public for the other half of the same walk: the same tool has to end an END tag HTML's way too,
+# which is at the first `>` outside a quoted value - not at a literal `</name>`, a shape that
+# refuses the perfectly ordinary `</section >` and `</section foo="x">`.
+scan_start_tag = _scan_start_tag
+
 # A TAG name folds by the same rule, so those tools read it from the same place rather than
 # keeping a second copy of clause 7: they derive their scanners from `BrowserTagNames` (through
 # the same shim) and name each element with its `_browser_tag()`.
@@ -1400,6 +1430,28 @@ def _end_tag_close(rawdata, i):
             continue
         j += 1
     return -1
+
+
+def _comment_close(rawdata, i):
+    """Index just past the comment opening at `i` (a `<!--`), or the END of the input when it
+    never closes - a browser reads the rest of the document as comment data.
+
+    The same two boundaries `parse_comment` above applies, for a tool that WALKS the source text
+    and must not tokenize inside a comment: a `<!--` region is prose, so a tag-shaped string in it
+    is not a tag, and one carrying an unterminated quoted value would otherwise run a start-tag
+    scan straight through the live markup that follows.
+    """
+    m = _COMMENT_ABRUPT_CLOSE_RE.match(rawdata, i + 4) or _COMMENT_CLOSE_RE.search(rawdata, i + 4)
+    return m.end() if m else len(rawdata)
+
+
+# The public names of the END-tag close, the comment close and the raw-text element set, for the
+# same scanning tool the start-tag scan above serves: a walk that consumes every tag has to end an
+# end tag HTML's way, skip a comment whole, and not look inside a raw-text body (see
+# `scan_start_tag`).
+end_tag_close = _end_tag_close
+comment_close = _comment_close
+raw_text_elements = _RAW_TEXT_ELEMENTS
 
 
 class _BrowserBoundaries(_BrowserStartTag):

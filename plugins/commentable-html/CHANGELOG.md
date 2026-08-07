@@ -4,6 +4,47 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.810.0] - 2026-08-06
+
+### Fixed
+
+- The deck scaffold now LOCATES a slide `<section>` the same way it READS one. Its
+  `<section ...>` regex ended the start tag by its own quote rule - a `"` or `'` ANYWHERE in the
+  tag opened a quoted run - while HTML opens a quoted value only AFTER an `=` and takes a stray
+  quote straight INTO the attribute name, which is how the shared tokenizer the same function then
+  reads the attributes with (`_browser_attrs.raw_attrs_pairs`) reads it. The two disagreed about
+  which start tags exist, in both directions. A slide a browser really builds was MISSED:
+  `<section class="slide" a"b>` as the first of three slides got no `data-slide-id` and `.active`
+  landed on slide two (that half failed closed - the deck contract then refused the deck and
+  nothing was written). The other direction is the one worth closing:
+  `<section class=slide foo" bar="x>` reaches the end of the input inside a quoted value, so
+  HTML5's eof-in-tag error DISCARDS the whole tag and a browser builds no such `<section>` at all -
+  yet the regex matched it and the rewrite re-serialized it into a well-formed, live
+  `<section class="slide active" ... data-slide-id=...>` that passed the deck contract. The scan
+  now WALKS the fragment's tags left to right and consumes each one's whole extent, taking every
+  boundary and every tag NAME from the vendored browser readings (`checks/parsing.scan_start_tag`,
+  `end_tag_close` and `comment_close`, newly shared through the `_browser_attrs` shim with pinned
+  partial-install copies), and it fails closed - leaving the markup exactly as authored - on a tag
+  that never finishes or that the shared tokenizer did not fully consume. Five more differentials
+  go with it. The tag NAME is now HTML's own ASCII fold rather than Python's `re.IGNORECASE`,
+  which folds UNICODE, so the custom element `<\u017fection class="slide">` was promoted into a
+  real `<section>` - and because the authored `</\u017fection>` stayed behind as an unknown end
+  tag, the phantom slide never closed, took `.active`, and swallowed the real first slide, all
+  with a zero exit and both gates passing. The tag name is also terminated HTML's way, so the
+  custom element `<section-foo class="slide">` is no longer promoted either. A `<section>` or
+  `</section>` spelled inside ANOTHER tag's quoted attribute value is no longer taken for markup,
+  since that tag's own extent is consumed whole. An HTML COMMENT and a raw-text `<script>` /
+  `<style>` / `<textarea>` body are skipped whole, as prose: a commented-out slide is no longer
+  scaffolded, and - the reason this matters - a commented-out or scripted tag carrying an
+  unterminated quoted value (`<!-- <a href="x -->`) no longer runs the scan through the LIVE
+  markup after it, which silently swallowed the real slide that followed. Every other non-element
+  region a `<` can open - a markup declaration and a bogus comment - is skipped the same way, so a
+  slide written inside one is no longer minted an id and handed `.active`. And an end tag now ends
+  where HTML ends it - the first `>` outside a quoted value - so the perfectly ordinary
+  `</section >` and `</section foo="a>b">` close a slide instead of leaving every later slide
+  unscaffolded and failing a benign deck. Correctness, not a vulnerability: a document's own
+  author is trusted (CMH-SEC-01).
+
 ## [1.809.0] - 2026-08-06
 
 ### Fixed
