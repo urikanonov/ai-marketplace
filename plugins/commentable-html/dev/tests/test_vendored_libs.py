@@ -1765,7 +1765,8 @@ class RuntimeParityTests(unittest.TestCase):
         if not node:
             self.skipTest("node is not on PATH; the JS-engine parity check needs it")
         script = (
-            self._runtime_fn(source, "_offlineIsRunnableScriptType") + "\n"
+            self._runtime_fn(source, "_offlineIsJsTypeEssence") + "\n"
+            + self._runtime_fn(source, "_offlineIsRunnableScriptType") + "\n"
             + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
             "const p=JSON.parse(raw);"
             "process.stdout.write(JSON.stringify(p.map(_offlineIsRunnableScriptType)));});"
@@ -1785,6 +1786,329 @@ class RuntimeParityTests(unittest.TestCase):
                 "either an unstripped executable script the gate blesses, or a false rejection - "
                 "and since this predicate decides whether a `src` is a load, a disagreement is an "
                 "element the export deletes after the gate has already passed it." % raw)
+
+
+    # The shared shape corpus for the two element-level parity tests below. Written out LITERALLY
+    # rather than derived from either implementation: a corpus built from the code under test
+    # shrinks with it, so a dropped rule would silently drop its own coverage.
+    _HTML_NS = "http://www.w3.org/1999/xhtml"
+    _SVG_NS = "http://www.w3.org/2000/svg"
+    _MATHML_NS = "http://www.w3.org/1998/Math/MathML"
+
+    _SCRIPT_ATTR_SETS = [
+        # The essence match itself, and the near misses around it.
+        {}, {"type": ""}, {"type": "module"}, {"type": "text/javascript"},
+        {"type": "application/ecmascript"}, {"type": "text/x-javascript"},
+        {"type": "text/javascript1.5"}, {"type": "text/javascript1.6"},
+        {"type": "text/jscript"}, {"type": "text/livescript"},
+        {"type": "application/json"}, {"type": "importmap"}, {"type": "speculationrules"},
+        {"type": "text/babel"}, {"type": "javascript"},
+        # ASCII case folding, which must NOT reach past ASCII.
+        {"type": "TEXT/JavaScript"}, {"type": "Text/EcmaScript"},
+        {"type": "TEXT/JAVASCR\u0130PT"},
+        # The MIME PARAMETER: a whole-string essence match, so every one of these is inert.
+        {"type": "text/javascript; charset=utf-8"},
+        {"type": "text/javascript;charset=utf-8"}, {"type": "module; x=1"},
+        {"type": "text/javascript ;"}, {"type": ";text/javascript"},
+        # Whitespace. The two engines' defaults disagree in BOTH directions, so the literal
+        # HTML ASCII class is the only spelling that keeps the pair honest - and `type=" "` is
+        # NOT the empty-string classic branch, because the algorithm tests the RAW value first.
+        {"type": " "}, {"type": "\t"}, {"type": "\ttext/javascript "},
+        {"type": "\ufefftext/javascript"}, {"type": "text/javascript\ufeff"},
+        {"type": "\u001ctext/javascript"}, {"type": "text/javascript\u001f"},
+        {"type": "\u00a0text/javascript"}, {"type": "text/javascript\u0085"},
+        {"type": "\u2028text/javascript"}, {"type": "\u3000text/javascript"},
+        # The `language` fallback, which applies ONLY with no `type` at all and is NOT trimmed.
+        {"language": "javascript"}, {"language": "JavaScript"}, {"language": "vbscript"},
+        {"language": ""}, {"language": " javascript"}, {"language": "javascript1.5"},
+        {"type": "application/json", "language": "javascript"},
+        {"type": "", "language": "vbscript"},
+        # `nomodule`, on the classic branch only.
+        {"nomodule": ""}, {"type": "text/javascript", "nomodule": ""},
+        {"type": "module", "nomodule": ""}, {"type": "application/json", "nomodule": ""},
+        {"language": "javascript", "nomodule": ""},
+        # The legacy `event` + `for` pair: both present, and only the one spelling executes.
+        {"event": "onload", "for": "window"}, {"event": "y", "for": "x"},
+        {"event": "ONLOAD()", "for": " WINDOW "}, {"event": "onload()", "for": "window"},
+        {"event": "onload", "for": "\u00a0window"}, {"event": "onload"}, {"for": "window"},
+        {"type": "text/javascript", "event": "y", "for": "x"},
+        {"type": "module", "event": "y", "for": "x"},
+    ]
+
+    def _script_shape_corpus(self):
+        """Every attribute set above, in every namespace a `<script>` can be inserted into."""
+        return [{"ns": ns, "attrs": attrs}
+                for ns in (self._HTML_NS, self._SVG_NS, self._MATHML_NS, None)
+                for attrs in self._SCRIPT_ATTR_SETS]
+
+    def _assert_corpus_covers_every_shape_class(self, corpus):
+        """Each residual class is pinned by NAME, so deleting its rows fails here.
+
+        `assertIn(True/False, expected)` alone only catches a corpus that degenerated to one
+        verdict; a corpus that lost every `nomodule` row (say) would still carry both verdicts and
+        pass while no longer exercising the shape #1171 exists for.
+        """
+        seen = [(spec["ns"], tuple(sorted(spec["attrs"].items()))) for spec in corpus]
+        def present(pred):
+            return any(pred(ns, dict(attrs)) for ns, attrs in seen)
+        for label, pred in (
+                ("a MIME-parameter type", lambda ns, a: ";" in (a.get("type") or "")),
+                ("a whitespace-only type", lambda ns, a: (a.get("type") or "x").strip(" \t\n\f\r") == ""
+                                                         and a.get("type") != ""),
+                ("nomodule on a classic script",
+                 lambda ns, a: "nomodule" in a and a.get("type") != "module"),
+                ("nomodule on a module script",
+                 lambda ns, a: "nomodule" in a and a.get("type") == "module"),
+                ("a non-JavaScript language fallback",
+                 lambda ns, a: a.get("language") == "vbscript" and "type" not in a),
+                ("a JavaScript language fallback",
+                 lambda ns, a: a.get("language") == "javascript" and "type" not in a),
+                ("the legacy event+for pair, skipped spelling",
+                 lambda ns, a: a.get("event") == "y" and a.get("for") == "x"),
+                ("the legacy event+for pair, honoured spelling",
+                 lambda ns, a: a.get("for") == "window" and a.get("event") == "onload"),
+                ("an SVG-namespace row", lambda ns, a: ns == self._SVG_NS),
+                ("a MathML-namespace row", lambda ns, a: ns == self._MATHML_NS),
+                ("a null-namespace row", lambda ns, a: ns is None),
+                # These two classes are why the trim and the fold are spelled out literally rather
+                # than left to `trim()` / `toLowerCase()`, so losing them would quietly retire the
+                # only corpus evidence that the two engines' defaults disagree.
+                ("a non-ASCII-whitespace type",
+                 lambda ns, a: any(c in (a.get("type") or "")
+                                   for c in "\ufeff\u00a0\u2028\u3000\u001c\u001f\u0085")),
+                ("a mixed-case type",
+                 lambda ns, a: (a.get("type") or "").lower() != (a.get("type") or "")
+                               and ";" not in (a.get("type") or ""))):
+            self.assertTrue(present(pred),
+                            "the shape corpus no longer covers %s, so the parity test would pass "
+                            "while that class drifts unchecked" % label)
+
+    def _run_predicate_in_node(self, fns, call, corpus, label):
+        """Evaluate one REAL runtime predicate in node over the corpus, as a stub element.
+
+        The stub exposes only the three DOM members the predicates read. A Python
+        re-implementation could only ever prove what Python does with the extracted source, which
+        is not the question these tests ask.
+        """
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        script = (
+            fns + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);"
+            "process.stdout.write(JSON.stringify(p.map(function(spec){"
+            "const has=function(n){return Object.prototype.hasOwnProperty.call(spec.attrs,n);};"
+            "const el={namespaceURI:spec.ns,"
+            "getAttribute:function(n){return has(n)?spec.attrs[n]:null;},"
+            "hasAttribute:has};"
+            "return " + call + ";})));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps(corpus),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate %s: %s" % (label, proc.stderr))
+        verdicts = json.loads(proc.stdout)
+        self.assertEqual(len(verdicts), len(corpus),
+                         "node returned %d verdicts for %d samples" % (len(verdicts), len(corpus)))
+        return verdicts
+
+    def _script_predicate_sources(self, *names):
+        """The runtime helpers the element-level predicates need, as one JS region."""
+        source = self._read("68-export-offline.js")
+        fns = "\n".join(
+            [self._runtime_string_const(source, "_OFFLINE_HTML_NS"),
+             self._runtime_string_const(source, "_OFFLINE_SVG_NS")]
+            + [self._runtime_fn(source, name) for name in
+               ("_offlineIsJsTypeEssence", "_offlineAsciiLower", "_offlineTrimHtmlWs",
+                "_offlineScriptBlockType") + names])
+        self.assertNotIn(".toLowerCase()", fns,
+                         "an element-level predicate is on Unicode `toLowerCase()`, whose fold "
+                         "differs from the validator's ASCII-only `_ascii_lower`")
+        self.assertNotIn(".trim()", fns,
+                         "an element-level predicate is on `trim()`, whose whitespace class "
+                         "differs from HTML's in both directions")
+        return fns
+
+    def test_the_python_and_js_script_runs_inline_body_predicates_agree(self):
+        """The two INLINE-BODY predicates - `script_runs_inline_body` and
+        `_offlineScriptRunsInlineBody` - must agree about whose child text a browser runs.
+
+        This is the question every pass that acts on what a script's BODY says has to ask, and
+        `script_code_runs` alone answers it wrongly in two ways. The insertion NAMESPACE must be one
+        that defines `script` AND runs it: a MathML `<script>` is an inert unknown element, measured
+        not to run. That is not a theoretical difference - the chart HOIST moves a matching element
+        into `<body>`, and a MathML script that ran nowhere in the source really does run once
+        hoisted and reparsed as HTML, so asking the wrong predicate makes the EXPORT grant execution
+        the source never had. And an element with an external source never runs its own child text,
+        so deleting one over what its inert body says costs an author a loader that works.
+
+        The corpus is the shared shape corpus crossed with the load attributes, in every namespace,
+        so the two sides cannot drift on either rule.
+        """
+        fns = self._script_predicate_sources("_offlineScriptCodeRuns",
+                                             "_offlineScriptRunsInlineBody")
+        base = self._script_shape_corpus()
+        corpus = []
+        for spec in base:
+            corpus.append(spec)
+            for attr in ("src", "href", "xlink:href"):
+                loaded = dict(spec["attrs"])
+                loaded[attr] = "x.js"
+                corpus.append({"ns": spec["ns"], "attrs": loaded})
+                empty = dict(spec["attrs"])
+                empty[attr] = ""
+                corpus.append({"ns": spec["ns"], "attrs": empty})
+        self._assert_corpus_covers_every_shape_class(corpus)
+        ns_name = {self._HTML_NS: "html", self._SVG_NS: "svg", self._MATHML_NS: "mathml",
+                   None: "html"}
+        expected = [parsing.script_runs_inline_body(spec["attrs"], ns_name[spec["ns"]])
+                    for spec in corpus]
+        self.assertIn(True, expected)
+        self.assertIn(False, expected)
+        # The two rules this predicate adds over `script_code_runs`, pinned by value.
+        self.assertTrue(parsing.script_code_runs({"type": "text/javascript"}, "mathml"))
+        self.assertFalse(parsing.script_runs_inline_body({"type": "text/javascript"}, "mathml"))
+        self.assertTrue(parsing.script_runs_inline_body({"type": "text/javascript"}, "html"))
+        self.assertFalse(
+            parsing.script_runs_inline_body({"type": "text/javascript", "src": "x.js"}, "html"))
+        self.assertTrue(parsing.script_runs_inline_body({"type": "text/javascript", "src": "x.js"},
+                                                        "svg"))
+        self.assertFalse(parsing.script_runs_inline_body({"href": "x.js"}, "svg"))
+
+        verdicts = self._run_predicate_in_node(
+            fns, "_offlineScriptRunsInlineBody(el)", corpus, "the inline-body predicate")
+        for spec, want, got in zip(corpus, expected, verdicts):
+            self.assertEqual(
+                got, want,
+                "the REAL JS engine's _offlineScriptRunsInlineBody and the validator's "
+                "script_runs_inline_body disagree about ns=%r attrs=%r (JS says %r, Python says "
+                "%r). Update BOTH: this predicate decides whether a pass may DELETE or MOVE an "
+                "element on what its body says, and moving one whose body does not run where it is "
+                "can START it running in the export."
+                % (spec["ns"], spec["attrs"], got, want))
+
+    def test_the_python_and_js_script_code_runs_predicates_agree(self):
+        """The two EXECUTION predicates - `script_code_runs` and `_offlineScriptCodeRuns` - must
+        call the same `<script>` ELEMENTS runnable.
+
+        The type-only sibling above pins the deliberately over-inclusive predicate, which is still
+        the right one for a caller that only SCANS an inline body. This one pins the exact pair:
+        HTML's "prepare the script element" reduced to what a static reader can answer. It is what
+        every caller that DELETES or MOVES an element on a body decision asks (issue #1171), so a
+        drift between them is the CMH-OFFLINE-04 failure in its most expensive form - the gate
+        blesses a document and the export then removes an element out of it.
+
+        The corpus is ATTRIBUTE SETS, not type strings, because that is what the residual was: a
+        MIME PARAMETER, `nomodule`, the legacy `event`+`for` pair, a whitespace-only `type` and the
+        `language` fallback are each decided by something other than the type essence, and four of
+        the five cannot be expressed as a type at all. Every NAMESPACE is covered too, since
+        `nomodule`, `event`/`for` and `language` are HTMLScriptElement rules an SVG script does not
+        obey - measured, not assumed: an SVG `<script nomodule>` with an inline body really does run
+        in Chromium, so reading `nomodule` there would call a script that works inert.
+        """
+        fns = self._script_predicate_sources("_offlineScriptCodeRuns")
+        # Structural guards beside the behavioural one: each names a rule whose absence would make
+        # the predicate silently broader again, and most of the corpus would still pass.
+        for needle, why in (
+                ("[\\t\\n\\f\\r ]+", "the ASCII whitespace class the trim must use"),
+                ("nomodule", "the classic-branch nomodule skip"),
+                ("language", "the language fallback for an absent type"),
+                ("event", "the legacy event+for pair"),
+                ("namespaceURI", "the HTML-only scoping of those three rules")):
+            self.assertIn(needle, fns,
+                          "the runtime's element-level runs predicate no longer mentions %s; "
+                          "without it the exporter deletes scripts a browser never runs" % why)
+
+        corpus = self._script_shape_corpus()
+        self._assert_corpus_covers_every_shape_class(corpus)
+        expected = [parsing.script_code_runs(
+            spec["attrs"], "html" if spec["ns"] in (self._HTML_NS, None) else "svg")
+            for spec in corpus]
+        self.assertIn(True, expected)
+        self.assertIn(False, expected)
+        # The residual classes, pinned by VALUE as well as by presence, so a rule silently dropped
+        # from BOTH sides still fails here.
+        self.assertFalse(parsing.script_code_runs({"type": "text/javascript; charset=utf-8"}, "html"))
+        self.assertFalse(parsing.script_code_runs({"type": " "}, "html"))
+        self.assertFalse(parsing.script_code_runs({"type": "text/javascript", "nomodule": ""}, "html"))
+        self.assertFalse(parsing.script_code_runs({"language": "vbscript"}, "html"))
+        self.assertFalse(parsing.script_code_runs({"event": "y", "for": "x"}, "html"))
+        self.assertTrue(parsing.script_code_runs({"type": "text/javascript"}, "html"))
+        self.assertTrue(parsing.script_code_runs({"type": "module", "nomodule": ""}, "html"))
+        self.assertTrue(parsing.script_code_runs({"event": "onload", "for": "window"}, "html"))
+        # The namespace flip: `nomodule` is an HTMLScriptElement rule, so the same element runs in
+        # SVG and does not in HTML.
+        self.assertTrue(parsing.script_code_runs({"nomodule": ""}, "svg"))
+
+        verdicts = self._run_predicate_in_node(
+            fns, "_offlineScriptCodeRuns(el)", corpus, "the element-level runs predicate")
+        for spec, want, got in zip(corpus, expected, verdicts):
+            self.assertEqual(
+                got, want,
+                "the REAL JS engine's _offlineScriptCodeRuns and the validator's script_code_runs "
+                "disagree about ns=%r attrs=%r (JS says %r, Python says %r). Update BOTH: this "
+                "predicate decides whether a pass that DELETES or MOVES an element acts, so a "
+                "disagreement is an element the export removes after the gate has already blessed "
+                "it." % (spec["ns"], spec["attrs"], got, want))
+
+    def test_the_python_and_js_script_src_fetches_predicates_agree(self):
+        """The two FETCH predicates - `script_src_fetches` and `_offlineScriptSrcIsFetched` - must
+        call the same `<script src>` a real request.
+
+        This is the pair the shipping CALLERS use, and it is deliberately NOT the execution pair
+        above (issue #1171): the request is issued by Chromium's speculative PRELOAD SCANNER, which
+        reads the tag soup ahead of the parser, so it ignores the legacy `event`+`for` pair (that
+        script is requested and then never runs) and it is namespace-BLIND in both directions. Both
+        of those were MEASURED, and the browser fact itself is re-measured by the
+        `CMH-VAL-08: a browser requests exactly the script shapes the gate calls a load` spec.
+
+        Comparing the CALLERS, not just the predicates, is the point: the gate has no namespace to
+        pass, so `expected` here is computed exactly as the gate computes it - with no `ns` at all -
+        while the JS side is handed the real namespace the exporter sees. An earlier revision
+        compared the predicates with matching namespaces and stayed green while the two shipping
+        callers disagreed about `<svg><script nomodule src>`.
+        """
+        fns = self._script_predicate_sources("_offlineScriptSrcIsFetched")
+        self.assertNotIn("namespaceURI", self._runtime_fn(
+            self._read("68-export-offline.js"), "_offlineScriptSrcIsFetched"),
+            "the runtime's fetch predicate reads the namespace, but the request is issued by the "
+            "namespace-blind preload scanner and the validator's `script_src_fetches` takes no "
+            "namespace at all - reading one here re-opens the gate/strip divergence")
+
+        corpus = self._script_shape_corpus()
+        self._assert_corpus_covers_every_shape_class(corpus)
+        # No namespace: this is exactly what the gate's `src` arm computes for the same element.
+        expected = [parsing.script_src_fetches(spec["attrs"]) for spec in corpus]
+        self.assertIn(True, expected)
+        self.assertIn(False, expected)
+        # The measured facts, pinned by value. The first two are where this predicate and the
+        # execution one deliberately part company.
+        self.assertTrue(parsing.script_src_fetches({"event": "y", "for": "x"}))
+        self.assertTrue(parsing.script_src_fetches(
+            {"type": "text/javascript", "event": "y", "for": "x"}))
+        self.assertTrue(parsing.script_src_fetches({}))
+        self.assertTrue(parsing.script_src_fetches({"type": "module", "nomodule": ""}))
+        self.assertTrue(parsing.script_src_fetches({"language": "javascript"}))
+        self.assertFalse(parsing.script_src_fetches({"type": "text/javascript; charset=utf-8"}))
+        self.assertFalse(parsing.script_src_fetches({"type": " "}))
+        self.assertFalse(parsing.script_src_fetches({"type": "text/javascript", "nomodule": ""}))
+        self.assertFalse(parsing.script_src_fetches({"nomodule": ""}))
+        self.assertFalse(parsing.script_src_fetches({"language": "vbscript"}))
+        self.assertFalse(parsing.script_src_fetches({"type": "application/json"}))
+
+        verdicts = self._run_predicate_in_node(
+            fns, "_offlineScriptSrcIsFetched(el)", corpus, "the src-fetch predicate")
+        for spec, want, got in zip(corpus, expected, verdicts):
+            self.assertEqual(
+                got, want,
+                "the REAL JS engine's _offlineScriptSrcIsFetched and the validator's "
+                "script_src_fetches disagree about ns=%r attrs=%r (JS says %r, Python says %r). "
+                "Update BOTH: this predicate decides whether the gate reports a network load AND "
+                "whether the offline strip removes the element, so a disagreement is either a live "
+                "network reference left in a file that promises zero network, or an element the "
+                "export deletes after the gate has already blessed it."
+                % (spec["ns"], spec["attrs"], got, want))
 
 
     def test_the_python_and_js_script_load_attributes_agree(self):
@@ -1838,8 +2162,15 @@ class RuntimeParityTests(unittest.TestCase):
         # its own cross-engine parity test over its own corpus.
         region = "\n".join([
             self._runtime_const(source, "_OFFLINE_ACTIVE_DATA_TYPES"),
+            self._runtime_string_const(source, "_OFFLINE_HTML_NS"),
             self._runtime_fn(source, "_offlineActiveDataScriptType"),
+            self._runtime_fn(source, "_offlineIsJsTypeEssence"),
             self._runtime_fn(source, "_offlineIsRunnableScriptType"),
+            self._runtime_fn(source, "_offlineAsciiLower"),
+            self._runtime_fn(source, "_offlineTrimHtmlWs"),
+            self._runtime_fn(source, "_offlineScriptBlockType"),
+            self._runtime_fn(source, "_offlineScriptCodeRuns"),
+            self._runtime_fn(source, "_offlineScriptSrcIsFetched"),
             self._runtime_fn(source, "_offlineScriptSrcFetches"),
             'const _offlineIsNetworkUrl = (v) => /^https?:\\/\\//i.test(v || "");',
             body,
@@ -3544,6 +3875,14 @@ class RuntimeParityTests(unittest.TestCase):
                                 "it" % name)
         return m.group(0)
 
+    def _runtime_string_const(self, source, name):
+        """One runtime `const NAME = "...";` declaration, as JS source, for evaluation in node."""
+        m = re.search(r'^const %s = "[^"]*";$' % re.escape(name), source, re.M)
+        self.assertIsNotNone(m, "the runtime no longer declares %s as a one-line string; the "
+                                "parity extraction is stale and must be re-pointed at whatever "
+                                "replaced it" % name)
+        return m.group(0)
+
     def _runtime_fn(self, source, name):
         """One runtime function, as JS source, for evaluation in node.
 
@@ -3556,7 +3895,21 @@ class RuntimeParityTests(unittest.TestCase):
                             "must be re-pointed at whatever replaced it" % name)
         end = source.find("\n}", start)
         self.assertNotEqual(end, -1, "could not find the end of %s" % name)
-        return source[start:end + 2]
+        region = source[start:end + 2]
+        # The `\n}` terminator is a contract with the formatter (a column-0 closing brace and no
+        # column-0 inner one). A truncation is usually LOUD - node fails to parse the fragment - but
+        # a reformat could in principle truncate to something still valid, so check the balance here
+        # rather than trusting the shape. The count is over the RAW text, so it also assumes an
+        # extracted function carries no brace inside a string, comment or regex literal; none of
+        # them does today, and a future one that must would need this guard taught about literals
+        # rather than loosened.
+        self.assertEqual(region.count("{"), region.count("}"),
+                         "the extracted source of %s is not brace-balanced, so the `\\n}` "
+                         "terminator truncated it (or ran past it); re-point the extraction, "
+                         "restore the column-0 closing brace, or - if %s legitimately carries a "
+                         "brace inside a string or regex literal - teach this guard to blank "
+                         "literals before counting" % (name, name))
+        return region
 
     def _runtime_active_data_source(self):
         """The exporter's whole active-data decision, as JS source, for evaluation in node.

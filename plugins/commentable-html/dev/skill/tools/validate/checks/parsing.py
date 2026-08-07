@@ -3157,32 +3157,64 @@ def _is_executable_js(ad):
     Deliberately TYPE-ONLY and deliberately over-inclusive, and NOT the predicate to reach for
     when the question is "will a browser run this". It is the validator half of a pair pinned to
     the exporter's `_offlineIsRunnableScriptType` (`assets/js/68-export-offline.js`, pinned by
-    `tests/test_vendored_libs.py`), and every caller is one where over-inclusion is the SAFE
-    direction: the offline egress scan (a body it skipped would be a network import nobody looked
-    at), `_csp_predecessor_fetches` (a predecessor it missed would bless a policy that really is too
-    late), and the self-contained gate's `src` arm (`layer_parts/20-resources.py`, issue #1144),
-    which reads a script's `src` as a LOAD only for a type this predicate calls executable.
+    `tests/test_vendored_libs.py`), and every remaining caller is one where over-inclusion is the
+    SAFE direction: the offline egress SCAN over inline bodies (a body it skipped would be a network
+    import nobody looked at) and `_csp_predecessor_fetches` (a predecessor it missed would bless a
+    policy that really is too late - and that caller is namespace-BLIND, where the HTML-only rules
+    below would be fail-OPEN on an SVG script, which runs with `nomodule` and ignores `language`).
 
-    That last caller is why the PAIR matters more here than exactness: the gate and the offline
-    strip must call the same scripts loaders (CMH-OFFLINE-04), so the gate uses this predicate
-    rather than `script_code_runs` even though `script_code_runs` is the spec-exact one. The cost is
-    a recorded residual - every shape where this is broader than `script_code_runs` (a MIME
-    PARAMETER, `nomodule`, the legacy `event`+`for` pair, a whitespace-only `type`, the `language`
-    fallback) is a script a browser does not run whose `src` is still reported and whose element the
-    export still deletes. That over-reports rather than blesses, and moving it means moving BOTH
-    sides together. Do not "simplify" this caller to `script_code_runs` on its own.
+    The self-contained gate's `src` arm no longer asks here (issue #1171). It decides whether a
+    browser REQUESTS the resource, and the offline strip acts on that decision, so both moved
+    together to `script_src_fetches` below - which is a different question from EXECUTION and is
+    settled by MEASUREMENT, not by reading the algorithm. Four shapes where this predicate is
+    broader are genuinely never requested (a MIME PARAMETER, `nomodule`, a whitespace-only `type`,
+    a non-JavaScript `language`), and reporting one refused a document over a dead attribute while
+    the export deleted the author's element and its body. The legacy `event`+`for` pair is NOT in
+    that list: it stops execution but the preload scanner requests the script anyway, so calling it
+    inert would have been fail-OPEN. The PAIRING is unchanged in kind, only re-pointed: the
+    exporter's `_offlineScriptSrcIsFetched` is the JS mirror of `script_src_fetches`, pinned over a
+    shared corpus of ATTRIBUTE SETS evaluated in a real JS engine, so the gate and the strip still
+    call the same scripts loaders (CMH-OFFLINE-04).
 
     The trim is HTML's own ASCII whitespace class, not `str.strip()`, for the same reason the
     exporter's copy spells it out: the two engines' defaults disagree in BOTH directions (JS
-    `trim()` also takes NBSP and U+FEFF, Python's also takes U+001C-U+001F), and once this predicate
-    decides whether a `src` is a load, that disagreement is a document the gate blesses and the
-    export then deletes. A browser trims ASCII whitespace only, so both spellings are data blocks
-    and both sides now say so.
+    `trim()` also takes NBSP and U+FEFF, Python's also takes U+001C-U+001F), and a disagreement
+    between the two sides of a pinned pair is a document one side blesses and the other mutates. A
+    browser trims ASCII whitespace only, so both spellings are data blocks and both sides say so.
 
-    For an EXECUTION decision use `script_code_runs()` / `script_runs_inline_body()` /
-    `script_external_load()` below, which apply HTML's actual rule and whose over-inclusion would
-    be the fail-OPEN direction instead."""
+    For a FETCH decision use `script_src_fetches()`; for an EXECUTION decision use
+    `script_code_runs()` / `script_runs_inline_body()` / `script_external_load()` below, which apply
+    HTML's actual rule and whose over-inclusion would be the fail-OPEN direction instead."""
     return (ad.get("type", "") or "").split(";")[0].strip(_HTML_WHITESPACE).lower() in _JS_TYPES
+
+
+def _script_block_type(ad, html_ns):
+    """HTML's "script block type" for this element when it names JavaScript, else None.
+
+    The half of "prepare the script element" that BOTH `script_code_runs` (execution) and
+    `script_src_fetches` (the preload scanner's request) agree on, factored out so the two can
+    never disagree about which strings name JavaScript while they deliberately disagree about the
+    element-level rules layered on top.
+
+    - An ABSENT `type` takes the `language` fallback, which makes the block type `text/<language>`
+      - so `language="javascript"` names JavaScript and `language="vbscript"` does not. It is an
+      HTMLScriptElement attribute, so it is read only when `html_ns`.
+    - An explicitly EMPTY `type` is classic. A value that merely STRIPS to empty is not: the
+      algorithm tests the raw value against the empty string BEFORE stripping, so `type=" "` falls
+      through to the essence match and fails it. Do not "simplify" the two branches together.
+    - Any other value is trimmed of ASCII whitespace and must be an ESSENCE MATCH - the whole
+      string, ASCII case-insensitively - so a MIME PARAMETER defeats it."""
+    typ = ad.get("type")
+    if typ is None:
+        lang = (ad.get("language") or "") if html_ns else ""
+        block = ("text/" + _ascii_lower(lang)) if lang else ""
+    elif typ == "":
+        block = ""
+    else:
+        block = _ascii_lower(typ.strip(_HTML_WHITESPACE))
+        if not block:
+            return None
+    return block if block in _JS_TYPES else None
 
 
 def script_code_runs(ad, ns="html"):
@@ -3205,8 +3237,12 @@ def script_code_runs(ad, ns="html"):
       string BEFORE it strips, so only a literally empty value takes the classic branch and a
       value that merely strips to empty falls through to the essence match and fails it. Do not
       "simplify" the two branches together. This is also where the predicate deliberately DIVERGES
-      from `_is_executable_js` above, which splits at `;` because its callers need over-inclusion;
-      here over-inclusion is fail-OPEN.
+      from `_is_executable_js` above, which splits at `;` because its remaining callers need
+      over-inclusion; here over-inclusion is fail-OPEN. It is mirrored in the exporter by
+      `_offlineScriptCodeRuns`, pinned over a shared attribute-set corpus in a real JS engine, so
+      the passes that DELETE or MOVE an element on a body decision cannot drift (#1171). The
+      self-contained gate's `src` arm does NOT ask here - a request is not an execution; see
+      `script_src_fetches` below.
     - `nomodule`: the algorithm returns early for an element carrying it when the script block
       type is CLASSIC, so every module-supporting browser - which is every browser that ships -
       skips it. The test is on the classic branch only, so it does nothing to a `type="module"`
@@ -3234,20 +3270,10 @@ def script_code_runs(ad, ns="html"):
 
     `_ascii_lower`, not `str.lower()`: HTML folds ASCII only, and a Unicode fold that mapped a
     look-alike onto an ASCII letter would accept a type a browser never matches - fail-OPEN."""
-    html_ns = ns == "html"
-    typ = ad.get("type")
-    if typ is None:
-        lang = (ad.get("language") or "") if html_ns else ""
-        block = ("text/" + _ascii_lower(lang)) if lang else ""
-    elif typ == "":
-        block = ""
-    else:
-        block = _ascii_lower(typ.strip(_HTML_WHITESPACE))
-        if not block:
-            return False
-    if block not in _JS_TYPES:
+    block = _script_block_type(ad, ns == "html")
+    if block is None:
         return False
-    if block == "module" or not html_ns:
+    if block == "module" or ns != "html":
         return True
     if "nomodule" in ad:
         return False
@@ -3256,6 +3282,44 @@ def script_code_runs(ad, ns="html"):
                 and _ascii_lower((ad.get("event") or "").strip(_HTML_WHITESPACE))
                 in ("onload", "onload()"))
     return True
+
+
+def script_src_fetches(ad):
+    """Whether a browser really REQUESTS this `<script>`'s `src` (CMH-VAL-08, issue #1171).
+
+    A DIFFERENT question from `script_code_runs` above, and the difference is measured rather than
+    reasoned. Chromium issues the `src` request from its speculative PRELOAD SCANNER, which reads
+    the tag soup ahead of the parser, so the request goes out under a rule of its own. Driving a
+    page of every shape through Chromium 149 (both directions recorded, request observed at the
+    server) gives exactly this predicate, and it differs from execution in two ways:
+
+    - The legacy `event`+`for` pair does NOT stop the fetch.
+      `<script type="text/javascript" for="x" event="y" src="x.js">` is REQUESTED and then never
+      run. Reading this question through `script_code_runs` therefore blessed a document that
+      really does reach the network - the one direction a self-contained gate must never get
+      wrong - so that shape stays reported.
+    - It is namespace-BLIND, in both directions. `<svg><script src="x.js">` is requested (SVG
+      ignores `src` for LOADING, but the scanner does not), while `<svg><script nomodule src=...>`
+      is NOT requested even though `nomodule` is an HTMLScriptElement rule an SVG script ignores
+      when it comes to EXECUTION - and an SVG `<script nomodule>` with an inline body does run.
+      So the scanner applies the HTML type/`language`/`nomodule` rules whatever the namespace.
+
+    That blindness is what lets the flat, namespace-less tokenizer answer this question exactly,
+    and it is why this predicate takes no `ns` at all: there is no namespace to consult, by
+    construction rather than by omission. The exporter's `_offlineScriptSrcIsFetched` mirrors it,
+    pinned by `test_the_python_and_js_script_src_fetches_predicates_agree`, and the browser fact
+    itself is pinned by the `CMH-VAL-08: a browser requests exactly the script shapes the gate
+    calls a load` spec, which re-measures the corpus in a real engine.
+
+    `href` / `xlink:href` are not this predicate's business: an SVG script loads through those and
+    a browser fetches them unconditionally (measured: both requested AND executed), so the gate
+    reads them with no type test at all."""
+    block = _script_block_type(ad, True)
+    if block is None:
+        return False
+    if block == "module":
+        return True
+    return "nomodule" not in ad
 
 
 def script_runs_inline_body(ad, ns):
@@ -3309,7 +3373,18 @@ def _csp_predecessor_fetches(tag, ad):
     bare `src` is deliberately NOT read on its own: it fetches only on a script that runs, which the
     executable test already covers, and counting it alone made a head-placed inert data block mark a
     following policy `<meta>` late and rejected an otherwise clean offline document with a
-    missing-CSP error, for a request no browser makes (#1144)."""
+    missing-CSP error, for a request no browser makes (#1144).
+
+    The predicate here stays the over-inclusive `_is_executable_js` even though the self-contained
+    gate's `src` arm moved to `script_src_fetches` (#1171), and the reason is this caller's QUESTION:
+    it asks whether anything before the policy could fetch OR execute, so it must stay broader than
+    either half. `script_src_fetches` alone would miss a script that runs an inline body without
+    fetching anything, and `script_code_runs` would need a namespace this caller does not have - it
+    is handed a flat tag/attribute pair, and `nomodule`, `event`+`for` and `language` are
+    HTMLScriptElement rules an SVG script does not obey, so reading them here would call an SVG
+    `<script nomodule>` inert and bless a policy that really is too late. Over-inclusion is the safe
+    direction for "did anything before this policy fetch or execute"; it is not for a "delete this
+    element" one."""
     if tag in _CSP_INERT_PREDECESSORS:
         return False
     if tag == "link":

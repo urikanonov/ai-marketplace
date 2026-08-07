@@ -1945,6 +1945,51 @@ function scriptBlock(type, marker, importTarget) {
     + "</script>";
 }
 
+// Shapes a browser does NOT REQUEST through `src` (issue #1171), each one measured in a real engine
+// by the sibling browser-evidence spec below: HTML's essence match is on the WHOLE trimmed type
+// string, so a MIME PARAMETER defeats it and a whitespace-only `type` is not the empty-string
+// classic branch; `nomodule` stops a classic script; and with no `type` a non-JavaScript `language`
+// sets the block type. The strict gate no longer reports any of them, so the strip must not delete
+// the element and its body behind a verdict the gate has dropped.
+//
+// The legacy `event`+`for` pair is deliberately NOT here. It stops EXECUTION but not the REQUEST -
+// Chromium's preload scanner issues it anyway - so it stays a load on both sides; it is a control
+// in the other direction below.
+const UNFETCHED_SCRIPT_SHAPES = [
+  ["mime-param", 'type="text/javascript; charset=utf-8"'],
+  ["nomodule", 'type="text/javascript" nomodule'],
+  ["ws-type", 'type=" "'],
+  ["language", 'language="vbscript"'],
+];
+function unfetchedSrcBlock(shape) {
+  return "<script " + shape[1] + ' id="cmh-unrun-' + shape[0] + '" '
+    + 'src="https://evil.example/unrun-' + shape[0] + '.js">\n'
+    + "/* cmh-unrun-body-" + shape[0] + " */\n"
+    + "</script>";
+}
+// The same shapes wearing a RENDERER-shaped body, which the loader-shim strip removes by name. A
+// shim no browser ever ran is not a reason to delete an author's element either. `event`+`for` IS
+// included here: that pass asks the EXECUTION question, and such a script's body never runs.
+const UNRUN_SHIM_SHAPES = UNFETCHED_SCRIPT_SHAPES.concat([
+  ["event-for", 'type="text/javascript" for="x" event="y"'],
+]);
+function unrunShimBlock(shape) {
+  return "<script " + shape[1] + ' id="cmh-unrun-shim-' + shape[0] + '">\n'
+    + "/* cmh-unrun-shim-body-" + shape[0] + " */\n"
+    + 'if (window.mermaid) window.mermaid.run({ querySelector: "pre.mermaid" });\n'
+    + "</script>";
+}
+// An SVG script carrying the HTML-only `nomodule`. The request is issued by the namespace-BLIND
+// preload scanner, which honours `nomodule` whatever the namespace (measured), so nothing is
+// fetched - while the element's own body DOES run, since `nomodule` is an HTMLScriptElement rule
+// SVG ignores. An earlier revision read the real namespace here and deleted this element while the
+// gate blessed it, which is the exact CMH-OFFLINE-04 divergence this row exists to prevent.
+const SVG_UNFETCHED_BLOCK =
+  '<svg width="1" height="1"><script nomodule id="cmh-unrun-svg-nomodule" '
+  + 'src="https://evil.example/unrun-svg-nomodule.js">\n'
+  + "/* cmh-unrun-body-svg-nomodule */\n"
+  + "</script></svg>";
+
 const LEGACY_TYPE_CONTENT = [
   "<h1>Legacy script MIME types</h1>",
   '<p id="legacy-note">A legacy executable script type still runs in a browser.</p>',
@@ -1961,10 +2006,24 @@ const LEGACY_TYPE_CONTENT = [
   ],
   INERT_SCRIPT_TYPES.map((t) => scriptBlock(t, "cmh-inert-" + typeSlug(t), "inert-" + typeSlug(t) + ".js")),
   INERT_SCRIPT_TYPES.map(inertSrcBlock),
+  UNFETCHED_SCRIPT_SHAPES.map(unfetchedSrcBlock),
+  UNRUN_SHIM_SHAPES.map(unrunShimBlock),
   [
+    SVG_UNFETCHED_BLOCK,
     INERT_RENDERER_SRC_BLOCK,
     // The control in the other direction: a script a browser RUNS goes entirely, src and all.
     '<script type="text/x-javascript" id="cmh-runnable-src" src="https://evil.example/runnable-src.js"></script>',
+    // ...and so do the three shapes only the measured FETCH reading gets right the other way:
+    // `nomodule` does nothing to a MODULE script, `for="window" event="onload"` is the legacy pair
+    // browsers honour, and `for="x" event="y"` is REQUESTED (and then never run), so all three are
+    // real network references a zero-network export must not keep.
+    '<script type="module" nomodule id="cmh-runnable-nomodule-module" src="https://evil.example/runnable-nomodule.js"></script>',
+    '<script for="window" event="onload" id="cmh-runnable-onload" src="https://evil.example/runnable-onload.js"></script>',
+    '<script type="text/javascript" for="x" event="y" id="cmh-fetched-eventfor" src="https://evil.example/fetched-eventfor.js"></script>',
+    // The same fetched-but-inert shape wearing a RENDERER-shaped URL, which the loader-name pass
+    // removes by filename. That pass must make the same fetch/execution split, or it silently
+    // undoes the preservation for the one spelling whose URL looks like a bundle.
+    '<script type="text/javascript" for="x" event="y" id="cmh-eventfor-renderer" src="https://cdn.example/eventfor/chart.umd.js">\n/* cmh-eventfor-renderer-body */\n</script>',
   ]
 ).join("\n");
 test("CMH-OFFLINE-04: the offline strips cover every executable script MIME type, not only the modern three", async ({ page }) => {
@@ -2009,6 +2068,40 @@ test("CMH-OFFLINE-04: the offline strips cover every executable script MIME type
     // The control: a script a browser RUNS loses the whole element, not just the attribute.
     expect(exportedHtml, "a runnable script with a network src goes entirely").not.toContain("cmh-runnable-src");
     expect(exportedHtml, "a runnable script's src target").not.toContain("runnable-src.js");
+    // ...and so do the two shapes only the measured FETCH reading gets right in this direction.
+    expect(exportedHtml, "nomodule does nothing to a module script").not.toContain("cmh-runnable-nomodule-module");
+    expect(exportedHtml, "...and its src target").not.toContain("runnable-nomodule.js");
+    expect(exportedHtml, "the legacy window/onload pair really loads").not.toContain("cmh-runnable-onload");
+    expect(exportedHtml, "...and its src target").not.toContain("runnable-onload.js");
+    // event+for stops EXECUTION but not the REQUEST, so the REFERENCE must go - but the element is
+    // an author's inert body, so it stays and only the dead attribute is taken (issue #1171).
+    expect(exportedHtml, "a skipped event+for script keeps its element").toContain("cmh-fetched-eventfor");
+    expect(exportedHtml, "...and loses the requested src").not.toContain("fetched-eventfor.js");
+    // ...and the renderer-name pass makes the same split, so a bundle-shaped URL on the same inert
+    // shape does not delete the author's element behind its filename.
+    expect(exportedHtml, "an inert event+for renderer keeps its element").toContain("cmh-eventfor-renderer");
+    expect(exportedHtml, "...and its body").toContain("cmh-eventfor-renderer-body");
+    expect(exportedHtml, "...and loses the requested src").not.toContain("eventfor/chart.umd.js");
+    // CMH-OFFLINE-04 / CMH-VAL-08 (#1171): a script whose `src` a browser never REQUESTS carries a
+    // dead attribute exactly like a data block's. The gate stopped reporting it, so the strip must
+    // stop deleting the element behind it - otherwise the export mutates a file the gate has just
+    // blessed, which is the divergence this row exists to prevent.
+    for (const shape of UNFETCHED_SCRIPT_SHAPES) {
+      expect(exportedHtml, `unfetched shape ${shape[0]} keeps its element`).toContain(`cmh-unrun-${shape[0]}`);
+      expect(exportedHtml, `unfetched shape ${shape[0]} keeps its body`).toContain(`cmh-unrun-body-${shape[0]}`);
+      expect(exportedHtml, `unfetched shape ${shape[0]} loses the dead src`).not.toContain(`unrun-${shape[0]}.js`);
+    }
+    // The loader-shim strip reads the EXECUTION question instead, so it spares `event`+`for` too.
+    for (const shape of UNRUN_SHIM_SHAPES) {
+      expect(exportedHtml, `unrun shim ${shape[0]} keeps its element`).toContain(`cmh-unrun-shim-${shape[0]}`);
+      expect(exportedHtml, `unrun shim ${shape[0]} keeps its body`).toContain(`cmh-unrun-shim-body-${shape[0]}`);
+    }
+    // The namespace control: the preload scanner honours `nomodule` whatever the namespace, so an
+    // SVG script carrying it fetches nothing and must keep its element AND its body - even though
+    // that same body really does execute (SVG ignores `nomodule` for execution).
+    expect(exportedHtml, "an SVG nomodule script keeps its element").toContain("cmh-unrun-svg-nomodule");
+    expect(exportedHtml, "...and its body").toContain("cmh-unrun-body-svg-nomodule");
+    expect(exportedHtml, "...and loses the dead src").not.toContain("unrun-svg-nomodule.js");
     // A RENDERER-shaped filename is not a reason to delete a data block either: the renderer strip
     // removes a chart/mermaid bundle by name, and this element fetches nothing, so its body stays
     // and only the dead attribute goes - otherwise the gate would bless a file the export mutates.
@@ -2017,6 +2110,160 @@ test("CMH-OFFLINE-04: the offline strips cover every executable script MIME type
     expect(exportedHtml, "...and loses the dead src").not.toContain("cmh-inert-chart.umd.js");
     expect(networkLoadRefs(exportedHtml)).toEqual([]);
   } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+// The BROWSER FACT this whole rule rests on, measured rather than asserted. The gate reports a
+// `<script src>` as a network load exactly when `script_src_fetches` says a browser requests it,
+// and the offline strip removes exactly those elements - so if a real engine requests a shape the
+// predicate calls inert, a zero-network export keeps a live reference; if it does NOT request one
+// the predicate calls a load, the gate refuses a document over a request nobody makes. Both errors
+// are invisible to a static test, which is why this spec drives the shapes through Chromium and
+// compares the OBSERVED request set to the predicate's own verdicts.
+//
+// The shapes are the ones the two predicates disagree about, plus the controls around them. Note
+// `event-for-bad`: it is REQUESTED and then never executed, which is why the fetch question is not
+// the execution question (issue #1171). The namespace rows measure the other half: the preload
+// scanner honours `nomodule` on an SVG script (no request) even though SVG ignores it for
+// EXECUTION, so the fetch predicate is namespace-blind while the execution one is not.
+const FETCH_PROBE_SHAPES = [
+  ["control-classic", '<script type="text/javascript" src="URL"></script>', true],
+  ["empty-type", '<script type="" src="URL"></script>', true],
+  ["language-js", '<script language="javascript" src="URL"></script>', true],
+  ["nomodule-module", '<script type="module" nomodule src="URL"></script>', true],
+  ["event-for-good", '<script for="window" event="onload" src="URL"></script>', true],
+  ["event-for-bad", '<script type="text/javascript" for="x" event="y" src="URL"></script>', true],
+  ["svg-plain", '<svg width="1" height="1"><script src="URL"></script></svg>', true],
+  ["mime-param", '<script type="text/javascript; charset=utf-8" src="URL"></script>', false],
+  ["nomodule-classic", '<script type="text/javascript" nomodule src="URL"></script>', false],
+  ["nomodule-untyped", '<script nomodule src="URL"></script>', false],
+  ["ws-type", '<script type=" " src="URL"></script>', false],
+  ["language-vbscript", '<script language="vbscript" src="URL"></script>', false],
+  ["json", '<script type="application/json" src="URL"></script>', false],
+  ["svg-nomodule", '<svg width="1" height="1"><script nomodule src="URL"></script></svg>', false],
+  // The namespace-blindness is MEASURED across the rules, not extrapolated from the two SVG rows
+  // above: `language` and the essence match are HTMLScriptElement concepts, and the scanner applies
+  // them in a foreign namespace too. MathML is covered as well, so no rule is asserted for HTML and
+  // merely assumed elsewhere.
+  ["svg-language-js", '<svg width="1" height="1"><script language="javascript" src="URL"></script></svg>', true],
+  ["svg-event-for-bad", '<svg width="1" height="1"><script type="text/javascript" for="x" event="y" src="URL"></script></svg>', true],
+  ["svg-language-vbscript", '<svg width="1" height="1"><script language="vbscript" src="URL"></script></svg>', false],
+  ["svg-mime-param", '<svg width="1" height="1"><script type="text/javascript; charset=utf-8" src="URL"></script></svg>', false],
+  ["svg-ws-type", '<svg width="1" height="1"><script type=" " src="URL"></script></svg>', false],
+  ["math-nomodule", '<math><script nomodule src="URL"></script></math>', false],
+  ["math-language-vbscript", '<math><script language="vbscript" src="URL"></script></math>', false],
+  ["math-mime-param", '<math><script type="text/javascript; charset=utf-8" src="URL"></script></math>', false],
+];
+
+test("CMH-VAL-08: a browser requests exactly the script shapes the gate calls a load", async ({ page }) => {
+  const host = "https://cmh-fetch-probe.example";
+  const markup = FETCH_PROBE_SHAPES
+    .map(([slug, tpl]) => tpl.replace("URL", host + "/" + slug + ".js"))
+    .join("\n");
+  const requested = new Set();
+  // `route` sees the request the moment it is issued - including the ones the speculative preload
+  // scanner issues ahead of the parser, which is the whole point - and aborting keeps the spec
+  // hermetic: nothing leaves the machine.
+  await page.route(/^https?:\/\//, (route) => {
+    const m = /\/([a-z0-9-]+)\.js$/i.exec(route.request().url());
+    if (m) requested.add(m[1]);
+    return route.abort();
+  });
+  await page.setContent(
+    "<!doctype html><html><head><meta charset=\"utf-8\"></head><body>\n" + markup + "\n</body></html>",
+    { waitUntil: "networkidle" });
+  await page.waitForTimeout(500);
+
+  // The predicate's OWN verdicts, read out of the shipped validator rather than restated here, so
+  // this measures the code that ships and not a copy of the table below.
+  const probe = FETCH_PROBE_SHAPES.map(([slug, tpl, expected]) => ({ slug, tpl, expected }));
+  const script = [
+    "import json, sys",
+    // `tools/validate` (not `tools`), then `from checks import parsing`: `checks` is a real package
+    // with an `__init__.py`, while `validate` has none - importing through it relies on namespace
+    // packages resolving the same way on every host, which they do not (CI failed where a local run
+    // passed). This is the same path the plugin's own Python tests take through `_paths.TOOLS`.
+    "sys.path.insert(0, r'" + path.join(SKILL, "tools", "validate") + "')",
+    "from checks import parsing",
+    "shapes = json.loads(sys.stdin.read())",
+    "out = {}",
+    "for s in shapes:",
+    "    for el in parsing._find_tag_attrs_egress(s['tpl'], 'script'):",
+    "        out[s['slug']] = parsing.script_src_fetches(el)",
+    "print(json.dumps(out))",
+  ].join("\n");
+  const verdicts = JSON.parse(execFileSync(PYTHON, ["-c", script], {
+    input: JSON.stringify(probe), encoding: "utf-8",
+  }));
+
+  for (const { slug, expected } of probe) {
+    // The literal expectation is the third column above: a control that recorded whatever the
+    // browser happened to do would pass however wrong the predicate was.
+    expect(requested.has(slug), `Chromium request for ${slug}`).toBe(expected);
+    expect(verdicts[slug], `script_src_fetches verdict for ${slug}`).toBe(expected);
+  }
+  // Both directions are genuinely exercised, so neither loop can pass vacuously.
+  expect(FETCH_PROBE_SHAPES.some(([, , e]) => e)).toBe(true);
+  expect(FETCH_PROBE_SHAPES.some(([, , e]) => !e)).toBe(true);
+});
+
+// A MathML `<script>`: an inert unknown element whose body does NOT run where it sits (measured).
+// The chart hoist selects `script:not([src])` by local name in every namespace, so before #1171 a
+// matching one was MOVED into `<body>` - and an HTML-serialized copy of that document runs it on
+// reparse. The export must never grant execution the source did not have, so this element must
+// stay where it is. Its SVG twin is the control: an SVG script's body really does run, so hoisting
+// it is correct.
+const NAMESPACED_HOIST_CONTENT = [
+  "<h1>Namespaced scripts</h1>",
+  '<p id="ns-note">A MathML script is inert where it sits; an SVG one is not.</p>',
+  '<math id="cmh-math-host"><script type="text/javascript">',
+  "/* cmh-mathml-body */",
+  'window.__cmhMathmlRan = true; new Chart(document.getElementById("nsChart"), {});',
+  "</script></math>",
+].join("\n");
+
+test("CMH-OFFLINE-04: the export never hoists a MathML script, which would start running it", async ({ page, browser }) => {
+  test.setTimeout(60000);
+  const staged = stageContent(NAMESPACED_HOIST_CONTENT, { key: "cmh-offline-ns-hoist", source: "offline-ns-hoist.html" });
+  let ctx = null;
+  try {
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // The source document does NOT run it - the premise the export must preserve.
+    expect(await page.evaluate(() => window.__cmhMathmlRan)).toBeUndefined();
+
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+    // Kept, and still inside its <math> host rather than appended to <body>.
+    expect(exportedHtml, "the MathML script survives").toContain("cmh-mathml-body");
+    const mathAt = exportedHtml.indexOf("cmh-math-host");
+    const bodyAt = exportedHtml.indexOf("cmh-mathml-body");
+    expect(mathAt, "the <math> host survives").toBeGreaterThan(-1);
+    expect(bodyAt - mathAt, "the script stayed inside its <math> host, not hoisted to <body>")
+      .toBeGreaterThan(0);
+    expect(bodyAt - mathAt).toBeLessThan(400);
+
+    // The decisive check: reopening the EXPORT must not run it either. The file goes inside the
+    // already-temporary staged directory, which the `finally` below removes, so an interrupted run
+    // leaves nothing in the tracked `dev/` tree.
+    const outFile = path.join(staged.dir, "exported-ns-hoist.html");
+    fs.writeFileSync(outFile, exportedHtml, "utf8");
+    ctx = await browser.newContext();
+    const p2 = await ctx.newPage();
+    await p2.route(/^https?:\/\//, (route) => route.abort());
+    await p2.goto(fileUrl(outFile));
+    await p2.waitForTimeout(300);
+    expect(await p2.evaluate(() => window.__cmhMathmlRan),
+      "the export must not start running a script the source left inert").toBeUndefined();
+  } finally {
+    if (ctx) await ctx.close();
     fs.rmSync(staged.dir, { recursive: true, force: true });
   }
 });

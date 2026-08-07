@@ -4,6 +4,48 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.819.0] - 2026-08-06
+
+### Fixed
+
+- The self-contained gate and the offline strip no longer call a script a browser never requests a
+  loader, so an inert block is neither refused nor deleted. Four shapes whose type essence names
+  JavaScript are never fetched at all: `type="text/javascript; charset=utf-8"` (any MIME
+  PARAMETER, since HTML matches the WHOLE trimmed type string), `nomodule` on a classic script, a
+  whitespace-only `type=" "`, and, with no `type` at all, a non-JavaScript `language`. The gate
+  read only the type's MIME essence, so it reported such a script's `src` as a network load -
+  `--strict` failed and the `commentable-html-validated` stamp was withheld for a request no
+  browser makes - and Export Offline, which shared that predicate, removed the whole element AND
+  its body. Both sides now ask the same question in the same change: the gate's `src` arm (top
+  level and inside an `iframe srcdoc`) uses the new `script_src_fetches`, and the exporter's
+  `_offlineScriptSrcIsFetched` mirrors it, pinned by a cross-engine parity test over a shared
+  corpus of attribute sets in a real JS engine.
+- The FETCH question turned out not to be the EXECUTION question, and the difference is measured
+  rather than reasoned from the spec. Chromium issues the `src` request from its speculative
+  preload scanner, so the legacy `event`+`for` pair does NOT stop it: such a script is requested
+  and then never runs. It is therefore still reported and still stripped - reading it as inert
+  would have left a live network reference in a file that promises zero network. The same
+  measurement shows the request is namespace-BLIND in both directions (an SVG `<script src>` is
+  requested; an SVG `<script nomodule src>` is not), while EXECUTION is namespace-scoped (an SVG
+  `<script nomodule>` with an inline body does run). A new test drives every shape through
+  a real browser and compares what it actually requests to the shipped predicate, so an engine
+  that ever changes its mind reds a test instead of silently invalidating the rule.
+  - Which predicate a pass asks is now decided by what it does with the answer: a pass that
+    decides whether a `src` is a real reference asks the fetch question; a pass that DELETES or
+    MOVES an element on what its BODY says asks whether that body runs at all - namespace and
+    external source included, since a MathML script's body never runs and a script with a `src`
+    never runs its own child text; and the passes that only SCAN an inline body for network egress
+    keep the broader type-only predicate, because a body they skipped would be a network import
+    nobody looked at.
+  - That third question is not a formality. The chart hoist selects scripts by local name in every
+    namespace, so it used to MOVE a MathML script into `<body>` - and an HTML serialization of that
+    document runs it on reparse, which would have made the export grant execution the source never
+    had. The hoist and the renderer strip now ask the inline-body predicate, pinned to the
+    validator's own by a third cross-engine parity test.
+  - The load strip preserves content in the one shape where fetch and execution genuinely split: a
+    classic script with the legacy `event`+`for` pair and a network `src` is requested but never
+    run, so the dead attribute alone is taken and the author's element and inert body stay.
+
 ## [1.817.0] - 2026-08-07
 
 ### Fixed

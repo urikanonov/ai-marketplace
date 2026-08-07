@@ -40,9 +40,120 @@ function _offlineIsInlinedLibScript(s) {
 // trims ASCII whitespace only, so both of those are DATA BLOCKS and both sides now say so.
 function _offlineIsRunnableScriptType(type) {
   const t = String(type || "").split(";")[0].replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "").toLowerCase();
+  return _offlineIsJsTypeEssence(t);
+}
+// The set membership on its own, shared so the type-only predicate above and the element-level one
+// below can never disagree about WHICH strings name JavaScript while they deliberately disagree
+// about how the attribute is normalized into one.
+function _offlineIsJsTypeEssence(t) {
   if (!t || t === "module") return true;
   return /^(?:text|application)\/(?:x-)?(?:java|ecma)script$/.test(t) ||
     /^text\/(?:javascript1\.[0-5]|jscript|livescript)$/.test(t);
+}
+// HTML folds ASCII only. `toLowerCase()` is Unicode-aware, so a look-alike that folds onto an ASCII
+// letter would make a type a browser never matches look runnable - the fail-OPEN direction for the
+// predicate below, and a divergence from the validator's `_ascii_lower` besides.
+function _offlineAsciiLower(value) {
+  return String(value == null ? "" : value).replace(/[A-Z]/g, function (c) {
+    return String.fromCharCode(c.charCodeAt(0) + 32);
+  });
+}
+function _offlineTrimHtmlWs(value) {
+  return String(value == null ? "" : value).replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "");
+}
+// HTML's "script block type" for this element when it names JavaScript, else null. The half of
+// "prepare the script element" that BOTH questions below agree on, factored out so they can never
+// disagree about which strings name JavaScript while they deliberately disagree about the
+// element-level rules layered on top. An ABSENT `type` takes the `language` fallback (an
+// HTMLScriptElement attribute, so only when `htmlNs`), an explicitly EMPTY one is classic, and any
+// other value is trimmed of ASCII whitespace and must be a WHOLE essence match. The asymmetry
+// between `type=""` and `type=" "` is the algorithm's own: the raw value is tested against the
+// empty string BEFORE it is stripped. Mirrors the validator's `_script_block_type`.
+function _offlineScriptBlockType(s, htmlNs) {
+  const raw = s.getAttribute("type");
+  let block;
+  if (raw === null || raw === undefined) {
+    const lang = htmlNs ? (s.getAttribute("language") || "") : "";
+    block = lang ? "text/" + _offlineAsciiLower(lang) : "";
+  } else if (raw === "") {
+    block = "";
+  } else {
+    block = _offlineAsciiLower(_offlineTrimHtmlWs(raw));
+    if (!block) return null;
+  }
+  return _offlineIsJsTypeEssence(block) ? block : null;
+}
+// Whether a browser would run THIS `<script>` element's code at all - HTML's "prepare the script
+// element" reduced to the questions a static reader can answer, and the exporter half of a pair
+// pinned to the strict validator's `script_code_runs` by
+// `test_the_python_and_js_script_code_runs_predicates_agree`, which evaluates THIS function in a
+// real JS engine over a shared corpus of ATTRIBUTE SETS.
+//
+// This is the EXECUTION question. Ask it about an inline BODY, never about whether a `src` is
+// requested - that is `_offlineScriptSrcFetches` below, and the two genuinely differ (issue #1171).
+// It is deliberately narrower than `_offlineIsRunnableScriptType` above, and the split is by what
+// the caller does with the answer: a caller that DELETES an element must be exact, because a MIME
+// PARAMETER, `nomodule`, the legacy `event`+`for` pair, a whitespace-only `type` or a
+// non-JavaScript `language` each mean no code ran and deleting the element cost the author their
+// content for nothing. A caller that only SCANS an inline body for egress keeps the broader
+// predicate, where over-inclusion is the safe direction - a body it skips is a network import
+// nobody looked at.
+//
+// `nomodule` and the legacy `event`+`for` pair are HTMLScriptElement rules that apply on the
+// CLASSIC branch in the HTML namespace only. That scoping is measured, not assumed: an SVG
+// `<script nomodule>` with an inline body DOES run in Chromium, so reading `nomodule` there would
+// delete a script that works.
+function _offlineScriptCodeRuns(s) {
+  const htmlNs = !s.namespaceURI || s.namespaceURI === _OFFLINE_HTML_NS;
+  const block = _offlineScriptBlockType(s, htmlNs);
+  if (block === null) return false;
+  if (block === "module" || !htmlNs) return true;
+  if (s.hasAttribute("nomodule")) return false;
+  if (s.hasAttribute("event") && s.hasAttribute("for")) {
+    const target = _offlineAsciiLower(_offlineTrimHtmlWs(s.getAttribute("for")));
+    const evt = _offlineAsciiLower(_offlineTrimHtmlWs(s.getAttribute("event")));
+    return target === "window" && (evt === "onload" || evt === "onload()");
+  }
+  return true;
+}
+// Whether a browser runs THIS `<script>` element's own child text as script - the exporter mirror
+// of the validator's `script_runs_inline_body`, pinned by
+// `test_the_python_and_js_script_runs_inline_body_predicates_agree`.
+//
+// Three independent facts, and asking `_offlineScriptCodeRuns` alone gets two of them wrong. The
+// insertion NAMESPACE must be one that defines `script` AND runs it: HTML and SVG do, MathML does
+// NOT - a MathML `<script>` is an inert unknown element whose body never executes (measured). That
+// matters most for a pass that MOVES an element: hoisting a MathML script into `<body>` and then
+// serializing makes it an HTML script on reparse, so the export would START RUNNING code the source
+// document never ran, and an exporter must never add behavior the source did not have. The element
+// must also not load EXTERNALLY - a browser that fetches a source ignores the element's own child
+// text - so deleting such an element over what its inert body says costs an author their loader.
+function _offlineScriptRunsInlineBody(s) {
+  const ns = s.namespaceURI || _OFFLINE_HTML_NS;
+  if (ns !== _OFFLINE_HTML_NS && ns !== _OFFLINE_SVG_NS) return false;
+  const loadAttrs = ns === _OFFLINE_SVG_NS ? ["href", "xlink:href"] : ["src"];
+  if (loadAttrs.some(function (a) { return s.hasAttribute(a); })) return false;
+  return _offlineScriptCodeRuns(s);
+}
+// Whether a browser really REQUESTS this `<script>`'s `src`. A DIFFERENT question from execution
+// above, and the difference is MEASURED rather than reasoned: Chromium issues the request from its
+// speculative PRELOAD SCANNER, which reads the tag soup ahead of the parser under a rule of its
+// own. Driving a page of every shape through Chromium 149 gives exactly this predicate:
+//
+// - the legacy `event`+`for` pair does NOT stop the fetch (`for="x" event="y"` with a `src` is
+//   requested and then never run), so a strip that skipped it would leave a live network reference
+//   in a file that promises zero network, and
+// - it is namespace-BLIND in both directions: `<svg><script src>` IS requested even though SVG
+//   ignores `src` for loading, while `<svg><script nomodule src>` is NOT - the scanner applies the
+//   HTML type/`language`/`nomodule` rules whatever the namespace.
+//
+// Mirrors the validator's `script_src_fetches`, which is namespace-less for the same reason, pinned
+// by `test_the_python_and_js_script_src_fetches_predicates_agree`.
+function _offlineScriptSrcIsFetched(s) {
+  const block = _offlineScriptBlockType(s, true);
+  if (block === null) return false;
+  if (block === "module") return true;
+  return !s.hasAttribute("nomodule");
 }
 // Two script types that are ACTIVE without being JavaScript, so the predicate above never looked at
 // either. They get DIFFERENT rules because their risk is not the same shape.
@@ -1377,6 +1488,11 @@ function _neutralizeOfflineReservedDataScripts(doc) {
   // Template-parked too, so a reserved-id block a script later adopts is inert data by then.
   _offlineQueryAll(doc, "script[id]").forEach(function (s) {
     if (!_OFFLINE_RESERVED_DATA_ID_RE.test(s.getAttribute("id") || "")) return;
+    // Broad on purpose: this pass REPAIRS a type rather than deleting anything, so retyping one
+    // block more than a browser would have run costs nothing, and the validator requires exactly
+    // `application/json` on these ids anyway. It is also what makes the `neutralized` override in
+    // `_offlineScriptSrcFetches` mean "was runnable as authored" for every spelling this pass has
+    // already rewritten.
     if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
     s.setAttribute("type", "application/json");
     neutralized.push(s);
@@ -1414,26 +1530,34 @@ function _offlinePingTargets(value) {
   return (value || "").split(/[\t\n\f\r ]+/).filter(function (t) { return t !== ""; }).length;
 }
 // Whether this `<script>`'s `src` is a reference a browser would really request. The strict
-// validator's `_is_executable_js` is the same type test, pinned to this one over a shared corpus -
-// the whitespace class included - by `test_the_python_and_js_runnable_script_type_predicates_agree`,
-// which evaluates THIS function in a real JS engine.
-// HTML decides it by TYPE, and the answer is exactly the set of types a browser RUNS: "prepare the
-// script element" makes a script whose type is not a JavaScript MIME type, `module`, `importmap` or
-// `speculationrules` a DATA BLOCK and returns BEFORE the fetch step, and for the last two keyword
-// types the `src` step fires an `error` event and returns, because external import maps and external
-// speculation rule sets are not supported (a ruleset arrives inline or through the
-// `Speculation-Rules` response header, never through `src`). So only a classic or module script
-// fetches. Named separately from the runnable-type predicate because it answers a DIFFERENT
-// question - would a browser FETCH this, not would it RUN this - and a future HTML change adding an
-// external path for either keyword type lands here. The `neutralized` branch has no validator
-// counterpart on purpose: the gate reads the document as AUTHORED, where such a block is still a
-// runnable script, so both sides call it a loader.
+// validator's self-contained `src` arm asks the same question with `script_src_fetches`, pinned to
+// `_offlineScriptSrcIsFetched` over a shared corpus of ATTRIBUTE SETS - both namespaces, the
+// whitespace class and every residual shape - by
+// `test_the_python_and_js_script_src_fetches_predicates_agree`, which evaluates that function in a
+// real JS engine.
+// HTML decides most of it by TYPE: "prepare the script element" makes a script whose type is not a
+// JavaScript MIME type, `module`, `importmap` or `speculationrules` a DATA BLOCK and returns BEFORE
+// the fetch step, and for the last two keyword types the `src` step fires an `error` event and
+// returns, because external import maps and external speculation rule sets are not supported (a
+// ruleset arrives inline or through the `Speculation-Rules` response header, never through `src`).
+// But the REQUEST is issued by the preload scanner, not by that algorithm, so the two questions are
+// not the same one (issue #1171) - see `_offlineScriptSrcIsFetched` for the measured difference.
+// Asking through the EXECUTION predicate instead would have left a live network reference in the
+// export for a classic script carrying the legacy `event`+`for` pair, which Chromium requests.
+// The `neutralized` branch has no validator counterpart on purpose: the gate reads the document as
+// AUTHORED, where such a block is still a runnable script, so both sides call it a loader.
+//
+// NOTE the one-word difference from `_offlineScriptSrcIsFetched` above, which is the PURE predicate
+// pinned to the validator. THIS function is the caller wrapper, and the `neutralized` short-circuit
+// it adds is security-relevant: calling the pure predicate here instead would let a decoy that
+// borrowed a reserved layer id keep a network `src` the export must remove. Every strip pass asks
+// THIS one; only the parity test asks the pure one.
 function _offlineScriptSrcFetches(s, neutralized) {
   // A block the exporter itself neutralized was RUNNABLE as authored, so its `src` was a real load
   // and the element goes - a decoy that borrowed a reserved layer id must not buy itself the
   // data-block treatment with a type this very export just rewrote.
   if (neutralized && neutralized.has(s)) return true;
-  return _offlineIsRunnableScriptType(s.getAttribute("type"));
+  return _offlineScriptSrcIsFetched(s);
 }
 // Take the load away, and take no more than that. `src` loads on a script a browser RUNS, and an
 // `href` / `xlink:href` loads on an SVG one, so those elements go (dropping just the attribute from
@@ -1453,8 +1577,19 @@ function _offlineScriptSrcFetches(s, neutralized) {
 // whether the ELEMENT was removed, so one carrying two network attributes is counted exactly once.
 function _offlineStripScriptLoad(s, neutralized) {
   if (_offlineIsNetworkUrl(s.getAttribute("src"))) {
-    if (_offlineScriptSrcFetches(s, neutralized)) { s.remove(); return true; }
-    if (!_offlineActiveDataScriptType(s.getAttribute("type"))) s.removeAttribute("src");
+    if (_offlineScriptSrcFetches(s, neutralized)) {
+      // FETCHED and RUNNABLE: the element is a live loader, so it goes.
+      // FETCHED but NOT runnable is a real shape - a classic script carrying the legacy
+      // `event`+`for` pair is requested and then never run (measured, issue #1171) - and there the
+      // dead ATTRIBUTE alone is enough: taking it reaches zero network, while deleting the element
+      // would destroy an author's inert body for a resource nobody executes. That is the same
+      // treatment the data-block and inert-`href` branches below already give. The `neutralized`
+      // decoy keeps the whole-element treatment: it was runnable as authored.
+      if ((neutralized && neutralized.has(s)) || _offlineScriptCodeRuns(s)) { s.remove(); return true; }
+      s.removeAttribute("src");
+    } else if (!_offlineActiveDataScriptType(s.getAttribute("type"))) {
+      s.removeAttribute("src");
+    }
   }
   const loading = ["href", "xlink:href"].filter(function (attr) {
     return _offlineIsNetworkUrl(s.getAttribute(attr));
@@ -1664,6 +1799,9 @@ function _stripOfflineNetworkLoads(doc, neutralized) {
       if (_offlineActiveDataBlockIsRemovable(active, s)) { s.remove(); dropped += 1; }
       return;
     }
+    // The broad type-only predicate on purpose: this pass only SCANS an inline body, where
+    // over-inclusion is the safe direction - a body it skipped would be a network import nobody
+    // looked at. The passes that DELETE on the element itself use `_offlineScriptCodeRuns`.
     if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
     const body = s.textContent || "";
     if (_offlineScriptHasNetworkEgress(body)) {
@@ -1888,11 +2026,22 @@ function _stripOfflineRichRenderers(doc, neutralized) {
     const src = s.getAttribute("src") || "";
     if (/(^|\/)(?:mermaid(?:\.esm)?(?:\.min)?\.mjs|mermaid(?:\.min)?\.js|chart(?:\.umd)?(?:\.min)?\.js)(?:[?#]|$)/i.test(src) ||
         /\/chart\.js@/i.test(src)) {
-      s.remove();
+      // FETCHED but never RUN is the same split the load strip makes (issue #1171): this element
+      // is a stale renderer reference no browser executes, so the dead attribute alone goes and
+      // the author's body stays. Deleting it here would silently undo that preservation for the
+      // one spelling whose URL happens to look like a bundle. A block the export NEUTRALIZED was
+      // runnable as authored, so it keeps the whole-element treatment.
+      if ((neutralized && neutralized.has(s)) || _offlineScriptCodeRuns(s)) { s.remove(); return; }
+      s.removeAttribute("src");
     }
   });
   doc.querySelectorAll("script").forEach(function (s) {
-    if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return;
+    // This pass DELETES an element on what its BODY says, so it asks whether that body runs at all
+    // (issue #1171). A MIME-parameter, `nomodule`, `event`+`for`, whitespace-only-`type` or
+    // `language`-fallback block is a stale shim no browser ever ran; a MathML script's body never
+    // runs either; and a script with an external source never runs its own child text, so reading
+    // that text and deleting the element costs an author a loader that works.
+    if (!_offlineScriptRunsInlineBody(s)) return;
     const body = s.textContent || "";
     if (_OFFLINE_LAYER_SCRIPT_RE.test(body)) return;
     if (/mermaid/i.test(body) && (/\bimport\s*\(/.test(body) || /\bmermaid\.(?:initialize|run)\b/i.test(body) || /\.run\s*\(/.test(body))) {
@@ -2184,7 +2333,12 @@ function _offlineHoistChartScripts(doc) {
     // EXECUTING code the source document never ran. (The chart EVIDENCE scan is left alone: a false
     // positive there only costs bytes, which is the trade that row already documents.)
     if (_offlineInHtmlNoscript(s)) return false;
-    if (!_offlineIsRunnableScriptType(s.getAttribute("type"))) return false;
+    // The INLINE-BODY predicate, because this pass MOVES an element on what its body says (issue
+    // #1171). Hoisting exists to order code against the inlined library, which is meaningless for a
+    // block that never runs, and relocating one shifts an author's content and the comment anchors
+    // around it. It must also never move a MathML script, whose body does NOT run where it is but
+    // WOULD run once hoisted into `<body>` and reparsed - the export must not add behavior.
+    if (!_offlineScriptRunsInlineBody(s)) return false;
     const text = s.textContent || "";
     if (_OFFLINE_LAYER_DECL_RE.test(text)) return false;
     if (_OFFLINE_CHART_CTOR_RE.test(text)) return true;
