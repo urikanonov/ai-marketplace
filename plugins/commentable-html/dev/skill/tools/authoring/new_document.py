@@ -110,8 +110,6 @@ COMPANIONS = ("commentable-html.css", "commentable-html.assets.js", "commentable
 # The content root, anchored so only a real `<main>` opening tag matches (id is
 # case-sensitive to match getElementById; the value may be quoted or unquoted).
 _MAIN_ROOT_RE = re.compile(r'<main\b[^>]*?\bid\s*=\s*["\']?commentRoot["\']?(?=[\s>/])')
-# name / optional value (double-quoted, single-quoted, or bare) for tag attrs.
-_ATTR_RE = re.compile(r'([^\s=/<>]+)(?:\s*=\s*("[^"]*"|\'[^\']*\'|[^\s>]+))?')
 _TITLE_RE = re.compile(r'(<title[^>]*>).*?(</title>)', re.IGNORECASE | re.DOTALL)
 _KIND_META_RE = re.compile(
     r'(<meta\s+name="commentable-html-kind"\s+content=")[^"]*(")', re.IGNORECASE)
@@ -202,38 +200,76 @@ def ensure_doc_title(content, label):
     return header + ("\n\n" + body if body else "")
 
 
+_TAG_NAME_STOP = "\t\n\f\r />"
+_HTML_WS = "\t\n\f\r "
+
+
 def _tag_end(html, start):
-    """Return the index of the '>' that closes the tag opening at `start`,
-    skipping any '>' that sits inside a quoted attribute value."""
-    quote = None
-    for i in range(start, len(html)):
+    """Return the index of the '>' that closes the tag opening at `start`.
+
+    A `>` inside a QUOTED attribute value does not close the tag - but HTML enters that state
+    only for a quote that OPENS a value (the before-attribute-value state, reached right after
+    the `=`). Treating EVERY `"`/`'` as a quote read the ordinary unquoted value in
+    `<div title=Bob's id="content">` as opening one at the apostrophe, so the scan ran past the
+    real `>` and re-synced at the next quote in the document. `retrofit.py` then recorded an
+    element extent that covered live host markup and OVERWROTE it when it re-serialized the start
+    tag - silently deleting a section of the page, with a zero exit and a clean validation
+    (#1195). This walks the tokenizer's own states instead, so a quote is only a quote where a
+    browser reads one.
+    """
+    end = len(html)
+    i = start + 1
+    while i < end and html[i] not in _TAG_NAME_STOP:      # tag name state
+        i += 1
+    state, quote = "before_name", ""
+    while i < end:
         c = html[i]
-        if quote is not None:
+        if state == "quoted":
             if c == quote:
-                quote = None
-        elif c in "\"'":
-            quote = c
+                state = "after_value"
         elif c == ">":
             return i
+        elif state == "before_value":
+            if c in "\"'":
+                state, quote = "quoted", c
+            elif c not in _HTML_WS:
+                state = "unquoted"
+        elif state == "unquoted":
+            if c in _HTML_WS:
+                state = "before_name"
+        elif state == "name" or state == "after_name":
+            # `=` opens the value from either state; whitespace after a name reaches
+            # after-attribute-name, where a following `=` still opens the value.
+            if c == "=":
+                state = "before_value"
+            elif c in _HTML_WS:
+                state = "after_name"
+            elif c == "/":
+                state = "before_name"
+            else:
+                state = "name"
+        else:                                             # before_name / after_value
+            # An `=` here starts a NAME beginning with `=` (the
+            # unexpected-equals-sign-before-attribute-name state), it does not open a value.
+            if c not in _HTML_WS and c != "/":
+                state = "name"
+        i += 1
     raise ValueError("unterminated <main id=commentRoot> tag")
 
 
 def _parse_attrs(interior):
     """Parse a tag's attribute text into an ordered [(name, value_or_None)] list.
-    value is None for a boolean attribute; otherwise it is the unquoted string."""
-    attrs = []
-    for m in _ATTR_RE.finditer(interior):
-        name = m.group(1)
-        raw = m.group(2)
-        if not name:
-            continue
-        if raw is None:
-            attrs.append((name, None))
-        elif raw[:1] in "\"'":
-            attrs.append((name, raw[1:-1]))
-        else:
-            attrs.append((name, raw))
-    return attrs
+
+    The SHARED raw start-tag reading (`_browser_attrs.raw_attrs_pairs`, CMH-VAL-21), not a local
+    regex: this tool REWRITES the tag it reads, so a reading that differs from the browser's is
+    written into the document. A local `([^\\s=/<>]+)` name class cannot even REPRESENT a name
+    containing `=`, so `data-a/=onclick=alert(1)` - two attributes to a browser, the second named
+    `=onclick` - was read as a live `onclick` handler and RENAMED into one on the way out (#1195).
+    The shared reading also decodes the value the way a browser decodes it, so `_build_main_tag`
+    escapes it exactly ONCE rather than a second time.
+
+    value is None for a valueless attribute; otherwise it is the browser-decoded string."""
+    return _browser_attrs.raw_attrs_pairs(interior)
 
 
 def _set_attr(attrs, name, value):
@@ -261,13 +297,7 @@ def _build_main_tag(interior, key, label, source, generated=None):
         _drop_attr(attrs, "data-doc-source")
     if generated is not None:
         _set_attr(attrs, "data-generated", generated)
-    parts = ["<main"]
-    for name, value in attrs:
-        if value is None:
-            parts.append(name)
-        else:
-            parts.append('%s="%s"' % (name, _html.escape(value, quote=True)))
-    return " ".join(parts) + ">"
+    return _browser_attrs.serialize_start_tag("main", attrs)
 
 
 def _find_active_root(template_html):
@@ -293,7 +323,7 @@ def _find_active_root(template_html):
 
 def active_root_attrs(html):
     """Return the active content root's attributes as an ordered [(name, value)] list.
-    value is None for a boolean attribute; otherwise the unquoted string."""
+    value is None for a valueless attribute; otherwise the browser-decoded string."""
     _begin, _end, main_start, tag_end = _find_active_root(html)
     return _parse_attrs(html[main_start + len("<main"):tag_end])
 

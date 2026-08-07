@@ -14,6 +14,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402  shared pkg/dev split path constants
 TOOLS = _paths.TOOLS
 sys.path.insert(0, TOOLS)
+import _browser_attrs  # noqa: E402
 import highlight_document  # noqa: E402
 import kql_highlight  # noqa: E402
 import kusto_link  # noqa: E402
@@ -259,6 +260,25 @@ class RunLinkShapeTests(unittest.TestCase):
         self.assertEqual(len(hrefs), 2)
         for href in hrefs:
             self.assertEqual(_decode_link(href)[2], EDITED)
+
+    def test_a_valueless_attribute_cannot_fuse_with_the_next_one(self):
+        # #1195: the rewrite RE-SERIALIZES the run link's start tag from its parsed pairs, and a
+        # valueless attribute was written back as a BARE NAME - dropping the `/` HTML uses to
+        # terminate an attribute name. The NEXT attribute, whose name legally begins with `=`
+        # (HTML5's unexpected-equals-sign-before-attribute-name state), then FUSED into it and
+        # came back carrying a value the authored figure never had: `data-a/=onclick` was written
+        # as `data-a =onclick`, which re-parses as `data-a="onclick"`. `name=""` is the same
+        # attribute to a browser and cannot be terminated by the next name's `=`.
+        figure = _with_run_tag(
+            '<a class="cmh-kql-run" data-a/=onclick href="%s" target="_blank">')
+        updated = kql_highlight.refresh_block(figure, EDITED)
+        m = next(mm for mm in _A_TAG_RE.finditer(updated)
+                 if "cmh-kql-run" in (_attr(mm.group(1), "class") or "").split())
+        pairs = _browser_attrs.raw_attrs_pairs(m.group(1))
+        self.assertEqual([(n, v or "") for n, v in pairs if n != "href"],
+                         [("class", "cmh-kql-run"), ("data-a", ""), ("=onclick", ""),
+                          ("target", "_blank")])
+        self.assertEqual(_decode_link(_run_href(updated))[2], EDITED)
 
     def test_a_run_link_inside_a_comment_is_not_the_run_link(self):
         # The validator's anchors come from a real parse, so a commented-out link is not one.

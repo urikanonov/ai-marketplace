@@ -20,7 +20,6 @@ Usage (run from the skill root):
 """
 import argparse
 import hashlib
-import html as _html
 import os
 from pathlib import Path
 import re
@@ -169,7 +168,9 @@ def prepare_slides(fragment: str):
         # The start tag is RE-SERIALIZED from the parsed attributes for EVERY slide, so the class
         # is written back in one canonical form and every value is re-escaped exactly once from its
         # DECODED form - escaping the raw text instead turned an authored `x&amp;y` into the
-        # literal `x&amp;y`.
+        # literal `x&amp;y`. The shared writer (`_browser_attrs.serialize_start_tag`) is the
+        # inverse of the reading above, so a valueless attribute comes back as `name=""` and
+        # cannot fuse with a following name that legally begins with `=` (#1191, #1195).
         rebuilt = []
         wrote_sid = False
         for name, value in pairs:
@@ -184,20 +185,11 @@ def prepare_slides(fragment: str):
                     continue
                 wrote_sid = True
                 value = sid
-            if value is None:
-                # A valueless attribute is written back as `name=""`, NOT as a bare name. The bare
-                # name drops the `/` HTML uses to terminate an attribute name, so the NEXT
-                # attribute - whose name legally begins with `=` (the
-                # unexpected-equals-sign-before-attribute-name state) - fused into this one and
-                # gave it a VALUE the input never had (`data-a/=onload` came back as
-                # `data-a =onload`). An absent value IS the empty string to a browser, so the
-                # quoted empty value is the same attribute and cannot be terminated that way.
-                rebuilt.append(' %s=""' % name)
-            else:
-                rebuilt.append(' %s="%s"' % (name, _html.escape(value, quote=True)))
+            rebuilt.append((name, value))
         if not wrote_sid:
-            rebuilt.append(' data-slide-id="%s"' % _html.escape(sid, quote=True))
-        return "<section%s>%s</section>" % ("".join(rebuilt), inner)
+            rebuilt.append(("data-slide-id", sid))
+        return "%s%s</section>" % (
+            _browser_attrs.serialize_start_tag("section", rebuilt), inner)
 
     return SECTION_RE.sub(repl, fragment), ids
 

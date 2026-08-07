@@ -376,6 +376,45 @@ def raw_attrs_pairs(attrs):
     return _shared_raw_attrs_pairs(attrs)
 
 
+def serialize_start_tag(tag, pairs, self_closing=False):
+    """`tag`'s start tag RE-SERIALIZED from browser-read `(name, value)` `pairs`.
+
+    The one writer for the four tools that rebuild a start tag from what they parsed - the deck
+    scaffold's slide rewrite, the KQL run-link refresh, and the two authoring tools' content-root
+    stamps. They each kept their own copy of this rule and drifted apart: #1191 fixed ONE of them
+    and left three carrying the identical fusion bug, which is why it lives here beside the
+    READING it is the inverse of.
+
+    Every attribute is written in the one canonical ` name="value"` shape, and a VALUELESS one is
+    written as `name=""` rather than as a bare name. The bare name drops the `/` HTML uses to
+    terminate an attribute name, so the NEXT attribute - whose name legally begins with `=` (the
+    unexpected-equals-sign-before-attribute-name state) - fused into it and gave it a VALUE the
+    input never had (`data-a/=onload` came back as `data-a =onload`, which re-parses as
+    `data-a="onload"`). An absent value IS the empty string to a browser, so the quoted empty
+    value is the same attribute and cannot be terminated that way. Re-emitting the `/` terminator
+    instead would be faithful only until the valueless attribute is written LAST, where it lands
+    as the self-closing `/>` solidus.
+
+    Each value is escaped exactly ONCE, from its DECODED form, so a caller that reads through
+    `raw_attrs_pairs` round-trips rather than double-escaping an authored `&amp;`.
+
+    `self_closing` re-emits the source tag's own ` /` terminator. Dropping it un-closed a FOREIGN
+    self-closing element (`<rect .../>` inside an inline `<svg>`), which turns the next sibling
+    into its child and stops it rendering. It is safe here precisely because every attribute now
+    ends in `"`: a trailing ` /` can no longer terminate an attribute NAME.
+
+    Keeping only the FIRST of a duplicated attribute, as HTML5 does, is deliberately the CALLER's
+    job - each of them already has to decide which occurrence its own rewrite owns (the run link
+    keeps the first `href`, the deck scaffold writes one `data-slide-id`, the authoring tools go
+    through `_set_attr`). Writing every pair back is faithful either way, since a browser reads
+    the first.
+    """
+    out = []
+    for name, value in pairs:
+        out.append(' %s="%s"' % (name, _html.escape("" if value is None else value, quote=True)))
+    return "<%s%s%s>" % (tag, "".join(out), " /" if self_closing else "")
+
+
 # One left-to-right scan of the shapes a `<` can OPEN, in the order a tokenizer meets them: a
 # COMMENT and a TAG (start or end - an end tag's attributes are ignored by a browser but still
 # TOKENIZED as part of the tag, so a `>` or a `<!--` inside one of its quoted values ends nothing).

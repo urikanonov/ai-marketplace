@@ -4,6 +4,64 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.805.0] - 2026-08-06
+
+### Fixed
+
+- Three more start-tag re-serializers can no longer fuse two adjacent valueless attributes into one
+  attribute carrying a value the input never had (CMH-KQL-10, CMH-TOOL-07, CMH-TOOL-15,
+  CMH-VAL-21). `kusto/kql_highlight.py`'s run-link refresh and the content-root stamps in
+  `authoring/new_document.py` and `authoring/retrofit.py` each rebuild a start tag from the
+  attribute pairs they parsed, and each wrote a valueless attribute back as a BARE NAME. The bare
+  name drops the `/` HTML uses to terminate an attribute name, so the next attribute - whose name
+  legally begins with `=`, which HTML reaches through the
+  unexpected-equals-sign-before-attribute-name state - fused into it: `data-a/=onclick` was written
+  as `data-a =onclick`, which re-parses as `data-a="onclick"`. All four re-serializers (the deck
+  scaffold's slide rewrite included, fixed one release earlier) now go through ONE shared writer,
+  `_browser_attrs.serialize_start_tag`, which writes every attribute in the canonical
+  ` name="value"` shape and a valueless one as `name=""` - the same attribute to a browser, since
+  an absent value IS the empty string, and one that cannot be terminated by the next name's `=`. A
+  guard test pins that all four call sites use it, so the next fix cannot land on one of four
+  again.
+- The two authoring tools now READ a start tag through the shared browser reading
+  (`_browser_attrs.raw_attrs_pairs`) rather than a local `([^\s=/<>]+)` pattern whose name class
+  cannot even REPRESENT a name containing `=`. That reading turned the inert `=onclick` into a live
+  `onclick` handler on the way through - and `retrofit.py` runs over an arbitrary third-party
+  document at `--root-selector`, so unlike `new_document.py` (whose input is the shipped template)
+  its input is not the skill's own artifact. The same change means an attribute value is now
+  decoded before it is re-escaped, so an authored `A &amp; B` round-trips instead of being written
+  back as the literal `A &amp;amp; B`. Correctness rather than a vulnerability: a document's own
+  author is trusted (CMH-SEC-01), so nothing here grants a capability the author did not already
+  have. As a visible consequence, the content root of a document `new_document.py` produces now
+  carries `data-cmh-content-root=""` where it used to carry the bare name; the two are one
+  attribute to a browser and every gate reads it by presence.
+- `retrofit.py` also reads a start tag's NAME the way HTML terminates one - on ASCII whitespace,
+  `/` or `>` - rather than with Python's `str.strip()` / `str.split()`, which does not break on
+  `/` and does break on NBSP and the vertical tab (CMH-TOOL-15). All three divergences corrupted
+  an arbitrary host page: `<div/id="content">` is a `div` carrying an `id` to a browser but was
+  read as a tag NAMED `div/id="content"` with no attributes, so the stamped `id="commentRoot"`
+  landed after the host's own `id` and HTML's first-wins rule threw it away - the retrofitted
+  document had no content root at all; `<div\u00a0onclick=alert(1) id="content">` is an unknown
+  element carrying only `id`, but the Python split promoted its NBSP-joined tag-name text into a
+  REAL `onclick` attribute; and `<nav id=x/>` has the unquoted value `x/`, which the trailing-`/`
+  strip truncated to `x`.
+- `--skip-selectors` no longer un-closes a self-closing element (CMH-TOOL-15, CMH-VAL-21). It
+  re-serializes the matched host element's start tag, and the writer always ended `>`, so
+  `<rect class="skipme" .../>` inside an inline `<svg>` came back as `<rect ...>`: in foreign
+  content that makes the element a container, so the following `<circle>` became its child and
+  stopped rendering. The shared writer now re-emits the source tag's own ` /`, which is safe
+  precisely because every attribute is written ending in `"` and a trailing ` /` can therefore no
+  longer terminate an attribute name.
+- `retrofit.py` no longer silently deletes a chunk of the host page when a start tag carries a
+  quote outside a quoted value (CMH-TOOL-15). Where a start tag ENDS was decided by treating
+  EVERY `"`/`'` as opening a quoted value, but HTML enters that state only for a quote that opens
+  a VALUE (the before-attribute-value state, right after the `=`). So an ordinary unquoted value
+  with an apostrophe - `<div title=Bob's id="content">`, `alt=Don't` - made the scan run past the
+  real `>` and re-sync at the next quote in the document. The element's recorded extent then
+  covered live host markup, and re-serializing the start tag OVERWROTE it: the host's `<section>`
+  and its heading vanished, the tool exited 0, and the validator passed the result.
+  `new_document._tag_end` now walks the tokenizer's own states, so a quote is a quote only where
+  a browser reads one.
 ## [1.804.0] - 2026-08-06
 
 ### Fixed
