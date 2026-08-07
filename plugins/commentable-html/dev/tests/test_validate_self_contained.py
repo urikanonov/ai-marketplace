@@ -3035,6 +3035,14 @@ class OfflineHeadNoscriptParityTests(unittest.TestCase):
                   encoding="utf-8", newline="") as fh:
             return fh.read()
 
+    def _preamble(self):
+        # The shared HTML-string boundary readings moved here from `65-export-shareable.js`
+        # (CMH-EXP-24): the load-time snapshot serializes through them, and a `const` is not
+        # hoisted, so they have to be declared above that capture.
+        with open(os.path.join(_paths.ASSETS, "js", "00-preamble.js"),
+                  encoding="utf-8", newline="") as fh:
+            return fh.read()
+
     def _alternation(self, source, name):
         m = re.search(r"const " + name + r"\s*=\s*\n?\s*/\^\(\?:([^)]*)\)\$/", source)
         self.assertIsNotNone(m, "the runtime no longer declares %s; this parity check is stale" % name)
@@ -3054,8 +3062,8 @@ class OfflineHeadNoscriptParityTests(unittest.TestCase):
 
     def _scanner_source(self):
         """The exporter's own head-fallback scanner, as JS source, for evaluation in node."""
-        tokenizer = self._region(self._shareable(), "const _CMH_SPACE_CH = ",
-                                 "function _cmhRawTextClose(", "65-export-shareable.js")
+        tokenizer = self._region(self._preamble(), "const _CMH_SPACE_CH = ",
+                                 "function _cmhRawTextClose(", "00-preamble.js")
         for name in ("_cmhTagEnd", "_cmhTagName", "_cmhCommentEnd", "_cmhScriptDataClose",
                      "_CMH_RAW_TEXT"):
             self.assertIn(name, tokenizer,
@@ -3105,9 +3113,10 @@ class OfflineHeadNoscriptParityTests(unittest.TestCase):
 
     def test_the_raw_text_element_set_matches(self):
         """The third shared set, and the easiest to drift: the runtime reads it from
-        `65-export-shareable.js`, which the SHAREABLE export owns, so an edit made for that export
-        would silently change where this head scan finds each close tag on one side only."""
-        self.assertEqual(self._alternation(self._shareable(), "_CMH_RAW_TEXT"),
+        `00-preamble.js`, which owns the shared HTML-string boundary readings every export walk
+        goes through, so an edit made for one export would silently change where this head scan
+        finds each close tag on one side only."""
+        self.assertEqual(self._alternation(self._preamble(), "_CMH_RAW_TEXT"),
                          resources.OFFLINE_RAW_TEXT_ELEMENTS)
 
     def test_the_validator_answers_the_shared_corpus(self):

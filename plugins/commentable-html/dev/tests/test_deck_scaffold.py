@@ -681,7 +681,14 @@ class DeckScaffoldTests(unittest.TestCase):
         # time a text assertion saw it - the positive half would pass either way.
         raw = Path(self.out).read_bytes()
         self.assertIn(b'title="a\nb\nc"', raw)
-        self.assertNotIn(b"&#13;", raw)
+        # The `&#13;` check is scoped to the slide tag this tool RE-SERIALIZES. The runtime layer
+        # the deck carries spells its own CR escape as the literal text `&#13;` (CMH-EXP-24), so a
+        # file-wide search would answer about the layer's source rather than about the rewrite.
+        # The literal-CR check stays file-wide: no part of a deck may carry one.
+        at = raw.find(b'title="a\nb\nc"')
+        self.assertNotEqual(at, -1, "no rewritten slide title in the scaffolded deck")
+        tag = raw[raw.rfind(b"<", 0, at):raw.find(b">", at) + 1]
+        self.assertNotIn(b"&#13;", tag)
         self.assertNotIn(b"\r", raw)
 
 

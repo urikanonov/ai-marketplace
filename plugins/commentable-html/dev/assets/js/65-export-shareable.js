@@ -32,92 +32,11 @@ function _stripTransientBodyClasses(html) {
 }
 // Exposed for deterministic tests (body-class normalization is pure and worth unit-testing).
 window.__cmhStripTransientBody = function (h) { return _stripTransientBodyClasses(h); };
-// ASCII whitespace is the HTML spec's tag delimiter set. JS `\s` also matches NBSP and other
-// Unicode spaces, which a browser does NOT treat as a delimiter, so `<script\u00a0id="...">`
-// (one bogus unknown element to a browser) would otherwise look like a real script tag here.
-const _CMH_SPACE_CH = /[\t\n\f\r ]/;
-// One source of truth for "what ends a tag name" - a space belongs here, since an end tag may
-// carry a space before its ">" and still close the element. Spelling the class twice let the space go missing from
-// the close scanners, which made such a document impossible to export at all.
-const _CMH_NAME_END_SRC = "\\t\\n\\f\\r />";
-const _CMH_NAME_END_CH = new RegExp("[" + _CMH_NAME_END_SRC + "]");
-// Elements whose CONTENT a browser parses as TEXT, never as markup (noscript counts because the
-// layer only runs with scripting enabled). Nothing inside one of these is an element.
-const _CMH_RAW_TEXT = /^(?:script|style|textarea|title|xmp|iframe|noembed|noframes|noscript)$/;
-function _cmhTagEnd(html, start) {
-  let quote = "";
-  let afterEquals = false;
-  for (let i = start + 1; i < html.length; i += 1) {
-    const ch = html[i];
-    if (quote) {
-      if (ch === quote) quote = "";
-      continue;
-    }
-    // A quote only opens an attribute value directly after `=`; a stray apostrophe elsewhere in
-    // the tag (`<div data-x=it's ok>`) does not, and treating it as one used to swallow the
-    // rest of the document.
-    if (ch === '"' || ch === "'") {
-      if (afterEquals) quote = ch;
-      afterEquals = false;
-      continue;
-    }
-    if (ch === "=") {
-      afterEquals = true;
-      continue;
-    }
-    if (_CMH_SPACE_CH.test(ch)) continue;
-    if (ch === ">") return i;
-    afterEquals = false;
-  }
-  return -1;
-}
-function _cmhTagName(html, from) {
-  let i = from;
-  while (i < html.length && !_CMH_NAME_END_CH.test(html[i])) i += 1;
-  return html.slice(from, i).toLowerCase();
-}
-function _cmhCommentEnd(html, start) {
-  // `<!-->` and `<!--->` are complete (empty) comments, and `--!>` also terminates one. Missing
-  // those made a legal comment swallow the rest of the document.
-  let i = start + 4;
-  if (html[i] === ">") return i + 1;
-  if (html[i] === "-" && html[i + 1] === ">") return i + 2;
-  const rx = /--!?>/g;
-  rx.lastIndex = i;
-  const m = rx.exec(html);
-  return m ? m.index + m[0].length : html.length;
-}
-function _cmhScriptDataClose(html, from) {
-  // The tokenizer's script-data escaped states: inside a <script> body a `<!--` starts an
-  // escaped run, and a nested `<script` within it starts a DOUBLE-escaped run in which the next
-  // closing script tag only ends that run instead of closing the element (the classic
-  // `<!--<script>` idiom). Only `-->` leaves those runs (`--!>` does not, unlike in a comment).
-  const rx = new RegExp("<!--|-->|</?script(?=[" + _CMH_NAME_END_SRC + "])", "gi");
-  rx.lastIndex = from;
-  let escaped = false;
-  let doubled = false;
-  let m;
-  while ((m = rx.exec(html))) {
-    const tok = m[0].toLowerCase();
-    if (tok === "<!--") { escaped = true; continue; }
-    if (tok.charAt(0) === "-") { escaped = false; doubled = false; continue; }
-    if (tok === "<script") { if (escaped) doubled = true; continue; }
-    if (doubled) { doubled = false; continue; }
-    return m.index;
-  }
-  return -1;
-}
-function _cmhRawTextClose(html, name, from) {
-  if (name === "script") return _cmhScriptDataClose(html, from);
-  // An end tag only closes a raw-text element when the name is followed by whitespace, `/`, or
-  // `>`; an end tag that merely PREFIXES the name (a "scriptfoo" close) is text. Matching a bare
-  // prefix ended the element early and exposed its text to this walk as markup - the very
-  // failure this resolver exists to prevent.
-  const rx = new RegExp("</" + name + "(?=[" + _CMH_NAME_END_SRC + "])", "gi");
-  rx.lastIndex = from;
-  const m = rx.exec(html);
-  return m ? m.index : -1;
-}
+// The HTML-string boundary readings this walk is built on (`_CMH_SPACE_CH`, `_CMH_NAME_END_SRC`,
+// `_CMH_NAME_END_CH`, `_CMH_RAW_TEXT`, `_cmhTagEnd`, `_cmhTagName`, `_cmhCommentEnd`,
+// `_cmhScriptDataClose`, `_cmhRawTextClose`) live in `00-preamble.js`, which needs them at LOAD
+// time for the snapshot's own CR post-pass. One copy, so the two scans cannot disagree about
+// where a tag, a comment or a raw-text body ends.
 // Walk an HTML string's element tags in document order the way an HTML parser does: consume
 // comments, DOCTYPEs, bogus declarations and processing instructions; skip the TEXT content of
 // raw-text elements; and never report a tag inside <template> content. An ordinary template is
@@ -382,12 +301,25 @@ function _cmhTagAttributes(tag) {
   return attrs;
 }
 function _cmhDecodeAttribute(value) {
-  const textarea = document.createElement("textarea");
-  textarea.innerHTML = String(value).replace(/</g, "&lt;");
-  return textarea.value;
+  // A <div>'s text node, not a <textarea>'s `value`: the textarea IDL value is the API value,
+  // which NORMALIZES newlines - a CR, and a CRLF, both come back as a lone LF. That silently
+  // folded an authored `&#13;` to an LF before the value was re-encoded, undoing the round trip
+  // CMH-EXP-24 restores. A text node's data is not normalized, and a character reference is still
+  // decoded there because the data state decodes references; `<` is escaped first, so nothing in
+  // the value can open markup. Every other input class decodes identically on both paths.
+  const holder = document.createElement("div");
+  holder.innerHTML = String(value).replace(/</g, "&lt;");
+  return holder.textContent == null ? "" : holder.textContent;
 }
+// Exposed for deterministic tests: the decode rule is pure, and the newline behavior is the one
+// thing about it that a refactor back to a textarea would silently undo.
+window.__cmhDecodeAttribute = function (v) { return _cmhDecodeAttribute(v); };
 function _cmhEncodeAttribute(value, quote) {
-  let encoded = String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  // The CR spelling goes through the shared `cmhEscapeCr`: this encoder writes into a quoted
+  // attribute value, which a browser decodes, and it runs DOWNSTREAM of the serializer's own CR
+  // pass (`_normalizeDocSourceInHtml` rewrites the assembled string), so leaving a literal CR here
+  // would re-introduce exactly the LF downgrade CMH-EXP-24 exists to stop.
+  let encoded = cmhEscapeCr(String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;"));
   if (quote === '"') return encoded.replace(/"/g, "&quot;");
   if (quote === "'") return encoded.replace(/'/g, "&#39;");
   encoded = encoded.replace(/[\s"'`=>]/g, function (ch) {
@@ -460,7 +392,12 @@ function _snapshotWithTail() {
       return cmhSerializeElement(n);
     }
     if (n.nodeType === 8) return "<!--" + n.nodeValue + "-->";
-    if (n.nodeType === 3) return n.nodeValue;
+    // Tail TEXT is spliced in as its own data, so it never passes through cmhSerializeElement.
+    // It has to be serialized the way a serializer serializes a text node - escaped, then with the
+    // CR spelled `&#13;` - or an authored CR leaves literally (the downgrade CMH-EXP-24 closes) and
+    // an authored `<` leaves as live markup, which would ALSO make the CR spelling wrong by putting
+    // it inside what the reload reads as a raw-text body.
+    if (n.nodeType === 3) return cmhSerializeTextData(n.nodeValue);
     return "";
   };
   // Collect everything after the layer script in document order, climbing out of any

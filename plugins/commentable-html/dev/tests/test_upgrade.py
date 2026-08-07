@@ -108,7 +108,11 @@ class UpgradeUnitTests(unittest.TestCase):
         out, changed = upgrade.upgrade(legacy, tpl)
         self.assertIn("source provenance", changed)
         self.assertIn('data-doc-source="re\nport.html"', out)
-        self.assertNotIn("&#13;", out)
+        # Scoped to the values this tool REWRITES, not to the whole file: the runtime layer the
+        # document carries spells its own CR escape as the literal text `&#13;` (CMH-EXP-24), so a
+        # document-wide search would answer about the layer's source rather than about the rewrite.
+        for value in re.findall(r'data-doc-source="([^"]*)"', out):
+            self.assertNotIn("&#13;", value)
         self.assertNotIn("alice", out)
 
     def test_upgrade_normalizes_every_duplicate_source_attribute_cmh_sec_03(self):
