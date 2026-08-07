@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.805.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.809.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.809.0] - 2026-08-06</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A report-mode mermaid diagram is now VERIFIED after it renders instead of being laid out unconditionally (CMH-MMD-12). A bad render draws node boxes too small for their HTML labels (the labels clip mid-word) and a <code>viewBox</code> far larger than what was actually drawn (the diagram sits small in a corner with the rest blank). The runtime now measures both after the render - every label&#x27;s laid-out box against the box that was sized for it (an HTML label against its <code>&lt;foreignObject&gt;</code>, an SVG <code>&lt;text&gt;</code> label against its node shape), and <code>getBBox()</code> intersected with the <code>viewBox</code> - and repairs a failing diagram once by re-rendering that ONE diagram with SVG <code>&lt;text&gt;</code> labels (the deck-proven path, which cannot re-flow) plus, if the bounds are still wrong, a SHRINK-ONLY re-fit of the <code>viewBox</code> to the content that lands inside it. The re-render works from a pristine pre-render snapshot of the diagram element, so authored <code>&lt;br/&gt;</code> line breaks in a node label survive the repair. The repair is bounded to one attempt per diagram and rolls back to the original SVG unless the re-render is no worse on every measured axis and actually achieved something, so a diagram is never left worse than it rendered. Because the fault is scale-dependent, a diagram is re-checked when its rendered scale moves materially (a resize, rotation or reveal), not only at load. The same protection is mirrored into the Export Offline vendored re-init.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.805.0] - 2026-08-06</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -506,6 +513,8 @@
               <li><code>retrofit.py</code> no longer silently deletes a chunk of the host page when a start tag carries a quote outside a quoted value (CMH-TOOL-15). Where a start tag ENDS was decided by treating EVERY <code>&quot;</code>/<code>&#x27;</code> as opening a quoted value, but HTML enters that state only for a quote that opens a VALUE (the before-attribute-value state, right after the <code>=</code>). So an ordinary unquoted value with an apostrophe - <code>&lt;div title=Bob&#x27;s id=&quot;content&quot;&gt;</code>, <code>alt=Don&#x27;t</code> - made the scan run past the real <code>&gt;</code> and re-sync at the next quote in the document. The element&#x27;s recorded extent then covered live host markup, and re-serializing the start tag OVERWROTE it: the host&#x27;s <code>&lt;section&gt;</code> and its heading vanished, the tool exited 0, and the validator passed the result. <code>new_document._tag_end</code> now walks the tokenizer&#x27;s own states, so a quote is a quote only where a browser reads one.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.804.0] - 2026-08-06</h3></div>
             <div class="group-label">Fixed</div>
@@ -513,8 +522,6 @@
               <li>A link comment whose stored index has gone stale can no longer re-anchor onto a DIFFERENT link that happens to share its href (CMH-LINK-02). <code>resolveLinkEl</code> resolved by <code>linkIndex</code> first and distrusted that index only when the indexed link&#x27;s href differed from the stored one, so when a re-index (any change to WHICH links are commentable shifts every later index) moved the stored index onto a same-href sibling, the href test passed, the heal never ran, and the comment silently attached to the wrong link - a document with two references to one URL is enough to reproduce it. Resolution is now by KEY STRENGTH within each href reading (the current one, then the pre-1.790.0 one): the link matching href + text, then the indexed candidate if its href matches, then the first href match. The stored <code>linkText</code> disambiguates links the href cannot tell apart, so text BEATS the index when they disagree - the index is the most fragile key the record holds. The mirror case is accepted and indistinguishable from the same stored fields: if a link&#x27;s own label is edited AND a same-href sibling carries the label it used to have, the comment follows the text onto that sibling. A link whose label was edited with no same-href twin still heals by href alone, and two links sharing BOTH keys stay indistinguishable, with the index still deciding. An EMPTY stored text is information (a bare or image-only link had none) and still disambiguates; a <code>linkText</code> that is not a string carries no text key at all, so a hand-edited or imported record can neither invent a key nor throw inside resolution when coerced.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.800.0] - 2026-08-06</h3></div>
             <div class="group-label">Fixed</div>
@@ -543,14 +550,7 @@
               <li>The deck scaffold&#x27;s slide rewrite is now round-trip faithful for a VALUELESS attribute: <code>deck/deck_scaffold.py</code>&#x27;s <code>prepare_slides</code> writes one back as <code>name=&quot;&quot;</code> instead of as a bare name. Re-serializing it bare dropped the <code>/</code> HTML uses to terminate an attribute name, so two ADJACENT valueless attributes whose second name legally begins with <code>=</code> (HTML5&#x27;s unexpected-equals-sign-before-attribute-name state) FUSED into one attribute carrying a value: <code>&lt;section class=&quot;slide&quot; data-a/=onload&gt;</code> was written back as <code>data-a =onload</code>, which re-parses as <code>data-a=&quot;onload&quot;</code> - a value the input document never had. An absent value IS the empty string to a browser, so the quoted empty value is the same attribute and cannot be terminated by the next name&#x27;s <code>=</code>. The fused NAME could be an <code>on*</code> one (<code>onclick/=alert(1)</code> fused into <code>onclick=&quot;alert(1)&quot;</code>), but no deck the scaffold EMITS could carry a handler minted that way: on a slide <code>&lt;section&gt;</code> the deck contract gate rejects an attribute whose name starts with <code>on</code> - valued or valueless alike - and the scaffold runs it on the final HTML before it writes <code>--out</code>, so that shape failed closed on both sides of this fix. Correctness, not security either way: a document&#x27;s own author is trusted (<code>CMH-SEC-01</code>), so this granted no capability they did not already have.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.792.0] - 2026-08-06</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A partial install (one where the validator&#x27;s <code>checks/parsing</code> cannot be imported) no longer lets <code>deck/deck_scaffold.py</code> write a deck whose slide start tags carry values the rendered document does not (CMH-DECK-02). The scaffold RE-SERIALIZES every slide&#x27;s start tag from the attribute pairs <code>tools/_browser_attrs.raw_attrs_pairs</code> hands back, so that reading decides which attributes survive and what they say. Its partial-install fallback already answered the whole attribute list, but it read two things the host&#x27;s way rather than the browser&#x27;s, and the scaffold wrote both differences into the deck: it did not fold a NUL, where a browser writes U+FFFD in an attribute name and value alike, and it decoded values with <code>html.unescape</code>, which resolves a named reference that is only a PREFIX of the value or is followed by <code>=</code> (an authored <code>title=&quot;x&amp;ampy&quot;</code> was rewritten as <code>x&amp;y</code>, <code>&amp;notit;</code> as <code>\u00acit;</code>) and DELETES the code points it considers invalid (<code>&amp;#1;</code>, <code>&amp;#x7f;</code> and <code>&amp;#xfffe;</code> all vanished, where a browser keeps them). Both are silent and both pass the deck contract with a zero exit. The degraded reading now folds a NUL and applies the browser&#x27;s attribute-value rule from its own copies of <code>checks/parsing._fold_nul</code>, <code>_ATTR_CHARREF_RE</code>, <code>_numeric_charref</code> and <code>_unescape_attr_value</code>, pinned to the shared ones as data and answer-for-answer by parity tests, so a partial install writes the deck a full one writes. The <code>data-slide-id</code> was NOT spared by its shape gate, either: because the host&#x27;s decode deletes a character a browser keeps, an authored <code>data-slide-id=&quot;slide-aaaaaaaa&amp;#1;&quot;</code> - which a browser reads as the shape-invalid <code>slide-aaaaaaaa\u0001</code> and which must therefore fail the scaffold closed - decoded to the perfectly valid <code>slide-aaaaaaaa</code>, passed the deck contract and was written, silently renaming the authored id that create-only exists to keep stable.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">373 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">374 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

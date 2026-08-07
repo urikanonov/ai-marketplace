@@ -1404,6 +1404,104 @@ test("CMH-MMD-07: Export Offline renders a collapsed-section diagram correctly a
   }
 });
 
+// The offline export's vendored-inline re-init carries the CMH-MMD-12 render self-check contract as
+// a hand-written MIRROR of the live loader: a pristine pre-render snapshot of every diagram, plus
+// the `window.__cmhMermaidRerender` repair hook the layer calls. Source-level mirror tests can only
+// prove the two texts agree; this proves the exported document actually REPAIRS a bad render, with
+// zero network - so a bootstrap that never runs, or a `pristine` map that is never populated, fails
+// here even though the hook text is structurally identical (CMH-MMD-12).
+test("CMH-MMD-12: an offline-exported report repairs a bad diagram render with zero network", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  const CONTENT_WIDE_DIAGRAM = `
+<section><h2>Pipeline</h2><p id="pipeline-note">lead-in prose so the content column is wide.</p>
+<pre class="mermaid cm-skip">flowchart LR
+  A["Source sensor"] --> B["Ingest queue / front end"]
+  B --> C["Preprocessor<br/>(stamps attributes)"]
+  C --> D["Consumer job<br/>(shared filtering code)"]
+  D --> E["Role one<br/>Bucket: Store A tag<br/>queue: queue-a"]
+  D --> F["Role two<br/>Bucket: Store B tag<br/>queue: queue-b"]
+  E --> H["Store A<br/>query surface"]
+  F --> I["Store B"]
+</pre></section>`;
+  const staged = stageContent(CONTENT_WIDE_DIAGRAM, { key: "cmh-offline-mmd12", source: "offline-mmd12.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await routeRichContentLocal(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await openToolbarMenu(page);
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
+    const exportedHtml = await capturedDownloadText(page);
+    expect(exportedHtml).not.toContain("cdn.jsdelivr.net/npm/mermaid");
+
+    const exportedPath = path.join(outDir, "offline-mmd12.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    ctx2 = await browser.newContext({ offline: true });
+    const page2 = await ctx2.newPage();
+    const external = [];
+    page2.on("request", (request) => { if (/^https?:\/\//.test(request.url())) external.push(request.url()); });
+    await page2.setViewportSize({ width: 1280, height: 900 });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    await expect
+      .poll(() => page2.locator("#commentRoot pre.mermaid svg g.node").count(), { timeout: 30000 })
+      .toBeGreaterThanOrEqual(8);
+    await page2.evaluate(() => window.__cmhMermaidReady);
+    await page2.evaluate(() => window.__cmhMermaidAuditsSettled);
+    expect(await page2.evaluate(() => window.__cmhMermaidRepairs), "the export renders cleanly").toBe(0);
+
+    // Force the reported failure onto the exported document's rendered SVG, then let the exported
+    // runtime repair it through its own vendored-inline hook.
+    await page2.evaluate(() => {
+      const svg = document.querySelector("#commentRoot pre.mermaid svg");
+      svg.querySelectorAll("foreignObject").forEach((fo) => {
+        fo.setAttribute("width", String(fo.width.baseVal.value / 2));
+        fo.setAttribute("height", String(fo.height.baseVal.value / 2));
+      });
+      const vb = (svg.getAttribute("viewBox") || "").trim().split(/[\s,]+/).map(Number);
+      svg.setAttribute("viewBox", `0 0 ${vb[2] * 2} ${vb[3] * 2}`);
+    });
+    const repaired = await page2.evaluate(async () => {
+      const host = document.querySelector("#commentRoot pre.mermaid");
+      return await window.__cmhMermaidAudit(host);
+    });
+    expect(repaired, "the exported document's own re-render hook repaired the diagram").toBe(true);
+
+    const after = await page2.evaluate(() => {
+      const svg = document.querySelector("#commentRoot pre.mermaid svg");
+      const rows = [...svg.querySelectorAll("g.node")].map((n) =>
+        [...n.querySelectorAll("tspan.text-outer-tspan")].length);
+      return {
+        nodes: svg.querySelectorAll("g.node").length,
+        foreignObjects: svg.querySelectorAll("foreignObject").length,
+        multiLineLabels: rows.filter((c) => c > 1).length,
+        repairs: window.__cmhMermaidRepairs,
+      };
+    });
+    expect(after.repairs).toBe(1);
+    expect(after.nodes).toBeGreaterThanOrEqual(8);
+    // The repair used SVG <text> labels, and it re-rendered the AUTHORED source: the exported
+    // bootstrap's pristine snapshot kept the `<br/>` line breaks that a textContent round-trip drops.
+    expect(after.foreignObjects).toBe(0);
+    expect(after.multiLineLabels, "authored <br/> line breaks survived the offline repair").toBeGreaterThanOrEqual(4);
+    expect(external).toEqual([]);
+  } finally {
+    await server.close();
+    if (ctx2) await ctx2.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
 // The exporter's chart-canvas selector is deliberately a SUPERSET of what any one renderer draws, so
 // the SHAPE of a canvas is not evidence that Chart.js is needed: a canvas carrying
 // data-cmh-chart-points / data-cmh-chart-source is drawn by the runtime's own 2D renderer
