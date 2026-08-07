@@ -129,7 +129,10 @@ class MakeDocumentTests(unittest.TestCase):
     def test_html_special_chars_in_label_are_escaped(self):
         out = new_document.make_document(_template(), CONTENT, "my-report-v1", 'A & B "<x>"')
         self.assertIn('data-doc-label="A &amp; B &quot;&lt;x&gt;&quot;"', out)
-        self.assertIn("<title>A &amp; B &quot;&lt;x&gt;&quot;</title>", out)
+        # The `<title>` is a TEXT run, so the shared text escape leaves `"` alone - a quote is
+        # an ordinary character in text and `&quot;` decodes to the same value. The attribute
+        # above still escapes it, because there it would end the value.
+        self.assertIn('<title>A &amp; B "&lt;x&gt;"</title>', out)
 
     def test_generated_attribute_is_set_when_requested(self):
         out = new_document.make_document(

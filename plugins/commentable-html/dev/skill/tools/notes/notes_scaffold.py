@@ -16,17 +16,17 @@ The result is a ready-to-paste fragment (stdout, or --out FILE). Wrap it into a 
 tools/authoring/new_document.py or paste it into an existing document.
 """
 import argparse
-import html as _html
 import os
 import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _atomic_io  # noqa: E402
+import _browser_attrs  # noqa: E402
 
 
 def _attr(name, value):
-    return ' %s="%s"' % (name, _html.escape(value, quote=True))
+    return ' %s="%s"' % (name, _browser_attrs.escape_attr_value(value))
 
 
 def scaffold(cid, label, text, multiline=False, foldable=False):
@@ -38,7 +38,7 @@ def scaffold(cid, label, text, multiline=False, foldable=False):
         out += _attr("data-cmh-note-multiline", "true")
     if foldable:
         out += _attr("data-cmh-note-foldable", "true")
-    out += ">" + _html.escape(text) + "</div>\n"
+    out += ">" + _browser_attrs.escape_text(text) + "</div>\n"
     return out
 
 

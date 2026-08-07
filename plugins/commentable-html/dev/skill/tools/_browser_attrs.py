@@ -230,6 +230,33 @@ def escape_attr_value(value):
     return _html.escape(text, quote=True).replace("\r", "&#13;")
 
 
+def escape_text(text):
+    """A TEXT RUN escaped for element content - the companion of `escape_attr_value`, with the
+    same CR rule and the same totality.
+
+    A text run needs its own rule rather than the attribute one: `"` and `'` are ordinary
+    characters in text, so escaping them would spell `&quot;` out for a reader in the tools that
+    write a `<title>`, a lede header or a checklist item. But input-stream preprocessing folds a
+    CR in TEXT exactly as it folds one in an attribute value, so the `&#13;` half is shared - and
+    that shared half is what stops ONE authored label from reaching a browser as TWO different
+    values when a tool writes it into both an attribute and the text beside it (#1224).
+
+    Everything `escape_attr_value` documents about the fold applies here for the same reasons, and
+    NUL matters more rather than less: `<title>` is RCDATA, where the tokenizer folds a NUL to
+    U+FFFD, so writing one literally would make the value depend on where it landed.
+
+    The PRECONDITION is `escape_attr_value`'s, unchanged: the value must come from a CLI argument,
+    a JSON field, or text that already had input-stream preprocessing applied.
+    """
+    if text is None:
+        body = ""
+    elif isinstance(text, str):
+        body = _ATTR_UNHOLDABLE_RE.sub("\ufffd", text)
+    else:
+        raise TypeError("text must be a str or None, got %r" % type(text).__name__)
+    return _html.escape(body, quote=False).replace("\r", "&#13;")
+
+
 def visible_text(text):
     """`text` with the characters a reader cannot SEE removed, by the shared rule every check
     uses. Degrades to `text` unchanged."""

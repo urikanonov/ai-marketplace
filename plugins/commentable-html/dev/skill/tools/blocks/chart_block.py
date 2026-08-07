@@ -13,7 +13,6 @@ The tool self-validates the emitted fragments by injecting them into dist/SHAREA
 and running tools/validate.py as an import.
 """
 import argparse
-import html as _html
 import importlib.util
 import json
 import os
@@ -24,6 +23,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _browser_attrs  # noqa: E402
 SKILL_ROOT = _toolpath.SKILL_ROOT
 _TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_TEMPLATE = _toolpath.dist_template(_toolpath.SHAREABLE_TEMPLATE)
@@ -99,8 +99,8 @@ def render_chart_fragments(spec, canvas_id, caption, title=None):
     caption_id = canvas_id + "-caption"
     data_id = canvas_id + "-data"
     aria_label = derive_aria_label(caption, title)
-    caption_html = _html.escape(caption, quote=False)
-    aria_html = _html.escape(aria_label, quote=True)
+    caption_html = _browser_attrs.escape_text(caption)
+    aria_html = _browser_attrs.escape_attr_value(aria_label)
     spec_json = _dump_spec(spec)
 
     figure = (

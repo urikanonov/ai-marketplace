@@ -582,7 +582,7 @@ def _insert_title_if_missing(text, head, label):
     head_text = text[head.start_end:head.end_start]
     if re.search(r"<title\b", head_text, re.I):
         return ""
-    return "<title>%s</title>\n" % _html.escape(label)
+    return "<title>%s</title>\n" % _browser_attrs.escape_text(label)
 
 
 def _insert_favicon_if_missing(text, head, template):

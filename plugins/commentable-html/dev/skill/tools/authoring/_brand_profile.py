@@ -1,6 +1,5 @@
 """Reusable brand profile support for commentable-html authoring tools."""
 from dataclasses import dataclass
-import html as _html
 import json
 import os
 from pathlib import Path
@@ -8,6 +7,7 @@ import re
 
 import _toolpath
 _toolpath.ensure()
+import _browser_attrs  # noqa: E402
 from cmhval import contrast  # noqa: E402
 
 
@@ -229,7 +229,7 @@ def _font_stack_css(stack):
 
 
 def render(profile):
-    lines = ['<style data-cmh-brand="%s">' % _html.escape(profile.label, quote=True)]
+    lines = ['<style data-cmh-brand="%s">' % _browser_attrs.escape_attr_value(profile.label)]
     for font in profile.fonts:
         lines.extend((
             "@font-face {",

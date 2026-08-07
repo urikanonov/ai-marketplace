@@ -7,6 +7,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _browser_attrs  # noqa: E402
+
 _WARN_LINE_THRESHOLD = 2000
 
 _NO_NEWLINE_MARKER = "\\ No newline at end of file"
@@ -20,9 +23,10 @@ def _normalize_newlines(text):
 def render_diff_block(diff_text, label, lang=None):
     """Return a cmh-diff pre block with escaped diff text."""
     normalized = _normalize_newlines(diff_text)
-    attrs = ['class="cmh-diff"', 'data-diff-label="%s"' % html.escape(label, quote=True)]
+    attrs = ['class="cmh-diff"',
+             'data-diff-label="%s"' % _browser_attrs.escape_attr_value(label)]
     if lang:
-        attrs.append('data-diff-lang="%s"' % html.escape(lang, quote=True))
+        attrs.append('data-diff-lang="%s"' % _browser_attrs.escape_attr_value(lang))
     return "<pre %s>%s</pre>" % (" ".join(attrs), html.escape(normalized, quote=False))
 
 
