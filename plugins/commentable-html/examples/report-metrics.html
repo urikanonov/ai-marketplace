@@ -19679,8 +19679,10 @@ function _offlineNormalizeUrlValue(v) {
 // engine build parses `file:////host/x` to host `host` on Windows but to the EMPTY-host local
 // `file:///host/x` on Linux, and it is cleared on both, because Windows is where the UNC fetch is.
 // The two counted arms are the BASE-INDEPENDENT set, not a claim that no other spelling reaches a
-// host: the same Chromium 149 gives host `host` to a ZERO- or ONE-separator spelling parsed ABSOLUTE
-// (`file:host/x.js`, `file:/host/x.js`), but resolved against the `file:` base an exported document
+// host: the same Chromium 149 ON WINDOWS gives host `host` to a ZERO- or ONE-separator spelling
+// parsed ABSOLUTE (`file:host/x.js`, `file:/host/x.js`) - a Windows-only reading, since that build
+// parsed base-less on LINUX gives an EMPTY host for zero, one and four separators alike. Resolved
+// against the `file:` base an exported document
 // actually has, those INHERIT the base's host and are local. Counting them would buy only the false
 // positive of calling an authored `file:notes.html` a beacon; issue #1229 SETTLED that, and the
 // reason is structural: `file:` IS a special scheme - so the backslash mapping in

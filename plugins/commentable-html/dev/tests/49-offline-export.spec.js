@@ -5186,16 +5186,19 @@ test("CMH-VAL-08: a real Chromium resolves a slash-poor file: reference against 
     fs.writeFileSync(probe, "<!DOCTYPE html><title>probe</title><body>probe</body>");
     await page.goto(fileUrl(probe));
     const measured = await page.evaluate((values) => values.map((value) => {
-      // Both readings a document really performs: the URL parser against the document's base, and
-      // the HTML attribute resolution the loader itself uses.
+      // Every reading a document really performs: the URL parser against the document's base, and
+      // the two attribute resolutions the loader and a navigation use. `<a href>` is measured
+      // rather than assumed because the comment blocks cite it.
       const url = new URL(value, document.baseURI);
       const img = document.createElement("img");
       img.setAttribute("src", value);
+      const anchor = document.createElement("a");
+      anchor.setAttribute("href", value);
       // A UNC base is the second context the rule rests on: a value the gate calls local must
       // never reach a host the VALUE names from one.
       let uncHost = null;
       try { uncHost = new URL(value, "file://server.example/share/report.html").host; } catch (e) { uncHost = "ERR"; }
-      return { value, host: url.host, href: url.href, imgSrc: img.src, uncHost };
+      return { value, host: url.host, href: url.href, imgSrc: img.src, anchorHref: anchor.href, uncHost };
     }), FILE_SEPARATOR_ROWS.map((row) => row.value));
 
     expect(measured.length, "the engine returned fewer rows than were declared, so the assertions "
@@ -5210,9 +5213,12 @@ test("CMH-VAL-08: a real Chromium resolves a slash-poor file: reference against 
                        + `not the declared ${JSON.stringify(row.authority)} - the predicates' `
                        + "separator arithmetic is empirical, so re-measure and move BOTH sides together")
         .toBe(row.authority);
-      // The attribute path must agree with the URL parser: it is the one the loader uses.
+      // Both attribute paths must agree with the URL parser: they are what the loader and a
+      // navigation actually use.
       expect(got.imgSrc, `${row.value} resolves differently through an attribute than through the `
                          + "URL parser").toBe(got.href);
+      expect(got.anchorHref, `${row.value} resolves differently through <a href> than through the `
+                             + "URL parser").toBe(got.href);
       if (row.authority === "") {
         expect(got.href, `${row.value} must resolve INSIDE the document's own tree`)
           .toMatch(/^file:\/\/\//);
@@ -5267,6 +5273,19 @@ test("CMH-VAL-08: a real Chromium resolves a slash-poor file: reference against 
       expect(refreshTarget, "the refresh target predicate must inherit the attribute one, not "
                             + `carry a separator rule of its own (${row.value})`)
         .toBe(row.predicate);
+    }
+    // ...and one assertion that binds the ENGINE to the PREDICATE directly rather than to the
+    // declared table, so the table itself cannot drift: a row whose measured host is not the
+    // document's own is a host the VALUE named, and the gate MUST count it. Only this direction is
+    // asserted, because the reverse is the deliberate fail-CLOSED over-detection (the four-slash
+    // row is host-less on Linux and still counted).
+    for (const [i, row] of FILE_SEPARATOR_ROWS.entries()) {
+      if (measured[i].host !== baseHost) {
+        expect(verdicts[row.value][0],
+               `a real engine resolves ${row.value} to host ${JSON.stringify(measured[i].host)}, `
+               + "which the document's base did not supply, so the gate must report it as egress")
+          .toBe(true);
+      }
     }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

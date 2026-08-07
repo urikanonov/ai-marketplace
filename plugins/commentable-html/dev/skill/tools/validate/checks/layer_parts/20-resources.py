@@ -719,7 +719,8 @@ def _check_self_contained(html, parser):
             # can restrict, and an injected `<base href>` rebases a relative target onto the
             # network (that rebasing was a WIDER gap, tracked as issue #924 and since CLOSED by
             # holding a `<base href>` to the stricter `offline_is_non_local_ref` in EVERY mode -
-            # see the base-element loop below; rejecting the refresh outright is what took this ONE
+            # see the base-element loop earlier in this function; rejecting the refresh outright
+            # is what took this ONE
             # channel out of its reach independently of that). The network
             # wording is kept for a target that IS one, so the message still names the beacon when
             # there is one to name.

@@ -677,7 +677,9 @@ class NewCheckTests(unittest.TestCase):
                 # The whole error list, not just the absence of the network wording: the cost this
                 # guards against is the WITHHELD `commentable-html-validated` stamp, and `--strict`
                 # withholds it for any error or warning, so a different check starting to report
-                # these values would leave a message-scoped assertion green.
+                # these values would leave a message-scoped assertion green. The warning list is
+                # empty rather than carrying the ordinary local-path advisory because that one is
+                # keyed on a value with NO scheme, and every row here wears `file:`.
                 self.assertEqual(errors, [],
                                  "%r is a relative reference, not an authority: %r" % (value, errors))
                 self.assertEqual(warnings, [],

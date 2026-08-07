@@ -2392,7 +2392,8 @@ class RuntimeParityTests(unittest.TestCase):
         # the ZERO- and ONE-separator controls: parsed ABSOLUTE, Chromium 149 gives both the host
         # `x.js`, but against the `file:` base a document actually has they inherit that base's host
         # and are local, so they carry no authority of their own and are deliberately not counted.
-        # Issue #1229 tracks that bound; a widening that counted them would flip these two rows.
+        # Issue #1229 SETTLED that bound (see the rows and reasoning below); a widening that counted
+        # them would flip these two rows.
         ("\\relative\\x.js", False), ("/root\\relative.js", False), ("file:x.js", False),
         ("file:/x.js", False),
         # ZERO and ONE separator after `file:` have a LEADING RUN THAT IS PATH on both sides, and
@@ -2413,7 +2414,12 @@ class RuntimeParityTests(unittest.TestCase):
         # the exporter DELETE the author's reference. Only the LEADING run is exempt - the last two
         # rows are slash-poor values whose PATH canonicalizes onto the four-separator form, so the
         # `..` and empty-segment arms still count them, and they are pinned here because no
-        # zero-separator-with-`//`-in-path row existed on either side. `tests/49-offline-export.spec.js`
+        # zero-separator-with-`//`-in-path row existed on either side. The two after them pin the
+        # same override against the `localhost` and DRIVE-LETTER exclusions: those lookaheads live
+        # INSIDE the authority arm, so a slash-poor spelling reaches the empty-segment arm
+        # regardless of them - which also means the `file:localhost/x.js` and `file:C:/local/x.js`
+        # rows above are local because their LEADING RUN is path, not because either lookahead
+        # fired. `tests/49-offline-export.spec.js`
         # re-runs the measurement in a real engine on every CI pass.
         ("file:evil.example/x", False), ("file:/evil.example/x", False),
         ("FILE:evil.example/x", False), ("file:\\evil.example/x", False),
@@ -2422,7 +2428,7 @@ class RuntimeParityTests(unittest.TestCase):
         ("file:C:/local/x.js", False), ("file:/C:/local/x.js", False),
         ("file://evil.example/x", True), ("file:////evil.example/x", True),
         ("file:a//b.png", True), ("file:evil.example//x.png", True),
-        # An authority terminated at once by `?`, `#` or the end of the value is an EMPTY host,
+        ("file:localhost//x.js", True), ("file:C://x.js", True),        # An authority terminated at once by `?`, `#` or the end of the value is an EMPTY host,
         # which nothing fetches from: a special scheme fails to parse outright (checked in a real
         # Chromium), and from a `file:` document it is the local root. The third of these is the
         # Windows extended-length path `\\?\C:\x`, which the backslash mapping turns into `//?/C:/x`.

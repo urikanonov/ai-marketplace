@@ -390,8 +390,11 @@ _FILE_EMPTY_SEGMENT = r"file:/*(?!/)[^?#]*?//"
 # the UNC fetch exists.
 # What the two counted arms are is the BASE-INDEPENDENT set, which is the reason to count exactly
 # them rather than a claim that no other spelling ever reaches a host. Measured in the same Chromium
-# 149: parsed ABSOLUTE (no base), ZERO and ONE separator also give host `evil.example`
-# (`file:evil.example/x.js`, `file:/evil.example/x.js`), but resolved against the `file:` base an
+# 149 ON WINDOWS: parsed ABSOLUTE (no base), ZERO and ONE separator also give host
+# `evil.example` (`file:evil.example/x.js`, `file:/evil.example/x.js`) - a Windows-only reading,
+# since the same build parsed base-less on LINUX gives an EMPTY host for zero, one AND four
+# separators, leaving only the two-separator form an authority there (measured in the pinned CI
+# container). Resolved against the `file:` base an
 # exported document actually has they INHERIT that base's host and are local
 # (`file:///C:/docs/evil.example/x.js`), while the two counted arms give host `evil.example` from
 # ANY base. So zero and one carry no authority of their own; they can only reach one the base
@@ -403,8 +406,10 @@ _FILE_EMPTY_SEGMENT = r"file:/*(?!/)[^?#]*?//"
 # take the special-authority-(ignore-)slashes states that collapse the slash-less `https:host/x`
 # onto a host; the scheme state routes it to the FILE state, which resolves against the base and
 # reads the leading run as PATH. Every surface that consumes this predicate resolves against that
-# base: an attribute, a CSS `url()`, a refresh target, and an `iframe srcdoc` (which inherits its
-# parent's base). The refresh case was CAPTURED rather than reasoned about - a real Chromium
+# base: an attribute, a refresh target, and an `iframe srcdoc` (which inherits its parent's
+# base). The CSS readers are deliberately NOT in that list - they are assembled from
+# `CSS_NETWORK_PREFIX`, which carries no `file:` arm at all, so they never reach this question
+# (issue #1230 tracks that separate gap). The refresh case was CAPTURED rather than reasoned about - a real Chromium
 # navigating out of a `file:///C:/dir/report.html` document went to `file:///C:/dir/evil.example/x`,
 # never the SMB share - and from a UNC base the value takes that document's OWN host, which it
 # cannot choose, exactly as the plain relative `evil.example/x` beside it does.
@@ -423,7 +428,12 @@ _FILE_EMPTY_SEGMENT = r"file:/*(?!/)[^?#]*?//"
 # PATH canonicalizes onto the four-separator form is still counted by `_FILE_DOTDOT_SEGMENT` and
 # `_FILE_EMPTY_SEGMENT` (`file:/..//x.js` and `file:a//b.png` are corpus rows, both NETWORK). Those
 # two arms are base-LESS canonicalization arguments and stay a deliberate over-detection in the safe
-# direction; nothing here narrows them.
+# direction; nothing here narrows them. Read the `localhost` and drive-letter exclusions below with
+# that in mind: they are lookaheads INSIDE the authority arm, so they exclude a local AUTHORITY, not
+# a value. A slash-poor spelling carrying an empty path segment reaches the empty-segment arm
+# REGARDLESS of them - `file:localhost//x.js` and `file:C://x.js` are corpus rows, both NETWORK -
+# and a slash-poor `file:localhost/x.js` is local because its leading run is PATH, not because the
+# `localhost` lookahead fired on it.
 # The whole measurement is re-run on every CI pass by the `CMH-VAL-08: a real Chromium resolves a
 # slash-poor file: reference against the document's own base` spec, which compares the engine to
 # this predicate's own verdicts, so an engine that ever changed its mind reds a test instead of
@@ -1476,7 +1486,8 @@ def meta_refresh_target(content):
 # path; the two counted arms are the BASE-INDEPENDENT set - the same Chromium gives host
 # `evil.example` to a ZERO- or ONE-separator spelling parsed ABSOLUTE, but against the `file:` base a
 # document actually has those INHERIT the base's host and are local, so they carry no authority of
-# their own; issue #1229 tracks it), and so was every slash run of three or more, which the
+# their own; issue #1229 SETTLED that - see the `NETWORK_URL_RE` note above), and so was every
+# slash run of three or more, which the
 # shared `/{2,}` arm counts
 # deliberately - what `///host` resolves to depends on the BASE (that host from a document served
 # over http/https, where the special-authority states ignore the run; an empty-host local path from
