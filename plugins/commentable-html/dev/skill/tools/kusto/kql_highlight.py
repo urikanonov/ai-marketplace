@@ -140,8 +140,12 @@ def render_block(cluster, database, title, query):
     highlighted code - the complete Kusto-query-block the convention calls for. The
     caption title (cluster / database) is itself the click-to-copy affordance for the
     cluster name."""
-    href = _html.escape(kusto_link.kusto_link(cluster, database, query), quote=True)
-    cluster_attr = _html.escape(cluster, quote=True)
+    href = _browser_attrs.escape_attr_value(kusto_link.kusto_link(cluster, database, query))
+    # `escape_attr_value`, not `html.escape`: these values go into ATTRIBUTES, and a CR written
+    # literally there is folded to LF by input-stream preprocessing before a browser tokenizes it,
+    # so a `cluster` carrying one would be emitted as a value the rendered DOM never has (#1196).
+    # `title` below is TEXT, where no such fold applies, so it keeps the plain text escape.
+    cluster_attr = _browser_attrs.escape_attr_value(cluster)
     return (
         '<figure class="cmh-kql">\n'
         '<figcaption class="cm-skip cmh-kql-cap">'

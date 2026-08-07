@@ -199,12 +199,23 @@ def _normalize_source_provenance(html):
         if attr[0] == "data-doc-source" and attr[1] is not None
     ]
     for _name, value_start, value_end, quote in reversed(source_attrs):
-        source = _browser_attrs.unescape_attr_value(tag[value_start:value_end])
+        # Both halves of the CR rule (#1196), because this rewrite reads and writes ONE value's
+        # own span rather than going through `raw_attrs_pairs` / `serialize_start_tag`, which
+        # carry them for the four whole-tag re-serializers.
+        #
+        # READ: input-stream preprocessing on the raw value FIRST, since `_read` opens with
+        # `newline=""` to preserve the document's line endings, so a literal CR survives to here -
+        # and a browser folds it to LF before it ever tokenizes. WRITE: the shared escape, which
+        # puts a CR back as `&#13;`. Neither alone is right: escaping without the fold would turn
+        # a literal CR into a `&#13;` the input never meant, and folding without the escape would
+        # write an authored `&#13;` back as a literal CR the browser then reads as LF.
+        raw = _browser_attrs.preprocess_input_stream(tag[value_start:value_end])
+        source = _browser_attrs.unescape_attr_value(raw)
         basename = doc_stamp.source_basename(source)
         if basename == source:
             continue
         changed = True
-        escaped = _html.escape(basename, quote=True)
+        escaped = _browser_attrs.escape_attr_value(basename)
         replacement = escaped if quote else '"%s"' % escaped
         new_tag = new_tag[:value_start] + replacement + new_tag[value_end:]
     if not changed:
