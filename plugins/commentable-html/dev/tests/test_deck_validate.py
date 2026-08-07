@@ -785,6 +785,37 @@ class DeckValidateTests(unittest.TestCase):
             with self.subTest(snippet=snippet):
                 self.assertEqual(_errors(_inject(self.html, snippet)), [], snippet)
 
+    # An explicit `file://` AUTHORITY reaches the deck gate through the SAME shared readers, so it
+    # inherits the verdict rather than needing a `file:` rule of its own (issue #1230). On Windows
+    # `file://host/x` is an SMB fetch off the machine, which the attribute-side `is_network_url` the
+    # deck already delegates to has called remote since #923; the CSS readers beside it could not
+    # see it at all, so a deck slide carrying one passed the gate.
+    def test_a_file_authority_in_css_is_remote(self):
+        for snippet in ('<div style="background:url(file://evil.example/bg.png)">x</div>',
+                        "<style>.x{background:url(file:////evil.example/bg.png)}</style>",
+                        '<div style="background:image-set(\'file://evil.example/x.png\' 1x)">x</div>',
+                        "<div style=\"background:image-set('local.png' 1x, "
+                        "'file://evil.example/x.png' 2x)\">x</div>"):
+            with self.subTest(snippet=snippet):
+                self._assert_error(_inject(self.html, snippet), "remote CSS url()")
+        for snippet in ("<style>@import url(file://evil.example/x.css);</style>",
+                        '<style>@import "file:////evil.example/x.css";</style>'):
+            with self.subTest(snippet=snippet):
+                self._assert_error(_inject(self.html, snippet), "remote CSS @import")
+
+    # ... and the no-false-positive half: every one of these stays on the machine, so reporting one
+    # would refuse a deck with no egress at all. A THREE-slash run is the empty host of an ordinary
+    # local path, `localhost` is emptied by the file-host state, and a Windows drive letter is read
+    # as a path rather than a host.
+    def test_a_local_file_reference_in_css_is_not_reported(self):
+        for snippet in ('<div style="background:url(file:///C:/bg.png)">x</div>',
+                        "<style>.x{background:url(file://localhost/bg.png)}</style>",
+                        "<style>.x{background:url(file://C:/bg.png)}</style>",
+                        "<style>@import url(file:///theme/x.css);</style>",
+                        '<div style="background:image-set(\'file://localhost/x.png\' 1x)">x</div>'):
+            with self.subTest(snippet=snippet):
+                self.assertEqual(_errors(_inject(self.html, snippet)), [], snippet)
+
     # An ASCII TAB inside a quoted CSS URL: the URL parser DELETES it, and CSS allows a raw tab
     # inside a string, so `url("//<TAB>host/x.png")` really is fetched from `//host/x.png` - but
     # the shared host-character class excludes tab, so the pattern only sees it in a tab-free copy

@@ -364,8 +364,8 @@ const _OFFLINE_PCT_LOCALHOST =
 // arm above calls an off-machine SMB load. The backslash spelling `file://localhost/\not-a-host/x.js`
 // reaches it too, since the cleanup maps `\` onto `/`. The cost is that `file://localhost//C:/x.js`,
 // canonically the LOCAL `file:////C:/x.js`, is over-reported; that is the fail-CLOSED direction this
-// predicate takes everywhere else.
-const _OFFLINE_PCT_LOCALHOST_END = "(?:[?#]|$|/(?!/))";
+// predicate takes everywhere else. "The end of the value" is what `_offFileNetworkArm`'s `stop`
+// decides, which is why the terminator is spelled inside the builder rather than as a const here.
 // The rule both of the following exist to keep is CANONICALIZATION STABILITY: a value and the href
 // the URL parser canonicalizes it to must get the SAME verdict, or a spelling hides an authority
 // that only the parser sees. Two shapes broke it, and neither is reachable by a test that reads only
@@ -379,19 +379,34 @@ const _OFFLINE_PCT_LOCALHOST_END = "(?:[?#]|$|/(?!/))";
 // canonicalize to `file:////x.js` from a THREE-slash or even slash-less value the arms above never
 // look at, so it needs an arm of its own that ignores the leading separator count entirely. The
 // leading `/*(?!/)` consumes the whole separator run unbacktrackably, so only a `//` in the PATH
-// counts, and `[^?#]` stops at the query, which cannot change the path.
+// counts, and the path scan stops at the query - which cannot change the path - and at whatever ends
+// the value in the caller's context (`_offFileNetworkArm`'s `stop`).
 // A fuzz of 421,560 values against a real URL parser measured the result: ZERO remain where the
 // predicate says local while the value's own canonical form is egress. The cost is over-detection in
 // the safe direction (93,789 of those values, all absurd spellings): an authored
 // `file:///C:/a//b.png` or `file://localhost/a/../b.js` is now reported.
 const _OFFLINE_FILE_DOTDOT_SEGMENT = "(?:\\.|%2e)(?:\\.|%2e)";
-const _OFFLINE_FILE_EMPTY_SEGMENT = "file:/*(?!/)[^?#]*?//";
+// The `file:` AUTHORITY arm, built ONCE and read by BOTH strips: the attribute/URL predicate below
+// and, through `_OFF_CSS_START`, the CSS `url(...)` and at-rule strips further down. It is the
+// mirror of the validator's `file_network_arm` (`tools/validate/checks/resources.py`) and is pinned
+// to it as TEXT, not merely by verdicts, so neither side can be widened alone - the CMH-OFFLINE-04
+// drift. The CSS half used to carry no `file:` arm at all, so `url(file://evil.example/x.png)` was
+// left in an export the validator's attribute predicate calls egress (issue #1230).
+// `stop` is the character-class BODY of what ENDS a value in the caller's context: empty for a URL
+// value, which runs to the end of the string, and `_OFF_CSS_VALUE_STOP` for a stylesheet, where a
+// quote, a `)`, CSS whitespace or a declaration/block terminator ends it. Written with `$` rather
+// than a Python `\Z`; there is no `m` flag on either compiled pattern, so a JS `$` is end-of-input.
+function _offFileNetworkArm(stop) {
+  const end = stop ? "[" + stop + "]|$" : "$";
+  const seg = "[^?#" + stop + "]";
+  return "file:(?://(?!/)|/{4,}(?!/))(?![?#]|" + end + ")"
+    + "(?:(?=" + seg + "*/" + _OFFLINE_FILE_DOTDOT_SEGMENT + "(?:[/?#]|" + end + "))"
+    + "|(?!" + _OFFLINE_PCT_LOCALHOST + "(?:[?#]|" + end + "|/(?!/)))(?![A-Za-z][:|]))"
+    + "|file:/*(?!/)" + seg + "*?//";
+}
 const _OFFLINE_NETWORK_URL_RE = new RegExp(
   "^(?:(?:https?:/*|/{2,})[^/?#]"
-  + "|file:(?://(?!/)|/{4,}(?!/))(?![?#]|$)"
-  + "(?:(?=[^?#]*/" + _OFFLINE_FILE_DOTDOT_SEGMENT + "(?:[/?#]|$))"
-  + "|(?!" + _OFFLINE_PCT_LOCALHOST + _OFFLINE_PCT_LOCALHOST_END + ")(?![A-Za-z][:|]))"
-  + "|" + _OFFLINE_FILE_EMPTY_SEGMENT + ")",
+  + "|" + _offFileNetworkArm("") + ")",
   "i");
 
 function _offlineIsNetworkUrl(v) {
@@ -478,25 +493,37 @@ const _OFF_CSS_WS = "[\\t\\n\\f\\r ]";
 const _OFF_CSS_NET = "(?:https?:\\/*|\\/{2,})";
 // One host character, the same approximation the validator's `_CSS_HOST_CHAR` makes.
 const _OFF_CSS_HOST = "[^/?#\"')\\t\\n\\f\\r ]";
+// What ENDS a CSS value, as a character-class BODY: either quote, the `)` that closes a `url()` or
+// an `image-set()`, CSS whitespace, and the `;`/`{`/`}` that end a declaration or a block. Mirrors
+// the validator's `CSS_VALUE_STOP` and is pinned to it as text.
+const _OFF_CSS_VALUE_STOP = "'\\\");{}\\t\\n\\f\\r ";
+// Where a CSS reference is decided to reach the network: the http/https and scheme-relative prefix
+// plus one host character, OR the SHARED `file:` authority arm - the same one the URL predicate
+// above reads, so a stylesheet and an attribute cannot answer differently about `file://host/x`
+// (issue #1230). The `file:` arm consumes its own authority, so it takes no trailing host character;
+// the http/https arm still requires one, which is what keeps `url(https://)` and `url(//)` - empty
+// authorities that fetch nothing - out of the author's stylesheet untouched.
+const _OFF_CSS_START =
+  "(?:" + _OFF_CSS_NET + _OFF_CSS_HOST + "|" + _offFileNetworkArm(_OFF_CSS_VALUE_STOP) + ")";
 // A run that stops at a comment boundary in either direction (see `_offlineCssNoNetwork`), plus
 // whatever else its caller must not cross.
 const _OFF_CSS_RUN = function (extra) {
   return "(?:[^" + extra + "/*]|\\/(?!\\*)|\\*(?!\\/))*";
 };
 const _OFF_CSS_QUOTED = function (q) {
-  return q + _OFF_CSS_WS + "*" + _OFF_CSS_NET + _OFF_CSS_HOST + "[^" + q + "]*" + q;
+  return q + _OFF_CSS_WS + "*" + _OFF_CSS_START + "[^" + q + "]*" + q;
 };
 const _OFFLINE_CSS_IMPORT_RE = new RegExp(
   "@" + "import" + "(?:" + _OFF_CSS_WS + "+|(?=[\"']))"
   + "(?:url\\(" + _OFF_CSS_WS + "*)?"
   + "(?:" + _OFF_CSS_QUOTED("\"") + "|" + _OFF_CSS_QUOTED("'")
-  + "|" + _OFF_CSS_NET + _OFF_CSS_HOST + _OFF_CSS_RUN(";{}\"')")
-  + "|[\"']" + _OFF_CSS_WS + "*" + _OFF_CSS_NET + _OFF_CSS_HOST + _OFF_CSS_RUN(";{}")
+  + "|" + _OFF_CSS_START + _OFF_CSS_RUN(";{}\"')")
+  + "|[\"']" + _OFF_CSS_WS + "*" + _OFF_CSS_START + _OFF_CSS_RUN(";{}")
   + ")" + _OFF_CSS_RUN(";{}\"'@") + ";?", "gi");
 const _OFFLINE_CSS_URL_RE = new RegExp(
   "url\\(" + _OFF_CSS_WS + "*(?:" + _OFF_CSS_QUOTED("\"") + "|" + _OFF_CSS_QUOTED("'")
-  + "|" + _OFF_CSS_NET + _OFF_CSS_HOST + "[^)\"'\\t\\n\\f\\r ]*"
-  + "|(?:[\"']" + _OFF_CSS_WS + "*)?" + _OFF_CSS_NET + _OFF_CSS_HOST + _OFF_CSS_RUN(");{}")
+  + "|" + _OFF_CSS_START + "[^)\"'\\t\\n\\f\\r ]*"
+  + "|(?:[\"']" + _OFF_CSS_WS + "*)?" + _OFF_CSS_START + _OFF_CSS_RUN(");{}")
   + ")(?:" + _OFF_CSS_WS + "*\\)|$|(?=[;{}]))", "gi");
 function _offlineCssNoNetwork(css) {
   // Mirrors the validator's `CSS_NETWORK_IMPORT_RE` / `CSS_NETWORK_URL_RE`, and moves with them

