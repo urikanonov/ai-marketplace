@@ -53,7 +53,6 @@ real validation failure. Output goes to stdout unless --out is given.
 """
 import argparse
 import hashlib
-import html as _html
 import importlib.util
 import os
 from pathlib import Path

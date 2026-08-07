@@ -22,11 +22,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   TOTAL over the code-point space. The one visible serialization change is that a `"` in a
   generated `<title>`, lede header, checklist item or note seed is now written literally instead of
   as `&quot;`; a browser reads the same value either way.
-- Every generator named in the issue now goes through the shared pair: `retrofit`'s content-root
-  attributes and its inserted `<title>`, `new_document`'s lede header and `<title>` substitution,
+- Every generator now goes through the shared pair: `retrofit`'s content-root attributes and its
+  inserted `<title>`, `new_document`'s lede header and `<title>` substitution,
   `checklist_scaffold` and `notes_scaffold` (attributes and text), `diff_block`'s
   `data-diff-label` / `data-diff-lang`, `chart_block`'s figcaption and ARIA label,
-  `highlight_code`'s language class, and `_brand_profile`'s `data-cmh-brand`.
+  `highlight_code`'s language class, `_brand_profile`'s `data-cmh-brand`, `kql_highlight`'s
+  caption title, and `deck_common.esc()` (the slide title and paragraph text
+  `pptx_to_fragment` builds from a JSON field; its one attribute caller, the image `src`, moves
+  to the attribute escape, since the text rule leaves a `"` alone and that would end the value).
+- `notes_apply.py` cements a note with the shared text escape too. On `html.escape` it wrote a
+  literal CR that its own read then folded to LF - and because it compares the escaped value
+  against the file to decide whether anything changed, a note carrying a `&#13;` was reported as
+  changed and rewritten on EVERY run.
+- The spec now lists the REMAINING `html.escape` write sites in full, each with its reason, so
+  the enumeration can be checked rather than re-derived.
 
 ## [1.812.0] - 2026-08-07
 

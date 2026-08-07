@@ -16,7 +16,6 @@ The layer CSS (`.cmh-kql`, `.cmh-kql-*`) styles the frame and token colors, so n
 per-report CSS is needed. `render_block` also emits the adjacent "Run in Azure Data Explorer"
 deep link (via kusto_link), producing the full figure the convention calls for.
 """
-import html as _html
 import os
 import re
 import sys
@@ -141,10 +140,12 @@ def render_block(cluster, database, title, query):
     caption title (cluster / database) is itself the click-to-copy affordance for the
     cluster name."""
     href = _browser_attrs.escape_attr_value(kusto_link.kusto_link(cluster, database, query))
-    # `escape_attr_value`, not `html.escape`: these values go into ATTRIBUTES, and a CR written
-    # literally there is folded to LF by input-stream preprocessing before a browser tokenizes it,
-    # so a `cluster` carrying one would be emitted as a value the rendered DOM never has (#1196).
-    # `title` below is TEXT, where no such fold applies, so it keeps the plain text escape.
+    # `escape_attr_value` / `escape_text`, not `html.escape`: a CR written literally is folded to
+    # LF by input-stream preprocessing before a browser tokenizes, in an ATTRIBUTE and in TEXT
+    # alike, so a `cluster` or `title` carrying one would be emitted as a value the rendered DOM
+    # never has (#1196, #1224). Both halves matter here because the caption writes the SAME
+    # authored value into `data-cmh-copy` and into the button's visible text - the click-to-copy
+    # affordance must copy what it displays.
     cluster_attr = _browser_attrs.escape_attr_value(cluster)
     return (
         '<figure class="cmh-kql">\n'
@@ -156,7 +157,7 @@ def render_block(cluster, database, title, query):
         '</figcaption>\n'
         '%s\n'
         '</figure>'
-    ) % (cluster_attr, cluster_attr, _html.escape(title), href, render_code(query))
+    ) % (cluster_attr, cluster_attr, _browser_attrs.escape_text(title), href, render_code(query))
 
 
 # An `<a>` START TAG with its raw attributes. The tag name is terminated the way HTML terminates

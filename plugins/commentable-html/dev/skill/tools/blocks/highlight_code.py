@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Author-time syntax highlighter for static commentable-html reports."""
 import argparse
-import html as _html
 import os
 import re
 import sys

@@ -241,9 +241,13 @@ def escape_text(text):
     that shared half is what stops ONE authored label from reaching a browser as TWO different
     values when a tool writes it into both an attribute and the text beside it (#1224).
 
-    Everything `escape_attr_value` documents about the fold applies here for the same reasons, and
-    NUL matters more rather than less: `<title>` is RCDATA, where the tokenizer folds a NUL to
-    U+FFFD, so writing one literally would make the value depend on where it landed.
+    Everything `escape_attr_value` documents about the fold applies here, with one honest
+    difference in the REASON. Only RCDATA (which is what `<title>` is) folds a NUL the way the
+    attribute-value states do; in the DATA state - the lede header, a checklist `<li>`/`<td>`, a
+    note `<div>`, a chart `<figcaption>` - a browser emits the NUL character token instead. The
+    fold is applied uniformly anyway, so ONE rule covers both states and a value cannot mean two
+    different things depending on which element it landed in; in the data state that is
+    deliberately STRICTER than the tokenizer, not a fidelity fix.
 
     The PRECONDITION is `escape_attr_value`'s, unchanged: the value must come from a CLI argument,
     a JSON field, or text that already had input-stream preprocessing applied.

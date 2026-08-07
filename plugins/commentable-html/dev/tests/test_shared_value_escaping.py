@@ -28,11 +28,14 @@ sys.path.insert(0, _paths.TOOLS)
 import _browser_attrs  # noqa: E402
 import chart_block  # noqa: E402
 import checklist_scaffold  # noqa: E402
+import deck_common  # noqa: E402
 import diff_block  # noqa: E402
 import highlight_code  # noqa: E402
 import kql_highlight  # noqa: E402
 import new_document  # noqa: E402
+import notes_apply  # noqa: E402
 import notes_scaffold  # noqa: E402
+import pptx_to_fragment  # noqa: E402
 import retrofit  # noqa: E402
 
 TEMPLATE = os.path.join(_paths.PKG, "dist", "SHAREABLE.html")
@@ -67,12 +70,24 @@ def _attr_a_browser_reads(document, name):
 
 
 def _text_a_browser_reads(document, tag):
-    """The text a browser ends up with inside the FIRST `<tag>` element in `document`."""
+    """The text a browser ends up with inside the FIRST `<tag>` element in `document`.
+
+    The tag strip is valid only because every input these tests feed in is known to contain no
+    `<`: a browser reads `<b>` inside `<title>` (RCDATA) as literal TEXT, not markup, so a helper
+    that deletes `<...>` would silently swallow an under-escaped `<` there. `<` escaping is
+    pinned directly instead (`test_both_escape_everything_html_escape_does`), and the assertion
+    below refuses an input that would make this helper lie.
+    """
     doc = _preprocess(document)
     match = re.search(r"(?is)<%s\b[^>]*>(.*?)</%s\s*>" % (tag, tag), doc)
     if match is None:
         raise AssertionError("no <%s> element in %r" % (tag, document[:400]))
-    return _browser_attrs.unescape_text(re.sub(r"(?s)<[^>]*>", "", match.group(1)))
+    inner = match.group(1)
+    stripped = re.sub(r"(?s)<[^>]*>", "", inner)
+    if tag.lower() in ("title", "textarea") and stripped != inner:
+        raise AssertionError(
+            "%r is RCDATA: this helper cannot strip tags there without lying" % tag)
+    return _browser_attrs.unescape_text(stripped)
 
 
 class SharedValueEscapeTests(unittest.TestCase):
@@ -114,11 +129,27 @@ class SharedValueEscapeTests(unittest.TestCase):
             self.assertEqual(escape("a\ud800b"), "a\ufffdb")
             self.assertEqual(escape("a\udfffb"), "a\ufffdb")
 
-    def test_the_fold_is_applied_before_the_escape_so_it_cannot_be_spelled_around(self):
-        # Folding AFTER `html.escape` would leave a NUL that arrived as part of an escaped run
-        # untouched; assert on the escape's own output rather than trusting the order.
-        self.assertNotIn("\x00", _browser_attrs.escape_attr_value("<\x00>"))
-        self.assertNotIn("\x00", _browser_attrs.escape_text("<\x00>"))
+    def test_the_fold_runs_before_the_escape_and_the_cr_rule_runs_after(self):
+        # Both orderings matter, and each is asserted with an input that DISCRIMINATES. The fold
+        # must run BEFORE `html.escape`, so its U+FFFD lands beside an escaped neighbour rather
+        # than being escaped itself; the CR rule must run AFTER, because `&#13;` carries an `&`
+        # of its own that a later escape would turn into `&amp;#13;`.
+        for escape in (_browser_attrs.escape_attr_value, _browser_attrs.escape_text):
+            self.assertEqual(escape("\x00&"), "\ufffd&amp;")
+            self.assertEqual(escape("\ud800<"), "\ufffd&lt;")
+            self.assertEqual(escape("&\r"), "&amp;&#13;")
+
+    def test_a_text_run_survives_a_code_point_sweep(self):
+        # The totality claim covers BOTH escapes, and text decodes in a different tokenizer
+        # state from an attribute value, so sweep it separately rather than by analogy.
+        for start in range(0, 0x110000, 977):
+            raw = "x%sy" % chr(start)
+            written = "<p>%s</p>" % _browser_attrs.escape_text(raw)
+            expected = raw
+            if start == 0 or 0xd800 <= start <= 0xdfff:
+                expected = "x\ufffdy"
+            self.assertEqual(_text_a_browser_reads(written, "p"), expected,
+                             "text run differs for U+%04X" % start)
 
     def test_an_attribute_value_survives_a_code_point_sweep(self):
         # Totality: every code point a Python str can hold reads back as itself (bar the two
@@ -175,15 +206,32 @@ class _HeadStub(object):
 class ScaffoldGeneratorTests(unittest.TestCase):
     """The remaining attribute and text generators the issue named."""
 
-    def test_a_checklist_label_keeps_its_cr_in_the_attribute_and_the_item_text(self):
+    def test_a_checklist_label_keeps_its_cr_and_an_item_label_is_written_as_text(self):
         out = checklist_scaffold.scaffold("Ship it\n", "release", CR_LABEL, "list")
         self.assertEqual(_attr_a_browser_reads(out, "data-cmh-checklist-label"), CR_LABEL)
         table = checklist_scaffold.scaffold("Ship it\n", "release", CR_LABEL, "table")
         self.assertEqual(_attr_a_browser_reads(table, "data-cmh-checklist-label"), CR_LABEL)
+        # An ITEM label cannot carry a CR - `parse_outline` splits the outline into lines - so
+        # what distinguishes the TEXT escape there is that it leaves a quote alone where the
+        # attribute escape would spell it `&quot;`. Pin both shapes: these are the two lines the
+        # change actually touched, and a reversion to the attribute rule fails here.
+        quoted = 'He said "go"'
+        as_list = checklist_scaffold.scaffold(quoted + "\n", "release", "L", "list")
+        self.assertEqual(_text_a_browser_reads(as_list, "li"), quoted)
+        self.assertIn(">" + quoted + "<", as_list)
+        as_table = checklist_scaffold.scaffold(quoted + "\n", "release", "L", "table")
+        self.assertEqual(_text_a_browser_reads(as_table, "td"), "")
+        self.assertIn(">" + quoted + "<", as_table)
 
     def test_a_notes_label_and_seed_text_keep_their_cr(self):
         out = notes_scaffold.scaffold("risk", CR_LABEL, CR_LABEL)
         self.assertEqual(_attr_a_browser_reads(out, "data-cmh-note-label"), CR_LABEL)
+        # The SOURCE keeps the CR. The note WIDGET is a different matter and deliberately not
+        # asserted here: a `<textarea>` value is normalized to LF by HTML itself, and
+        # `assets/js/37-notes.js` normalizes to LF to match, so the note's runtime text model is
+        # LF-only by design. Writing `&#13;` is still the correct WRITE (a literal CR would not
+        # even survive the file), and `notes_apply.py` now uses the same escape, so cementing a
+        # note no longer rewrites the seed.
         self.assertEqual(_text_a_browser_reads(out, "div"), CR_LABEL)
 
     def test_a_diff_block_label_and_language_keep_their_cr(self):
@@ -210,30 +258,79 @@ class ScaffoldGeneratorTests(unittest.TestCase):
         rendered = _brand_profile.render(profile)
         self.assertEqual(_attr_a_browser_reads(rendered, "data-cmh-brand"), CR_LABEL)
 
-    def test_the_language_class_goes_through_the_shared_attribute_escape(self):
-        # This site cannot carry a CR: `_class_language` reduces the value to
-        # [A-Za-z0-9_+.-] first, so the shared escape is here for ONE rule, not for a
-        # behavior difference. Pin the reduction so that stays true.
+    def test_the_language_class_reduction_strips_a_cr_before_any_escape_sees_it(self):
+        # Deliberately NOT a routing test: `_class_language` reduces the value to
+        # [A-Za-z0-9_+.-] first, so the shared escape and `html.escape` are byte-identical here
+        # and no input can tell them apart. `highlight_block` is on the shared rule for
+        # uniformity; what is testable, and what this pins, is the reduction that makes the
+        # routing unobservable.
         block = highlight_code.highlight_block("py\rthon", "x = 1")
         self.assertEqual(_attr_a_browser_reads(block, "class"), "language-py-thon")
         self.assertNotIn("\r", block)
 
 
-class KqlReadBoundaryTests(unittest.TestCase):
-    """The shared writer's PRECONDITION, at the caller whose document keeps its raw CRs."""
+    def test_cementing_a_note_does_not_rewrite_the_seed_the_scaffold_wrote(self):
+        # `notes_apply` builds a TEXT run from a JSON field - the issue's own definition of a
+        # generator. On `html.escape` it wrote a literal CR, which its own read then folds to
+        # LF, so the comparison reported a change on EVERY run and the authored CR was lost.
+        import tempfile
+        seed = "a\rb"
+        fragment = notes_scaffold.scaffold("risk", "L", seed)
+        document = "<!DOCTYPE html><html><body>%s</body></html>" % fragment
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "note.html")
+            with io.open(path, "w", encoding="utf-8", newline="") as fh:
+                fh.write(document)
+            first = notes_apply.apply_notes(path, {"risk": seed}, warn=lambda _m: None)
+            self.assertEqual(first, 0, "cementing the value already in the file changed it")
+            with io.open(path, encoding="utf-8", newline="") as fh:
+                self.assertEqual(_text_a_browser_reads(fh.read(), "div"), seed)
 
-    def test_a_literal_cr_in_a_rewritten_run_link_is_not_escaped_back_into_a_cr(self):
-        # `content_replace._read` reads with newline="" to preserve the file's newline
-        # convention, so a literal CR is still a CR in the text `_run_link_tag`'s pairs come
-        # from - where a browser had already folded it to LF. Writing it back as `&#13;` would
-        # INVERT the bug the shared escape exists to fix, so the read applies input-stream
-        # preprocessing (`raw_attrs_pairs`) before the writer ever sees the value. Go through
-        # that real read path rather than handing `_run_link_tag` a CR it can never receive.
-        pairs = _browser_attrs.raw_attrs_pairs(
-            ' href="https://example.invalid/" title="a\rb"')
-        tag = kql_highlight._run_link_tag(pairs, "https://example.invalid/q")
-        self.assertNotIn("&#13;", tag)
-        self.assertEqual(_attr_a_browser_reads(tag, "title"), "a\nb")
+
+class KqlAndDeckGeneratorTests(unittest.TestCase):
+    """The two generators the round-1 panel found still on `html.escape`."""
+
+    def test_a_kql_caption_title_keeps_its_cr(self):
+        # `title` is `argv[3]` - a CLI-argument value written as the caption button's TEXT. On
+        # `html.escape` the CR came out literal, so a browser read a value the author never
+        # named, while the `cluster` beside it (an ATTRIBUTE) already kept its own characters.
+        block = kql_highlight.render_block("c.kusto.windows.net", "db", CR_LABEL,
+                                           "MyTable | take 1")
+        self.assertEqual(_text_a_browser_reads(block, "button"), CR_LABEL)
+        self.assertEqual(_attr_a_browser_reads(block, "data-cmh-copy"), "c.kusto.windows.net")
+
+    def test_a_deck_slide_built_from_json_keeps_a_cr_in_its_title_and_text(self):
+        fragment = pptx_to_fragment.slides_to_fragment([
+            {"title": CR_LABEL,
+             "content": [{"type": "text", "content": "body\rtext"}]},
+        ])
+        self.assertEqual(_text_a_browser_reads(fragment, "h2"), CR_LABEL)
+        self.assertEqual(_text_a_browser_reads(fragment, "p"), "body\rtext")
+
+    def test_a_deck_image_path_uses_the_attribute_escape_not_the_text_one(self):
+        # `esc` is now the TEXT rule, which leaves a `"` alone - in `src="..."` that would end
+        # the value and inject an attribute, so the image path must not go through it.
+        self.assertEqual(deck_common.esc('a"b'), 'a"b')
+        self.assertEqual(_browser_attrs.escape_attr_value('a"b'), "a&quot;b")
+
+
+class LabelNormalizationTests(unittest.TestCase):
+    """Where a destination deliberately differs, and why that is not escape drift."""
+
+    def test_the_lede_header_is_the_stripped_label_by_design(self):
+        # `ensure_doc_title` strips the label before writing the heading, so a leading or
+        # trailing CR reaches the `<h1>` as nothing while `data-doc-label` and `<title>` keep it.
+        # That is a DISPLAY normalization of a heading, not the escape disagreeing: all three
+        # destinations apply the same rule to the characters they are given.
+        with open(TEMPLATE, encoding="utf-8") as fh:
+            template = fh.read()
+        padded = "\rQ3 review\r"
+        content = new_document.ensure_doc_title("<section><h2 id=\"a\">Hi</h2><p>x</p></section>",
+                                                padded)
+        out = new_document.make_document(template, content, "cr-strip-doc", padded)
+        self.assertEqual(_attr_a_browser_reads(out, "data-doc-label"), padded)
+        self.assertEqual(_text_a_browser_reads(out, "title"), padded)
+        self.assertEqual(_text_a_browser_reads(out, "h1"), "Q3 review")
 
 
 def _brand_profile_module():

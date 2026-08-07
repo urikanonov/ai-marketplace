@@ -6,7 +6,6 @@ single content root, validates the result, and writes only after validation
 succeeds. Use upgrade.py for files that already contain commentable-html regions.
 """
 import argparse
-import html as _html
 from html.parser import HTMLParser
 import os
 import re

@@ -37,6 +37,7 @@ import zipfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import _browser_attrs  # noqa: E402
 import _atomic_io  # noqa: E402
 from deck_common import esc, slide_id  # noqa: E402
 
@@ -169,7 +170,10 @@ def slides_to_fragment(slides) -> str:
                 continue
             vetted = _safe_image_path(img.get("path"), i)
             if vetted:
-                images.append(f'  <img src="{esc(vetted)}" alt="">')
+                # An ATTRIBUTE, so the attribute escape - `esc` is the TEXT rule and leaves a
+                # `"` alone, which would end this value.
+                images.append(
+                    f'  <img src="{_browser_attrs.escape_attr_value(vetted)}" alt="">')
         if not (title or texts or images):
             raise ValueError(f"slide {i} has no title, text, or image content")
         sid = slide_id(title + "\n" + "\n".join(texts), taken)
