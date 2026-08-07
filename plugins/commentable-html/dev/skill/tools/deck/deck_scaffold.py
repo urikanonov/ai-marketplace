@@ -290,7 +290,7 @@ def _section_tags(fragment):
 
 
 def prepare_slides(fragment: str):
-    """Ensure every slide <section> has a stable data-slide-id and the first is .active.
+    """Ensure every slide <section> has a stable data-slide-id and ONLY the first is .active.
     Returns (rewritten_fragment, [slide_ids])."""
     sections = _section_tags(fragment)
     taken = set()
@@ -311,7 +311,20 @@ def prepare_slides(fragment: str):
         if sid:
             taken.add(sid)
     ids = []
-    first = True
+    # `_section_tags` walks the fragment the way a browser tokenizes it, so a `<section>` inside a
+    # comment or a raw-text body is already not here (#1197). A `<template>` SUBTREE is the one
+    # remaining gap: its tags ARE tokenized, but a browser renders the fragment nowhere and
+    # `deck_validate`'s structure scan does not count it - so letting a templated slide consume the
+    # FIRST-slide position would put `.active` on markup nothing shows and leave every real slide
+    # without it, which the deck contract then refuses (CMH-DECK-04). The answer comes from the
+    # gate's OWN parse, so the scaffold and the gate it must satisfy hold one reading.
+    slide_starts = [sec.start for sec in sections if _is_slide(sec.pairs)]
+    first_start = deck_validate.first_live_slide_offset(fragment)
+    if first_start not in slide_starts:
+        # The two readings disagree about where the first slide BEGINS. Degrade to the first slide
+        # this rewrite can actually reach rather than marking nothing active, which would emit a
+        # deck this tool's own gate then refuses.
+        first_start = slide_starts[0] if slide_starts else None
     out, cursor = [], 0
     for sec in sections:
         # The start tag is PARSED, not searched: a `class=` search matches one spelled inside
@@ -326,9 +339,17 @@ def prepare_slides(fragment: str):
         if not sid:
             sid = slide_id(_strip_tags(fragment[sec.tag_end:sec.inner_end]), taken)
         ids.append(sid)
-        if first and "active" not in classes:
-            classes.append("active")
-        first = False
+        # ONLY the first slide is `.active` (CMH-DECK-02). An input fragment that marks a LATER
+        # slide active is NORMALIZED rather than carried through: two active slides, or an active
+        # one that is not the first, is a deck that opens on the wrong slide, which the deck
+        # contract refuses (CMH-DECK-04). `visible` goes with it - the runtime toggles the two in
+        # lockstep and `viewport-base.css` shows a slide on EITHER, so a later slide left `visible`
+        # paints stacked over the slide the deck opens on.
+        if sec.start == first_start:
+            if "active" not in classes:
+                classes.append("active")
+        else:
+            classes = [c for c in classes if c not in ("active", "visible")]
         # The start tag is RE-SERIALIZED from the parsed attributes for EVERY slide, so the class
         # is written back in one canonical form and every value is re-escaped exactly once from its
         # DECODED form - escaping the raw text instead turned an authored `x&amp;y` into the

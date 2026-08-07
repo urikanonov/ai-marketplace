@@ -124,7 +124,8 @@ nested inside the stage (NOT a direct child of `#commentRoot`):
 <main id="commentRoot" ... data-cmh-mode="deck">
   <div class="deck-viewport">
     <div class="deck-stage">
-      <section class="slide" data-slide-id="slide-1a2b3c4d"> ... </section>
+      <section class="slide active" data-slide-id="slide-1a2b3c4d"> ... </section>
+      <section class="slide" data-slide-id="slide-5e6f7a8b"> ... </section>
       ...
     </div>
   </div>
@@ -132,7 +133,10 @@ nested inside the stage (NOT a direct child of `#commentRoot`):
 ```
 
 - Visibility is controlled by the `.active` / `.visible` classes (from `viewport-base.css`), never
-  `display:none`. Exactly one slide is `.active` at a time. Hidden slides stay in the DOM
+  `display:none`. Exactly one slide is `.active` at a time, and in a deck AT REST it is the FIRST
+  slide - that is what the deck opens on, and `deck_validate.deck_checks` refuses a deck where it
+  is not (CMH-DECK-04); no slide other than the first may carry `.visible` either, since a browser
+  shows a slide on either class. Hidden slides stay in the DOM
   (`visibility`, not `display`), so a comment highlight on a non-active slide is preserved and
   restores when that slide is shown.
 - `data-slide-id` is a **stable** id (see below). It is the durable identity the deck-aware jump
