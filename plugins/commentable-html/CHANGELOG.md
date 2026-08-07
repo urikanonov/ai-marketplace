@@ -33,6 +33,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   merely by verdicts: the runtime's own arm builder is evaluated in a real JS engine and compared
   character for character for every terminator set its callers use, so a widening can no longer
   land on one side and make the gate reject a file the exporter just produced.
+- Which characters END a CSS value is part of that shared arm, and two of those memberships are
+  load-bearing rather than cosmetic. An OPEN paren counts, because it bounds the arm's path scans at
+  a candidate boundary: without it a stylesheet of repeated `url(file:a` drove the readers quadratic
+  (1.1s at 39 KB, 17.2s at 156 KB, 69.3s at 312 KB), and since these readers run unanchored over
+  authored content - and the exporter runs its mirror of them to convergence in the reader's own
+  browser - that was a hung tab, not a slow test. ASCII tab, LF and CR deliberately do NOT count,
+  because they are exactly the characters the URL parser removes from anywhere in a value: treating
+  a tab as the end of a value fired the `localhost` exclusion on
+  `url("file://localhost<TAB>evil.example/x")`, whose host a browser reads as `localhostevil.example`
+  - the SMB beacon the gate is there to catch. Both are pinned by regression tests, the second in
+  both directions so the fail-closed over-detection it costs stays confined to absurd spellings.
+- The deck gate's DEGRADED fallback - the reading used when a broken or partial install cannot import
+  the shared CSS predicates - now recognizes `file:` too. It had been left at http/https and
+  scheme-relative, so the one path whose entire purpose is to fail closed would have blessed the very
+  beacon the shared reading catches. Like the rest of that fallback it carries no separator
+  arithmetic and no exclusions, so it over-reports a local `file:` reference as well; refusing a deck
+  is the safe direction when the reading that can tell them apart is unavailable.
 
 ## [1.821.0] - 2026-08-07
 

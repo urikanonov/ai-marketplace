@@ -213,14 +213,36 @@ _CSS_AT_SEP = CSS_WS + r"+|(?=['\"])"
 # `url(ftp://host/x)` or `@import "ws://host/t.css"` fetches nothing from a `file:` document.
 CSS_NETWORK_PREFIX = r"(?:https?:/*|/{2,})"
 CSS_HOST_CHAR = r"[^/?#'\")\t\n\f\r ]"
-# What ENDS a CSS value, as a character-class BODY: either quote character, the `)` that closes a
-# `url()` or an `image-set()`, CSS whitespace, and the `;`/`{`/`}` that end a declaration or a block
-# (the last three matter for the unquoted `@import` form and for the unterminated tokens a browser
-# still fetches). `CSS_HOST_CHAR` is deliberately NOT the same set - it also excludes the URL
-# STRUCTURE characters `/?#`, which end a host but not the value. This is what the shared `file:`
-# arm is parameterized by, so `url(file://localhost)` reads local: the `)` is the end of the value,
-# and reading on past it would report an author's local reference as egress.
-CSS_VALUE_STOP = r"'\");{}\t\n\f\r "
+# What ENDS a CSS value, as a character-class BODY: either quote character, the parens that open and
+# close a `url()` or an `image-set()`, CSS whitespace the URL parser KEEPS, and the `;`/`{`/`}` that
+# end a declaration or a block (the last three matter for the unquoted `@import` form and for the
+# unterminated tokens a browser still fetches). `CSS_HOST_CHAR` is deliberately NOT the same set - it
+# also excludes the URL STRUCTURE characters `/?#`, which end a host but not the value. This is what
+# the shared `file:` arm is parameterized by, so `url(file://localhost)` reads local: the `)` is the
+# end of the value, and reading on past it would report an author's local reference as egress.
+# Two membership decisions are load-bearing and were both measured, not assumed.
+# (1) The OPEN paren is in the set even though it cannot close a value. A `(` is not a legal
+# character in an UNQUOTED url token (CSS requires it escaped), so no reference loses a character to
+# it - and it BOUNDS the arm's two path scans at a candidate boundary. Without it the lazy
+# empty-path-segment scan re-ran from every `file:` start in the sheet, and because these readers are
+# `search`ed UNANCHORED over whole stylesheets - and the exporter's mirror runs its strips to
+# convergence IN THE READER'S BROWSER - a stylesheet of repeated `url(file:a` went quadratic:
+# 39 KB took 1.08s, 156 KB took 17.2s and 312 KB took 69.3s, against 0.005s for the same input
+# before this arm existed. With the `(` it is 0.005s at 312 KB. That is a hang in a reader's tab, so
+# the bound is a correctness property rather than a micro-optimization.
+# (2) ASCII TAB, LF and CR are deliberately NOT in the set, even though they are CSS whitespace and
+# do end an unquoted url token. They are exactly the three characters the URL parser REMOVES from
+# ANYWHERE in a value, so one can never be the genuine end of the value the parser sees: counting
+# `\t` as a terminator fired the `localhost` exclusion on `url("file://localhost<TAB>evil.example/x")`,
+# whose host the parser reads as `localhostevil.example` - a real remote SMB host the gate then
+# called local (measured; the same value's ATTRIBUTE spelling was reported all along, because that
+# path runs `normalize_url_value` first). The cost is over-detection in the fail-CLOSED direction,
+# and it is confined to absurd spellings - a parser-removed character sitting directly between the
+# excluded host and the end of the value (`url(file://localhost<TAB>)`) - while every realistic local
+# reference, including tab- and newline-padded ones, stays clean (corpus rows pin both directions).
+# U+000C FORM FEED and SPACE stay in the set: the parser does NOT remove either, so both really do
+# end a value.
+CSS_VALUE_STOP = r"'\"();{}\f "
 # The one place a CSS reader decides "this reference reaches the network". Both arms come from a
 # SHARED definition: http/https plus scheme-relative from `CSS_NETWORK_PREFIX`, and the `file:`
 # authority from `file_network_arm` - the SAME arm `NETWORK_URL_RE` reads, so the separator
@@ -2194,8 +2216,9 @@ def _file_host_is_local(netloc):
     A TRAILING DOT stays OUTSIDE the test: the special case is the exact string `localhost`, so
     `file://localhost./x` keeps a NON-EMPTY host and really is the SMB path `\\\\localhost.\\x`.
 
-    Both calls mirror what the egress predicate's `_PCT_LOCALHOST` / `_PCT_LOCALHOST_END` already
-    decide about the LOCALHOST spelling, so the two cannot disagree about it (pinned by
+    Both calls mirror what the egress predicate's `_PCT_LOCALHOST` and the terminator
+    `file_network_arm` builds around it already decide about the LOCALHOST spelling, so the two
+    cannot disagree about it (pinned by
     `tests/test_validate_nonshareable.py` - `test_file_host_locality_agrees_with_the_egress_predicate`).
     That parity is why `_file_url_to_path` runs `normalize_url_value` first: the predicate reads the
     value after the parser's own input cleanup, and without it a BACKSLASH host terminator

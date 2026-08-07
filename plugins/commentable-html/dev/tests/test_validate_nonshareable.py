@@ -1022,8 +1022,8 @@ class NonShareableTests(unittest.TestCase):
         # CMH-VAL-05 control: the file-host state special-cases the EXACT string `localhost`, and
         # `localhost.` is not it, so `file://localhost./x` keeps a NON-EMPTY host and really is the
         # SMB path `\\localhost.\x`. That is the call the egress predicate already makes
-        # (`_PCT_LOCALHOST_END`), so decoding the host must not fold the trailing-dot spelling -
-        # in any encoding - onto the local path.
+        # (the `_PCT_LOCALHOST` terminator `file_network_arm` builds), so decoding the host must not
+        # fold the trailing-dot spelling - in any encoding - onto the local path.
         from checks import resources as _r
         local = _r._file_url_to_path("file://localhost/dist/commentable-html.js")
         for spelling in ("file://localhost./dist/commentable-html.js",

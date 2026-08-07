@@ -861,6 +861,18 @@ class DeckValidateTests(unittest.TestCase):
                     self._assert_error(_inject(self.html, snippet), "remote CSS url()")
             self._assert_error(_inject(self.html, "<style>@import url(https:evil.example/x.css);</style>"),
                                "remote CSS @import")
+            # The degraded reading must fail CLOSED on a `file:` authority too. Leaving `file:` out
+            # of the fallback prefix made the broken-install path bless the very SMB beacon the
+            # shared reading exists to catch (issue #1230), which is a fail-OPEN in the one path
+            # whose whole purpose is to fail closed. It carries no separator arithmetic and no
+            # `localhost` exclusion, so it over-reports a LOCAL `file:` reference as well - that is
+            # this path's standing trade, asserted here so the over-inclusion is a decision and not
+            # a surprise.
+            for snippet in ('<div style="background:url(file://evil.example/bg.png)">x</div>',
+                            "<style>.x{background:url(file:////evil.example/bg.png)}</style>",
+                            '<div style="background:url(file:///C:/local.png)">x</div>'):
+                with self.subTest(snippet=snippet, degraded_file=True):
+                    self._assert_error(_inject(self.html, snippet), "remote CSS url()")
             for snippet in ('<div style="background:url(assets/bg.png)">x</div>',
                             "<style>@import url(local.css);</style>",
                             '<div style="background:image-set(\'local.png\' 1x)">x</div>'):

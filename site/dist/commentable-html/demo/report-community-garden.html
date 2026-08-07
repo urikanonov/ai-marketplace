@@ -20093,10 +20093,17 @@ const _OFF_CSS_WS = "[\\t\\n\\f\\r ]";
 const _OFF_CSS_NET = "(?:https?:\\/*|\\/{2,})";
 // One host character, the same approximation the validator's `_CSS_HOST_CHAR` makes.
 const _OFF_CSS_HOST = "[^/?#\"')\\t\\n\\f\\r ]";
-// What ENDS a CSS value, as a character-class BODY: either quote, the `)` that closes a `url()` or
-// an `image-set()`, CSS whitespace, and the `;`/`{`/`}` that end a declaration or a block. Mirrors
-// the validator's `CSS_VALUE_STOP` and is pinned to it as text.
-const _OFF_CSS_VALUE_STOP = "'\\\");{}\\t\\n\\f\\r ";
+// What ENDS a CSS value, as a character-class BODY: either quote, the parens that open and close a
+// `url()` or an `image-set()`, the CSS whitespace the URL parser KEEPS, and the `;`/`{`/`}` that end
+// a declaration or a block. Mirrors the validator's `CSS_VALUE_STOP` and is pinned to it as text.
+// The OPEN paren is in the set because it BOUNDS the arm's path scans at a candidate boundary: these
+// strips run UNANCHORED, with a `g` flag, to convergence, in the READER'S BROWSER, and without it a
+// stylesheet of repeated `url(file:a` went quadratic (156 KB took 17.2s) - a hung tab. ASCII TAB, LF
+// and CR are deliberately OUT: they are the three characters the URL parser removes from anywhere,
+// so one can never be the true end of a value, and counting `\t` let
+// `url("file://localhost<TAB>evil.example/x")` - host `localhostevil.example` to the parser - read as
+// the excluded `localhost`. Form feed and space stay: the parser removes neither.
+const _OFF_CSS_VALUE_STOP = "'\\\"();{}\\f ";
 // Where a CSS reference is decided to reach the network: the http/https and scheme-relative prefix
 // plus one host character, OR the SHARED `file:` authority arm - the same one the URL predicate
 // above reads, so a stylesheet and an attribute cannot answer differently about `file://host/x`

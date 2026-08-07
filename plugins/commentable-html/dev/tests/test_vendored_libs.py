@@ -2760,6 +2760,14 @@ class RuntimeParityTests(unittest.TestCase):
         ("file://", False),
         ("file:///", False),
         ("theme/x.png", False),
+        # The parser-removed characters, which the ATTRIBUTE path strips through
+        # `normalize_url_value` before testing. The CSS readers do not normalize, so they can only
+        # agree here by refusing to treat one as the end of a value - see `CSS_VALUE_STOP`. Only the
+        # TAB spelling is listed: a raw LF or CR inside a CSS string is a BAD-STRING token (and
+        # inside an unquoted `url()` a bad-url token), so a browser drops that declaration and
+        # fetches nothing, which is a legitimate CSS-tokenization divergence from an attribute value
+        # rather than a gap in the shared arm.
+        ("file://localhost\tevil.example/x.png", True),
     ]
 
     def test_the_css_readers_and_the_attribute_predicate_agree_about_a_file_authority(self):
@@ -2807,6 +2815,45 @@ class RuntimeParityTests(unittest.TestCase):
                 resources.CSS_NETWORK_START, pattern,
                 "%s is no longer assembled from CSS_NETWORK_START, so it can be widened - or left "
                 "behind - on its own. Every CSS reader must ask the one shared decision." % name)
+
+    def test_the_css_readers_stay_linear_on_a_pathological_stylesheet(self):
+        """A stylesheet cannot make a CSS reader take super-linear time.
+
+        These readers are `search`ed UNANCHORED over whole `<style>` bodies, `style=` attributes and
+        nested `srcdoc` documents, and the exporter runs its MIRROR of them with a `g` flag to
+        convergence inside the reader's browser - so a super-linear pattern is a hung tab on a
+        document the recipient merely opened, not a slow CI job. The shared `file:` arm carries two
+        path scans (a lookahead and a lazy run); when nothing bounded them at a candidate boundary,
+        a sheet of repeated `url(file:a` measured 1.08s at 39 KB, 17.2s at 156 KB and 69.3s at
+        312 KB - textbook quadratic, and reachable from authored content (found by the round-1
+        multi-duck panel). The `(` in `CSS_VALUE_STOP` is what bounds them.
+
+        Asserted as a RATIO between two sizes rather than an absolute wall-clock, so a slow or
+        contended CI runner cannot make it flaky: quadratic growth is 4x per doubling and cannot hide
+        inside the generous ceiling below, while linear growth stays near 2x.
+        """
+        def elapsed(pattern, text):
+            best = None
+            for _ in range(3):
+                start = time.perf_counter()
+                pattern.search(text)
+                took = time.perf_counter() - start
+                best = took if best is None else min(best, took)
+            return best
+
+        for name in ("CSS_NETWORK_URL_RE", "CSS_NETWORK_IMPORT_RE", "CSS_NETWORK_IMAGE_SET_RE"):
+            pattern = getattr(resources, name)
+            small = elapsed(pattern, "url(file:a" * 8000)
+            large = elapsed(pattern, "url(file:a" * 32000)
+            # A 4x longer input may take at most 12x as long (linear is 4x; quadratic is 16x).
+            # The floor keeps the ratio meaningful when both runs are near the clock's resolution.
+            self.assertLess(
+                large, max(small * 12, 0.5),
+                "%s took %.3fs on a 312 KB pathological stylesheet against %.3fs on a 78 KB one, "
+                "which is super-linear growth. These patterns run unanchored over authored content "
+                "and the exporter's mirror runs them in the reader's browser, so this is a hang, "
+                "not a slow test. Keep every path scan in the shared file: arm bounded at a "
+                "candidate boundary (see CSS_VALUE_STOP)." % (name, large, small))
 
     def test_the_python_and_js_network_url_predicates_agree(self):
         """Run the runtime's own network-URL predicate in node and require the expected verdicts.
@@ -3090,6 +3137,26 @@ class RuntimeParityTests(unittest.TestCase):
         ('@import "file:///theme/t.css";', False),
         ("@import url(file:///theme/t.css);", False),
         ('@import "file://localhost/theme/t.css";', False),
+        # A parser-REMOVED character (ASCII tab) between the excluded `localhost` and the rest of
+        # the host. The URL parser deletes it from anywhere, so the host is really
+        # `localhostevil.example` - an off-machine SMB load - and treating the tab as the end of the
+        # value fired the `localhost` exclusion and blessed the beacon (found by the round-1
+        # multi-duck panel; the byte-identical ATTRIBUTE spelling was reported all along, because
+        # that path runs `normalize_url_value` first). These rows are why `CSS_VALUE_STOP` carries
+        # neither `\t`, `\n` nor `\r`. The tab is the spelling a browser really fetches: a raw LF or
+        # CR in the same position makes a bad-string (or bad-url) token whose declaration is dropped,
+        # so reporting those is over-detection rather than a fetch, and only this one is pinned as a
+        # load.
+        ('a { background: url("file://localhost\tevil.example/x.png"); }', True),
+        ('@import "file://localhost\tevil.example/t.css";', True),
+        # ... and the cost of leaving them out, pinned so it stays confined to absurd spellings: a
+        # value that ENDS at one of those characters is over-reported, in the fail-CLOSED direction.
+        # Every realistic local reference - including the tab- and space-padded ones below - stays
+        # clean, which is the property that matters.
+        ("a { background: url(file://localhost\t); }", True),
+        ('a { background: url("\tfile:///C:/x.png"); }', False),
+        ("a { background: url( file://localhost/x.png ); }", False),
+        ("a { background: url(file://localhost/x.png\t); }", False),
     ]
 
     def _runtime_css_strip_source(self):
