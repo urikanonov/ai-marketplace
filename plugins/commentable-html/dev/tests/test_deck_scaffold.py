@@ -285,15 +285,15 @@ class DeckScaffoldTests(unittest.TestCase):
             prepared, sids = deck_scaffold.prepare_slides(
                 "<section %s><p>x</p></section>" % attrs)
             self.assertEqual(len(sids), 1, attrs)
-            m = deck_scaffold.SECTION_RE.search(prepared)
-            self.assertIsNotNone(m, attrs)
+            secs = deck_scaffold._section_tags(prepared)
+            self.assertEqual(len(secs), 1, attrs)
             # BOTH sides are read the way a browser reads them - an absent value IS the empty
             # string - so this pins the round trip itself and not the spelling that achieves it.
             # An authored EMPTY value collapses into the same bucket, which is the point: the two
             # are one attribute to a browser and must come back as one. The expected class is
             # DERIVED from the input's own tokens, so a case whose class is not exactly `slide`
             # does not fail for a reason unrelated to fusion.
-            got = norm(_browser_attrs.raw_attrs_pairs(m.group(1)))
+            got = norm(secs[0].pairs)
             in_pairs = norm(_browser_attrs.raw_attrs_pairs(attrs))
             classes = _browser_attrs.html_ws_tokens(
                 next(v for n, v in in_pairs if n == "class"))
@@ -312,7 +312,7 @@ class DeckScaffoldTests(unittest.TestCase):
             # `data-slide-id`, since nothing is appended after it - while `name=""` is the same
             # attribute to a browser in every position.
             self.assertEqual(
-                m.group(1),
+                secs[0].attrs,
                 "".join(' %s="%s"' % (n, _html.escape(v, quote=True)) for n, v in got), attrs)
         # End to end, through both gates: the fix makes the scaffold emit an attribute literally
         # NAMED `=onload`, so pin that the base validator and the deck contract still accept it and
@@ -323,6 +323,235 @@ class DeckScaffoldTests(unittest.TestCase):
             '<section class="slide" data-a/=onload><p>x</p></section>\n', encoding="utf-8")
         out = self._make("--content", frag, "--force")
         self.assertIn('<section class="slide active" data-a="" =onload="" data-slide-id=', out)
+
+    def test_a_slide_start_tag_ends_where_the_shared_reading_ends_it(self):
+        # #1197, direction one. HTML opens a quoted attribute value only AFTER an `=`, and its
+        # attribute-NAME state takes a stray `"` straight into the name - so
+        # `<section class="slide" a"b>` is a real slide carrying an attribute literally named
+        # `a"b`, and the shared start-tag scan ends it at that `>`. The scaffold's own
+        # quote-aware `<section ...>` regex opened a quoted run at ANY quote instead, ran past
+        # the tag's own `>` hunting for a closing one, and SKIPPED the slide entirely: it got no
+        # `data-slide-id` and `.active` landed on slide TWO.
+        frag = ('<section class="slide" a"b><h2>One</h2></section>\n'
+                '<section class="slide"><h2>Two</h2></section>\n'
+                '<section class="slide"><h2>Three</h2></section>\n')
+        # Pinned against the shared reading rather than against this test's own opinion of HTML.
+        self.assertEqual(_browser_attrs.scan_start_tag(frag, 0)[0], frag.index(">") + 1)
+        prepared, ids = deck_scaffold.prepare_slides(frag)
+        self.assertEqual(len(ids), 3, prepared)
+        self.assertEqual(len(set(ids)), 3, ids)
+        first = prepared.split("</section>")[0]
+        self.assertIn('class="slide active"', first)
+        self.assertIn('data-slide-id="%s"' % ids[0], first)
+        self.assertEqual(prepared.count("active"), 1, prepared)
+        # The attribute a browser sees survives the round trip, named exactly as authored.
+        self.assertIn('a"b=""', first)
+        # End to end: all three slides reach the written deck, and the deck contract passes.
+        content = os.path.join(self.tmp, "quoteinname.html")
+        Path(content).write_text(frag, encoding="utf-8")
+        html = self._make("--content", content)
+        self.assertEqual(len(re.findall(r'data-slide-id="([^"]+)"', html)), 3)
+
+    def test_a_start_tag_a_browser_discards_never_becomes_a_live_slide(self):
+        # #1197, direction two, and the one worth closing: `<section class=slide foo" bar="x>`
+        # reaches the end of the input inside a quoted value, so HTML5's eof-in-tag error
+        # DISCARDS the whole tag - a browser builds no `<section>` here at all. The quote-aware
+        # regex matched it anyway and the rewrite RE-SERIALIZED it into a well-formed
+        # `<section class="slide active" foo"="" bar="" data-slide-id=...>` that the deck contract
+        # then passed: markup a browser throws away turned into a live slide, with nothing able to
+        # tell. It must stay exactly as authored, and the scaffold must fail closed.
+        frag = '<section class=slide foo" bar="x><h2>Ghost</h2></section>\n'
+        self.assertIsNone(_browser_attrs.scan_start_tag(frag, 0))
+        prepared, ids = deck_scaffold.prepare_slides(frag)
+        self.assertEqual(ids, [])
+        self.assertEqual(prepared, frag)
+        # The walk ABORTS at that tag rather than skipping it: a browser discards the tag AND
+        # every character after the opening quote, so a later `<section class=slide>` is inside a
+        # value a browser never leaves and is not a slide either. Pinning it with a SECOND section
+        # is what distinguishes abort from skip - a refactor to `continue` past the ghost would
+        # resurrect slides a browser never builds and would otherwise pass every test. The trailing
+        # markup carries NO quote, because a later `"` would CLOSE the runaway value and make this
+        # one long, perfectly real start tag instead - which is what a browser does with it too,
+        # and is why the eof-in-tag drop is a property of the whole fragment, not of the tag alone.
+        two = frag + "<section class=slide><h2>Real</h2></section>\n"
+        self.assertIsNone(_browser_attrs.scan_start_tag(two, 0))
+        prepared_two, ids_two = deck_scaffold.prepare_slides(two)
+        self.assertEqual(ids_two, [])
+        self.assertEqual(prepared_two, two)
+        content = os.path.join(self.tmp, "ghost.html")
+        Path(content).write_text(frag, encoding="utf-8")
+        proc = _scaffold(self.out, "--content", content)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("no <section", proc.stderr)
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_a_custom_element_named_like_a_section_is_not_a_section(self):
+        # HTML terminates a tag name at ASCII whitespace, `/` or `>` and folds it ASCII-ONLY, so
+        # `<section-foo>` and `<\u017fection>` are CUSTOM ELEMENTS. The old `<section\b` matched
+        # the first (a `-` ends a word) and Python's `re.IGNORECASE` - which folds UNICODE - the
+        # second, and the rewrite emitted a real `<section>` in place of each: an element the
+        # input never had, with the authored `</section-foo>` / `</\u017fection>` left behind as
+        # an unknown end tag, so the phantom slide never closed and swallowed the real one.
+        for tag in ("section-foo", "\u017fection", "sect\u0130on", "sect\u0131on"):
+            frag = ('<%s class="slide"><p>x</p></%s>\n'
+                    '<section class="slide"><p>y</p></section>\n' % (tag, tag))
+            prepared, ids = deck_scaffold.prepare_slides(frag)
+            self.assertEqual(len(ids), 1, tag)
+            self.assertIn('<%s class="slide"><p>x</p></%s>' % (tag, tag), prepared, tag)
+            self.assertIn('<section class="slide active" data-slide-id="%s"><p>y</p></section>'
+                          % ids[0], prepared, tag)
+
+    def test_an_end_tag_ends_where_html_ends_it(self):
+        # A browser ends an end tag at the first `>` OUTSIDE a quoted value, and it ignores (but
+        # still TOKENIZES) any attributes on it - so `</section >` and `</section foo="a>b">` both
+        # close the slide. A literal `</section>` search refuses them, and because the walk stops
+        # when a section never closes, ONE such end tag left every later slide unscaffolded and
+        # failed the whole deck on the contract - a benign document rejected.
+        for close in ("</section >", "</section\n>", '</section foo="a>b">', "</SECTION>"):
+            frag = ('<section class="slide"><p>x</p>%s\n'
+                    '<section class="slide"><p>y</p></section>\n' % close)
+            prepared, ids = deck_scaffold.prepare_slides(frag)
+            self.assertEqual(len(ids), 2, close)
+            self.assertIn('<section class="slide active" data-slide-id="%s"><p>x</p>%s'
+                          % (ids[0], close), prepared, close)
+
+    def test_a_section_spelled_inside_another_tags_attribute_value_is_not_a_slide(self):
+        # The walk consumes every tag's WHOLE extent, so a `<section>` or `</section>` written
+        # inside another tag's quoted attribute value is part of that value and never a candidate.
+        # A raw search saw both: it would rewrite the decoy - inserting double quotes that break
+        # the tag hosting it - and, for the closing one, end the real slide early.
+        frag = ('<div title="<section class=\'slide\' a\'b>fake</section>">t</div>'
+                '<section class="slide"><p>real</p></section>')
+        prepared, ids = deck_scaffold.prepare_slides(frag)
+        self.assertEqual(len(ids), 1)
+        self.assertIn('<div title="<section class=\'slide\' a\'b>fake</section>">t</div>', prepared)
+        self.assertIn('<section class="slide active" data-slide-id="%s"><p>real</p></section>'
+                      % ids[0], prepared)
+        frag = '<section class="slide"><div title="</section>">x</div></section>'
+        prepared, ids = deck_scaffold.prepare_slides(frag)
+        self.assertEqual(len(ids), 1)
+        self.assertIn('<div title="</section>">x</div></section>', prepared)
+
+    def test_a_start_tag_the_shared_tokenizer_stops_short_of_is_left_alone(self):
+        # The rewrite re-serializes the start tag from the tokenizer's pairs, so a tokenization
+        # that stopped BEFORE the tag's close would write the tag back with every attribute past
+        # that point silently deleted. The two shared readings agree on every shape found today,
+        # so this pins the guard itself: told the region was not fully consumed, the scaffold
+        # treats the section as if it were not there - no id reserved, no id minted, no rewrite -
+        # which fails the deck closed instead of writing a mangled slide.
+        frag = '<section class="slide" data-keep="v"><p>x</p></section>'
+        real = _browser_attrs.raw_attrs_pairs_consumed(' class="slide" data-keep="v"')
+        self.assertTrue(real[1], "the shapes below no longer diverge; this guard is unpinned")
+        with mock.patch.object(_browser_attrs, "raw_attrs_pairs_consumed",
+                               lambda attrs: (real[0], False)):
+            prepared, ids = deck_scaffold.prepare_slides(frag)
+        self.assertEqual(ids, [])
+        self.assertEqual(prepared, frag)
+
+    def test_the_partial_install_locates_a_slide_where_the_shared_reading_does(self):
+        # The degraded start-tag scan is a pinned COPY, not a pattern, for the same reason the
+        # value decode and the NUL fold are: the scaffold RE-SERIALIZES the start tag it locates,
+        # so a boundary drawn any other way on a partial install is not read differently - it is
+        # WRITTEN into the deck. Both #1197 directions must come out the same either way.
+        self.assertIsNotNone(_browser_attrs._shared_scan_start_tag,
+                             "this host has no shared reading, so the parity check below would "
+                             "compare the degraded answer with itself")
+        self.assertIsNotNone(_browser_attrs._shared_end_tag_close)
+        self.assertIsNotNone(_browser_attrs._shared_comment_close)
+        cases = ('<section class="slide" a"b><h2>One</h2></section>\n'
+                 '<section class="slide"><h2>Two</h2></section>',
+                 '<section class=slide foo" bar="x><h2>Ghost</h2></section>',
+                 '<section-foo class="slide"><p>x</p></section-foo>'
+                 '<section class="slide"><p>y</p></section>',
+                 '<\u017fection class="slide"><p>x</p></\u017fection>'
+                 '<section class="slide"><p>y</p></section>',
+                 '<section class="slide"><p>x</p></section foo="a>b">',
+                 '<div title="<section class=\'slide\' a\'b>fake</section>">t</div>'
+                 '<section class="slide"><p>real</p></section>',
+                 '<!-- <a href="x -->\n<section class="slide">A</section>'
+                 '<section class="slide">B</section>',
+                 '<script>x = "unclosed;</script><section class="slide">A</section>')
+        for frag in cases:
+            shared = deck_scaffold.prepare_slides(frag)
+            with _partial_install():
+                self.assertEqual(deck_scaffold.prepare_slides(frag), shared, frag)
+
+    def test_a_section_inside_a_comment_or_raw_text_is_not_markup(self):
+        # A COMMENT and a raw-text `<script>` / `<style>` / `<textarea>` body are PROSE: markup
+        # written there is text a reader sees, never an element. Tokenizing in one does not merely
+        # find a decoy - a commented-out or scripted tag carrying an unterminated quoted value
+        # runs a start-tag scan through everything after it, so the real slide that follows is
+        # consumed inside the pseudo-tag's extent and DISAPPEARS. That loss is silent whenever the
+        # lost slide already carries a `data-slide-id` (every slide `pptx_to_fragment` emits does),
+        # because the deck contract then has nothing to object to.
+        for label, before in (
+                ("comment", '<!-- <a href="x -->\n'),
+                ("script", '<script>if(a<b) x = "unclosed;</script>\n'),
+                ("style", '<style>/* x = " */</style>\n'),
+                ("textarea", '<textarea>x<y z = "q</textarea>\n')):
+            frag = before + ('<section class="slide">A</section>\n'
+                             '<section class="slide">B</section>\n')
+            prepared, ids = deck_scaffold.prepare_slides(frag)
+            self.assertEqual(len(ids), 2, label)
+            self.assertIn(before, prepared, label)
+            self.assertEqual(prepared.count("active"), 1, label)
+        # ...and the plain decoy: a slide written inside a comment is not a slide, so it neither
+        # takes `.active` nor reserves the id its own body would mint.
+        frag = ('<!-- <section class="slide">draft</section> -->\n'
+                '<section class="slide">real</section>')
+        prepared, ids = deck_scaffold.prepare_slides(frag)
+        self.assertEqual(len(ids), 1)
+        self.assertIn('<!-- <section class="slide">draft</section> -->', prepared)
+        # An UNTERMINATED comment runs to the end of the input, so everything after it is comment
+        # data and there is no slide at all - which fails the deck closed rather than scaffolding
+        # markup a browser never renders.
+        frag = ('<!-- <section class="slide">draft</section>\n'
+                '<section class="slide">real</section>')
+        self.assertEqual(deck_scaffold.prepare_slides(frag), (frag, []))
+
+    def test_a_section_inside_a_declaration_or_bogus_comment_is_not_markup(self):
+        # A `<` that is not followed by an ASCII letter opens something that is NOT an element: a
+        # markup declaration (`<!DOCTYPE ...>`) or a BOGUS COMMENT (`<?...`, a `<!` that is not a
+        # comment, a `</` with no tag name), each of which a browser ends at its first `>`. A
+        # `<section class="slide">` written inside one is a decoy - rewriting it would mint an id
+        # for an element the document does not have and hand it `.active`, and the deck contract
+        # would not object because it does not gate WHICH slide is active (#1218).
+        real = '<section class="slide">real</section>'
+        for label, before in (("doctype", "<!DOCTYPE html>\n"),
+                              ("pi", '<?xml <section class="slide">decoy</section> ?>\n'),
+                              ("bang", '<!x <section class="slide">decoy</section>>\n'),
+                              ("slash", '</ <section class="slide">decoy</section>>\n'),
+                              # `<![CDATA[` is character data only inside FOREIGN content, and the
+                              # walk keeps no namespace stack, so it reads as the bogus comment it
+                              # is in the HTML namespace - which still refuses the decoy.
+                              ("cdata", '<svg><![CDATA[<section class="slide">decoy</section>]]>'
+                                        "</svg>")):
+            prepared, ids = deck_scaffold.prepare_slides(before + real)
+            self.assertEqual(len(ids), 1, label)
+            self.assertIn(before, prepared, label)          # left exactly as authored
+            self.assertEqual(prepared.count("data-slide-id"), 1, label)
+            self.assertIn('<section class="slide active" data-slide-id="%s">real</section>'
+                          % ids[0], prepared, label)
+        # A DOCTYPE is ordinary deck-fragment furniture and must not cost a slide.
+        prepared, ids = deck_scaffold.prepare_slides(
+            "<!DOCTYPE html>\n" + real + '<section class="slide">two</section>')
+        self.assertEqual(len(ids), 2)
+
+    def test_a_nested_section_is_body_content_not_a_slide(self):
+        # The FIRST `</section>` closes a section, as the non-greedy regex this replaces did. That
+        # is a deliberate divergence from a browser (which NESTS sections), and it is what keeps a
+        # slide's body - and so the id minted from it - the same text the old scan hashed. A walk
+        # that matched closers to openers instead would leave the slide COUNT unchanged and every
+        # gate green while silently renaming the first slide, so the body is pinned, not the count.
+        frag = ('<section class="slide">a<section>b</section>c</section>'
+                '<section class="slide">z</section>')
+        secs = deck_scaffold._section_tags(frag)
+        self.assertEqual(len(secs), 2)
+        self.assertEqual(frag[secs[0].tag_end:secs[0].inner_end], "a<section>b")
+        prepared, ids = deck_scaffold.prepare_slides(frag)
+        self.assertEqual(ids[0], slide_id(deck_scaffold._strip_tags("a<section>b"), set()))
+        self.assertIn('<section class="slide active" data-slide-id="%s">a<section>b</section>'
+                      % ids[0], prepared)
 
     def test_a_non_slide_section_does_not_reserve_a_slide_id(self):
         # Only a SLIDE's id is reserved. `deck_validate` reads ids from `section.slide` alone, so

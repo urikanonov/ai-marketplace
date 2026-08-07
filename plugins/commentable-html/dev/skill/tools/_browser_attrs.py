@@ -26,13 +26,18 @@ optional-tool import in the skill is. What degrades is narrower than it once was
 path: in the RAW start-tag attribute reading (`raw_attrs_pairs` / `raw_attrs_class_tokens`) the
 value DECODE, the NUL fold and the attribute-name ASCII fold are the shared rules, applied from
 pinned local copies, because two callers (`deck/deck_scaffold.py`, `kusto/kql_highlight.py`)
-RE-SERIALIZE a start tag from what they read and so write any difference into the document.
-Everything else still degrades to the host: the PARSED views (`attrs()` / `attrs_dict()` /
-`StartTagParser`) fall back to the host's own `HTMLParser` and its attribute list, `ascii_lower()`
-and `_FallbackTagNames._browser_tag()` fall back to Python's UNICODE `.lower()` (so the clause-7 tag
-name differential above is back on that path), and a start tag's EXTENT is decided by pattern rather
-than by the vendored character-by-character scan, so the eof-in-tag error an unterminated quoted
-value earns is not applied.
+RE-SERIALIZE a start tag from what they read and so write any difference into the document. The
+three boundary readings a source-text WALK needs are pinned copies for the same reason - the
+start-tag extent (`scan_start_tag`), the end-tag close (`end_tag_close`) and the comment close
+(`comment_close`) - since the deck scaffold LOCATES the slide it rewrites with them and SPLICES
+the document at what they return, so a boundary drawn any other way is written back rather than
+merely read; `raw_text_elements()` likewise hands back the shared set itself. Everything else
+still degrades to the host: the PARSED views (`attrs()` / `attrs_dict()` / `StartTagParser`) fall
+back to the host's own `HTMLParser` and its attribute list, `ascii_lower()` and
+`_FallbackTagNames._browser_tag()` fall back to Python's UNICODE `.lower()` (so the clause-7 tag
+name differential above is back on that path), and a start tag's extent WITHIN those parsed views
+is decided by whichever regex the host ships rather than by the vendored character-by-character
+scan, so the eof-in-tag error an unterminated quoted value earns is not applied there.
 """
 import html as _html
 import os
@@ -188,10 +193,15 @@ _shared_link_href_is_set = getattr(_parsing, "link_href_is_set", None)
 
 
 _shared_class_tokens = getattr(_parsing, "class_tokens", None)
+_shared_comment_close = getattr(_parsing, "comment_close", None)
+_shared_end_tag_close = getattr(_parsing, "end_tag_close", None)
 _shared_html_ws_tokens = getattr(_parsing, "html_ws_tokens", None)
 _shared_raw_attrs_class_tokens = getattr(_parsing, "raw_attrs_class_tokens", None)
 _shared_raw_attrs_pairs = getattr(_parsing, "raw_attrs_pairs", None)
+_shared_raw_attrs_pairs_consumed = getattr(_parsing, "raw_attrs_pairs_consumed", None)
+_shared_raw_text_elements = getattr(_parsing, "raw_text_elements", None)
 _shared_raw_text_spans = getattr(_parsing, "raw_text_spans", None)
+_shared_scan_start_tag = getattr(_parsing, "scan_start_tag", None)
 _shared_tag_names = getattr(_parsing, "BrowserTagNames", None)
 
 # The fallback's copy of the shared attribute-list split, for a partial install only. HTML tokenizes
@@ -304,19 +314,145 @@ def _fallback_fold_nul(text):
     return text.replace("\x00", "\ufffd") if "\x00" in text else text
 
 
+# The fallback's copy of the shared START-TAG SCAN's character classes and of the scan itself, for
+# a partial install only, pinned to `checks/parsing`'s (the classes as TEXT, the scan
+# answer-for-answer) by parity tests. This one is a copy rather than a degradation because the
+# caller that needs it - the deck scaffold's slide locator - RE-SERIALIZES the start tag it finds:
+# a boundary drawn any other way does not merely read the document differently, it writes that
+# difference back, either skipping a slide a browser builds or promoting markup a browser discards
+# (#1197).
+_FALLBACK_TAG_WS = "\t\n\r\f "
+_FALLBACK_TAG_WS_SLASH = "\t\n\r\f /"
+_FALLBACK_TAG_NAME_STOP = "\t\n\r\f />"
+_FALLBACK_ATTR_NAME_STOP = "\t\n\r\f /=>"
+_FALLBACK_UNQUOTED_VALUE_STOP = "\t\n\r\f >"
+
+
+def _fallback_scan_start_tag(rawdata, i):
+    """The extent of the start tag opening at `i`, scanned HTML5's way - the shared reading's
+    `checks/parsing._scan_start_tag`, for a partial install.
+
+    Character by character rather than by one regex for the reason the shared scan gives: the "a
+    quote only opens a value AFTER `=`" rule needs nested alternation to express, which backtracks
+    exponentially on a hostile document. The tag name is folded ASCII-ONLY here rather than through
+    `ascii_lower`, whose own fallback degrades to Python's UNICODE `.lower()` under exactly this
+    condition (U+212A would become a `k`).
+    """
+    n = len(rawdata)
+    j = i + 1
+    name_start = j
+    while j < n and rawdata[j] not in _FALLBACK_TAG_NAME_STOP:
+        j += 1
+    tag = _fallback_fold_nul(_FALLBACK_ASCII_UPPER_RE.sub(
+        lambda m: m.group(0).lower(), rawdata[name_start:j]))
+    while True:
+        slash = False
+        while j < n and rawdata[j] in _FALLBACK_TAG_WS_SLASH:
+            slash = rawdata[j] == "/"
+            j += 1
+        if j >= n:
+            return None
+        if rawdata[j] == ">":
+            return j + 1, tag, slash
+        j += 1
+        while j < n and rawdata[j] not in _FALLBACK_ATTR_NAME_STOP:
+            j += 1
+        k = j
+        while k < n and rawdata[k] in _FALLBACK_TAG_WS:
+            k += 1
+        if k >= n:
+            return None
+        if rawdata[k] != "=":
+            continue
+        k += 1
+        while k < n and rawdata[k] in _FALLBACK_TAG_WS:
+            k += 1
+        if k >= n:
+            return None
+        quote = rawdata[k]
+        if quote in "\"'":
+            close = rawdata.find(quote, k + 1)
+            if close < 0:
+                return None
+            j = close + 1
+            continue
+        if quote == ">":
+            return k + 1, tag, False
+        while k < n and rawdata[k] not in _FALLBACK_UNQUOTED_VALUE_STOP:
+            k += 1
+        if k >= n:
+            return None
+        j = k
+
+
+def _fallback_end_tag_close(rawdata, i):
+    """Index just past the `>` that ends the tag starting at `i`, or -1 if it never closes - the
+    shared reading's `checks/parsing._end_tag_close`, for a partial install.
+
+    A browser ends a tag at the first `>` that is not inside a QUOTED ATTRIBUTE VALUE, and a
+    quoted value only begins AFTER `=`, so a bare quote where an attribute NAME belongs does not
+    swallow the `>`. Copied rather than degraded for the reason the start-tag scan above is: the
+    caller SPLICES the document at the boundary this returns.
+    """
+    n = len(rawdata)
+    j = i
+    while j < n:
+        c = rawdata[j]
+        if c == ">":
+            return j + 1
+        if c == "=":
+            j += 1
+            while j < n and rawdata[j] in " \t\n\r\f":
+                j += 1
+            if j < n and rawdata[j] in "\"'":
+                k = rawdata.find(rawdata[j], j + 1)
+                if k < 0:
+                    return -1
+                j = k + 1
+            continue
+        j += 1
+    return -1
+
+
+# The fallback's copy of the shared COMMENT boundary and RAW-TEXT element set, pinned to
+# `checks/parsing`'s (the patterns and the set as TEXT, the close answer-for-answer) by parity
+# tests. A walk that consumes every tag must skip both wholesale or it tokenizes inside prose: a
+# tag-shaped string in a comment or a `<script>` body is text a reader SEES, and one carrying an
+# unterminated quoted value would run a start-tag scan straight through the live markup after it.
+_FALLBACK_COMMENT_CLOSE_RE = _re.compile(r"--!?>")
+_FALLBACK_COMMENT_ABRUPT_CLOSE_RE = _re.compile(r"-?>")
+_FALLBACK_RAW_TEXT_ELEMENTS = frozenset((
+    "script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript",
+    "plaintext",
+))
+
+
+def _fallback_comment_close(rawdata, i):
+    """Index just past the comment opening at `i`, or the END of the input when it never closes -
+    the shared reading's `checks/parsing._comment_close`, for a partial install."""
+    m = (_FALLBACK_COMMENT_ABRUPT_CLOSE_RE.match(rawdata, i + 4)
+         or _FALLBACK_COMMENT_CLOSE_RE.search(rawdata, i + 4))
+    return m.end() if m else len(rawdata)
+
+
 def _fallback_attr_pairs(attrs):
     """A degraded `(name, value)` split of a RAW start-tag attribute string, in order.
-
     Walked over the same synthetic `<x ...>` wrapper the shared reader uses (see
     `raw_attrs_class_tokens`), so a caller holding only the attribute text is served. The name is
     folded ASCII-ONLY here rather than through `ascii_lower`, whose own fallback degrades to
     Python's UNICODE `.lower()` under exactly this condition - that fold maps U+212A onto `k` and
     U+017F onto `s`, so `cla\u017f\u017f=` would become a real `class=`.
     """
+    return _fallback_attr_pairs_consumed(attrs)[0]
+
+
+def _fallback_attr_pairs_consumed(attrs):
+    """`_fallback_attr_pairs(attrs)` paired with whether the split CONSUMED the whole region -
+    the degraded copy of the shared `raw_attrs_pairs_consumed`."""
     raw = "<x " + (attrs or "") + ">"
     m = _FALLBACK_TAG_NAME_RE.match(raw, 1)
     if m is None:  # pragma: no cover - the synthetic wrapper always names a tag
-        return []
+        return [], False
     out, k, end = [], m.end(), len(raw)
     while k < end:
         m = _FALLBACK_ATTR_RE.match(raw, k)
@@ -335,7 +471,7 @@ def _fallback_attr_pairs(attrs):
         out.append((_fallback_fold_nul(
             _FALLBACK_ASCII_UPPER_RE.sub(lambda mm: mm.group(0).lower(), name)), value))
         k = m.end()
-    return out
+    return out, all(c in _FALLBACK_TAG_WS_SLASH for c in raw[k:end - 1])
 
 
 def raw_attrs_class_tokens(attrs):
@@ -413,6 +549,80 @@ def serialize_start_tag(tag, pairs, self_closing=False):
     for name, value in pairs:
         out.append(' %s="%s"' % (name, _html.escape("" if value is None else value, quote=True)))
     return "<%s%s%s>" % (tag, "".join(out), " /" if self_closing else "")
+def raw_attrs_pairs_consumed(attrs):
+    """`raw_attrs_pairs(attrs)` paired with whether the tokenizer CONSUMED the whole region.
+
+    The shared reading (`checks/parsing.raw_attrs_pairs_consumed`), for a caller that REWRITES
+    the start tag: attribute tokenization stops at the first shape it cannot match, and a caller
+    that re-serialized the pairs anyway would silently DROP everything after that point. False
+    means the tokenizer and `scan_start_tag` below did not read the same start tag, and the
+    caller fails closed instead of writing one back.
+    """
+    if _shared_raw_attrs_pairs_consumed is None:
+        return _fallback_attr_pairs_consumed(attrs)
+    return _shared_raw_attrs_pairs_consumed(attrs)
+
+
+def scan_start_tag(html, i):
+    """The extent of the start tag opening at `i`: `(end, tag, self_closing)`, where `end` is the
+    index just past its `>`, or None when the tag never finishes.
+
+    The shared reading (`checks/parsing.scan_start_tag`), for a tool that LOCATES an element by
+    scanning the source text rather than by parsing it. HTML opens a quoted attribute value only
+    AFTER an `=` and takes a stray `"` or `'` INTO the attribute NAME, and a value that reaches
+    the end of the input earns the eof-in-tag error - the whole tag is DISCARDED. A quote-aware
+    `<tag ...>` regex (which opens a quoted run at any quote, anywhere in the tag) disagrees with
+    that in BOTH directions, so a scanner built on one both misses tags a browser builds and
+    rewrites markup a browser discards into live markup (#1197).
+
+    The partial-install fallback is a pinned copy of the shared scan rather than a pattern, for
+    the same reason the value decode and the NUL fold are: the caller RE-SERIALIZES the start tag
+    it locates, so a degraded boundary is not a degraded READING - it is written into the
+    document.
+    """
+    if _shared_scan_start_tag is None:
+        return _fallback_scan_start_tag(html, i)
+    return _shared_scan_start_tag(html, i)
+
+
+def end_tag_close(html, i):
+    """The index just past the `>` that ends the tag starting at `i`, or -1 when it never closes.
+
+    The shared reading (`checks/parsing.end_tag_close`), the END-tag half of the walk
+    `scan_start_tag` serves: a browser ends a tag at the first `>` OUTSIDE a quoted value, so a
+    literal `</name>` search is not the rule - it refuses the ordinary `</section >` and
+    `</section foo="x">` (attributes on an end tag are ignored, but they are still tokenized).
+    """
+    if _shared_end_tag_close is None:
+        return _fallback_end_tag_close(html, i)
+    return _shared_end_tag_close(html, i)
+
+
+def comment_close(html, i):
+    """The index just past the comment opening at `i` (a `<!--`), or the end of `html` when it
+    never closes - a browser then reads the rest of the input as comment data.
+
+    The shared reading (`checks/parsing.comment_close`), the third leg of the same walk: a comment
+    is PROSE, so a tag-shaped string inside one is not a tag. A walk that tokenized there would not
+    merely find a decoy - a commented-out tag with an unterminated quoted value (`<!-- <a href="x
+    -->`) runs a start-tag scan through the LIVE markup that follows and swallows the real slide
+    after it.
+    """
+    if _shared_comment_close is None:
+        return _fallback_comment_close(html, i)
+    return _shared_comment_close(html, i)
+
+
+def raw_text_elements():
+    """The elements whose CONTENT is text rather than markup, the way a browser reads them.
+
+    The shared set (`checks/parsing.raw_text_elements`), for the same walk `comment_close` serves:
+    markup written inside a `<script>`, `<style>` or `<textarea>` body is prose a reader SEES, so
+    a scan must skip the body whole rather than tokenize in it.
+    """
+    if _shared_raw_text_elements is None:
+        return _FALLBACK_RAW_TEXT_ELEMENTS
+    return _shared_raw_text_elements
 
 
 # One left-to-right scan of the shapes a `<` can OPEN, in the order a tokenizer meets them: a

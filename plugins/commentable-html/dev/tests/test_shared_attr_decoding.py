@@ -313,6 +313,14 @@ class SharedDecodeShimTests(unittest.TestCase):
                              [("data-x", "a\ufffdb"), ("data\ufffd-y", "v")])
             self.assertEqual(_browser_attrs.raw_attrs_pairs(' data-x="a\x00b"'),
                              parsing.raw_attrs_pairs(' data-x="a\x00b"'))
+            # An attribute NAME folds ASCII-only, as a browser folds one: `ascii_lower` degrades
+            # to Python's UNICODE `.lower()` under exactly this condition, and that fold maps
+            # U+212A onto `k`, so a `data-\u212aey` would be RE-SERIALIZED as `data-key` - an
+            # attribute the authored document never had - on the partial-install path alone.
+            self.assertEqual(_browser_attrs.raw_attrs_pairs(' data-\u212aey=v CLASS=x'),
+                             [("data-\u212aey", "v"), ("class", "x")])
+            self.assertEqual(_browser_attrs.raw_attrs_pairs_consumed(' data-\u212aey=v'),
+                             ([("data-\u212aey", "v")], True))
         with mock.patch.object(_browser_attrs, "_parsing", None), \
                 mock.patch.object(_browser_attrs, "_shared_raw_attrs_class_tokens", None), \
                 mock.patch.object(_browser_attrs, "_shared_raw_attrs_pairs", None):
@@ -429,6 +437,165 @@ class SharedDecodeShimTests(unittest.TestCase):
             pairs = dict(_browser_attrs.raw_attrs_pairs(m.group(1)))
             self.assertEqual(pairs.get("data-a"), "", text)
             self.assertEqual(pairs.get("=onload"), "", text)
+    def test_the_degraded_start_tag_scan_is_pinned_to_the_shared_one(self):
+        # The shim's start-tag EXTENT scan is a COPY of the vendored one rather than a pattern
+        # (#1197): the deck scaffold LOCATES the slide it re-serializes with it, so a boundary
+        # drawn any other way on a partial install is written into the deck rather than merely
+        # read. A copy is only worth having while it answers what it copies, so it is pinned
+        # answer-for-answer over the shapes that make the two readings differ from a quote-aware
+        # regex - a quote inside an attribute NAME, an unterminated quoted value (the eof-in-tag
+        # drop), the missing-attribute-value and self-closing states, an unquoted value, and a NUL
+        # in the tag name - and its character classes are pinned as TEXT, like every other copy.
+        self.assertEqual(_browser_attrs._FALLBACK_TAG_WS, parsing._TAG_WS)
+        self.assertEqual(_browser_attrs._FALLBACK_TAG_WS_SLASH, parsing._TAG_WS_SLASH)
+        self.assertEqual(_browser_attrs._FALLBACK_TAG_NAME_STOP, parsing._TAG_NAME_STOP)
+        self.assertEqual(_browser_attrs._FALLBACK_ATTR_NAME_STOP, parsing._ATTR_NAME_STOP)
+        self.assertEqual(_browser_attrs._FALLBACK_UNQUOTED_VALUE_STOP,
+                         parsing._UNQUOTED_VALUE_STOP)
+        cases = [
+            '<section class="slide" a"b>', "<section class=slide foo\" bar=\"x>",
+            '<section class="slide">', "<section class=slide>", "<section>", "<section/>",
+            "<section />", "<section class=slide/>", "<section class='slide'>",
+            "<section class=>", "<section class>", "<section class =\t'a b' id=x>",
+            "<section a=1 b=2>", "<section a='>'>", '<section a=">">', "<section a=",
+            "<section a='", '<section a="', "<section", "<section ", "<sec\x00tion class=slide>",
+            "<SECTION CLASS=Slide>", "<section\x00>", "<section a/=b>", "<section a//b>",
+            "<section a=b/>", "<section a=b c>", "<section =x>", "<section a==x>",
+            "<section a=x y=z><p>after</p></section>", "<section a='b'c=d>",
+            "<section a\u212ab=c>", "<section \u017f=1>", "<p>text</p>",
+            # The whitespace-around-`=` states. Without these the after-attribute-name and
+            # before-attribute-value whitespace skips could be DELETED from the copy with the
+            # whole corpus still green - and they change the answer only on an unterminated
+            # value, which is exactly the eof-in-tag drop this fix rests on.
+            '<section class="slide" foo= "bar>', '<section class="slide" foo ="bar>',
+            '<section a = "b">', "<section a =b>", "<section a= b>", "<section a =>",
+            # ...and the tag NAME's own ASCII-only fold, which the copy applies itself rather than
+            # through `ascii_lower` (that helper degrades to Python's UNICODE `.lower()` under
+            # exactly this condition). Without these a regression to `.lower()` in the copy would
+            # read `<lin\u212a>` as a `<link>` on the partial-install path alone.
+            "<lin\u212a>", "<SECTIO\u212a>", "<\u017fection class=slide>",
+        ]
+        for raw in cases:
+            self.assertEqual(_browser_attrs._fallback_scan_start_tag(raw, 0),
+                             parsing.scan_start_tag(raw, 0), repr(raw))
+            # ...and from a non-zero offset too, which is how a scanner walking a fragment calls
+            # it: an index the copy read as absolute would silently answer for another tag.
+            padded = "<p>x</p>\n" + raw
+            self.assertEqual(_browser_attrs._fallback_scan_start_tag(padded, 9),
+                             parsing.scan_start_tag(padded, 9), repr(raw))
+        # The shim resolves the SHIPPED scan, not the copy - a renamed shared reading would
+        # otherwise leave every tool on the fallback silently, for good.
+        self.assertIsNotNone(_browser_attrs._shared_scan_start_tag)
+        self.assertIs(_browser_attrs._shared_scan_start_tag, parsing.scan_start_tag)
+        for raw in cases:
+            self.assertEqual(_browser_attrs.scan_start_tag(raw, 0), parsing.scan_start_tag(raw, 0))
+
+    def test_the_degraded_end_tag_close_is_pinned_to_the_shared_one(self):
+        # The END-tag half of the same walk (#1197). A browser ends a tag at the first `>` OUTSIDE
+        # a quoted value, and a value only opens after an `=`, so an end tag's own (ignored but
+        # still tokenized) attributes cannot end it early and a stray quote where a name belongs
+        # cannot swallow the `>`. The caller SPLICES the document at this boundary, so the
+        # partial-install stand-in is a pinned copy rather than a degradation, like the scan above.
+        self.assertIsNotNone(_browser_attrs._shared_end_tag_close)
+        self.assertIs(_browser_attrs._shared_end_tag_close, parsing.end_tag_close)
+        cases = ["</section>", "</section >", "</section\n>", "</section/>",
+                 '</section foo="a>b">', "</section foo='a>b'>", '</section ">',
+                 '</section a= "b>c">', '</section a ="b>c">', "</section a=>", "</section a=",
+                 '</section a="', "</section", "</section ", "</section a=b>", "<section a=b>",
+                 "</section\x00>", "</SECTION>", ">", "",
+                 # The whole HTML whitespace class around the `=`, not only space and LF: a copy
+                 # that dropped `\r` or `\f` from it would mis-close at the `>` inside the value.
+                 '</section a=\t"b>c">', '</section a=\r"b>c">', '</section a=\f"b>c">',
+                 '</section a\t="b>c">', '</section a\r="b>c">', '</section a\f="b>c">']
+        for raw in cases:
+            self.assertEqual(_browser_attrs._fallback_end_tag_close(raw, 0),
+                             parsing.end_tag_close(raw, 0), repr(raw))
+            self.assertEqual(_browser_attrs.end_tag_close(raw, 0),
+                             parsing.end_tag_close(raw, 0), repr(raw))
+            padded = "<p>x</p>\n" + raw
+            self.assertEqual(_browser_attrs._fallback_end_tag_close(padded, 9),
+                             parsing.end_tag_close(padded, 9), repr(raw))
+        # The shapes the literal `</section>` search this replaced got wrong, pinned as ANSWERS
+        # and not only as parity - a deletion made on BOTH sides at once keeps parity green.
+        self.assertEqual(parsing.end_tag_close("</section >", 0), 11)
+        self.assertEqual(parsing.end_tag_close('</section foo="a>b">', 0), 20)
+        self.assertEqual(parsing.end_tag_close('</section a= "b>c">', 0), 19)
+        self.assertEqual(parsing.end_tag_close('</section a ="b>c">', 0), 19)
+        self.assertEqual(parsing.end_tag_close('</section a="', 0), -1)
+
+    def test_the_degraded_comment_close_is_pinned_to_the_shared_one(self):
+        # The third leg of the same walk (#1197): a COMMENT is prose, so a tag-shaped string in
+        # one is not a tag - and a commented-out tag with an unterminated quoted value would
+        # otherwise run a start-tag scan through the LIVE markup after it and swallow a real
+        # slide. HTML's boundary is `-->` or the legacy `--!>`, `<!-->` and `<!--->` close
+        # abruptly, a whitespace-separated `-- >` does NOT close, and an unterminated comment runs
+        # to the end of the input.
+        self.assertIsNotNone(_browser_attrs._shared_comment_close)
+        self.assertIs(_browser_attrs._shared_comment_close, parsing.comment_close)
+        self.assertEqual(_browser_attrs._FALLBACK_COMMENT_CLOSE_RE.pattern,
+                         parsing._COMMENT_CLOSE_RE.pattern)
+        self.assertEqual(_browser_attrs._FALLBACK_COMMENT_ABRUPT_CLOSE_RE.pattern,
+                         parsing._COMMENT_ABRUPT_CLOSE_RE.pattern)
+        cases = ["<!-- x -->tail", "<!---->tail", "<!-->tail", "<!--->tail", "<!--x--!>tail",
+                 "<!-- x -- > y -->tail", "<!-- unterminated", "<!--", "<!--<section>-->tail",
+                 '<!-- <a href="x -->tail', "<!--a-->b-->tail"]
+        for raw in cases:
+            self.assertEqual(_browser_attrs._fallback_comment_close(raw, 0),
+                             parsing.comment_close(raw, 0), repr(raw))
+            self.assertEqual(_browser_attrs.comment_close(raw, 0),
+                             parsing.comment_close(raw, 0), repr(raw))
+            padded = "<p>x</p>\n" + raw
+            self.assertEqual(_browser_attrs._fallback_comment_close(padded, 9),
+                             parsing.comment_close(padded, 9), repr(raw))
+        # Pinned as ANSWERS too, so a both-sides edit cannot keep parity while moving the
+        # boundary: the abrupt closers end at their `>`, `-- >` does not close, and an
+        # unterminated comment answers the end of the input rather than a position inside it.
+        self.assertEqual(parsing.comment_close("<!-->tail", 0), 5)
+        self.assertEqual(parsing.comment_close("<!--->tail", 0), 6)
+        self.assertEqual(parsing.comment_close("<!--x--!>tail", 0), 9)
+        self.assertEqual(parsing.comment_close("<!-- x -- > y -->tail", 0), 17)
+        self.assertEqual(parsing.comment_close("<!-- unterminated", 0), len("<!-- unterminated"))
+
+    def test_the_shared_raw_text_element_set_is_one_set(self):
+        # A walk that consumes tags must skip a raw-text BODY whole for the same reason it skips a
+        # comment. The shim hands back the shared set itself rather than a second opinion about
+        # which elements hold text, and its partial-install copy is pinned to it as DATA.
+        self.assertIs(_browser_attrs.raw_text_elements(), parsing.raw_text_elements)
+        self.assertEqual(_browser_attrs._FALLBACK_RAW_TEXT_ELEMENTS, parsing._RAW_TEXT_ELEMENTS)
+        with mock.patch.object(_browser_attrs, "_parsing", None), \
+                mock.patch.object(_browser_attrs, "_shared_raw_text_elements", None):
+            self.assertEqual(_browser_attrs.raw_text_elements(), parsing._RAW_TEXT_ELEMENTS)
+
+    def test_the_degraded_split_reports_whether_it_consumed_the_whole_region(self):
+        # The consumed flag is what lets a caller that REWRITES a start tag fail closed rather
+        # than re-serialize a reading that stopped short and silently drop every attribute past
+        # that point (#1197). It must answer the same on both paths, including for the tag-close
+        # leftovers (HTML whitespace and the self-closing solidus) that are NOT attributes.
+        self.assertIsNotNone(_browser_attrs._shared_raw_attrs_pairs_consumed)
+        for attrs, want in ((None, True), ('', True), (' class="slide"', True),
+                            (' class=slide', True), (" class='slide' id=x", True),
+                            (' a"b', True), (' class="slide"/', True), (' class="slide" ', True),
+                            (' data-a/=onload', True), (' =x', True), (' a=">"', True),
+                            (' a=b c', True), (' hidden', True), (' a=b"c', True),
+                            (' \x00', True), (' "', True),
+                            # ...and the FALSE half, which no start tag the browser scan accepts
+                            # can produce (the two readings agree on every such shape) but a
+                            # caller handing over a truncated attribute region can: tokenization
+                            # stops at the unterminated value and leaves an attribute-name
+                            # character behind, which is precisely what must not be
+                            # re-serialized as if it were the whole tag.
+                            (' a="', False), (" a='", False), (' a="b', False),
+                            (' a=">', False), (' >', False)):
+            shared = _browser_attrs.raw_attrs_pairs_consumed(attrs)
+            self.assertEqual(shared, parsing.raw_attrs_pairs_consumed(attrs), repr(attrs))
+            self.assertIs(shared[1], want, repr(attrs))
+            with mock.patch.object(_browser_attrs, "_parsing", None), \
+                    mock.patch.object(_browser_attrs, "_shared_raw_attrs_pairs_consumed", None):
+                self.assertEqual(_browser_attrs.raw_attrs_pairs_consumed(attrs), shared,
+                                 repr(attrs))
+            # The pairs half stays exactly what the pairs-only reading answers, so a caller that
+            # switched to this one cannot start reading a different attribute list.
+            self.assertEqual(shared[0], _browser_attrs.raw_attrs_pairs(attrs), repr(attrs))
 
     def test_a_class_list_is_tokenized_the_way_html_tokenizes_it(self):
         # CMH-VAL-21 clause 11 (#1139): HTML splits a `class` list on ASCII whitespace ONLY and

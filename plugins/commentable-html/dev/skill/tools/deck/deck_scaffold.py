@@ -25,6 +25,7 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+from typing import NamedTuple
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _toolpath  # noqa: E402
@@ -54,7 +55,31 @@ except ImportError:  # pragma: no cover
     _highlight_document = None
     _toolpath.warn_missing_tool("highlight_document", "syntax highlighting")
 
-SECTION_RE = re.compile(r"""<section\b((?:"[^"]*"|'[^']*'|[^>"'])*)>(.*?)</section>""", re.S | re.I)
+# A `<` that opens a COMMENT, a non-element region, or a TAG, in one pass so each shields the
+# others: HTML requires an ASCII letter after a `<` or `</`, and every other spelling opens
+# something that is NOT an element - a markup declaration (`<!DOCTYPE ...>`) or a BOGUS COMMENT
+# (`<?...`, `<!...` that is not a comment, and a `</` with no tag name), each of which a browser
+# ends at its first `>`. The tag NAME is never matched here - the walk finds every tag and the
+# shared readings then decide each one's name and extent - because Python's `re.IGNORECASE` folds
+# UNICODE: a `<section` pattern also matched `<\u017fection` (a CUSTOM ELEMENT to a browser, which
+# folds a tag name ASCII-only), and the rewrite then emitted a real `<section>` in its place, with
+# the authored `</\u017fection>` left behind as an unknown end tag so the phantom slide never
+# closed. Walking EVERY tag is also what keeps a `<section` spelled inside another tag's quoted
+# attribute value out of the result: that tag's own extent is consumed whole, so the decoy inside
+# it is never a candidate.
+TAG_OR_COMMENT_RE = re.compile(r"(<!--)|<(/?)(?=[a-zA-Z])|(<[!?]|</(?![a-zA-Z]))")
+_BOGUS_COMMENT_CLOSE_RE = re.compile(r">")
+# `</section` with HTML's own tag-name terminator, ASCII-folded (`re.A` beside `re.I`) exactly as a
+# browser folds a tag name. Where the end tag ENDS is then the shared reading's answer, not this
+# pattern's: a literal `</section>` refuses the ordinary `</section >` and `</section foo="x">`.
+SECTION_END_RE = re.compile(r"</section(?=[\t\n\f\r />])", re.I | re.A)
+_SECTION_TAG_LEN = len("<section")
+# The shared raw-text set MINUS `title`, which is the one member that is also an ordinary FOREIGN
+# element: nothing is raw text inside `<svg>` / `<math>`, and this walk keeps no namespace stack,
+# so treating an `<svg><title>` as raw text could skip real markup - while no deck author writes a
+# slide inside a `<title>` of either kind, so dropping it costs nothing.
+_RAW_TEXT_TAGS = frozenset(_browser_attrs.raw_text_elements()) - {"title"}
+_RAW_TEXT_END_RES = {}
 # The `class` attribute in all three HTML quoting forms, with an attribute-name boundary and
 # HTML's own unquoted-value terminator - ASCII whitespace or `>` ONLY (CMH-VAL-21 clause 11). Kept
 # for the raw-text scans that have nothing else; the slide rewrite reads and RE-SERIALIZES parsed
@@ -124,47 +149,186 @@ def _slide_id_attr(pairs):
     return sid or None
 
 
+class _Section(NamedTuple):
+    """One `<section>...</section>`, located the way a BROWSER reads its start tag."""
+    start: int          # offset of the `<`
+    tag_end: int        # offset just past the start tag's `>`
+    inner_end: int      # offset of the `</section>` that closes it
+    end: int            # offset just past that `</section>`
+    attrs: str          # the start tag's RAW attribute region
+    pairs: list         # that region's browser-decoded (name, value) pairs, in order
+
+
+def _raw_text_end(fragment, pos, name):
+    """The offset just past the end tag that closes the raw-text element `name` whose body starts
+    at `pos`, or -1 when it never closes - which a browser reads as the body running to the end of
+    the input, so nothing after it is markup either.
+
+    HTML closes a raw-text element on `</name` followed by ASCII whitespace, `/` or `>`, and that
+    closer is still a TAG, so the shared end-tag close decides where it ends. `<plaintext>` has no
+    closer at all and so always answers -1.
+    """
+    if name == "plaintext":
+        return -1
+    pattern = _RAW_TEXT_END_RES.get(name)
+    if pattern is None:
+        pattern = _RAW_TEXT_END_RES[name] = re.compile(
+            r"</%s(?=[\t\n\f\r />])" % re.escape(name), re.I | re.A)
+    m = pattern.search(fragment, pos)
+    if m is None:
+        return -1
+    return _browser_attrs.end_tag_close(fragment, m.start())
+
+
+def _walk_tags(fragment):
+    """Yield `(start, is_end, end, name)` for every TAG in `fragment`, in document order.
+
+    One left-to-right walk of the shapes a `<` can open, so each shields the others: every tag's
+    whole extent is consumed (a tag-shaped string inside another tag's quoted attribute value is
+    part of that value, never a tag), a COMMENT is skipped whole (its content is prose a reader
+    sees), a RAW-TEXT body is skipped whole (same), and so is every NON-ELEMENT region a `<` can
+    open - a markup declaration and a bogus comment (`<?...`, a `<!` that is not a comment, a `</`
+    with no tag name), which a browser ends at its first `>`. Every boundary comes from the shared
+    browser readings - `scan_start_tag` for a start tag (which also hands back the ASCII-folded
+    name), `end_tag_close` for an end tag, `comment_close` for a comment - so the walk and the
+    attribute reading that follows it cannot disagree about which tags exist.
+
+    Skipping those regions is not a nicety: tokenizing there both invents elements and loses real
+    ones. A commented-out or scripted tag carrying an unterminated quoted value (`<!-- <a href="x
+    -->`) runs a start-tag scan through everything after it, so the real `<section class="slide">`
+    that follows is consumed inside the pseudo-tag's extent and the slide disappears; and a
+    `<section class="slide">` written inside a declaration or a bogus comment is not an element at
+    all, so rewriting it would mint an id for a decoy and give it `.active`.
+
+    One namespace-dependent case is deliberately left: `<![CDATA[ ... ]]>` is character data only
+    inside FOREIGN content (`<svg>` / `<math>`), and this walk keeps no namespace stack, so it is
+    read as the bogus comment it is in the HTML namespace - ending at the first `>`. That errs
+    toward finding a decoy rather than toward losing a real slide, which is the safe direction.
+
+    The walk STOPS - yielding nothing further - where a browser stops building elements: a tag
+    that reaches the end of the input inside a quoted value (the HTML5 eof-in-tag error, which
+    discards the tag and every character after that quote) and a raw-text body that never closes.
+
+    `name` is the ASCII-folded tag name for a start tag; for an END tag it is `"section"` or None,
+    which is all a section walk needs to know about it.
+    """
+    pos = 0
+    while True:
+        m = TAG_OR_COMMENT_RE.search(fragment, pos)
+        if m is None:
+            return
+        start = m.start()
+        if m.group(1):
+            pos = _browser_attrs.comment_close(fragment, start)
+            continue
+        if m.group(3):
+            close = _BOGUS_COMMENT_CLOSE_RE.search(fragment, start + len(m.group(3)))
+            if close is None:
+                return          # it runs to the end of the input; nothing after it is markup
+            pos = close.end()
+            continue
+        if m.group(2):
+            end = _browser_attrs.end_tag_close(fragment, start)
+            if end < 0:
+                return
+            yield start, True, end, ("section" if SECTION_END_RE.match(fragment, start) else None)
+            pos = end
+            continue
+        scanned = _browser_attrs.scan_start_tag(fragment, start)
+        if scanned is None:
+            return
+        end, name = scanned[0], scanned[1]
+        yield start, False, end, name
+        if name in _RAW_TEXT_TAGS:
+            end = _raw_text_end(fragment, end, name)
+            if end < 0:
+                return
+        pos = end
+
+
+def _section_tags(fragment):
+    """Every `<section>...</section>` in `fragment` whose start tag BOTH shared readings agree on.
+
+    Built on the `_walk_tags` walk, so every boundary and every tag name is the shared browser
+    reading - the same reading the attributes are then read with, so the locate and the read
+    cannot disagree about which tags exist. A quote-aware `<section ...>` regex disagreed in both
+    directions: it opened a quoted run at ANY quote, where HTML opens one only AFTER an `=` and
+    takes a stray quote INTO the attribute name, so `<section class="slide" a"b>` (a real slide to
+    a browser) was skipped, while `<section class=slide foo" bar="x>` (which reaches EOF inside a
+    quoted value, so a browser DISCARDS the tag) matched and was rewritten into a live slide the
+    deck contract then passed (#1197).
+
+    The FIRST `</section>` closes a section, as the non-greedy regex this replaces did, so a
+    NESTED `<section>` is body content rather than a slide of its own. That is a deliberate
+    divergence from a browser (which nests them) and it is what keeps a slide's body - and so its
+    minted, supposedly stable id - the same text the old scan hashed.
+
+    Three shapes are refused, and refusing them is what makes the tool fail CLOSED - a slide left
+    without a `data-slide-id` is rejected by `deck_checks` before anything is written:
+
+      - a tag that never finishes (the HTML5 eof-in-tag error), which stops the walk;
+      - a `<section` whose tag name is not `section` under HTML's own ASCII fold and tag-name
+        terminator - the CUSTOM ELEMENTS `<section-foo>` and `<\u017fection>`, both of which the
+        old `<section\\b` plus `re.IGNORECASE` promoted into a real `<section>`;
+      - a start tag the shared tokenizer did not fully consume, which would re-serialize with the
+        attributes past that point silently dropped.
+    """
+    out = []
+    pending = None
+    for start, is_end, end, name in _walk_tags(fragment):
+        if pending is None:
+            if is_end or name != "section":
+                continue
+            attrs = fragment[start + _SECTION_TAG_LEN:end - 1]
+            pending = (start, end) + _browser_attrs.raw_attrs_pairs_consumed(attrs) + (attrs,)
+        elif is_end and name == "section":
+            open_start, tag_end, pairs, consumed, attrs = pending
+            if consumed:
+                out.append(_Section(open_start, tag_end, start, end, attrs, pairs))
+            pending = None
+    return out
+
+
 def prepare_slides(fragment: str):
     """Ensure every slide <section> has a stable data-slide-id and the first is .active.
     Returns (rewritten_fragment, [slide_ids])."""
+    sections = _section_tags(fragment)
     taken = set()
-    for m in SECTION_RE.finditer(fragment):
+    for sec in sections:
         # The shared raw-attribute reading, not a `data-slide-id\s*=\s*"..."` search: an id
         # authored single-quoted or unquoted is the SAME id to a browser (and to `deck_validate`,
         # which compares the decoded value), so a search that sees only the double-quoted form
         # leaves it out of `taken` and lets `slide_id()` mint it again - a deck the scaffold's own
         # deck contract then refuses as a duplicate. It also decodes character references and
         # ignores a `data-slide-id=` spelled inside another attribute's quoted value.
-        pairs = _browser_attrs.raw_attrs_pairs(m.group(1))
+        #
         # Only a SLIDE's id is reserved, which is the only id `deck_validate` reads. Reserving an
         # unrelated `<section>`'s would push a real slide onto the `-2` branch and make that slide's
         # supposedly stable id depend on content that is not a slide at all.
-        if not _is_slide(pairs):
+        if not _is_slide(sec.pairs):
             continue
-        sid = _slide_id_attr(pairs)
+        sid = _slide_id_attr(sec.pairs)
         if sid:
             taken.add(sid)
     ids = []
-    first = [True]
-
-    def repl(m):
-        attrs, inner = m.group(1), m.group(2)
+    first = True
+    out, cursor = [], 0
+    for sec in sections:
         # The start tag is PARSED, not searched: a `class=` search matches one spelled inside
         # ANOTHER attribute's quoted value (`<section title=' class="slide"'>`) and the rewrite
         # below would then corrupt that title and promote a non-slide. The shared reading also
         # decodes character references (`class='sl&#105;de'` IS a slide to a browser), keeps the
         # FIRST of a duplicated attribute as HTML5 does, and reads all three quoting forms.
-        pairs = _browser_attrs.raw_attrs_pairs(attrs)
-        classes = _slide_classes(pairs)
+        classes = _slide_classes(sec.pairs)
         if "slide" not in classes:
-            return m.group(0)  # not a slide section; leave untouched
-        sid = _slide_id_attr(pairs)
+            continue                       # not a slide section; leave untouched
+        sid = _slide_id_attr(sec.pairs)
         if not sid:
-            sid = slide_id(_strip_tags(inner), taken)
+            sid = slide_id(_strip_tags(fragment[sec.tag_end:sec.inner_end]), taken)
         ids.append(sid)
-        if first[0] and "active" not in classes:
+        if first and "active" not in classes:
             classes.append("active")
-        first[0] = False
+        first = False
         # The start tag is RE-SERIALIZED from the parsed attributes for EVERY slide, so the class
         # is written back in one canonical form and every value is re-escaped exactly once from its
         # DECODED form - escaping the raw text instead turned an authored `x&amp;y` into the
@@ -173,7 +337,7 @@ def prepare_slides(fragment: str):
         # cannot fuse with a following name that legally begins with `=` (#1191, #1195).
         rebuilt = []
         wrote_sid = False
-        for name, value in pairs:
+        for name, value in sec.pairs:
             if name == "class":
                 value = " ".join(classes)
             elif name == "data-slide-id":
@@ -188,10 +352,12 @@ def prepare_slides(fragment: str):
             rebuilt.append((name, value))
         if not wrote_sid:
             rebuilt.append(("data-slide-id", sid))
-        return "%s%s</section>" % (
-            _browser_attrs.serialize_start_tag("section", rebuilt), inner)
-
-    return SECTION_RE.sub(repl, fragment), ids
+        # Only the START TAG is spliced; the body and the end tag are the authored bytes.
+        out.append(fragment[cursor:sec.start])
+        out.append(_browser_attrs.serialize_start_tag("section", rebuilt))
+        cursor = sec.tag_end
+    out.append(fragment[cursor:])
+    return "".join(out), ids
 
 
 def placeholder_slides(n: int) -> str:
