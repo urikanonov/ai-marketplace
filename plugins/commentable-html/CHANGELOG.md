@@ -26,7 +26,9 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   inserted `<title>`, `new_document`'s lede header and `<title>` substitution,
   `checklist_scaffold` and `notes_scaffold` (attributes and text), `diff_block`'s
   `data-diff-label` / `data-diff-lang`, `chart_block`'s figcaption and ARIA label,
-  `highlight_code`'s language class, `_brand_profile`'s `data-cmh-brand`, `kql_highlight`'s
+  `highlight_code`'s language class, `_brand_profile`'s `data-cmh-brand`,
+  `doc_stamp.set_meta()` (which hand-rolled a third private copy of the escape, so a
+  `--session-id` carrying a CR was stamped literally), `kql_highlight`'s
   caption title, and `deck_common.esc()` (the slide title and paragraph text
   `pptx_to_fragment` builds from a JSON field; its one attribute caller, the image `src`, moves
   to the attribute escape, since the text rule leaves a `"` alone and that would end the value).

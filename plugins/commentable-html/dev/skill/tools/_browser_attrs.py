@@ -241,13 +241,15 @@ def escape_text(text):
     that shared half is what stops ONE authored label from reaching a browser as TWO different
     values when a tool writes it into both an attribute and the text beside it (#1224).
 
-    Everything `escape_attr_value` documents about the fold applies here, with one honest
-    difference in the REASON. Only RCDATA (which is what `<title>` is) folds a NUL the way the
-    attribute-value states do; in the DATA state - the lede header, a checklist `<li>`/`<td>`, a
-    note `<div>`, a chart `<figcaption>` - a browser emits the NUL character token instead. The
-    fold is applied uniformly anyway, so ONE rule covers both states and a value cannot mean two
-    different things depending on which element it landed in; in the data state that is
-    deliberately STRICTER than the tokenizer, not a fidelity fix.
+    Everything `escape_attr_value` documents about the fold applies here, and a NUL cannot
+    survive in EITHER text state - just by different machinery, which is worth writing down
+    because it is easy to get backwards. RCDATA (which is what `<title>` is) folds it in the
+    TOKENIZER: the RCDATA state emits a U+FFFD character token. The DATA state - the lede
+    header, a checklist `<li>`/`<td>`, a note `<div>`, a chart `<figcaption>` - emits the NUL
+    character token instead, and the "in body" TREE-CONSTRUCTION stage then IGNORES it, so the
+    DOM holds nothing at all. Folding to U+FFFD up front is therefore not stricter than a
+    browser in any way a reader could see; it is the one spelling that survives both states
+    identically, which is what makes the escape TOTAL.
 
     The PRECONDITION is `escape_attr_value`'s, unchanged: the value must come from a CLI argument,
     a JSON field, or text that already had input-stream preprocessing applied. So is the

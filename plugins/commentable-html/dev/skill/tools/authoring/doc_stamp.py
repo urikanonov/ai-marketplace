@@ -21,6 +21,8 @@ import sys
 _HERE_DIR = os.path.dirname(os.path.abspath(__file__))
 if _HERE_DIR not in sys.path:
     sys.path.insert(0, _HERE_DIR)
+sys.path.insert(0, os.path.dirname(_HERE_DIR))  # tools/ root
+import _browser_attrs  # noqa: E402
 import section_hash  # noqa: E402
 
 CREATED_META = "commentable-html-created"
@@ -89,8 +91,14 @@ def _dominant_newline(html):
 
 def set_meta(html, name, content):
     """Set (or insert into <head>) `<meta name=NAME content=CONTENT>`; returns the new html.
-    The content is attribute-escaped so a stray quote can never break the tag."""
-    esc = content.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+
+    The content goes through the SHARED attribute escape rather than a private copy: this used
+    to hand-roll `&`, `"`, `<` and `>`, which stops a stray quote breaking the tag but leaves a
+    CR literal - and input-stream preprocessing folds a literal CR to LF before a browser
+    tokenizes, so a `--session-id` carrying one was stamped as a value the rendered DOM never
+    had (#1224). It is also the third private copy of a rule that already exists once (#1195).
+    """
+    esc = _browser_attrs.escape_attr_value(content)
     new_html, n = _meta_re(name).subn(lambda m: m.group(1) + esc + m.group(2), html, count=1)
     if n:
         return new_html

@@ -30,6 +30,7 @@ import chart_block  # noqa: E402
 import checklist_scaffold  # noqa: E402
 import deck_common  # noqa: E402
 import diff_block  # noqa: E402
+import doc_stamp  # noqa: E402
 import highlight_code  # noqa: E402
 import kql_highlight  # noqa: E402
 import new_document  # noqa: E402
@@ -327,6 +328,17 @@ class KqlAndDeckGeneratorTests(unittest.TestCase):
         ])
         self.assertEqual(_text_a_browser_reads(fragment, "h2"), CR_LABEL)
         self.assertEqual(_text_a_browser_reads(fragment, "p"), "body\rtext")
+
+    def test_a_session_id_stamp_keeps_its_cr(self):
+        # `doc_stamp.set_meta` hand-rolled its own `&`/`"`/`<`/`>` escape - a third private copy
+        # of the rule - so a `--session-id` carrying a CR was stamped literally and folded to LF.
+        stamped = doc_stamp.set_meta("<html><head></head><body></body></html>",
+                                     "commentable-html-session-id", "sess\rion")
+        self.assertEqual(_attr_a_browser_reads(stamped, "content"), "sess\rion")
+        # The private copy's own job must survive: a quote still cannot break the tag.
+        quoted = doc_stamp.set_meta("<html><head></head><body></body></html>",
+                                    "commentable-html-session-id", 'a"b<c&d')
+        self.assertEqual(_attr_a_browser_reads(quoted, "content"), 'a"b<c&d')
 
     def test_a_deck_image_path_uses_the_attribute_escape_not_the_text_one(self):
         # `esc` is now the TEXT rule, which leaves a `"` alone - in `src="..."` that would end
