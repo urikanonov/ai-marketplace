@@ -588,7 +588,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.820.0";
+const CMH_VERSION = "1.821.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -15125,14 +15125,29 @@ function _offlineNormalizeUrlValue(v) {
 // DEVIATES from the spec here, so reading the standard would have got it wrong: measured in Chromium
 // 149, `file:////host/x.js` parses to host `host` and re-serializes as `file://host/x.js`, where a
 // spec-conformant parser takes the WHATWG file-host state's EMPTY host and leaves `//host/x.js` as
-// the path.
+// the path. The deviation is PLATFORM-specific and the strip is fail-CLOSED about it: the same
+// engine build parses `file:////host/x` to host `host` on Windows but to the EMPTY-host local
+// `file:///host/x` on Linux, and it is cleared on both, because Windows is where the UNC fetch is.
 // The two counted arms are the BASE-INDEPENDENT set, not a claim that no other spelling reaches a
-// host: the same Chromium 149 gives host `host` to a ZERO- or ONE-separator spelling parsed ABSOLUTE
-// (`file:host/x.js`, `file:/host/x.js`), but resolved against the `file:` base an exported document
+// host: the same Chromium 149 ON WINDOWS gives host `host` to a ZERO- or ONE-separator spelling
+// parsed ABSOLUTE (`file:host/x.js`, `file:/host/x.js`) - a Windows-only reading, since that build
+// parsed base-less on LINUX gives an EMPTY host for zero, one and four separators alike. Resolved
+// against the `file:` base an exported document
 // actually has, those INHERIT the base's host and are local. Counting them would buy only the false
-// positive of calling an authored `file:notes.html` a beacon; issue #1229 tracks it.
+// positive of calling an authored `file:notes.html` a beacon; issue #1229 SETTLED that, and the
+// reason is structural: `file:` IS a special scheme - so the backslash mapping in
+// `_offlineNormalizeUrlValue` applies to it and `file:\\host/x` IS stripped - but it does not take
+// the special-authority-(ignore-)slashes states that collapse the slash-less `https:host/x` onto a
+// host. The scheme state routes it to the FILE state, which resolves against the base and reads the
+// leading run as PATH. Only that LEADING run is exempt: a slash-poor value whose PATH canonicalizes
+// onto the four-separator form is still stripped by the `..` and empty-segment arms below
+// (`file:/..//x.js`, `file:a//b.png`). A `<base href>` onto a non-`file:` base does rebase them onto
+// a host the value names, and that is closed one layer up and unconditionally (a `<base href>` is
+// held to the stricter `_offlineIsNonLocalRef` and the strip removes it).
 // Two host spellings that stay on the machine
-// are excluded whatever the separator count: `localhost` - in every PERCENT-ENCODED and CASE
+// are excluded whatever the separator count of the AUTHORITY arm they appear in - and only
+// there, since both are lookaheads inside that arm, so the `..` and empty-segment arms still
+// strip a value carrying one: `localhost` - in every PERCENT-ENCODED and CASE
 // spelling, see `_OFFLINE_PCT_LOCALHOST` below for what that does and does not cover -
 // and a Windows DRIVE LETTER, which the file-host state turns into a path rather than a host,
 // because reporting either would delete an author's local reference and make the gate reject a file

@@ -383,20 +383,66 @@ _FILE_EMPTY_SEGMENT = r"file:/*(?!/)[^?#]*?//"
 # the standard would have got it wrong: measured in Chromium 149, `file:////evil.example/x.js`
 # parses to host `evil.example` and re-serializes as `file://evil.example/x.js`, where a
 # spec-conformant parser takes the WHATWG file-host state's EMPTY host and leaves
-# `//evil.example/x.js` as the path.
+# `//evil.example/x.js` as the path. That deviation is also PLATFORM-specific, and the arm is
+# deliberately fail-CLOSED about it: the same engine build parses `file:////evil.example/x` to host
+# `evil.example` on WINDOWS but to the EMPTY-host local `file:///evil.example/x` on LINUX (measured
+# in the pinned CI container), and this arm counts it on both, because Windows is the platform where
+# the UNC fetch exists.
 # What the two counted arms are is the BASE-INDEPENDENT set, which is the reason to count exactly
 # them rather than a claim that no other spelling ever reaches a host. Measured in the same Chromium
-# 149: parsed ABSOLUTE (no base), ZERO and ONE separator also give host `evil.example`
-# (`file:evil.example/x.js`, `file:/evil.example/x.js`), but resolved against the `file:` base an
+# 149 ON WINDOWS: parsed ABSOLUTE (no base), ZERO and ONE separator also give host
+# `evil.example` (`file:evil.example/x.js`, `file:/evil.example/x.js`) - a Windows-only reading,
+# since the same build parsed base-less on LINUX gives an EMPTY host for zero, one AND four
+# separators, leaving only the two-separator form an authority there (measured in the pinned CI
+# container). Resolved against the `file:` base an
 # exported document actually has they INHERIT that base's host and are local
 # (`file:///C:/docs/evil.example/x.js`), while the two counted arms give host `evil.example` from
 # ANY base. So zero and one carry no authority of their own; they can only reach one the base
-# already had, and a non-`file:` base is separately gated as a network `<base href>`. Issue #1229
-# tracks whether any surface makes that inherited host reachable, and counting them regardless would
-# buy only the false positive of calling an authored `file:notes.html` a beacon.
+# already had, and a non-`file:` base is separately gated as a network `<base href>`.
+# Issue #1229 asked whether any surface makes that inherited host reachable, and the answer is
+# SETTLED here rather than left open: no, and the reason their leading run cannot open an authority
+# is structural. `file:` IS a special scheme - so the backslash mapping in `normalize_url_value`
+# applies to it exactly as to the others, and `file:\\evil.example/x` IS counted - but it does not
+# take the special-authority-(ignore-)slashes states that collapse the slash-less `https:host/x`
+# onto a host; the scheme state routes it to the FILE state, which resolves against the base and
+# reads the leading run as PATH. Every surface that consumes this predicate resolves against that
+# base: an attribute, a refresh target, and an `iframe srcdoc` (which inherits its parent's
+# base). The CSS readers are deliberately NOT in that list - they are assembled from
+# `CSS_NETWORK_PREFIX`, which carries no `file:` arm at all, so they never reach this question
+# (issue #1230 tracks that separate gap). The refresh case was CAPTURED rather than reasoned about - a real Chromium
+# navigating out of a `file:///C:/dir/report.html` document went to `file:///C:/dir/evil.example/x`,
+# never the SMB share - and from a UNC base the value takes that document's OWN host, which it
+# cannot choose, exactly as the plain relative `evil.example/x` beside it does.
+# Two contexts were measured rather than assumed, so the answer does not rest on the one case. A
+# `<base href>` onto a non-`file:` base does rebase them onto a host the value names, and that is
+# closed one layer up and unconditionally - a `<base href>` is held to the stricter
+# `offline_is_non_local_ref` in EVERY mode and the offline strip removes it (issue #924) - so the
+# compound needs an element this gate already rejects. A document whose AMBIENT base is not a
+# `file:` one - a report SERVED over http/https - does resolve them to a host the value names, and
+# that case rests on the ENGINE rather than on this arm: a `file:` load from an http(s) document is
+# refused outright (`Not allowed to load local resource`), measured for the already-counted
+# two-separator spelling equally, so counting the short runs would buy nothing there while costing
+# the false positive of calling an authored `file:notes.html` a beacon. Both are Chromium
+# measurements, like the closed scheme set below, and nothing is claimed for other engines.
+# The exemption is scoped to the LEADING run and no further: a zero- or one-separator value whose
+# PATH canonicalizes onto the four-separator form is still counted by `_FILE_DOTDOT_SEGMENT` and
+# `_FILE_EMPTY_SEGMENT` (`file:/..//x.js` and `file:a//b.png` are corpus rows, both NETWORK). Those
+# two arms are base-LESS canonicalization arguments and stay a deliberate over-detection in the safe
+# direction; nothing here narrows them. Read the `localhost` and drive-letter exclusions below with
+# that in mind: they are lookaheads INSIDE the authority arm, so they exclude a local AUTHORITY, not
+# a value. A slash-poor spelling carrying an empty path segment reaches the empty-segment arm
+# REGARDLESS of them - `file:localhost//x.js` and `file:C://x.js` are corpus rows, both NETWORK -
+# and a slash-poor `file:localhost/x.js` is local because its leading run is PATH, not because the
+# `localhost` lookahead fired on it.
+# The whole measurement is re-run on every CI pass by the `CMH-VAL-08: a real Chromium resolves a
+# slash-poor file: reference against the document's own base` spec, which compares the engine to
+# this predicate's own verdicts, so an engine that ever changed its mind reds a test instead of
+# silently invalidating this paragraph.
 # Two host spellings that stay on the machine are excluded
-# whatever the separator
-# count: `localhost` - in every PERCENT-ENCODED and CASE spelling, see `_PCT_LOCALHOST` above for
+# whatever the separator count of the AUTHORITY arm they appear in - and only there, since
+# both are lookaheads inside that arm, so the `..` and empty-segment arms still count a value
+# carrying one (see above):
+# `localhost` - in every PERCENT-ENCODED and CASE spelling, see `_PCT_LOCALHOST` above for
 # what that does and does not cover - and a Windows DRIVE LETTER, which the
 # file-host state turns into a path rather than a host, because reporting either would reject an
 # offline file with no egress at all - and make the exporter delete the author's local reference.
@@ -1442,7 +1488,8 @@ def meta_refresh_target(content):
 # path; the two counted arms are the BASE-INDEPENDENT set - the same Chromium gives host
 # `evil.example` to a ZERO- or ONE-separator spelling parsed ABSOLUTE, but against the `file:` base a
 # document actually has those INHERIT the base's host and are local, so they carry no authority of
-# their own; issue #1229 tracks it), and so was every slash run of three or more, which the
+# their own; issue #1229 SETTLED that - see the `NETWORK_URL_RE` note above), and so was every
+# slash run of three or more, which the
 # shared `/{2,}` arm counts
 # deliberately - what `///host` resolves to depends on the BASE (that host from a document served
 # over http/https, where the special-authority states ignore the run; an empty-host local path from
@@ -1454,7 +1501,13 @@ def meta_refresh_target(content):
 # explicitly are inherited too, through `normalize_url_value`, which maps every backslash onto a
 # slash for exactly the reason those arms existed: for a special scheme the parser's relative and
 # authority-slash states treat the two alike, so `https:\\evil.example` and `\\evil.example` open
-# an authority. Widening or narrowing here introduces no exporter/validator drift: offline mode
+# an authority. `file:` is a special scheme too, so that mapping applies to it identically and
+# `0;url=file:\\evil.example/x` IS counted (a corpus row). What makes a slash-poor `file:` target
+# LOCAL is the SEPARATOR COUNT rather than any scheme exemption: a real Chromium's refresh
+# NAVIGATION out of a `file:///` document was captured resolving `0;url=file:evil.example/x` to the
+# local relative path `file:///C:/dir/evil.example/x`, never the SMB share (issue #1229; see
+# `NETWORK_URL_RE` above for the full measurement, its Windows/Linux split, and the two neighbouring
+# readings). Widening or narrowing here introduces no exporter/validator drift: offline mode
 # rejects EVERY `meta[http-equiv=refresh]` (as the strip removes every one), and this predicate
 # only decides WHICH of the two messages that rejection carries - the one that names a network
 # beacon.

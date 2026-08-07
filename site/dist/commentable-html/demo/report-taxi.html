@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.820.0" />
+<meta name="commentable-html-version" content="1.821.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.820.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.821.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>NYC Taxi 2014 Report</title>
 
@@ -5252,7 +5252,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.820.0";
+const CMH_VERSION = "1.821.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -19789,14 +19789,29 @@ function _offlineNormalizeUrlValue(v) {
 // DEVIATES from the spec here, so reading the standard would have got it wrong: measured in Chromium
 // 149, `file:////host/x.js` parses to host `host` and re-serializes as `file://host/x.js`, where a
 // spec-conformant parser takes the WHATWG file-host state's EMPTY host and leaves `//host/x.js` as
-// the path.
+// the path. The deviation is PLATFORM-specific and the strip is fail-CLOSED about it: the same
+// engine build parses `file:////host/x` to host `host` on Windows but to the EMPTY-host local
+// `file:///host/x` on Linux, and it is cleared on both, because Windows is where the UNC fetch is.
 // The two counted arms are the BASE-INDEPENDENT set, not a claim that no other spelling reaches a
-// host: the same Chromium 149 gives host `host` to a ZERO- or ONE-separator spelling parsed ABSOLUTE
-// (`file:host/x.js`, `file:/host/x.js`), but resolved against the `file:` base an exported document
+// host: the same Chromium 149 ON WINDOWS gives host `host` to a ZERO- or ONE-separator spelling
+// parsed ABSOLUTE (`file:host/x.js`, `file:/host/x.js`) - a Windows-only reading, since that build
+// parsed base-less on LINUX gives an EMPTY host for zero, one and four separators alike. Resolved
+// against the `file:` base an exported document
 // actually has, those INHERIT the base's host and are local. Counting them would buy only the false
-// positive of calling an authored `file:notes.html` a beacon; issue #1229 tracks it.
+// positive of calling an authored `file:notes.html` a beacon; issue #1229 SETTLED that, and the
+// reason is structural: `file:` IS a special scheme - so the backslash mapping in
+// `_offlineNormalizeUrlValue` applies to it and `file:\\host/x` IS stripped - but it does not take
+// the special-authority-(ignore-)slashes states that collapse the slash-less `https:host/x` onto a
+// host. The scheme state routes it to the FILE state, which resolves against the base and reads the
+// leading run as PATH. Only that LEADING run is exempt: a slash-poor value whose PATH canonicalizes
+// onto the four-separator form is still stripped by the `..` and empty-segment arms below
+// (`file:/..//x.js`, `file:a//b.png`). A `<base href>` onto a non-`file:` base does rebase them onto
+// a host the value names, and that is closed one layer up and unconditionally (a `<base href>` is
+// held to the stricter `_offlineIsNonLocalRef` and the strip removes it).
 // Two host spellings that stay on the machine
-// are excluded whatever the separator count: `localhost` - in every PERCENT-ENCODED and CASE
+// are excluded whatever the separator count of the AUTHORITY arm they appear in - and only
+// there, since both are lookaheads inside that arm, so the `..` and empty-segment arms still
+// strip a value carrying one: `localhost` - in every PERCENT-ENCODED and CASE
 // spelling, see `_OFFLINE_PCT_LOCALHOST` below for what that does and does not cover -
 // and a Windows DRIVE LETTER, which the file-host state turns into a path rather than a host,
 // because reporting either would delete an author's local reference and make the gate reject a file
