@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.816.0" />
+<meta name="commentable-html-version" content="1.817.0" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.816.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.817.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -5356,8 +5356,209 @@ tools/validate/validate.py --strict deck-showcase.html</code></pre>
 // (mermaid render, restored highlights, dynamic composers, etc). Used as a
 // fallback by "Export as Shareable" when fetch() of the page URL is unavailable
 // (e.g., file://, blocked fetch, or CSP). The snapshot is taken on the very first line
+// of the IIFE so it predates every runtime change this script makes - which is why it is the RAW
+// assembly here and gets the CR pass a few lines below, once that pass's `const`s exist.
+let SNAPSHOT_HTML = "<!DOCTYPE html>\n" + cmhSerializeElementRaw(document.documentElement);
+
+// ---- Shared HTML-string boundary readings ----
+// Pure, and declared as early as the snapshot allows. They moved here from
+// `65-export-shareable.js`, which now reads them from this one copy so the string-scanning rule
+// cannot drift between the export walk and the serializer's own CR post-pass.
+//
+// ASCII whitespace is the HTML spec's tag delimiter set. JS `\s` also matches NBSP and other
+// Unicode spaces, which a browser does NOT treat as a delimiter, so `<script\u00a0id="...">`
+// (one bogus unknown element to a browser) would otherwise look like a real script tag here.
+const _CMH_SPACE_CH = /[\t\n\f\r ]/;
+// One source of truth for "what ends a tag name" - a space belongs here, since an end tag may
+// carry a space before its ">" and still close the element. Spelling the class twice let the space go missing from
+// the close scanners, which made such a document impossible to export at all.
+const _CMH_NAME_END_SRC = "\\t\\n\\f\\r />";
+const _CMH_NAME_END_CH = new RegExp("[" + _CMH_NAME_END_SRC + "]");
+// Elements whose CONTENT a browser parses as TEXT, never as markup (noscript counts because the
+// layer only runs with scripting enabled). Nothing inside one of these is an element.
+const _CMH_RAW_TEXT = /^(?:script|style|textarea|title|xmp|iframe|noembed|noframes|noscript)$/;
+// A tag name only begins with an ASCII letter; anything else after `<` is text, a comment, a
+// markup declaration or a bogus comment.
+const _CMH_TAG_OPEN_CH = /[a-zA-Z]/;
+function _cmhTagEnd(html, start) {
+  let quote = "";
+  let afterEquals = false;
+  for (let i = start + 1; i < html.length; i += 1) {
+    const ch = html[i];
+    if (quote) {
+      if (ch === quote) quote = "";
+      continue;
+    }
+    // A quote only opens an attribute value directly after `=`; a stray apostrophe elsewhere in
+    // the tag (`<div data-x=it's ok>`) does not, and treating it as one used to swallow the
+    // rest of the document.
+    if (ch === '"' || ch === "'") {
+      if (afterEquals) quote = ch;
+      afterEquals = false;
+      continue;
+    }
+    if (ch === "=") {
+      afterEquals = true;
+      continue;
+    }
+    if (_CMH_SPACE_CH.test(ch)) continue;
+    if (ch === ">") return i;
+    afterEquals = false;
+  }
+  return -1;
+}
+function _cmhTagName(html, from) {
+  let i = from;
+  while (i < html.length && !_CMH_NAME_END_CH.test(html[i])) i += 1;
+  return html.slice(from, i).toLowerCase();
+}
+function _cmhCommentEnd(html, start) {
+  // `<!-->` and `<!--->` are complete (empty) comments, and `--!>` also terminates one. Missing
+  // those made a legal comment swallow the rest of the document.
+  let i = start + 4;
+  if (html[i] === ">") return i + 1;
+  if (html[i] === "-" && html[i + 1] === ">") return i + 2;
+  const rx = /--!?>/g;
+  rx.lastIndex = i;
+  const m = rx.exec(html);
+  return m ? m.index + m[0].length : html.length;
+}
+function _cmhScriptDataClose(html, from) {
+  // The tokenizer's script-data escaped states: inside a <script> body a `<!--` starts an
+  // escaped run, and a nested `<script` within it starts a DOUBLE-escaped run in which the next
+  // closing script tag only ends that run instead of closing the element (the classic
+  // `<!--<script>` idiom). Only `-->` leaves those runs (`--!>` does not, unlike in a comment).
+  const rx = new RegExp("<!--|-->|</?script(?=[" + _CMH_NAME_END_SRC + "])", "gi");
+  rx.lastIndex = from;
+  let escaped = false;
+  let doubled = false;
+  let m;
+  while ((m = rx.exec(html))) {
+    const tok = m[0].toLowerCase();
+    if (tok === "<!--") { escaped = true; continue; }
+    if (tok.charAt(0) === "-") { escaped = false; doubled = false; continue; }
+    if (tok === "<script") { if (escaped) doubled = true; continue; }
+    if (doubled) { doubled = false; continue; }
+    return m.index;
+  }
+  return -1;
+}
+function _cmhRawTextClose(html, name, from) {
+  if (name === "script") return _cmhScriptDataClose(html, from);
+  // An end tag only closes a raw-text element when the name is followed by whitespace, `/`, or
+  // `>`; an end tag that merely PREFIXES the name (a "scriptfoo" close) is text. Matching a bare
+  // prefix ended the element early and exposed its text to this walk as markup - the very
+  // failure this resolver exists to prevent.
+  const rx = new RegExp("</" + name + "(?=[" + _CMH_NAME_END_SRC + "])", "gi");
+  rx.lastIndex = from;
+  const m = rx.exec(html);
+  return m ? m.index : -1;
+}
+
+// ---- Serialized-CR fidelity ----
+// A DOM re-serialized through `getHTML()` / `outerHTML` spells a CR LITERALLY: HTML's fragment
+// serialization escapes `&`, U+00A0, `<` and `>` in a text node (and `&`, U+00A0 and `"` in an
+// attribute value) and NOTHING else. But HTML's INPUT-STREAM PREPROCESSING folds every CR and
+// every CRLF to a single LF BEFORE the tokenizer runs, so the next load reads that literal CR
+// back as an LF and the authored CR is gone - silently, on every export that re-serializes the
+// DOM. `&#13;` is decoded AFTER preprocessing, so it is the only spelling that round-trips; the
+// authoring tools already write a CR that way (#1196), and this is the runtime half of the same
+// rule, applied in ONE place so the export paths that share this serializer cannot drift.
+//
+// The rewrite is only correct where a browser DECODES a character reference, so the scan walks
+// the string the way the tokenizer does and leaves two kinds of region VERBATIM: a COMMENT, and
+// the BODY of an element whose text a serializer appends literally and a parser never decodes
+// (`script`, `style`, `xmp`, `iframe`, `noembed`, `noframes`, `noscript`, plus `plaintext`, which
+// swallows the rest of the document). Writing `&#13;` into one of those would show those six
+// characters instead of the CR. A raw-text element's own START TAG is still rewritten, because an
+// attribute value is decoded whatever the element is. `textarea` and `title` are deliberately NOT
+// verbatim - they are RCDATA, which the serializer escapes and the tokenizer decodes, so a CR
+// there rewrites like any other text (which is why this set is narrower than `_CMH_RAW_TEXT`).
+//
+// The scan is quote-aware because attribute-value escaping does NOT escape `<`: a
+// `title="<script>"` would otherwise look like a raw-text element opening here and silence the
+// rewrite for everything after it.
+//
+// Declared limit: nothing is raw text inside FOREIGN content, so an `<svg><style>` body IS
+// escaped by the serializer and IS decoded by the parser, and an `<svg><plaintext>` is an ordinary
+// foreign element that does NOT swallow the rest of the document - but this walk keeps no
+// namespace stack and treats both as it would in the HTML namespace. That direction merely
+// DECLINES to rewrite (fidelity is not improved there, and after a foreign `<plaintext>` not
+// improved for the rest of the document either); the other direction would corrupt a real script
+// or style body into showing six literal characters, so the walk errs here on purpose. A
+// half-correct namespace stack would have to model the HTML integration points
+// (`<foreignObject>`, `<desc>`, SVG `<title>`, the MathML text points) and every breakout tag to
+// stay on the safe side of that trade, which is why declining is preferred to guessing.
+const _CMH_TEXT_VERBATIM = /^(?:script|style|xmp|iframe|noembed|noframes|noscript)$/;
+const _CMH_CR_RE = /\r/g;
+// The SPELLING half of the rule, in one place: a CR that must survive a re-parse is written as
+// `&#13;`. The walk below decides WHERE that is legal; any other re-serializer that already knows
+// it is writing into a reference-decoding region (an attribute-value encoder) spells it through
+// this rather than keeping its own `\r` literal.
+function cmhEscapeCr(text) {
+  return String(text == null ? "" : text).replace(_CMH_CR_RE, "&#13;");
+}
+// A Text node's own data, serialized the way HTML's fragment serialization serializes one: through
+// the browser's own escaper, so `&`, U+00A0, `<` and `>` come back as references, and then through
+// the CR spelling, which that escaper does not apply. A caller that splices a Text node's data into
+// a document directly - rather than letting an element serializer do it - must go through this. The
+// raw data is not markup-safe (an authored `<script>` in a text node becomes a LIVE script), and
+// that is not merely a separate bug: it makes the CR spelling WRONG too, because a `&#13;` written
+// into what the reload then reads as a raw-text body is six literal characters, not a CR.
+function cmhSerializeTextData(data) {
+  const holder = document.createElement("div");
+  holder.textContent = String(data == null ? "" : data);
+  return cmhEscapeCr(holder.innerHTML);
+}
+function cmhEscapeSerializedCarriageReturns(html) {
+  const s = String(html == null ? "" : html);
+  // The overwhelmingly common case. Returning the input untouched also means no document that
+  // carries no CR at all can be changed by this pass, however the walk below behaves.
+  if (s.indexOf("\r") < 0) return s;
+  const keep = function (a, b) { return s.slice(a, b); };
+  const fix = function (a, b) { return cmhEscapeCr(s.slice(a, b)); };
+  let out = "";
+  let run = 0;
+  let i = 0;
+  while (i < s.length) {
+    const lt = s.indexOf("<", i);
+    if (lt < 0) break;
+    if (s.slice(lt, lt + 4) === "<!--") {
+      const end = _cmhCommentEnd(s, lt);
+      out += fix(run, lt) + keep(lt, end);
+      i = run = end;
+      continue;
+    }
+    if (!_CMH_TAG_OPEN_CH.test(s.charAt(lt + 1) || "")) { i = lt + 1; continue; }
+    const gt = _cmhTagEnd(s, lt);
+    // A tag that never finishes is discarded by a browser along with everything after it, so
+    // whatever this pass does with the remainder is unobservable; rewrite it like ordinary text.
+    if (gt < 0) break;
+    const name = _cmhTagName(s, lt + 1);
+    if (name === "plaintext") return out + fix(run, gt + 1) + keep(gt + 1, s.length);
+    if (!_CMH_TEXT_VERBATIM.test(name)) { i = gt + 1; continue; }
+    const close = _cmhRawTextClose(s, name, gt + 1);
+    const bodyEnd = close < 0 ? s.length : close;
+    out += fix(run, gt + 1) + keep(gt + 1, bodyEnd);
+    i = run = bodyEnd;
+  }
+  return out + fix(run, s.length);
+}
+// Exposed for deterministic tests (the pass is pure, and its carve-outs are worth unit-testing
+// without having to round-trip a whole export).
+window.__cmhEscapeSerializedCRs = function (h) { return cmhEscapeSerializedCarriageReturns(h); };
+
+// The load-time snapshot is the ONE caller that cannot run the pass at capture time: it must be
+// the first statement in the IIFE (nothing may mutate the DOM before it, and a build guard pins
+// that), while the pass depends on `const`s that are not hoisted. The transform is PURE, so it is
+// applied here instead - the same single rule, deferred by a few lines rather than duplicated.
+SNAPSHOT_HTML = cmhEscapeSerializedCarriageReturns(SNAPSHOT_HTML);
+
+// Pristine snapshot of the document, captured before any DOM mutation
+// (mermaid render, restored highlights, dynamic composers, etc). Used as a
+// fallback by "Export as Shareable" when fetch() of the page URL is unavailable
+// (e.g., file://, blocked fetch, or CSP). The snapshot is taken on the very first line
 // of the IIFE so it predates every runtime change this script makes.
-const SNAPSHOT_HTML = "<!DOCTYPE html>\n" + cmhSerializeElement(document.documentElement);
 function cmhSerializableOpenShadowRoots(rootEl) {
   const roots = [];
   const visit = function (scope) {
@@ -5374,7 +5575,10 @@ function cmhSerializableOpenShadowRoots(rootEl) {
   visit(rootEl);
   return roots;
 }
-function cmhSerializeElement(el) {
+// The RAW assembly: the element's own serialization, with its serializable shadow roots spliced
+// in, and no CR pass. Split out because the load-time snapshot must run before that pass's
+// declarations exist; every other caller goes through `cmhSerializeElement`.
+function cmhSerializeElementRaw(el) {
   if (!el || typeof el.getHTML !== "function") return el ? el.outerHTML : "";
   const inner = el.getHTML({
     serializableShadowRoots: true,
@@ -5385,6 +5589,11 @@ function cmhSerializeElement(el) {
   return shell.toLowerCase().endsWith(close)
     ? shell.slice(0, shell.length - close.length) + inner + close
     : shell;
+}
+function cmhSerializeElement(el) {
+  // The CR pass runs on the ASSEMBLED string, once: it is the single point every export path
+  // shares, so none of them can drift into writing an authored CR back as a literal one.
+  return cmhEscapeSerializedCarriageReturns(cmhSerializeElementRaw(el));
 }
 // The layer runs synchronously during parse, so SNAPSHOT_HTML stops at THIS <script>:
 // host content placed after the layer (per charts-embedding.md, chart data + init scripts land
@@ -5732,7 +5941,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.816.0";
+const CMH_VERSION = "1.817.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -18770,92 +18979,11 @@ function _stripTransientBodyClasses(html) {
 }
 // Exposed for deterministic tests (body-class normalization is pure and worth unit-testing).
 window.__cmhStripTransientBody = function (h) { return _stripTransientBodyClasses(h); };
-// ASCII whitespace is the HTML spec's tag delimiter set. JS `\s` also matches NBSP and other
-// Unicode spaces, which a browser does NOT treat as a delimiter, so `<script\u00a0id="...">`
-// (one bogus unknown element to a browser) would otherwise look like a real script tag here.
-const _CMH_SPACE_CH = /[\t\n\f\r ]/;
-// One source of truth for "what ends a tag name" - a space belongs here, since an end tag may
-// carry a space before its ">" and still close the element. Spelling the class twice let the space go missing from
-// the close scanners, which made such a document impossible to export at all.
-const _CMH_NAME_END_SRC = "\\t\\n\\f\\r />";
-const _CMH_NAME_END_CH = new RegExp("[" + _CMH_NAME_END_SRC + "]");
-// Elements whose CONTENT a browser parses as TEXT, never as markup (noscript counts because the
-// layer only runs with scripting enabled). Nothing inside one of these is an element.
-const _CMH_RAW_TEXT = /^(?:script|style|textarea|title|xmp|iframe|noembed|noframes|noscript)$/;
-function _cmhTagEnd(html, start) {
-  let quote = "";
-  let afterEquals = false;
-  for (let i = start + 1; i < html.length; i += 1) {
-    const ch = html[i];
-    if (quote) {
-      if (ch === quote) quote = "";
-      continue;
-    }
-    // A quote only opens an attribute value directly after `=`; a stray apostrophe elsewhere in
-    // the tag (`<div data-x=it's ok>`) does not, and treating it as one used to swallow the
-    // rest of the document.
-    if (ch === '"' || ch === "'") {
-      if (afterEquals) quote = ch;
-      afterEquals = false;
-      continue;
-    }
-    if (ch === "=") {
-      afterEquals = true;
-      continue;
-    }
-    if (_CMH_SPACE_CH.test(ch)) continue;
-    if (ch === ">") return i;
-    afterEquals = false;
-  }
-  return -1;
-}
-function _cmhTagName(html, from) {
-  let i = from;
-  while (i < html.length && !_CMH_NAME_END_CH.test(html[i])) i += 1;
-  return html.slice(from, i).toLowerCase();
-}
-function _cmhCommentEnd(html, start) {
-  // `<!-->` and `<!--->` are complete (empty) comments, and `--!>` also terminates one. Missing
-  // those made a legal comment swallow the rest of the document.
-  let i = start + 4;
-  if (html[i] === ">") return i + 1;
-  if (html[i] === "-" && html[i + 1] === ">") return i + 2;
-  const rx = /--!?>/g;
-  rx.lastIndex = i;
-  const m = rx.exec(html);
-  return m ? m.index + m[0].length : html.length;
-}
-function _cmhScriptDataClose(html, from) {
-  // The tokenizer's script-data escaped states: inside a <script> body a `<!--` starts an
-  // escaped run, and a nested `<script` within it starts a DOUBLE-escaped run in which the next
-  // closing script tag only ends that run instead of closing the element (the classic
-  // `<!--<script>` idiom). Only `-->` leaves those runs (`--!>` does not, unlike in a comment).
-  const rx = new RegExp("<!--|-->|</?script(?=[" + _CMH_NAME_END_SRC + "])", "gi");
-  rx.lastIndex = from;
-  let escaped = false;
-  let doubled = false;
-  let m;
-  while ((m = rx.exec(html))) {
-    const tok = m[0].toLowerCase();
-    if (tok === "<!--") { escaped = true; continue; }
-    if (tok.charAt(0) === "-") { escaped = false; doubled = false; continue; }
-    if (tok === "<script") { if (escaped) doubled = true; continue; }
-    if (doubled) { doubled = false; continue; }
-    return m.index;
-  }
-  return -1;
-}
-function _cmhRawTextClose(html, name, from) {
-  if (name === "script") return _cmhScriptDataClose(html, from);
-  // An end tag only closes a raw-text element when the name is followed by whitespace, `/`, or
-  // `>`; an end tag that merely PREFIXES the name (a "scriptfoo" close) is text. Matching a bare
-  // prefix ended the element early and exposed its text to this walk as markup - the very
-  // failure this resolver exists to prevent.
-  const rx = new RegExp("</" + name + "(?=[" + _CMH_NAME_END_SRC + "])", "gi");
-  rx.lastIndex = from;
-  const m = rx.exec(html);
-  return m ? m.index : -1;
-}
+// The HTML-string boundary readings this walk is built on (`_CMH_SPACE_CH`, `_CMH_NAME_END_SRC`,
+// `_CMH_NAME_END_CH`, `_CMH_RAW_TEXT`, `_cmhTagEnd`, `_cmhTagName`, `_cmhCommentEnd`,
+// `_cmhScriptDataClose`, `_cmhRawTextClose`) live in `00-preamble.js`, which needs them at LOAD
+// time for the snapshot's own CR post-pass. One copy, so the two scans cannot disagree about
+// where a tag, a comment or a raw-text body ends.
 // Walk an HTML string's element tags in document order the way an HTML parser does: consume
 // comments, DOCTYPEs, bogus declarations and processing instructions; skip the TEXT content of
 // raw-text elements; and never report a tag inside <template> content. An ordinary template is
@@ -19120,12 +19248,25 @@ function _cmhTagAttributes(tag) {
   return attrs;
 }
 function _cmhDecodeAttribute(value) {
-  const textarea = document.createElement("textarea");
-  textarea.innerHTML = String(value).replace(/</g, "&lt;");
-  return textarea.value;
+  // A <div>'s text node, not a <textarea>'s `value`: the textarea IDL value is the API value,
+  // which NORMALIZES newlines - a CR, and a CRLF, both come back as a lone LF. That silently
+  // folded an authored `&#13;` to an LF before the value was re-encoded, undoing the round trip
+  // CMH-EXP-24 restores. A text node's data is not normalized, and a character reference is still
+  // decoded there because the data state decodes references; `<` is escaped first, so nothing in
+  // the value can open markup. Every other input class decodes identically on both paths.
+  const holder = document.createElement("div");
+  holder.innerHTML = String(value).replace(/</g, "&lt;");
+  return holder.textContent == null ? "" : holder.textContent;
 }
+// Exposed for deterministic tests: the decode rule is pure, and the newline behavior is the one
+// thing about it that a refactor back to a textarea would silently undo.
+window.__cmhDecodeAttribute = function (v) { return _cmhDecodeAttribute(v); };
 function _cmhEncodeAttribute(value, quote) {
-  let encoded = String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  // The CR spelling goes through the shared `cmhEscapeCr`: this encoder writes into a quoted
+  // attribute value, which a browser decodes, and it runs DOWNSTREAM of the serializer's own CR
+  // pass (`_normalizeDocSourceInHtml` rewrites the assembled string), so leaving a literal CR here
+  // would re-introduce exactly the LF downgrade CMH-EXP-24 exists to stop.
+  let encoded = cmhEscapeCr(String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;"));
   if (quote === '"') return encoded.replace(/"/g, "&quot;");
   if (quote === "'") return encoded.replace(/'/g, "&#39;");
   encoded = encoded.replace(/[\s"'`=>]/g, function (ch) {
@@ -19198,7 +19339,12 @@ function _snapshotWithTail() {
       return cmhSerializeElement(n);
     }
     if (n.nodeType === 8) return "<!--" + n.nodeValue + "-->";
-    if (n.nodeType === 3) return n.nodeValue;
+    // Tail TEXT is spliced in as its own data, so it never passes through cmhSerializeElement.
+    // It has to be serialized the way a serializer serializes a text node - escaped, then with the
+    // CR spelled `&#13;` - or an authored CR leaves literally (the downgrade CMH-EXP-24 closes) and
+    // an authored `<` leaves as live markup, which would ALSO make the CR spelling wrong by putting
+    // it inside what the reload reads as a raw-text body.
+    if (n.nodeType === 3) return cmhSerializeTextData(n.nodeValue);
     return "";
   };
   // Collect everything after the layer script in document order, climbing out of any
