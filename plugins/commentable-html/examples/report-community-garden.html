@@ -19996,13 +19996,23 @@ const _OFFLINE_FILE_DOTDOT_SEGMENT = "(?:\\.|%2e)(?:\\.|%2e)";
 // value, which runs to the end of the string, and `_OFF_CSS_VALUE_STOP` for a stylesheet, where a
 // quote, a `)`, CSS whitespace or a declaration/block terminator ends it. Written with `$` rather
 // than a Python `\Z`; there is no `m` flag on either compiled pattern, so a JS `$` is end-of-input.
+// What ends a value and what a PATH may CONTAIN are DIFFERENT sets: a quoted CSS string may legally
+// carry a terminator, so scanning the path with the terminator set truncated the scan and hid a
+// popping segment behind it (`url("file:///a(/..//evil.example/x.png")` canonicalizes onto the
+// four-separator UNC form and a real Chromium 151 requested `file://evil.example/x.png` for it).
+// The path scan therefore uses `_OFF_PATH_CHAR` - only `?`, `#` and the raw LF/CR that make a CSS
+// bad-string token are excluded - and is bounded by `_OFF_PATH_SCAN_MAX` instead, because these
+// strips run UNANCHORED, with a `g` flag, to convergence, in the READER'S BROWSER: unbounded, a
+// stylesheet of repeated `url(file:a` measured 17.2s at 156 KB, which is a hung tab.
+const _OFF_PATH_CHAR = "[^?#\\n\\r]";
+const _OFF_PATH_SCAN_MAX = 512;
 function _offFileNetworkArm(stop) {
   const end = stop ? "[" + stop + "]|$" : "$";
-  const seg = "[^?#" + stop + "]";
+  const seg = stop ? _OFF_PATH_CHAR + "{0," + _OFF_PATH_SCAN_MAX + "}" : "[^?#]*";
   return "file:(?://(?!/)|/{4,}(?!/))(?![?#]|" + end + ")"
-    + "(?:(?=" + seg + "*/" + _OFFLINE_FILE_DOTDOT_SEGMENT + "(?:[/?#]|" + end + "))"
+    + "(?:(?=" + seg + "/" + _OFFLINE_FILE_DOTDOT_SEGMENT + "(?:[/?#]|" + end + "))"
     + "|(?!" + _OFFLINE_PCT_LOCALHOST + "(?:[?#]|" + end + "|/(?!/)))(?![A-Za-z][:|]))"
-    + "|file:/*(?!/)" + seg + "*?//";
+    + "|file:/*(?!/)" + seg + "?//";
 }
 const _OFFLINE_NETWORK_URL_RE = new RegExp(
   "^(?:(?:https?:/*|/{2,})[^/?#]"
@@ -20093,17 +20103,16 @@ const _OFF_CSS_WS = "[\\t\\n\\f\\r ]";
 const _OFF_CSS_NET = "(?:https?:\\/*|\\/{2,})";
 // One host character, the same approximation the validator's `_CSS_HOST_CHAR` makes.
 const _OFF_CSS_HOST = "[^/?#\"')\\t\\n\\f\\r ]";
-// What ENDS a CSS value, as a character-class BODY: either quote, the parens that open and close a
-// `url()` or an `image-set()`, the CSS whitespace the URL parser KEEPS, and the `;`/`{`/`}` that end
-// a declaration or a block. Mirrors the validator's `CSS_VALUE_STOP` and is pinned to it as text.
-// The OPEN paren is in the set because it BOUNDS the arm's path scans at a candidate boundary: these
-// strips run UNANCHORED, with a `g` flag, to convergence, in the READER'S BROWSER, and without it a
-// stylesheet of repeated `url(file:a` went quadratic (156 KB took 17.2s) - a hung tab. ASCII TAB, LF
-// and CR are deliberately OUT: they are the three characters the URL parser removes from anywhere,
-// so one can never be the true end of a value, and counting `\t` let
+// What ENDS a CSS value, as a character-class BODY: either quote, the `)` that closes a `url()` or
+// an `image-set()`, the CSS whitespace the URL parser KEEPS, and the `;`/`{`/`}` that end a
+// declaration or a block. Mirrors the validator's `CSS_VALUE_STOP` and is pinned to it as text.
+// ASCII TAB is deliberately OUT: it is one of the three characters the URL parser removes from
+// anywhere, so it can never be the true end of a value, and counting it let
 // `url("file://localhost<TAB>evil.example/x")` - host `localhostevil.example` to the parser - read as
-// the excluded `localhost`. Form feed and space stay: the parser removes neither.
-const _OFF_CSS_VALUE_STOP = "'\\\"();{}\\f ";
+// the excluded `localhost`. LF and CR are IN for a CSS reason rather than a URL one: unescaped, they
+// make a bad-string token whose declaration a browser drops. The OPEN paren is OUT because a quoted
+// string may legally contain one; the path scans are bounded by `_OFF_PATH_SCAN_MAX`, not by it.
+const _OFF_CSS_VALUE_STOP = "'\\\");{}\\n\\f\\r ";
 // Where a CSS reference is decided to reach the network: the http/https and scheme-relative prefix
 // plus one host character, OR the SHARED `file:` authority arm - the same one the URL predicate
 // above reads, so a stylesheet and an attribute cannot answer differently about `file://host/x`

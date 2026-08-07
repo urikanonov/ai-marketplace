@@ -163,14 +163,36 @@ _FILE_DOTDOT_SEGMENT = r"(?:\.|%2e)(?:\.|%2e)"
 # the end of the value and not a path character. Reading on past it called an author's local
 # reference egress. The reasoning for each arm is recorded with `NETWORK_URL_RE` below, which is the
 # predicate they were measured against.
+# What ends a value and what a PATH may CONTAIN are two different sets, and conflating them was a
+# measured bypass. The two canonicalization arms scan the path, and a QUOTED CSS string may legally
+# carry a value terminator inside it - so scanning with the terminator set truncated the scan and
+# hid the popping segment behind it: `url("file:///a(/..//evil.example/x.png")` canonicalizes onto
+# the four-separator UNC form and a real Chromium 151 requested `file://evil.example/x.png` for it,
+# while every CSS reader called it local (found by the round-2 multi-duck panel, confirmed in a real
+# engine). The path scan therefore uses `_PATH_CHAR` rather than the terminator set: it excludes only
+# what cannot appear in a path at all - `?` and `#`, which start the query and fragment, and the raw
+# LF/CR that make a CSS bad-string token whose declaration a browser drops.
+# That leaves the scan needing a different bound, because these readers are `search`ed UNANCHORED
+# over whole stylesheets and the exporter runs its mirror of them to convergence IN THE READER'S
+# BROWSER: an unbounded scan re-ran from every `file:` start in the sheet, and a sheet of repeated
+# `url(file:a` measured 1.08s at 39 KB, 17.2s at 156 KB and 69.3s at 312 KB - quadratic, and a hung
+# tab on a document a recipient merely opened. `_PATH_SCAN_MAX` bounds it instead (0.24s at 312 KB,
+# linear). The residual that buys is bounded and stated: a canonicalization-only spelling whose path
+# runs longer than the cap BEFORE its popping segment is not scanned. It costs nothing on the
+# channel this predicate exists for - the two AUTHORITY arms, which decide
+# `file://host/x` and `file:////host/x`, are exact and uncapped - and no authored path comes near it.
+_PATH_CHAR = r"[^?#\n\r]"
+_PATH_SCAN_MAX = 512
+
+
 def file_network_arm(stop=""):
     """The `file:` arms of the network predicate, for a value the caller's context ends at `stop`."""
     end = (r"[" + stop + r"]|\Z") if stop else r"\Z"
-    seg = r"[^?#" + stop + r"]"
+    seg = (_PATH_CHAR + r"{0,%d}" % _PATH_SCAN_MAX) if stop else r"[^?#]*"
     return (r"file:(?://(?!/)|/{4,}(?!/))(?![?#]|" + end + r")"
-            r"(?:(?=" + seg + r"*/" + _FILE_DOTDOT_SEGMENT + r"(?:[/?#]|" + end + r"))"
+            r"(?:(?=" + seg + r"/" + _FILE_DOTDOT_SEGMENT + r"(?:[/?#]|" + end + r"))"
             r"|(?!" + _PCT_LOCALHOST + r"(?:[?#]|" + end + r"|/(?!/)))(?![A-Za-z][:|]))"
-            r"|file:/*(?!/)" + seg + r"*?//")
+            r"|file:/*(?!/)" + seg + r"?//")
 
 
 # A network URL in a CSS `url(...)`, and the `@import` form beside it, recognized in the prefixes a
@@ -213,36 +235,30 @@ _CSS_AT_SEP = CSS_WS + r"+|(?=['\"])"
 # `url(ftp://host/x)` or `@import "ws://host/t.css"` fetches nothing from a `file:` document.
 CSS_NETWORK_PREFIX = r"(?:https?:/*|/{2,})"
 CSS_HOST_CHAR = r"[^/?#'\")\t\n\f\r ]"
-# What ENDS a CSS value, as a character-class BODY: either quote character, the parens that open and
-# close a `url()` or an `image-set()`, CSS whitespace the URL parser KEEPS, and the `;`/`{`/`}` that
-# end a declaration or a block (the last three matter for the unquoted `@import` form and for the
+# What ENDS a CSS value, as a character-class BODY: either quote character, the `)` that closes a
+# `url()` or an `image-set()`, the CSS whitespace the URL parser KEEPS, and the `;`/`{`/`}` that end
+# a declaration or a block (the last three matter for the unquoted `@import` form and for the
 # unterminated tokens a browser still fetches). `CSS_HOST_CHAR` is deliberately NOT the same set - it
 # also excludes the URL STRUCTURE characters `/?#`, which end a host but not the value. This is what
 # the shared `file:` arm is parameterized by, so `url(file://localhost)` reads local: the `)` is the
 # end of the value, and reading on past it would report an author's local reference as egress.
-# Two membership decisions are load-bearing and were both measured, not assumed.
-# (1) The OPEN paren is in the set even though it cannot close a value. A `(` is not a legal
-# character in an UNQUOTED url token (CSS requires it escaped), so no reference loses a character to
-# it - and it BOUNDS the arm's two path scans at a candidate boundary. Without it the lazy
-# empty-path-segment scan re-ran from every `file:` start in the sheet, and because these readers are
-# `search`ed UNANCHORED over whole stylesheets - and the exporter's mirror runs its strips to
-# convergence IN THE READER'S BROWSER - a stylesheet of repeated `url(file:a` went quadratic:
-# 39 KB took 1.08s, 156 KB took 17.2s and 312 KB took 69.3s, against 0.005s for the same input
-# before this arm existed. With the `(` it is 0.005s at 312 KB. That is a hang in a reader's tab, so
-# the bound is a correctness property rather than a micro-optimization.
-# (2) ASCII TAB, LF and CR are deliberately NOT in the set, even though they are CSS whitespace and
-# do end an unquoted url token. They are exactly the three characters the URL parser REMOVES from
-# ANYWHERE in a value, so one can never be the genuine end of the value the parser sees: counting
-# `\t` as a terminator fired the `localhost` exclusion on `url("file://localhost<TAB>evil.example/x")`,
-# whose host the parser reads as `localhostevil.example` - a real remote SMB host the gate then
-# called local (measured; the same value's ATTRIBUTE spelling was reported all along, because that
-# path runs `normalize_url_value` first). The cost is over-detection in the fail-CLOSED direction,
-# and it is confined to absurd spellings - a parser-removed character sitting directly between the
-# excluded host and the end of the value (`url(file://localhost<TAB>)`) - while every realistic local
-# reference, including tab- and newline-padded ones, stays clean (corpus rows pin both directions).
-# U+000C FORM FEED and SPACE stay in the set: the parser does NOT remove either, so both really do
-# end a value.
-CSS_VALUE_STOP = r"'\"();{}\f "
+# Three membership decisions are load-bearing and each was measured, not assumed.
+# (1) ASCII TAB is NOT in the set, even though it is CSS whitespace and does end an unquoted url
+# token. It is one of the three characters the URL parser REMOVES from ANYWHERE in a value, so it can
+# never be the genuine end of the value the parser sees: counting it fired the `localhost` exclusion
+# on `url("file://localhost<TAB>evil.example/x")`, whose host the parser reads as
+# `localhostevil.example` - a real remote SMB host the gate then called local. (The same value's
+# ATTRIBUTE spelling was reported all along, because that path runs `normalize_url_value` first.)
+# (2) LF and CR ARE in the set, even though the parser removes them too, and the difference is CSS
+# rather than URL: an unescaped LF or CR makes a BAD-STRING token (or a bad-url token), so a browser
+# drops that declaration and fetches nothing at all. They end the value's usefulness where a tab does
+# not. U+000C FORM FEED and SPACE are in for the plainer reason that the parser removes neither.
+# (3) The OPEN paren is NOT in the set. It cannot close a value, and a QUOTED CSS string may legally
+# contain one - putting it here truncated the arm's path scans and hid a popping segment behind it
+# (see `file_network_arm` above, where the same panel finding is recorded with its Chromium
+# measurement). The scans are bounded by `_PATH_SCAN_MAX` instead, which is what keeps them linear
+# without deciding that a legal path character ends the value.
+CSS_VALUE_STOP = r"'\");{}\n\f\r "
 # The one place a CSS reader decides "this reference reaches the network". Both arms come from a
 # SHARED definition: http/https plus scheme-relative from `CSS_NETWORK_PREFIX`, and the `file:`
 # authority from `file_network_arm` - the SAME arm `NETWORK_URL_RE` reads, so the separator
@@ -482,9 +498,11 @@ def css_network_image_set(text):
 # reads the leading run as PATH. Every surface that consumes this predicate resolves against that
 # base: an attribute, a refresh target, and an `iframe srcdoc` (which inherits its parent's
 # base). The CSS readers are on that list TOO, as of issue #1230: they are assembled from
-# `CSS_NETWORK_START`, which carries this very arm, and a stylesheet resolves a reference against
-# the same document base - so the exemption reasoned about here holds for them by the same argument,
-# rather than by their having no `file:` arm to reach the question with (which is what it used to be).
+# `CSS_NETWORK_START`, which carries this very arm, and INLINE CSS - a `<style>` block or a `style=`
+# attribute, which is all this gate ever reads, since an external stylesheet is a fetching `<link>`
+# the self-contained check rejects before any CSS is scanned - resolves a reference against the same
+# document base. So the exemption reasoned about here holds for them by the same argument, rather
+# than by their having no `file:` arm to reach the question with (which is what it used to be).
 # The refresh case was CAPTURED rather than reasoned about - a real Chromium
 # navigating out of a `file:///C:/dir/report.html` document went to `file:///C:/dir/evil.example/x`,
 # never the SMB share - and from a UNC base the value takes that document's OWN host, which it
@@ -501,8 +519,9 @@ def css_network_image_set(text):
 # the false positive of calling an authored `file:notes.html` a beacon. Both are Chromium
 # measurements, like the closed scheme set below, and nothing is claimed for other engines.
 # The exemption is scoped to the LEADING run and no further: a zero- or one-separator value whose
-# PATH canonicalizes onto the four-separator form is still counted by `_FILE_DOTDOT_SEGMENT` and
-# `_FILE_EMPTY_SEGMENT` (`file:/..//x.js` and `file:a//b.png` are corpus rows, both NETWORK). Those
+# PATH canonicalizes onto the four-separator form is still counted by the two canonicalization arms
+# `file_network_arm` builds - the `_FILE_DOTDOT_SEGMENT` lookahead and the empty-segment arm beside
+# it (`file:/..//x.js` and `file:a//b.png` are corpus rows, both NETWORK). Those
 # two arms are base-LESS canonicalization arguments and stay a deliberate over-detection in the safe
 # direction; nothing here narrows them. Read the `localhost` and drive-letter exclusions below with
 # that in mind: they are lookaheads INSIDE the authority arm, so they exclude a local AUTHORITY, not

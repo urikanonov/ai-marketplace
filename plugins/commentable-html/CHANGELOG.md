@@ -33,17 +33,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   merely by verdicts: the runtime's own arm builder is evaluated in a real JS engine and compared
   character for character for every terminator set its callers use, so a widening can no longer
   land on one side and make the gate reject a file the exporter just produced.
-- Which characters END a CSS value is part of that shared arm, and two of those memberships are
-  load-bearing rather than cosmetic. An OPEN paren counts, because it bounds the arm's path scans at
-  a candidate boundary: without it a stylesheet of repeated `url(file:a` drove the readers quadratic
-  (1.1s at 39 KB, 17.2s at 156 KB, 69.3s at 312 KB), and since these readers run unanchored over
-  authored content - and the exporter runs its mirror of them to convergence in the reader's own
-  browser - that was a hung tab, not a slow test. ASCII tab, LF and CR deliberately do NOT count,
-  because they are exactly the characters the URL parser removes from anywhere in a value: treating
-  a tab as the end of a value fired the `localhost` exclusion on
-  `url("file://localhost<TAB>evil.example/x")`, whose host a browser reads as `localhostevil.example`
-  - the SMB beacon the gate is there to catch. Both are pinned by regression tests, the second in
-  both directions so the fail-closed over-detection it costs stays confined to absurd spellings.
+- Which characters END a CSS value is part of that shared arm, and three of those memberships are
+  load-bearing rather than cosmetic; each was measured. ASCII tab does NOT end a value, because it is
+  one of the three characters the URL parser removes from anywhere: counting it fired the `localhost`
+  exclusion on `url("file://localhost<TAB>evil.example/x")`, whose host a browser reads as
+  `localhostevil.example` - the SMB beacon the gate is there to catch. A raw LF or CR DOES end one,
+  for a CSS reason rather than a URL one: unescaped, it makes a bad-string token whose declaration a
+  browser drops. And an open paren does not, because a quoted CSS string may legally contain one.
+- Bounding the arm's two canonicalization scans by that terminator set was wrong in the other
+  direction, and the second review round caught it in a real engine: a quoted string may carry a
+  terminator inside its PATH, so scanning to one truncated the scan and hid the popping segment
+  behind it. `url("file:///a(/..//evil.example/x.png")` canonicalizes onto the four-separator UNC
+  form and Chromium 151 really requested `file://evil.example/x.png` for it, while every CSS reader
+  called it local. The scans now read what a path may CONTAIN - everything but the query, the
+  fragment, and the raw newline that ends a CSS string - and are bounded by a length cap instead.
+  The cap is what keeps them linear: unbounded, these readers are quadratic, and since they run
+  unanchored over authored content while the exporter runs its mirror of them to convergence in the
+  reader's own browser, a stylesheet of repeated `url(file:a` (1.1s at 39 KB, 17.2s at 156 KB, 69.3s
+  at 312 KB) was a hung tab rather than a slow test. The residual the cap buys is bounded and
+  recorded: a canonicalization-only spelling whose path runs past the cap before its popping segment
+  is not scanned. It costs nothing on the channel this change exists for - the two authority arms,
+  which decide `file://host/x` and `file:////host/x`, are exact and uncapped.
 - The deck gate's DEGRADED fallback - the reading used when a broken or partial install cannot import
   the shared CSS predicates - now recognizes `file:` too. It had been left at http/https and
   scheme-relative, so the one path whose entire purpose is to fail closed would have blessed the very

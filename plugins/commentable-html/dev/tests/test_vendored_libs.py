@@ -2762,12 +2762,14 @@ class RuntimeParityTests(unittest.TestCase):
         ("theme/x.png", False),
         # The parser-removed characters, which the ATTRIBUTE path strips through
         # `normalize_url_value` before testing. The CSS readers do not normalize, so they can only
-        # agree here by refusing to treat one as the end of a value - see `CSS_VALUE_STOP`. Only the
-        # TAB spelling is listed: a raw LF or CR inside a CSS string is a BAD-STRING token (and
-        # inside an unquoted `url()` a bad-url token), so a browser drops that declaration and
-        # fetches nothing, which is a legitimate CSS-tokenization divergence from an attribute value
-        # rather than a gap in the shared arm.
+        # agree here by refusing to treat one as the end of a value - see `CSS_VALUE_STOP`.
         ("file://localhost\tevil.example/x.png", True),
+        # A value terminator INSIDE the path, where a quoted CSS string makes it a legal path
+        # character. Both readings must still see the popping segment behind it (Chromium 151
+        # requests the first as `file://evil.example/x.png`).
+        ("file:///a(/..//evil.example/x.png", True),
+        ("file:///a b/..//evil.example/x.png", True),
+        ("file:////localhost/a(b)/../../evil.example/x", True),
     ]
 
     def test_the_css_readers_and_the_attribute_predicate_agree_about_a_file_authority(self):
@@ -2823,10 +2825,13 @@ class RuntimeParityTests(unittest.TestCase):
         nested `srcdoc` documents, and the exporter runs its MIRROR of them with a `g` flag to
         convergence inside the reader's browser - so a super-linear pattern is a hung tab on a
         document the recipient merely opened, not a slow CI job. The shared `file:` arm carries two
-        path scans (a lookahead and a lazy run); when nothing bounded them at a candidate boundary,
-        a sheet of repeated `url(file:a` measured 1.08s at 39 KB, 17.2s at 156 KB and 69.3s at
-        312 KB - textbook quadratic, and reachable from authored content (found by the round-1
-        multi-duck panel). The `(` in `CSS_VALUE_STOP` is what bounds them.
+        path scans (a lookahead and a lazy run); when nothing bounded them, a sheet of repeated
+        `url(file:a` measured 1.08s at 39 KB, 17.2s at 156 KB and 69.3s at 312 KB - textbook
+        quadratic, and reachable from authored content (found by the round-1 multi-duck panel).
+        `_PATH_SCAN_MAX` is what bounds them. Bounding them with the value-TERMINATOR set instead
+        was the round-2 panel's finding: it is linear too, but it truncates the scan at a character
+        a quoted CSS string may legally contain, which HID a popping segment and let a value a real
+        Chromium fetches read as local.
 
         Asserted as a RATIO between two sizes rather than an absolute wall-clock, so a slow or
         contended CI runner cannot make it flaky: quadratic growth is 4x per doubling and cannot hide
@@ -2852,8 +2857,8 @@ class RuntimeParityTests(unittest.TestCase):
                 "%s took %.3fs on a 312 KB pathological stylesheet against %.3fs on a 78 KB one, "
                 "which is super-linear growth. These patterns run unanchored over authored content "
                 "and the exporter's mirror runs them in the reader's browser, so this is a hang, "
-                "not a slow test. Keep every path scan in the shared file: arm bounded at a "
-                "candidate boundary (see CSS_VALUE_STOP)." % (name, large, small))
+                "not a slow test. Keep both path scans in the shared file: arm bounded by "
+                "_PATH_SCAN_MAX." % (name, large, small))
 
     def test_the_python_and_js_network_url_predicates_agree(self):
         """Run the runtime's own network-URL predicate in node and require the expected verdicts.
@@ -3142,21 +3147,30 @@ class RuntimeParityTests(unittest.TestCase):
         # `localhostevil.example` - an off-machine SMB load - and treating the tab as the end of the
         # value fired the `localhost` exclusion and blessed the beacon (found by the round-1
         # multi-duck panel; the byte-identical ATTRIBUTE spelling was reported all along, because
-        # that path runs `normalize_url_value` first). These rows are why `CSS_VALUE_STOP` carries
-        # neither `\t`, `\n` nor `\r`. The tab is the spelling a browser really fetches: a raw LF or
-        # CR in the same position makes a bad-string (or bad-url) token whose declaration is dropped,
-        # so reporting those is over-detection rather than a fetch, and only this one is pinned as a
-        # load.
+        # that path runs `normalize_url_value` first). This row is why `CSS_VALUE_STOP` carries no
+        # `\t`. A raw LF or CR in the same position is different and IS a terminator: it makes a
+        # bad-string (or bad-url) token whose declaration a browser drops, so it fetches nothing.
         ('a { background: url("file://localhost\tevil.example/x.png"); }', True),
         ('@import "file://localhost\tevil.example/t.css";', True),
-        # ... and the cost of leaving them out, pinned so it stays confined to absurd spellings: a
-        # value that ENDS at one of those characters is over-reported, in the fail-CLOSED direction.
-        # Every realistic local reference - including the tab- and space-padded ones below - stays
-        # clean, which is the property that matters.
+        # ... and the cost of leaving the tab out, pinned so it stays confined to absurd spellings:
+        # a value that ENDS at one is over-reported, in the fail-CLOSED direction. Every realistic
+        # local reference - including the tab- and space-padded ones below - stays clean, which is
+        # the property that matters.
         ("a { background: url(file://localhost\t); }", True),
         ('a { background: url("\tfile:///C:/x.png"); }', False),
         ("a { background: url( file://localhost/x.png ); }", False),
         ("a { background: url(file://localhost/x.png\t); }", False),
+        # A value terminator sitting INSIDE a quoted CSS string, where it is a legal path character
+        # rather than the end of the value. Scanning the path with the terminator set truncated the
+        # scan and hid the popping segment behind it, so a value whose canonical form is the
+        # four-separator UNC shape read LOCAL - and a real Chromium 151 requested
+        # `file://evil.example/x.png` for the first of these (found and measured in a real engine by
+        # the round-2 multi-duck panel). The path scan reads `_PATH_CHAR` and is bounded by
+        # `_PATH_SCAN_MAX` instead, which is what keeps it linear without calling a legal path
+        # character the end of the value.
+        ('a { background: url("file:///a(/..//evil.example/x.png"); }', True),
+        ('a { background: url("file:///a b/..//evil.example/x.png"); }', True),
+        ('@import "file:////localhost/a(b)/../../evil.example/x.css";', True),
     ]
 
     def _runtime_css_strip_source(self):
