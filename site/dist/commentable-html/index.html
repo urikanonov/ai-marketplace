@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.813.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.814.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,7 +496,7 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
-            <div class="rel-head"><h3>[1.813.0] - 2026-08-07</h3></div>
+            <div class="rel-head"><h3>[1.814.0] - 2026-08-07</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The value GENERATORS no longer downgrade an authored CR to LF. <code>#1196</code> made the attribute round trip faithful for every tool that RE-SERIALIZES a start tag, but it did not reach the places that BUILD a value from a CLI argument or a JSON field: those still wrote a literal CR, which HTML&#x27;s input-stream preprocessing folds to a single LF before the browser tokenizes, so the CR the input genuinely carried was silently lost. Worse, once the shared writer applied the rule, ONE <code>--label</code> could reach a browser as TWO different values in the same document - <code>data-doc-label=&quot;a&amp;#13;b&quot;</code> (a CR) beside a <code>&lt;title&gt;</code> a browser reads as <code>a\nb</code>.</li>
