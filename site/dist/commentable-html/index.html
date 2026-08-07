@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.814.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.816.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.816.0] - 2026-08-07</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A TALL-NARROW diagram (at least twice as tall as it is wide) now prints at the full printable COLUMN WIDTH instead of a sliver beside a large empty band. The tall-media print cap scaled by HEIGHT only (<code>max-height: 8.4in; width: auto</code>), so a <code>769 x 2197</code> flowchart printed at 42% of the column - with 58% of every row it occupied left blank - even though the same diagram filled the column on screen. The runtime now marks such a host from the rendered SVG&#x27;s intrinsic viewBox aspect, and both print surfaces (the <code>@media print</code> stylesheet and the screen-media measurement the single continuous page is sized from) bind it on WIDTH instead. The <code>@media print</code> stylesheet additionally lets the host fragment, so a diagram taller than a page flows across pages rather than reserving one whole (and a figure wrapping such a diagram is relaxed with it, so the wrapper does not re-impose the atomicity the host just shed). Wide and normal-aspect diagrams, figures, and images keep the 8.4in fit-one-page cap unchanged, and so does a tall-narrow diagram inside a diagram-gallery card - a card is a compact uniform thumbnail, not a diagram stranded beside an empty column, so widening one would have spent whole printed sheets on a single thumbnail. Nothing changes on screen.</li>
+              <li>Two further bindings were needed to keep the Save-as-PDF single continuous page honest for that diagram. Such a diagram is usually also narrow-scaled on screen, and that screen rule out-specified the measurement mirror&#x27;s cap, so the page was measured at the narrow cap while the print used the full column and the &quot;single page&quot; spilled onto three sheets; both surfaces now re-bind <code>max-width</code>. And because a width-bound diagram (unlike a height-capped one) is proportionally taller at the wide reading column the height cache is refreshed at, the cache floor was stamping about nine inches of trailing blank onto the page - moving the wasted space to the bottom of the sheet - so the measurement mirror now bounds the diagram to the width the honored page actually renders at.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.814.0] - 2026-08-07</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -506,6 +514,8 @@
               <li>The spec now lists the REMAINING plain-escape write sites in full, each with its reason, so the enumeration can be checked rather than re-derived - including the ones spelled through the <code>html_lib</code> alias, which an earlier pass of the list missed. Four are provably CR-free at the write (the deck theme label, the code-body escape, the diff body, and the document-overview <code>aria-label</code> synthesized from integer counts). The fifth, <code>generate_toc.py</code>&#x27;s TOC <code>href</code> and link text, is a REAL residual left deliberately unfixed: it reads with <code>newline=&quot;&quot;</code> and splices by offsets, and its parsed attribute view does not apply input-stream preprocessing, so moving it onto the escape ALONE would write back a CR the input never meant - the inverse of this bug. What it owes is the read-boundary pairing, which is tracked with the rest of that work.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.812.0] - 2026-08-07</h3></div>
             <div class="group-label">Fixed</div>
@@ -516,8 +526,6 @@
               <li>The escape is also total: it folds to U+FFFD the two characters a document can never hold, a NUL (what the attribute-value tokenizer does with one) and a lone surrogate (which cannot be encoded as UTF-8 at all, so it would otherwise raise at the file write, far from the value that caused it). It accepts only a string or <code>None</code>, and raises <code>TypeError</code> otherwise rather than serializing a falsy <code>0</code> as an empty attribute.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.811.0] - 2026-08-07</h3></div>
             <div class="group-label">Fixed</div>
@@ -552,14 +560,7 @@
               <li><code>retrofit.py</code> no longer silently deletes a chunk of the host page when a start tag carries a quote outside a quoted value (CMH-TOOL-15). Where a start tag ENDS was decided by treating EVERY <code>&quot;</code>/<code>&#x27;</code> as opening a quoted value, but HTML enters that state only for a quote that opens a VALUE (the before-attribute-value state, right after the <code>=</code>). So an ordinary unquoted value with an apostrophe - <code>&lt;div title=Bob&#x27;s id=&quot;content&quot;&gt;</code>, <code>alt=Don&#x27;t</code> - made the scan run past the real <code>&gt;</code> and re-sync at the next quote in the document. The element&#x27;s recorded extent then covered live host markup, and re-serializing the start tag OVERWROTE it: the host&#x27;s <code>&lt;section&gt;</code> and its heading vanished, the tool exited 0, and the validator passed the result. <code>new_document._tag_end</code> now walks the tokenizer&#x27;s own states, so a quote is a quote only where a browser reads one.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.804.0] - 2026-08-06</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>A link comment whose stored index has gone stale can no longer re-anchor onto a DIFFERENT link that happens to share its href (CMH-LINK-02). <code>resolveLinkEl</code> resolved by <code>linkIndex</code> first and distrusted that index only when the indexed link&#x27;s href differed from the stored one, so when a re-index (any change to WHICH links are commentable shifts every later index) moved the stored index onto a same-href sibling, the href test passed, the heal never ran, and the comment silently attached to the wrong link - a document with two references to one URL is enough to reproduce it. Resolution is now by KEY STRENGTH within each href reading (the current one, then the pre-1.790.0 one): the link matching href + text, then the indexed candidate if its href matches, then the first href match. The stored <code>linkText</code> disambiguates links the href cannot tell apart, so text BEATS the index when they disagree - the index is the most fragile key the record holds. The mirror case is accepted and indistinguishable from the same stored fields: if a link&#x27;s own label is edited AND a same-href sibling carries the label it used to have, the comment follows the text onto that sibling. A link whose label was edited with no same-href twin still heals by href alone, and two links sharing BOTH keys stay indistinguishable, with the index still deciding. An EMPTY stored text is information (a bare or image-only link had none) and still disambiguates; a <code>linkText</code> that is not a string carries no text key at all, so a hand-edited or imported record can neither invent a key nor throw inside resolution when coerced.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">378 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">379 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

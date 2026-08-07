@@ -246,6 +246,11 @@ function setupSinglePagePrint() {
   // only sets the honored page's width; content that genuinely cannot fit it (a wide table) still
   // grows the page past the cap so nothing is clipped.
   const PORTABLE_PAGE_W = 816;
+  // The content area of that portable page - the width the honored single page actually renders its
+  // content at. `apply()` measures the document height here, and `measureCss()` bounds a width-bound
+  // tall diagram to it so the cache pass (taken at the wide reading column) measures the same
+  // diagram height the honored page will produce.
+  const MAX_CONTENT_W = PORTABLE_PAGE_W - PAD * 2;
 
   // The on-screen reading-column width drives the single-page width. Print media resets body/.app
   // width, so it must be read under SCREEN media; keep it fresh across window resizes (but never
@@ -305,6 +310,33 @@ function setupSinglePagePrint() {
       + _printMermaidCapSel()
       + "#commentRoot figure svg,#commentRoot figure img,#commentRoot img{"
       + "max-height:8.4in !important;max-width:100% !important;width:auto !important;height:auto !important}"
+      // A TALL-NARROW diagram is bound on WIDTH rather than by the height cap above, so it fills the
+      // printable column instead of printing as a sliver beside an empty band (#937). Mirrors the
+      // same override in 92-print.css, keyed off the `.cmh-diagram-tall` marker the mermaid layer
+      // sets from the rendered SVG's viewBox aspect - without which the measured single page would
+      // reserve the SHRUNKEN height the print never produces. `max-width` is re-bound as well as
+      // `width`: such a diagram is usually ALSO `.cmh-diagram-narrow`, whose screen rule pins the SVG
+      // to `max-width: min(100%, var(--cmh-diagram-cap))` (CMH-MMD-10) and OUTRANKS the cap above, so
+      // measurement sized the page to that narrow cap while the print used the full column - and the
+      // single continuous page then spilled onto several sheets.
+      //
+      // The extra `MAX_CONTENT_W` bound is what 92-print.css deliberately does NOT carry, and it is
+      // specific to MEASUREMENT: this string is applied at TWO different widths - the wide reading
+      // column in computeAndCache() and the capped print content width in apply() - and `apply` takes
+      // the LARGER of the two. A height-capped diagram used to measure the same at both (its height
+      // was width-independent); a WIDTH-bound one does not, so the wide-column pass would inflate the
+      // cache floor and stamp ~9in of trailing blank onto the honored page. Bounding the diagram to
+      // the width the honored page actually renders at makes both passes agree. Print itself is left
+      // free to fill whatever column it gets.
+      + "#commentRoot .cm-mermaid-host.cmh-diagram-tall svg{"
+      + "max-height:none !important;max-width:" + MAX_CONTENT_W + "px !important;"
+      + "width:min(100%," + MAX_CONTENT_W + "px) !important;height:auto !important}"
+      // A .cmh-diagram-gallery card keeps the fit-one-page cap (it is a compact thumbnail, not the
+      // stranded full-column diagram #937 is about). Mirrors 92-print.css. A gallery document is
+      // block-stacking and so never reaches the single continuous page at all, but keeping both
+      // surfaces telling the same story is what stops one of them drifting (CMH-PRINT-07).
+      + "#commentRoot .cmh-diagram-gallery .cm-mermaid-host.cmh-diagram-tall svg{"
+      + "max-height:8.4in !important;max-width:100% !important;width:auto !important;height:auto !important}"
       // Chart canvases (and any inline SVG) scale to fit the column too, so a narrowed measurement
       // matches print instead of overflowing the capped page width. Mirrors 92-print.css.
       + "#commentRoot img,#commentRoot svg,#commentRoot canvas{max-width:100% !important;height:auto !important}"
@@ -353,7 +385,15 @@ function setupSinglePagePrint() {
   // skew and no PAD double-count. Applied and read synchronously, then replaced, so nothing repaints.
   function layoutAtWidthCss(cw) {
     return "html,body,.app{width:" + cw + "px !important;max-width:none !important;"
-      + "margin:0 !important;padding:0 !important;box-sizing:border-box !important}";
+      + "margin:0 !important;padding:0 !important;box-sizing:border-box !important}"
+      // Re-bind the width-bound tall diagram to the width being laid out. measureCss() bounds it to
+      // MAX_CONTENT_W so the CACHE pass (taken at the wide reading column, with no layout narrowing)
+      // measures the height the honored page produces; but apply() can GROW the content width past
+      // that cap when unbreakable content would otherwise be clipped, and print binds the diagram to
+      // whatever column it gets. Without this the inline measure would keep the 720px bound while the
+      // print rendered the diagram wider - and so taller - which is the spill direction.
+      + "#commentRoot .cm-mermaid-host.cmh-diagram-tall svg{"
+      + "max-width:" + cw + "px !important;width:min(100%," + cw + "px) !important}";
   }
 
   // Measure the print-layout size (WITHOUT the comments appendix) under STABLE screen media and cache
@@ -432,7 +472,6 @@ function setupSinglePagePrint() {
       // Cap the CONTENT width to a portable standard page's content area (PORTABLE_PAGE_W minus the
       // two @page margins) so the honored single page is standard-sheet-sized. Content that genuinely
       // cannot fit the cap (a wide table) still grows the page below, so nothing is ever clipped.
-      const MAX_CONTENT_W = PORTABLE_PAGE_W - PAD * 2;
       let contentW = Math.min(Math.max(cachedW, colW, root.scrollWidth), MAX_CONTENT_W);
       // Measure the height AT the content width the honored page renders at (pageW - 2*PAD): a
       // narrower column reflows taller and scales charts/diagrams to fit, so the height must be taken

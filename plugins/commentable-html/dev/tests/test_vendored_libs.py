@@ -1409,13 +1409,45 @@ class RuntimeParityTests(unittest.TestCase):
         comment could otherwise satisfy this check on its own - delete `div.mermaid svg` from the
         selector, mention it in the comment, and an unstripped scan still passes while the cap is
         gone. That is precisely the silent half-vocabulary regression this test exists to catch.
+
+        There are TWO 8.4in rules since CMH-PRINT-09: the BASE tall-media cap, which is the one the
+        vocabulary pin is about, and the narrower rule that RE-APPLIES the cap to a diagram-gallery
+        card (a card is a compact thumbnail, so it keeps the fit-one-page cap the width binding takes
+        away everywhere else). They are told apart by structure, not by order: only the gallery rule
+        names `.cmh-diagram-gallery`. Both are pinned - the base one against the shared vocabulary,
+        the gallery one against the marker pair it must keep naming - so neither can be dropped or
+        silently broadened into the other.
         """
         css = self._strip_css_comments(self._read_css("92-print.css"))
         blocks = [m for m in re.finditer(r"([^{}]*)\{([^{}]*max-height:\s*8\.4in[^{}]*)\}", css)]
-        self.assertEqual(len(blocks), 1,
-                         "expected exactly one 8.4in tall-media cap rule in 92-print.css; found "
-                         "%d. Re-point this check at whatever replaced it." % len(blocks))
-        selector = blocks[0].group(1)
+        self.assertEqual(len(blocks), 2,
+                         "expected exactly two 8.4in cap rules in 92-print.css (the base tall-media "
+                         "cap and the diagram-gallery re-application); found %d. Re-point this check "
+                         "at whatever replaced them." % len(blocks))
+        base = [m for m in blocks if "cmh-diagram-gallery" not in m.group(1)]
+        gallery = [m for m in blocks if "cmh-diagram-gallery" in m.group(1)]
+        self.assertEqual(len(base), 1,
+                         "exactly one 8.4in cap rule must be the BASE tall-media cap (the one that "
+                         "does not scope itself to a diagram gallery); found %d" % len(base))
+        self.assertEqual(len(gallery), 1,
+                         "exactly one 8.4in cap rule must be the diagram-gallery re-application; "
+                         "found %d" % len(gallery))
+        # The gallery rule exists to keep a gallery CARD on the fit-one-page cap after CMH-PRINT-09
+        # binds every other tall-narrow diagram on width. It only does that while it stays keyed to
+        # BOTH marker classes and targets the rendered svg - broaden it and it would re-cap every
+        # tall-narrow diagram, undoing CMH-PRINT-09; narrow it and a card prints many pages tall.
+        gallery_selector = re.sub(r"\[[^\]]*\]", "[]", gallery[0].group(1))
+        for needed in (".cmh-diagram-gallery", ".cm-mermaid-host", ".cmh-diagram-tall"):
+            self.assertIn(
+                needed, gallery_selector,
+                "the diagram-gallery 8.4in rule must stay keyed on %s, or it stops re-applying the "
+                "cap to exactly a gallery card's tall-narrow diagram (selector: %r)"
+                % (needed, gallery_selector.strip()))
+        self.assertRegex(
+            gallery_selector, r"\.cmh-diagram-tall\s+svg(?![\w-])",
+            "the diagram-gallery cap must target the rendered `svg` INSIDE the host, not the host "
+            "box (selector: %r)" % gallery_selector.strip())
+        selector = base[0].group(1)
         # An attribute-selector VALUE is not a capped host: `[data-x="div.mermaid svg"]` would
         # otherwise satisfy every check below while the real cap was deleted - the same
         # "text near the rule stands in for the rule" hole the comment stripping above closes.

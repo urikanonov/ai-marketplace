@@ -4,6 +4,33 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.816.0] - 2026-08-07
+
+### Fixed
+
+- A TALL-NARROW diagram (at least twice as tall as it is wide) now prints at the full printable
+  COLUMN WIDTH instead of a sliver beside a large empty band. The tall-media print cap scaled by
+  HEIGHT only (`max-height: 8.4in; width: auto`), so a `769 x 2197` flowchart printed at 42% of the
+  column - with 58% of every row it occupied left blank - even though the same diagram filled the
+  column on screen. The runtime now marks such a host from the rendered SVG's intrinsic viewBox
+  aspect, and both print surfaces (the `@media print` stylesheet and the screen-media measurement
+  the single continuous page is sized from) bind it on WIDTH instead. The `@media print` stylesheet
+  additionally lets the host fragment, so a diagram taller than a page flows across pages rather than
+  reserving one whole (and a figure wrapping such a diagram is relaxed with it, so the wrapper does
+  not re-impose the atomicity the host just shed). Wide and normal-aspect diagrams, figures, and
+  images keep the 8.4in fit-one-page cap unchanged, and so does a tall-narrow diagram inside a
+  diagram-gallery card - a card is a compact uniform thumbnail, not a diagram stranded beside an
+  empty column, so widening one would have spent whole printed sheets on a single thumbnail. Nothing
+  changes on screen.
+- Two further bindings were needed to keep the Save-as-PDF single continuous page honest for that
+  diagram. Such a diagram is usually also narrow-scaled on screen, and that screen rule out-specified
+  the measurement mirror's cap, so the page was measured at the narrow cap while the print used the
+  full column and the "single page" spilled onto three sheets; both surfaces now re-bind `max-width`.
+  And because a width-bound diagram (unlike a height-capped one) is proportionally taller at the wide
+  reading column the height cache is refreshed at, the cache floor was stamping about nine inches of
+  trailing blank onto the page - moving the wasted space to the bottom of the sheet - so the
+  measurement mirror now bounds the diagram to the width the honored page actually renders at.
+
 ## [1.814.0] - 2026-08-07
 
 ### Fixed
