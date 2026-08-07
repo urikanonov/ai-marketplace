@@ -312,19 +312,20 @@ def prepare_slides(fragment: str):
             taken.add(sid)
     ids = []
     # `_section_tags` walks the fragment the way a browser tokenizes it, so a `<section>` inside a
-    # comment or a raw-text body is already not here (#1197). A `<template>` SUBTREE is the one
-    # remaining gap: its tags ARE tokenized, but a browser renders the fragment nowhere and
-    # `deck_validate`'s structure scan does not count it - so letting a templated slide consume the
-    # FIRST-slide position would put `.active` on markup nothing shows and leave every real slide
-    # without it, which the deck contract then refuses (CMH-DECK-04). The answer comes from the
-    # gate's OWN parse, so the scaffold and the gate it must satisfy hold one reading.
+    # comment or a raw-text body is already not here (#1197). It still visits a slide inside a
+    # `<template>` subtree, which is tokenized all the same yet rendered nowhere, and it visits a
+    # `<section>` in an RCDATA-ish body a browser keeps as text. The gate's OWN parse says which
+    # slides are LIVE, so the scaffold and the gate it must satisfy hold one reading: only a live
+    # slide can take `.active`, and only a live slide has it stripped - normalizing deck state must
+    # not rewrite an authored sample that is not a slide at all.
+    live = set(deck_validate.live_slide_offsets(fragment))
     slide_starts = [sec.start for sec in sections if _is_slide(sec.pairs)]
-    first_start = deck_validate.first_live_slide_offset(fragment)
-    if first_start not in slide_starts:
-        # The two readings disagree about where the first slide BEGINS. Degrade to the first slide
-        # this rewrite can actually reach rather than marking nothing active, which would emit a
-        # deck this tool's own gate then refuses.
-        first_start = slide_starts[0] if slide_starts else None
+    ordered_live = [s for s in slide_starts if s in live]
+    if not ordered_live:
+        # The two readings disagree about which slides exist. Degrade to the slides this rewrite
+        # can reach rather than marking nothing active, which would emit a deck the gate refuses.
+        ordered_live, live = slide_starts, set(slide_starts)
+    first_start = ordered_live[0] if ordered_live else None
     out, cursor = [], 0
     for sec in sections:
         # The start tag is PARSED, not searched: a `class=` search matches one spelled inside
@@ -348,7 +349,7 @@ def prepare_slides(fragment: str):
         if sec.start == first_start:
             if "active" not in classes:
                 classes.append("active")
-        else:
+        elif sec.start in live:
             classes = [c for c in classes if c not in ("active", "visible")]
         # The start tag is RE-SERIALIZED from the parsed attributes for EVERY slide, so the class
         # is written back in one canonical form and every value is re-escaped exactly once from its

@@ -235,6 +235,20 @@ class DeckScaffoldTests(unittest.TestCase):
                 head = prepared.partition("<p>one</p>")[0]
                 self.assertIn("active", head[head.rindex("<section"):], prepared)
 
+    def test_normalizing_deck_state_does_not_rewrite_a_non_live_sample(self):
+        # Only a LIVE slide is normalized. A `<section class="slide active">` an author DISPLAYS as
+        # sample text is not a slide, so stripping `active` from it would rewrite the document's
+        # own content to satisfy a rule that does not apply to it.
+        for sample in ('<title><section class="slide active">sample</section></title>',
+                       '<textarea><section class="slide visible">sample</section></textarea>',
+                       '<template><section class="slide active">tpl</section></template>'):
+            with self.subTest(sample=sample[:12]):
+                prepared, _ = deck_scaffold.prepare_slides(
+                    '<section class="slide"><p>one</p></section>' + sample)
+                self.assertIn("sample" if "sample" in sample else "tpl", prepared)
+                tail = prepared[prepared.index(sample[:9]):]
+                self.assertIn("active" if "active" in sample else "visible", tail, prepared)
+
     def test_a_slide_class_is_decoded_before_it_is_read_and_rewritten(self):
         # CMH-VAL-21 clause 11 (#1139): the start tag is PARSED, so a character reference is
         # decoded the way `classList` decodes it (`sl&#105;de` IS `slide`), and every value is

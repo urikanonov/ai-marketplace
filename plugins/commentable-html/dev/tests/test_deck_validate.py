@@ -553,6 +553,17 @@ class DeckValidateTests(unittest.TestCase):
             '<noscript><section class="slide active" data-slide-id="slide-00000002"></section>'
             "</noscript></div></div>prefers-reduced-motion"), "more than one slide is shown")
 
+    def test_cmh_deck_04_a_shown_slide_outside_the_stage_is_still_shown(self):
+        # `viewport-base.css` reveals `.slide.active, .slide.visible` GLOBALLY, so a second active
+        # slide parked OUTSIDE the stage paints beside the one the deck opens on even though the
+        # runtime never enumerates it. Scoping the "at most one shown" count to the stage's list
+        # made that deck pass with zero errors while both elements painted.
+        self._assert_error(_wrap(
+            '<section class="slide active" data-slide-id="slide-00000009"></section>'
+            '<div class="deck-viewport"><div class="deck-stage">'
+            '<section class="slide active" data-slide-id="slide-00000001"></section>'
+            "</div></div>prefers-reduced-motion"), "more than one slide is shown")
+
     def test_an_editor_named_only_in_script_text_is_not_the_editor(self):
         # The editor guard is an ELEMENT reading like the other three, so the upstream control's
         # markup quoted inside a <script> body - text to a browser - is not the editor. The real

@@ -26,8 +26,10 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   in both directions for an order-dependent question, and unioned it reported a correct deck as
   broken while numbering a slide the author's document does not have. The order-INDEPENDENT half
   ("at most one slide is shown at once") stays unioned, because a `<noscript>`-parked slide carrying
-  `active` really does paint for a scripting-disabled reader. A first stage that holds no slides is
-  reported too, since the runtime installs no deck chrome at all for such a deck.
+  `active` really does paint for a scripting-disabled reader; that count is taken over every
+  `.slide` in the body rather than the stage's list, since the CSS rule is global and a second
+  active slide parked outside the stage paints beside the one the deck opens on. A first stage that
+  holds no slides is reported too, since the runtime installs no deck chrome at all for such a deck.
 - `deck_scaffold.prepare_slides` normalizes to match: the first LIVE slide gains `active` and every
   later slide has `active` and `visible` removed, so an input fragment that already marks a later
   slide active is corrected rather than carried through into a deck the contract refuses. "First"
@@ -37,7 +39,9 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   raw-text body out of the rewrite, but a `<template>` subtree is tokenized all the same while a
   browser renders it nowhere, so a templated slide would otherwise consume the first-slide
   position, put `.active` on markup nothing shows, and leave every real slide without it - turning
-  a fragment that scaffolded cleanly into a hard refusal.
+  a fragment that scaffolded cleanly into a hard refusal. That parse also decides which slides are
+  STRIPPED, so a `<section class="slide active">` an author displays as sample text is left alone
+  rather than being rewritten to satisfy a rule that does not apply to it.
 - The deck-contract reference (`references/deck-contract.md`) showed a first slide without
   `.active`, so a deck hand-authored exactly to the shipped recipe would have been rejected by the
   new gate; the snippet and the visibility rule beside it now state the contract the gate enforces.
