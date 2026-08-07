@@ -69,7 +69,13 @@ FONTFACE_REMOTE_RE = re.compile(r"@font-face[^}]*url\(\s*['\"]?https?:", re.I | 
 # A broken install (the import above already warned) degrades to a strictly OVER-inclusive local
 # reading (no host character required), so the gate still fails CLOSED on egress. The choice is
 # made per CALL, not bound here, so the degraded reading is reachable from a test.
-_CSS_FALLBACK_PREFIX = r"(?:https?:/*|[/\\]{2,})"
+# The `file:` arm carries no separator arithmetic and no `localhost` or drive-letter exclusion, which
+# is the SAME over-inclusive trade the rest of this fallback makes: a broken install reports a local
+# `file:///C:/x.png` too, and refusing a deck is the safe direction when the shared reading - the one
+# that can tell those apart - could not be imported. Leaving `file:` out entirely was the opposite,
+# fail-OPEN error: the degraded path would have blessed the very SMB beacon the shared reading is
+# there to catch (issue #1230, raised by the round-1 multi-duck panel).
+_CSS_FALLBACK_PREFIX = r"(?:https?:/*|file:/*|[/\\]{2,})"
 _CSS_URL_FALLBACK_RE = re.compile(
     r"url\([\t\n\f\r ]*['\"]?[\t\n\f\r ]*" + _CSS_FALLBACK_PREFIX, re.IGNORECASE | re.ASCII)
 _CSS_IMPORT_FALLBACK_RE = re.compile(

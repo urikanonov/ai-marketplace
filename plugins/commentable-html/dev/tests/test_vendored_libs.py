@@ -2599,7 +2599,7 @@ class RuntimeParityTests(unittest.TestCase):
         end = source.find("\n}", end)
         self.assertNotEqual(end, -1, "could not find the end of _offlineSrcsetHasNetwork")
         region = source[start:end + 2]
-        for name in ("_OFFLINE_PCT_LOCALHOST", "_OFFLINE_PCT_LOCALHOST_END",
+        for name in ("_OFFLINE_PCT_LOCALHOST", "_offFileNetworkArm",
                      "_OFFLINE_NETWORK_URL_RE", "_offlineIsNetworkUrl",
                      'const _OFFLINE_SRCSET_WS = "',
                      "_offlineSrcsetCandidateUrls"):
@@ -2650,9 +2650,13 @@ class RuntimeParityTests(unittest.TestCase):
         """
         source = self._read("68-export-offline.js")
         for js_name, py_value in (("_OFFLINE_PCT_LOCALHOST", resources._PCT_LOCALHOST),
-                                  ("_OFFLINE_PCT_LOCALHOST_END", resources._PCT_LOCALHOST_END),
                                   ("_OFFLINE_FILE_DOTDOT_SEGMENT", resources._FILE_DOTDOT_SEGMENT),
-                                  ("_OFFLINE_FILE_EMPTY_SEGMENT", resources._FILE_EMPTY_SEGMENT),
+                                  # The CSS value TERMINATOR set, which decides what may follow a
+                                  # host for the `localhost` and drive-letter exclusions to fire in
+                                  # a stylesheet. A corpus cannot pin it either: dropping `{` from
+                                  # one side keeps every row's verdict and only shows up on a
+                                  # spelling nobody listed.
+                                  ("_OFF_CSS_VALUE_STOP", resources.CSS_VALUE_STOP),
                                   # The srcset candidate BOUNDARY rests entirely on this five-
                                   # character set, and a corpus cannot pin it: a row only exercises
                                   # the characters it happens to carry, so dropping `\f` from one
@@ -2691,6 +2695,230 @@ class RuntimeParityTests(unittest.TestCase):
                 "Matching verdicts over the corpus cannot see a drift on a spelling the corpus "
                 "does not carry, so this is the assertion that keeps the two provably in step."
                 % (js_name, js_value, py_value))
+
+    def test_the_python_and_js_file_authority_arms_are_textually_identical(self):
+        """Pin the SHARED `file:` arm itself, for every `stop` its callers use.
+
+        The arm is no longer a constant either side can be diffed as text (it is built from a `stop`
+        parameter so one definition can serve an attribute value and a CSS value), so the pin has to
+        run the runtime's own builder and compare what it PRODUCES. That is strictly stronger than
+        the two constants it replaced: it covers the separator arithmetic, both exclusions, the
+        non-empty-authority rule and the two canonicalization arms in one comparison, for BOTH the
+        attribute stop (empty) and the CSS one. A drift here is the CMH-OFFLINE-04 failure mode in
+        the shape issue #1230 found - a channel one side calls egress and the other cannot see.
+        Skipped when node is absent, like the other cross-engine guards.
+        """
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH; the JS-engine parity check needs it")
+        stops = ["", resources.CSS_VALUE_STOP]
+        script = (
+            self._runtime_network_url_source() + "\n"
+            + "let raw='';process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const p=JSON.parse(raw);process.stdout.write(JSON.stringify("
+            "p.stops.map(s=>_offFileNetworkArm(s))));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps({"stops": stops}),
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(proc.returncode, 0,
+                         "node could not evaluate the shared file: arm builder: %s" % proc.stderr)
+        arms = json.loads(proc.stdout)
+        self.assertEqual(len(arms), len(stops),
+                         "node returned %d arms for %d stops" % (len(arms), len(stops)))
+        for stop, js_arm in zip(stops, arms):
+            # Compared in the PYTHON -> JS direction, and only for `\Z`, for the reason the
+            # constant pin above gives: Python's `$` also matches before a trailing newline.
+            self.assertEqual(
+                resources.file_network_arm(stop).replace(r"\Z", "$"), js_arm,
+                "the runtime's _offFileNetworkArm(%r) and the validator's file_network_arm are not "
+                "the same pattern (%r vs %r). Matching verdicts over the corpus cannot see a drift "
+                "on a spelling the corpus does not carry."
+                % (stop, js_arm, resources.file_network_arm(stop)))
+
+    # Every `file:` spelling below gets ONE verdict, whichever gate is asked. That is the property
+    # issue #1230 was: `NETWORK_URL_RE` called `file://evil.example/x.png` an off-machine SMB load
+    # while the CSS readers beside it - which had no `file:` arm at all - called it local, so a
+    # shareable document carrying it in a stylesheet earned the `commentable-html-validated` stamp
+    # and beaconed on open. Asserting AGREEMENT rather than a per-gate expectation is what makes
+    # this hold as the predicate evolves: a future widening of the attribute arm that forgot one of
+    # the CSS readers fails here even on a spelling nobody thought to list.
+    _FILE_AUTHORITY_VERDICTS = [
+        ("file://evil.example/x.png", True),
+        ("file:////evil.example/x.png", True),
+        ("file://localhost//not-a-host/x.png", True),
+        ("file:////localhost/../not-a-host/x.png", True),
+        ("file:///a//evil.example/x.png", True),
+        ("file://localhost./x.png", True),
+        ("file://evil.example", True),
+        ("file:///C:/x.png", False),
+        ("file://C:/x.png", False),
+        ("file://localhost/x.png", False),
+        ("file://LOCALHOST/x.png", False),
+        ("file://local%68ost/x.png", False),
+        ("file:///theme/x.png", False),
+        ("file://", False),
+        ("file:///", False),
+        ("theme/x.png", False),
+        # The parser-removed characters, which the ATTRIBUTE path strips through
+        # `normalize_url_value` before testing. The CSS readers do not normalize, so they can only
+        # agree here by refusing to treat one as the end of a value - see `CSS_VALUE_STOP`.
+        ("file://localhost\tevil.example/x.png", True),
+        # A character that legally CONTINUES a host must not end one on either side: the host here
+        # really is `localhost)evil.example` (measured), so both readings report it.
+        ("file://localhost)evil.example/x.png", True),
+        ("file://localhost;evil.example/x.png", True),
+        # ... and one that genuinely ends a host ends it on both sides too: a SPACE makes the URL
+        # fail to parse, so nothing is fetched and neither reading may report it.
+        ("file://localhost evil.example/x.png", False),
+        # A value terminator INSIDE the path, where a quoted CSS string makes it a legal path
+        # character. Both readings must still see the popping segment behind it (Chromium 151
+        # requests the first as `file://evil.example/x.png`).
+        ("file:///a(/..//evil.example/x.png", True),
+        ("file:///a b/..//evil.example/x.png", True),
+        ("file:////localhost/a(b)/../../evil.example/x", True),
+    ]
+    # The ONE shape the two readings answer differently, and deliberately: a bare authority with no
+    # path. The attribute value ends at true end-of-input, which IS a host end, so `file://localhost`
+    # is the local root; the CSS `url(file://localhost)` ends at a `)`, which is host-LEGAL, so a
+    # quote-agnostic reader cannot tell it from `url("file://localhost)evil.example/x")` and reports
+    # it fail-CLOSED. Listed here rather than dropped, so the divergence stays a recorded decision
+    # and any OTHER divergence still fails the agreement test below. Both verdicts are pinned in
+    # their own corpora.
+    _FILE_AUTHORITY_READING_DIVERGES = ("file://localhost",)
+
+    def test_the_css_readers_and_the_attribute_predicate_agree_about_a_file_authority(self):
+        """The `url()`, `@import` and `image-set()` readers must answer as `is_network_url` does.
+
+        All four are assembled from the ONE shared arm, so this is the test that would catch a
+        hand-written second copy creeping back in: it compares the readers to each other rather
+        than to a list of expected strings, and the expected column is only there so a change that
+        broke all four the same way cannot pass. `_FILE_AUTHORITY_READING_DIVERGES` records the one
+        shape where the two answers legitimately differ, and it is asserted to diverge rather than
+        merely skipped, so it cannot quietly converge (or grow) unnoticed.
+        """
+        for value, expected in self._FILE_AUTHORITY_VERDICTS:
+            with self.subTest(value=value):
+                attr = resources.is_network_url(value)
+                self.assertEqual(attr, expected, value)
+                css_url = bool(resources.CSS_NETWORK_URL_RE.search(
+                    "a { background-image: url(%s); }" % value))
+                css_import = bool(resources.CSS_NETWORK_IMPORT_RE.search(
+                    '@import "%s";' % value))
+                image_set = resources.css_network_image_set(
+                    "a { background-image: image-set('%s' 1x); }" % value)
+                for name, got in (("url()", css_url), ("@import", css_import),
+                                  ("image-set()", image_set)):
+                    self.assertEqual(
+                        got, attr,
+                        "the CSS %s reader calls %r %s while the attribute predicate calls it %s. "
+                        "One gate that cannot see what another calls a beacon is exactly the "
+                        "asymmetry issue #1230 closed; both must read the shared file: arm."
+                        % (name, value, "network" if got else "local",
+                           "network" if attr else "local"))
+        for value in self._FILE_AUTHORITY_READING_DIVERGES:
+            with self.subTest(diverges=value):
+                self.assertFalse(
+                    resources.is_network_url(value),
+                    "%r is no longer local to the attribute predicate, so the recorded divergence "
+                    "is stale - re-derive it or drop the entry" % value)
+                self.assertTrue(
+                    resources.CSS_NETWORK_URL_RE.search("a { background-image: url(%s); }" % value),
+                    "the CSS reader no longer reports %r, so the two readings have CONVERGED and "
+                    "this recorded divergence is stale. That is good news, but the entry must go, "
+                    "or it hides a future real divergence behind an exemption." % value)
+
+    def test_every_css_network_reader_is_assembled_from_the_shared_start(self):
+        """A new CSS reader must be built from `CSS_NETWORK_START`, not from a hand copy.
+
+        The `image-set()` reading was added years after `url()` and was written from the prefix and
+        host-character fragments rather than from a shared decision, which is how it could be
+        widened alone (#1129, #1166) - and how the CSS side ended up with no `file:` arm at all
+        while the attribute side had one (#1230). Reading the compiled patterns' own source keeps
+        that structural: a reader that spells the decision itself no longer contains the shared
+        fragment and fails here, even if its verdicts happen to agree today.
+        """
+        for name in ("CSS_NETWORK_URL_RE", "CSS_NETWORK_IMPORT_RE", "CSS_NETWORK_IMAGE_SET_RE",
+                     "_CSS_ANCHORED_NETWORK_RE"):
+            pattern = getattr(resources, name).pattern
+            self.assertIn(
+                resources.CSS_NETWORK_START, pattern,
+                "%s is no longer assembled from CSS_NETWORK_START, so it can be widened - or left "
+                "behind - on its own. Every CSS reader must ask the one shared decision." % name)
+
+    def test_the_css_readers_stay_linear_on_a_pathological_stylesheet(self):
+        """A stylesheet cannot make a CSS reader take super-linear time.
+
+        These readers are `search`ed UNANCHORED over whole `<style>` bodies, `style=` attributes and
+        nested `srcdoc` documents, and the exporter runs its MIRROR of them with a `g` flag to
+        convergence inside the reader's browser - so a super-linear pattern is a hung tab on a
+        document the recipient merely opened, not a slow CI job. The shared `file:` arm carries two
+        path scans (a lookahead and a lazy run); when nothing bounded them, a sheet of repeated
+        `url(file:a` measured 1.08s at 39 KB, 17.2s at 156 KB and 69.3s at 312 KB - textbook
+        quadratic, and reachable from authored content (found by the round-1 multi-duck panel).
+        `_PATH_SCAN_MAX` is what bounds them. Bounding them with the value-TERMINATOR set instead
+        was the round-2 panel's finding: it is linear too, but it truncates the scan at a character
+        a quoted CSS string may legally contain, which HID a popping segment and let a value a real
+        Chromium fetches read as local.
+
+        Asserted as a RATIO between two sizes rather than an absolute wall-clock, so a slow or
+        contended CI runner cannot make it flaky: quadratic growth is 4x per doubling and cannot hide
+        inside the generous ceiling below, while linear growth stays near 2x.
+        """
+        def elapsed(pattern, text):
+            best = None
+            for _ in range(3):
+                start = time.perf_counter()
+                pattern.search(text)
+                took = time.perf_counter() - start
+                best = took if best is None else min(best, took)
+            return best
+
+        for name in ("CSS_NETWORK_URL_RE", "CSS_NETWORK_IMPORT_RE", "CSS_NETWORK_IMAGE_SET_RE"):
+            pattern = getattr(resources, name)
+            small = elapsed(pattern, "url(file:a" * 8000)
+            large = elapsed(pattern, "url(file:a" * 32000)
+            # A 4x longer input may take at most 12x as long (linear is 4x; quadratic is 16x).
+            # The floor keeps the ratio meaningful when both runs are near the clock's resolution.
+            self.assertLess(
+                large, max(small * 12, 0.5),
+                "%s took %.3fs on a 312 KB pathological stylesheet against %.3fs on a 78 KB one, "
+                "which is super-linear growth. These patterns run unanchored over authored content "
+                "and the exporter's mirror runs them in the reader's browser, so this is a hang, "
+                "not a slow test. Keep both path scans in the shared file: arm bounded by "
+                "_PATH_SCAN_MAX." % (name, large, small))
+
+    def test_no_runtime_source_names_the_beacon_host_the_export_specs_forbid(self):
+        """The runtime's own SOURCE ships inside every export, so a comment is document content.
+
+        `tests/49-offline-export.spec.js` asserts that an exported file contains no `evil.example`
+        anywhere - that is how it proves a beacon was stripped rather than merely rewritten. The
+        runtime bundle is INLINED into that export, so an example host written in a comment in
+        `assets/js/**` lands in the exported HTML and fails those specs even though nothing fetches.
+        That is exactly what happened while this shared `file:` arm was being documented: four
+        comment lines naming the host reddened five offline-export specs, and only a CI round found
+        it, because no local gate reads the runtime source for it. This guard is that gate - it runs
+        in seconds and it is why the runtime's comments say `not-a-host` where the validator's may
+        say `evil.example` (the validator is tooling, and is not shipped inside a document).
+        """
+        assets = os.path.join(_paths.DEV, "assets")
+        offenders = []
+        for sub in ("js", "css"):
+            folder = os.path.join(assets, sub)
+            for name in sorted(os.listdir(folder)):
+                if not name.endswith((".js", ".css")):
+                    continue
+                with open(os.path.join(folder, name), encoding="utf-8") as handle:
+                    for lineno, line in enumerate(handle, 1):
+                        # Assembled from pieces so this guard's own source does not trip it.
+                        if ("evil" + ".example") in line:
+                            offenders.append("%s/%s:%d" % (sub, name, lineno))
+        self.assertEqual(
+            offenders, [],
+            "a runtime source names the beacon host the offline-export specs forbid, at %s. The "
+            "runtime is inlined into every export, so the string reaches the exported HTML and "
+            "reds `tests/49-offline-export.spec.js` - which asserts no export contains it - even "
+            "though a comment fetches nothing. Name the example host `not-a-host` in runtime "
+            "sources; only the (unshipped) validator may use the other one." % ", ".join(offenders))
 
     def test_the_python_and_js_network_url_predicates_agree(self):
         """Run the runtime's own network-URL predicate in node and require the expected verdicts.
@@ -2933,30 +3161,126 @@ class RuntimeParityTests(unittest.TestCase):
         ("a { background: url(https://ftp.evil.example/x.png); }", True),
         ("a { background: url(//ws.evil.example/x.png); }", True),
         ('@import "//ftp.evil.example/t.css";', True),
+        # An explicit `file://` AUTHORITY: on Windows `file://host/x` is an SMB fetch off the
+        # machine, which is why the ATTRIBUTE predicate has carried a `file:` arm since #923. The CSS
+        # gates carried none at all, so the very spelling `is_network_url` calls a beacon was
+        # invisible in a stylesheet, and a SHAREABLE document - which has no CSP behind the gate -
+        # passed `--strict` carrying one (issue #1230). Both sides now read the SAME arm, so these
+        # rows pin the separator arithmetic a real Chromium was measured on: exactly two separators
+        # or four-or-more open an authority, and a `..` or an empty path segment reaches the
+        # four-separator form by canonicalization from a spelling that never had one.
+        ("a { background: url(file://evil.example/x.png); }", True),
+        ('a { background: url("file://evil.example/x.png"); }', True),
+        ("a { background: url('file://evil.example/x.png'); }", True),
+        ("a { background: url(FILE://evil.example/x.png); }", True),
+        ("a { background: url(file:////evil.example/x.png); }", True),
+        ("a { background: url(file://localhost//not-a-host/x.png); }", True),
+        ("a { background: url(file:////localhost/../not-a-host/x.png); }", True),
+        ("a { background: url(file:///a//evil.example/x.png); }", True),
+        ('@import "file://evil.example/t.css";', True),
+        ("@import url(file:////evil.example/t.css);", True),
+        ('@import "file://evil.example/t.css" screen;', True),
+        ("@import'file://evil.example/t.css';.keep{color:red}", True),
+        # ... and the LOCAL controls the widening must not reach, which are the whole reason it had
+        # to be the SHARED arm rather than a second hand-written `file:` rule. A THREE-slash run is
+        # the empty host of an ordinary local path, `localhost` is emptied by the file-host state in
+        # every percent-encoded and case spelling, a Windows drive letter is read as a path rather
+        # than a host, and an authority the value ENDS immediately is the local root. Reporting any
+        # of them would reject a document with no egress at all - and make the exporter delete the
+        # author's own reference. The `)` in `url(file://localhost)` is what `CSS_VALUE_STOP` exists
+        # for: reading on past it would have called that local reference egress.
+        ("a { background: url(file:///C:/x.png); }", False),
+        ("a { background: url(file://C:/x.png); }", False),
+        ("a { background: url(file://localhost/x.png); }", False),
+        ("a { background: url(file://LOCALHOST/x.png); }", False),
+        ("a { background: url(file://local%68ost/x.png); }", False),
+        ("a { background: url(file:///theme/x.png); }", False),
+        # A bare authority the CALLER's syntax ends at a host-LEGAL character is the residual the
+        # host-terminator reading costs, in the fail-CLOSED direction: a quote-agnostic pattern
+        # cannot tell `url(file://localhost)` (the local root) from
+        # `url("file://localhost)evil.example/x")` (an SMB name), so both are reported. Every
+        # realistic local reference carries a PATH, where the `/` ends the host and the exclusion
+        # still fires - the rows around this one pin that, including the space spelling, which the
+        # URL parser rejects outright.
+        ("a { background: url(file://localhost); }", True),
+        ('a { background: url("file://localhost"); }', True),
+        ("a { background: url(file://localhost ); }", False),
+        ("a { background: url(file://); }", False),
+        ("a { background: url(file:///); }", False),
+        ('@import "file:///theme/t.css";', False),
+        ("@import url(file:///theme/t.css);", False),
+        ('@import "file://localhost/theme/t.css";', False),
+        # A parser-REMOVED character (ASCII tab) between the excluded `localhost` and the rest of
+        # the host. The URL parser deletes it from anywhere, so the host is really
+        # `localhostevil.example` - an off-machine SMB load - and treating the tab as the end of the
+        # value fired the `localhost` exclusion and blessed the beacon (found by the round-1
+        # multi-duck panel; the byte-identical ATTRIBUTE spelling was reported all along, because
+        # that path runs `normalize_url_value` first). This row is why `CSS_VALUE_STOP` carries no
+        # `\t`. A raw LF or CR in the same position is different and IS a terminator: it makes a
+        # bad-string (or bad-url) token whose declaration a browser drops, so it fetches nothing.
+        ('a { background: url("file://localhost\tevil.example/x.png"); }', True),
+        ('@import "file://localhost\tevil.example/t.css";', True),
+        # ... and the cost of leaving the tab out, pinned so it stays confined to absurd spellings:
+        # a value that ENDS at one is over-reported, in the fail-CLOSED direction. Every realistic
+        # local reference - including the tab- and space-padded ones below - stays clean, which is
+        # the property that matters.
+        ("a { background: url(file://localhost\t); }", True),
+        ('a { background: url("\tfile:///C:/x.png"); }', False),
+        ("a { background: url( file://localhost/x.png ); }", False),
+        ("a { background: url(file://localhost/x.png\t); }", False),
+        # A value terminator sitting INSIDE a quoted CSS string, where it is a legal path character
+        # rather than the end of the value. Scanning the path with the terminator set truncated the
+        # scan and hid the popping segment behind it, so a value whose canonical form is the
+        # four-separator UNC shape read LOCAL - and a real Chromium 151 requested
+        # `file://evil.example/x.png` for the first of these (found and measured in a real engine by
+        # the round-2 multi-duck panel). The path scan reads `_PATH_CHAR` and is bounded by
+        # `_PATH_SCAN_MAX` instead, which is what keeps it linear without calling a legal path
+        # character the end of the value.
+        # A character that legally CONTINUES a host is not the end of one, whatever the caller's
+        # syntax says: `file://localhost)evil.example/x` parses to host `localhost)evil.example`,
+        # an off-machine SMB name (measured in a real engine). Reading the CSS value terminator as
+        # the end of the HOST fired the `localhost` exclusion and blessed the beacon - the same
+        # shape as the tab row above, generalized (raised by the Copilot reviewer on this PR). The
+        # exclusion asks `_HOST_END` instead, which is the URL parser's own answer.
+        ('a { background: url("file://localhost)evil.example/x.png"); }', True),
+        ('a { background: url("file://localhost;evil.example/x.png"); }', True),
+        ('a { background: url("file://localhost}evil.example/x.png"); }', True),
+        ('@import "file://localhost)evil.example/t.css";', True),
+        # ... and the characters that genuinely DO end a host, every one of them measured: `/`, `?`,
+        # `#` and a backslash empty it or start the path, while a space, form feed, `<` or `>` make
+        # the URL fail to parse outright, so a browser fetches nothing at all. None may be reported.
+        ("a { background: url(file://localhost/evil.example/x.png); }", False),
+        ("a { background: url(file://localhost?evil.example); }", False),
+        ("a { background: url(file://localhost#evil.example); }", False),
+        ('a { background: url("file://localhost evil.example/x.png"); }', False),
+        ('a { background: url("file://localhost<evil.example/x.png"); }', False),
     ]
 
     def _runtime_css_strip_source(self):
         """The exporter's CSS strip, as JS source, for evaluation in node.
 
-        The region starts at the shared pattern pieces rather than at the function, because the two
-        compiled patterns live beside it as module-level consts - assembled from strings so the
-        file's own source never carries a dynamic-import shape the export's egress scan would read
-        as egress and delete this very script over.
+        The region starts at the SHARED `file:` arm's own pieces rather than at the CSS pattern
+        fragments, because the CSS strips are now assembled from that arm (issue #1230) - starting
+        lower would evaluate a copy that cannot resolve `_offFileNetworkArm` at all. The two
+        compiled CSS patterns live beside the fragments as module-level consts, assembled from
+        strings so the file's own source never carries a dynamic-import shape the export's egress
+        scan would read as egress and delete this very script over.
         """
         source = self._read("68-export-offline.js")
         self.assertEqual(
             source.count("function _offlineCssNoNetwork("), 1,
             "the runtime declares _offlineCssNoNetwork more than once, so this extraction could "
             "evaluate the dead copy; keep exactly one definition")
-        start = source.find("const _OFF_CSS_WS =")
+        start = source.find("const _OFFLINE_PCT_LOCALHOST =")
         self.assertNotEqual(start, -1,
-                            "the runtime no longer declares the shared CSS pattern pieces; the "
+                            "the runtime no longer declares the shared file: arm pieces; the "
                             "parity extraction is stale and must be re-pointed at what replaced it")
         m = re.compile(r"function _offlineCssNoNetwork\(css\) \{.*?\n\}", re.S).search(source, start)
         self.assertIsNotNone(m, "the runtime no longer declares _offlineCssNoNetwork after the "
                                 "shared pattern pieces; the parity extraction is stale")
         region = source[start:m.end()]
-        for name in ("_OFFLINE_CSS_IMPORT_RE", "_OFFLINE_CSS_URL_RE", "_offlineCssNoNetwork"):
+        for name in ("_offFileNetworkArm", "_OFF_CSS_START", 'const _OFF_CSS_WS = "',
+                     "_OFFLINE_CSS_IMPORT_RE", "_OFFLINE_CSS_URL_RE", "_offlineCssNoNetwork"):
             self.assertIn(name, region,
                           "%s is no longer inside the extracted CSS-strip region, so the parity "
                           "check would run a partial copy of the decision" % name)

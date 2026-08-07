@@ -588,7 +588,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.821.0";
+const CMH_VERSION = "1.822.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -15217,7 +15217,17 @@ const _OFFLINE_PCT_LOCALHOST =
   "(?:l|%[46]c)(?:o|%[46]f)(?:c|%[46]3)(?:a|%[46]1)(?:l|%[46]c)"
   + "(?:h|%[46]8)(?:o|%[46]f)(?:s|%[57]3)(?:t|%[57]4)";
 // What may FOLLOW that host for the exclusion to fire: the end of the value, a `?` or `#`, or a
-// SINGLE path slash. A second slash is an egress MISS, not a local path:
+// What may FOLLOW that host for the exclusion to fire. This is a property of the URL PARSER, not of
+// the caller's syntax, so it is its own set rather than the caller's value terminator. A character
+// that can legally CONTINUE a host does not end it: `file://localhost)not-a-host/x` parses to host
+// `localhost)not-a-host` (an off-machine SMB name), so treating the `)` as the end of a CSS value
+// fired the `localhost` exclusion and left the beacon in. Measured in a real engine, the only host
+// enders are `/`, `?`, `#` and a backslash, the characters that make the URL fail to parse at all
+// (space, form feed, `<`, `>`), and the true end of the value; `)`, `(`, `;`, `{`, `}`, either quote
+// and the parser-REMOVED tab/LF/CR all continue it. The residual is fail-CLOSED: a bare
+// `url(file://localhost)`, naming the local root with no path, is over-reported, because a
+// quote-agnostic reading cannot tell it from `url("file://localhost)not-a-host/x")`.
+// A second slash is an egress MISS, not a local path:
 // `file://localhost//not-a-host/x.js` empties the host and keeps `//not-a-host/x.js` as the PATH, so
 // the parser canonicalizes it to `file:////not-a-host/x.js` (measured in a spec-conformant WHATWG
 // parser; Chromium 149 instead KEEPS host `localhost` for that exact spelling, but re-parsing the
@@ -15227,7 +15237,7 @@ const _OFFLINE_PCT_LOCALHOST =
 // reaches it too, since the cleanup maps `\` onto `/`. The cost is that `file://localhost//C:/x.js`,
 // canonically the LOCAL `file:////C:/x.js`, is over-reported; that is the fail-CLOSED direction this
 // predicate takes everywhere else.
-const _OFFLINE_PCT_LOCALHOST_END = "(?:[?#]|$|/(?!/))";
+const _OFFLINE_HOST_END = "(?:[?#\\\\ \\f<>]|$|/(?!/))";
 // The rule both of the following exist to keep is CANONICALIZATION STABILITY: a value and the href
 // the URL parser canonicalizes it to must get the SAME verdict, or a spelling hides an authority
 // that only the parser sees. Two shapes broke it, and neither is reachable by a test that reads only
@@ -15241,19 +15251,44 @@ const _OFFLINE_PCT_LOCALHOST_END = "(?:[?#]|$|/(?!/))";
 // canonicalize to `file:////x.js` from a THREE-slash or even slash-less value the arms above never
 // look at, so it needs an arm of its own that ignores the leading separator count entirely. The
 // leading `/*(?!/)` consumes the whole separator run unbacktrackably, so only a `//` in the PATH
-// counts, and `[^?#]` stops at the query, which cannot change the path.
+// counts, and the path scan stops at the query - which cannot change the path - and at whatever ends
+// the value in the caller's context (`_offFileNetworkArm`'s `stop`).
 // A fuzz of 421,560 values against a real URL parser measured the result: ZERO remain where the
 // predicate says local while the value's own canonical form is egress. The cost is over-detection in
 // the safe direction (93,789 of those values, all absurd spellings): an authored
 // `file:///C:/a//b.png` or `file://localhost/a/../b.js` is now reported.
 const _OFFLINE_FILE_DOTDOT_SEGMENT = "(?:\\.|%2e)(?:\\.|%2e)";
-const _OFFLINE_FILE_EMPTY_SEGMENT = "file:/*(?!/)[^?#]*?//";
+// The `file:` AUTHORITY arm, built ONCE and read by BOTH strips: the attribute/URL predicate below
+// and, through `_OFF_CSS_START`, the CSS `url(...)` and at-rule strips further down. It is the
+// mirror of the validator's `file_network_arm` (`tools/validate/checks/resources.py`) and is pinned
+// to it as TEXT, not merely by verdicts, so neither side can be widened alone - the CMH-OFFLINE-04
+// drift. The CSS half used to carry no `file:` arm at all, so `url(file://not-a-host/x.png)` was
+// left in an export the validator's attribute predicate calls egress (issue #1230).
+// `stop` is the character-class BODY of what ENDS a value in the caller's context: empty for a URL
+// value, which runs to the end of the string, and `_OFF_CSS_VALUE_STOP` for a stylesheet, where a
+// quote, a `)`, CSS whitespace or a declaration/block terminator ends it. Written with `$` rather
+// than a Python `\Z`; there is no `m` flag on either compiled pattern, so a JS `$` is end-of-input.
+// What ends a value and what a PATH may CONTAIN are DIFFERENT sets: a quoted CSS string may legally
+// carry a terminator, so scanning the path with the terminator set truncated the scan and hid a
+// popping segment behind it (`url("file:///a(/..//not-a-host/x.png")` canonicalizes onto the
+// four-separator UNC form and a real Chromium 151 requested `file://not-a-host/x.png` for it).
+// The path scan therefore uses `_OFF_PATH_CHAR` - only `?`, `#` and the raw LF/CR that make a CSS
+// bad-string token are excluded - and is bounded by `_OFF_PATH_SCAN_MAX` instead, because these
+// strips run UNANCHORED, with a `g` flag, to convergence, in the READER'S BROWSER: unbounded, a
+// stylesheet of repeated `url(file:a` measured 17.2s at 156 KB, which is a hung tab.
+const _OFF_PATH_CHAR = "[^?#\\n\\r]";
+const _OFF_PATH_SCAN_MAX = 512;
+function _offFileNetworkArm(stop) {
+  const end = stop ? "[" + stop + "]|$" : "$";
+  const seg = stop ? _OFF_PATH_CHAR + "{0," + _OFF_PATH_SCAN_MAX + "}" : "[^?#]*";
+  return "file:(?://(?!/)|/{4,}(?!/))(?![?#]|" + end + ")"
+    + "(?:(?=" + seg + "/" + _OFFLINE_FILE_DOTDOT_SEGMENT + "(?:[/?#]|" + end + "))"
+    + "|(?!" + _OFFLINE_PCT_LOCALHOST + _OFFLINE_HOST_END + ")(?![A-Za-z][:|]))"
+    + "|file:/*(?!/)" + seg + "?//";
+}
 const _OFFLINE_NETWORK_URL_RE = new RegExp(
   "^(?:(?:https?:/*|/{2,})[^/?#]"
-  + "|file:(?://(?!/)|/{4,}(?!/))(?![?#]|$)"
-  + "(?:(?=[^?#]*/" + _OFFLINE_FILE_DOTDOT_SEGMENT + "(?:[/?#]|$))"
-  + "|(?!" + _OFFLINE_PCT_LOCALHOST + _OFFLINE_PCT_LOCALHOST_END + ")(?![A-Za-z][:|]))"
-  + "|" + _OFFLINE_FILE_EMPTY_SEGMENT + ")",
+  + "|" + _offFileNetworkArm("") + ")",
   "i");
 
 function _offlineIsNetworkUrl(v) {
@@ -15340,25 +15375,43 @@ const _OFF_CSS_WS = "[\\t\\n\\f\\r ]";
 const _OFF_CSS_NET = "(?:https?:\\/*|\\/{2,})";
 // One host character, the same approximation the validator's `_CSS_HOST_CHAR` makes.
 const _OFF_CSS_HOST = "[^/?#\"')\\t\\n\\f\\r ]";
+// What ENDS a CSS value, as a character-class BODY: either quote, the `)` that closes a `url()` or
+// an `image-set()`, the CSS whitespace the URL parser KEEPS, and the `;`/`{`/`}` that end a
+// declaration or a block. Mirrors the validator's `CSS_VALUE_STOP` and is pinned to it as text.
+// ASCII TAB is deliberately OUT: it is one of the three characters the URL parser removes from
+// anywhere, so it can never be the true end of a value, and counting it let
+// `url("file://localhost<TAB>not-a-host/x")` - host `localhostnot-a-host` to the parser - read as
+// the excluded `localhost`. LF and CR are IN for a CSS reason rather than a URL one: unescaped, they
+// make a bad-string token whose declaration a browser drops. The OPEN paren is OUT because a quoted
+// string may legally contain one; the path scans are bounded by `_OFF_PATH_SCAN_MAX`, not by it.
+const _OFF_CSS_VALUE_STOP = "'\\\");{}\\n\\f\\r ";
+// Where a CSS reference is decided to reach the network: the http/https and scheme-relative prefix
+// plus one host character, OR the SHARED `file:` authority arm - the same one the URL predicate
+// above reads, so a stylesheet and an attribute cannot answer differently about `file://host/x`
+// (issue #1230). The `file:` arm consumes its own authority, so it takes no trailing host character;
+// the http/https arm still requires one, which is what keeps `url(https://)` and `url(//)` - empty
+// authorities that fetch nothing - out of the author's stylesheet untouched.
+const _OFF_CSS_START =
+  "(?:" + _OFF_CSS_NET + _OFF_CSS_HOST + "|" + _offFileNetworkArm(_OFF_CSS_VALUE_STOP) + ")";
 // A run that stops at a comment boundary in either direction (see `_offlineCssNoNetwork`), plus
 // whatever else its caller must not cross.
 const _OFF_CSS_RUN = function (extra) {
   return "(?:[^" + extra + "/*]|\\/(?!\\*)|\\*(?!\\/))*";
 };
 const _OFF_CSS_QUOTED = function (q) {
-  return q + _OFF_CSS_WS + "*" + _OFF_CSS_NET + _OFF_CSS_HOST + "[^" + q + "]*" + q;
+  return q + _OFF_CSS_WS + "*" + _OFF_CSS_START + "[^" + q + "]*" + q;
 };
 const _OFFLINE_CSS_IMPORT_RE = new RegExp(
   "@" + "import" + "(?:" + _OFF_CSS_WS + "+|(?=[\"']))"
   + "(?:url\\(" + _OFF_CSS_WS + "*)?"
   + "(?:" + _OFF_CSS_QUOTED("\"") + "|" + _OFF_CSS_QUOTED("'")
-  + "|" + _OFF_CSS_NET + _OFF_CSS_HOST + _OFF_CSS_RUN(";{}\"')")
-  + "|[\"']" + _OFF_CSS_WS + "*" + _OFF_CSS_NET + _OFF_CSS_HOST + _OFF_CSS_RUN(";{}")
+  + "|" + _OFF_CSS_START + _OFF_CSS_RUN(";{}\"')")
+  + "|[\"']" + _OFF_CSS_WS + "*" + _OFF_CSS_START + _OFF_CSS_RUN(";{}")
   + ")" + _OFF_CSS_RUN(";{}\"'@") + ";?", "gi");
 const _OFFLINE_CSS_URL_RE = new RegExp(
   "url\\(" + _OFF_CSS_WS + "*(?:" + _OFF_CSS_QUOTED("\"") + "|" + _OFF_CSS_QUOTED("'")
-  + "|" + _OFF_CSS_NET + _OFF_CSS_HOST + "[^)\"'\\t\\n\\f\\r ]*"
-  + "|(?:[\"']" + _OFF_CSS_WS + "*)?" + _OFF_CSS_NET + _OFF_CSS_HOST + _OFF_CSS_RUN(");{}")
+  + "|" + _OFF_CSS_START + "[^)\"'\\t\\n\\f\\r ]*"
+  + "|(?:[\"']" + _OFF_CSS_WS + "*)?" + _OFF_CSS_START + _OFF_CSS_RUN(");{}")
   + ")(?:" + _OFF_CSS_WS + "*\\)|$|(?=[;{}]))", "gi");
 function _offlineCssNoNetwork(css) {
   // Mirrors the validator's `CSS_NETWORK_IMPORT_RE` / `CSS_NETWORK_URL_RE`, and moves with them
