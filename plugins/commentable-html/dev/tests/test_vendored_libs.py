@@ -12,6 +12,7 @@ detector that scans the whole document reports every document as needing the blo
 silently becomes a no-op. Detection must look only inside the CONTENT region.
 """
 import glob
+import collections
 import itertools
 import json
 import os
@@ -86,6 +87,434 @@ _NAV_LOCAL_BINDING_EVIL = ('function%s(' + "x" * 450
 # the verdict to the PREFIXED sinks - of which there are none, so every sample answers False and
 # the whole input is walked before it does.
 _NAV_SHADOW_TAIL = ';location.href="//e";const location=1;'
+
+
+# --- CMH-BUILD-23: one declaration per name across the concatenated runtime bundle ----------
+#
+# The 49 `assets/js/NN-*.js` partials are concatenated into ONE classic script wrapped in a single
+# IIFE, so every partial's `function` / `const` / `let` / `var` / `class` shares one scope. A
+# redeclared `function` is LEGAL there - the later one silently wins - which is how #1183 shipped
+# two identical `_cmhCommentableLink` declarations through a fully green suite. The `const` case
+# fails the other way: the whole bundle stops parsing, and the error names a line in a 3 MB built
+# artifact rather than the identifier. Both need a scan that names the identifier and its partials.
+#
+# The scan is a walk, not a pattern: a regex over the raw text cannot tell a declaration from the
+# same words inside a string, a comment, a template literal, or a regex literal, and cannot tell
+# the SHARED scope from a local binding inside a function body (two functions may each declare
+# their own `const url`, which is not a collision). What is tracked is the delimiter stack
+# (`(`, `[`, `{`, and a template literal's backtick / `${`), so "shared scope" is simply "the stack
+# equals the stack at the bundle's first `{`" - derived from the source rather than hardcoded, so
+# rewrapping the IIFE does not silently move the check to the wrong depth.
+_JS_WHITESPACE = " \t\r\n\f\v\u00a0\ufeff\u2028\u2029"
+_JS_LINE_BREAKS = "\n\r\u2028\u2029"
+# Unicode-aware, because a JS identifier may hold any letter: an ASCII-only class would split
+# `cafe`-with-an-accent into a prefix and make two DISTINCT names collide (a false red).
+_JS_ID_START = re.compile(r"[^\W\d]|\$", re.UNICODE)
+_JS_ID_CHAR = re.compile(r"[\w$]", re.UNICODE)
+# A `/` opens a regex literal only where a VALUE may start; after a value it is division. Both
+# directions of a wrong guess corrupt the walk - reading a regex as division feeds its body to the
+# delimiter stack, and reading division as a regex swallows code - so the walk reports a mismatched
+# or unwound delimiter as a PROBLEM rather than carrying on quietly.
+_JS_REGEX_AFTER_WORD = frozenset((
+    "return", "typeof", "instanceof", "in", "new", "delete", "void", "throw",
+    "case", "do", "else", "yield", "await",
+))
+# `of` is CONTEXTUAL: a keyword only in a `for (... of ...)` header, and an ordinary identifier
+# anywhere else. So `of / 2` is division and `for (const m of /re/.exec(s))` is a regex, and the
+# walk has to know which paren it is inside to tell them apart.
+_JS_REGEX_AFTER_WORD_IN_FOR = frozenset(("of",))
+_JS_REGEX_AFTER_PUNCT = frozenset("([{,;=:?!&|+-*%~^<>}")
+# Where a DECLARATION may start. `function` and `class` are also EXPRESSIONS
+# (`const f = function g() {}` binds `g` only inside itself, and `c ? function g() {} : null` is
+# the same trap), so they declare only in statement position. Note `:` is deliberately ABSENT: it
+# is far more often a ternary or a property than a label.
+_JS_STATEMENT_HEAD = frozenset(("", "{", "}", ";", ")"))
+# Word tokens after which a statement (so a declaration) may follow directly. `else function
+# f() {}` is Annex B but legal and binds at the shared scope.
+_JS_STATEMENT_AFTER_WORD = frozenset(("else", "do", "try", "finally"))
+# Word tokens that CONTINUE an expression, so a line break in front of one does not end the
+# statement: `const a = {}\n instanceof Object, b = 2` is one declarator list, not two statements.
+_JS_CONTINUES_EXPRESSION = frozenset(("in", "instanceof", "of"))
+# ... and word tokens that DEMAND an operand, so a line break after one does not end a statement
+# either: `const a = new\n Foo(), b = 2` is still one list. The restricted productions (`return`,
+# `throw`, `yield`) are deliberately absent - ASI does apply after those.
+_JS_NO_ASI_AFTER_WORD = frozenset((
+    "typeof", "instanceof", "in", "of", "new", "delete", "void", "await",
+))
+# ASI: a line break ends a statement UNLESS the previous token demands a continuation. So a
+# `function` on a fresh line after `const a = 1` (no semicolon - legal, and #1183's shape could
+# hide behind it) is still a declaration, while the one after `const handler =` is not. A postfix
+# `++`/`--` is deliberately NOT here: it ENDS an expression, so a line break after it does end the
+# statement (it is only tracked as one token so a following `/` reads as division).
+_JS_NO_ASI_AFTER = frozenset((
+    "=", "+", "-", "*", "/", "%", "&", "|", "^", "<", ">", "!", "~", "?", ":", ",", ".",
+    "(", "[",
+))
+_JS_DECL_KEYWORDS = frozenset(("const", "let", "var"))
+_JS_HOISTING_KEYWORDS = frozenset(("const", "let", "var", "function", "class"))
+
+_JsScan = collections.namedtuple(
+    "_JsScan", "declarations stack patterns problems scope_key scope_at")
+
+
+def _js_line_end(source, i):
+    """The index of the next line terminator at or after `i`, or -1. Any of the four ends a line
+    comment, not just `\\n`."""
+    ends = [source.find(brk, i) for brk in _JS_LINE_BREAKS]
+    found = [at for at in ends if at >= 0]
+    return min(found) if found else -1
+
+
+def _js_ends_statement(prev):
+    """Whether the token before a line break can END a statement, the other half of ASI.
+
+    `const a = one +` cannot, so the break after it does not end the declarator list; `const a =
+    one` can. Both halves have to agree before a break is a statement boundary.
+    """
+    return prev not in _JS_NO_ASI_AFTER and prev not in _JS_NO_ASI_AFTER_WORD
+
+
+def _js_starts_statement(source, i):
+    """Whether the token at `i` cannot CONTINUE an expression, so a line break before it ends one.
+
+    ASI is decided by the token that follows the break, never by the one before it. `|| two` or
+    `.prop` continues the expression a declarator list was in the middle of; an identifier, a
+    literal, a `{`, a `;`, or a unary-only operator starts something new.
+    """
+    ch = source[i]
+    if ch in "'\"`{};!~":
+        return True
+    if ch.isdigit():
+        return True
+    if source.startswith("++", i) or source.startswith("--", i):
+        return True
+    if _JS_ID_START.match(ch):
+        end = i
+        while end < len(source) and _JS_ID_CHAR.match(source[end]):
+            end += 1
+        return source[i:end] not in _JS_CONTINUES_EXPRESSION
+    return False
+
+
+def _js_shared_scope_declarations(source):
+    """Every binding declared in `source`'s outermost shared scope, plus the walk's own evidence.
+
+    Returns a `_JsScan`:
+
+    - `declarations` - `[(kind, name, index)]` for each `function` / `class` / `const` / `let` /
+      `var` binding at the shared scope.
+    - `stack` - the leftover delimiter stack. It must come back EMPTY.
+    - `patterns` - indices of shared-scope DESTRUCTURING bindings (`const {a, b} = x;`, including
+      one that follows a comma in a declarator list). The walk does not name the bindings inside a
+      pattern, so a caller must FAIL on a non-empty list rather than skip them silently.
+    - `problems` - `[(index, why)]` for everything the walk knows it cannot model: a mismatched
+      closer, a stack that unwound out of the shared scope (both mean a `/` was read as the wrong
+      thing, or an unmodelled construct desynced the walk), and an identifier escape (`\\u0064up`
+      spells a name this walk would not match).
+    - `scope_key` / `scope_at` - the delimiter stack captured at the source's FIRST `{`, and its
+      index. For this bundle that is the body of the one wrapping IIFE, so the shared scope is NOT
+      depth 0. A caller asserts the shape rather than trusting it.
+
+    Everything except `declarations` exists so the caller can assert the walk still WORKS: a scan
+    that quietly lost track can only under-report, and under-reporting is exactly how a duplicate
+    would slip through.
+
+    KNOWN LIMITS. This is a heuristic walk, not a parser, so state what it does NOT claim. It does
+    not model HOISTING out of a nested BLOCK: a `var` written inside a block or a `for` header,
+    and (in sloppy mode, which this bundle is) an Annex B `function` declared inside a block or an
+    `else` branch, all bind in the enclosing FUNCTION scope, so any of them can collide with a
+    shared-scope name unseen. Modelling it would mean telling a block `{` from a function-body
+    `{`, and the runtime has ~100 nested `var`s, so refusing them would be pure noise. More
+    generally, a shape the walk does not model can make it under-report; what BOUNDS that is not
+    this function but its caller's cross-checks - V8's own parse (which settles the
+    `const`/`let`/`class` half outright, since a duplicate there is a SyntaxError), V8's hoisted
+    top-level names, the column-0 regex, and the controls.
+
+    Shared-scope `var` IS collected and IS held to one declaration per name - a second one is a
+    real overwrite when it carries an initializer, and two partials claiming the same `var` is an
+    accident worth failing on either way.
+    """
+    declarations = []
+    patterns = []
+    problems = []
+    stack = []
+    scope_key = None
+    scope_at = -1
+    unwound_at = -1
+    code_after_unwind = False
+    i = 0
+    n = len(source)
+    prev = ""                 # previous significant token: a word, a punctuator, or a marker
+    line_break = True         # start of input behaves like the start of a line
+    pending_async = False     # `async` seen in statement position, so `function` still declares
+    in_declarator_list = False
+    declarator_kind = ""
+    in_template_text = False
+    pending_for = False       # a `for` whose `(` is about to open a loop header
+    for_parens = set()        # stack depths of the `(`s that are `for` headers
+
+    def skip_trivia(j):
+        while j < n:
+            c = source[j]
+            if c in _JS_WHITESPACE:
+                j += 1
+            elif source.startswith("//", j):
+                end = _js_line_end(source, j)
+                j = n if end < 0 else end + 1
+            elif source.startswith("/*", j):
+                end = source.find("*/", j)
+                j = n if end < 0 else end + 2
+            else:
+                break
+        return j
+
+    def read_identifier(j):
+        j = skip_trivia(j)
+        if j < n and _JS_ID_START.match(source[j]):
+            end = j
+            while end < n and _JS_ID_CHAR.match(source[end]):
+                end += 1
+            return source[j:end], end
+        return "", j
+
+    def closes(opener, closer):
+        return (opener, closer) in (("(", ")"), ("[", "]"), ("{", "}"), ("${", "}"))
+
+    while i < n:
+        ch = source[i]
+
+        if in_template_text:
+            if ch == "\\":
+                i += 2
+            elif ch == "`":
+                stack.pop()
+                in_template_text = bool(stack) and stack[-1] == "`"
+                prev = "`"
+                i += 1
+            elif ch == "$" and i + 1 < n and source[i + 1] == "{":
+                stack.append("${")
+                in_template_text = False
+                prev = "{"
+                i += 2
+            else:
+                i += 1
+            continue
+
+        if ch in _JS_WHITESPACE:
+            if ch in _JS_LINE_BREAKS:
+                line_break = True
+            i += 1
+            continue
+        # A classic script may carry Annex B HTML-like comments and a hashbang; both are trivia a
+        # walk that treated them as code would desync on.
+        if source.startswith("//", i) or source.startswith("<" + "!--", i) \
+                or (i == 0 and source.startswith("#!", i)) \
+                or (line_break and source.startswith("--" + ">", i)):
+            end = _js_line_end(source, i)
+            i = n if end < 0 else end
+            continue
+        if source.startswith("/*", i):
+            end = source.find("*/", i)
+            if end < 0:
+                i = n
+            else:
+                if any(brk in source[i:end] for brk in _JS_LINE_BREAKS):
+                    line_break = True
+                i = end + 2
+            continue
+        # Reached only by a real token, never by trivia. A declarator list ends at a real ASI
+        # boundary, and ASI needs BOTH sides of the break: the token before it must be able to END
+        # a statement (`one +` cannot), and the token after it must not be able to CONTINUE the
+        # expression (`|| two`, `.prop`, `[0]` all can). Getting either half wrong drops every
+        # declarator after a wrapped initializer, which is a silent under-report.
+        if in_declarator_list and line_break and scope_key is not None \
+                and tuple(stack) == scope_key and _js_ends_statement(prev) \
+                and _js_starts_statement(source, i):
+            in_declarator_list = False
+        if ch in "'\"":
+            j = i + 1
+            while j < n:
+                if source[j] == "\\":
+                    j += 2
+                    continue
+                if source[j] == ch:
+                    break
+                j += 1
+            i = j + 1
+            prev = "'string'"
+            line_break = False
+            continue
+        if ch == "`":
+            stack.append("`")
+            in_template_text = True
+            line_break = False
+            i += 1
+            continue
+        if ch == "/":
+            in_for_header = bool(stack) and (len(stack) - 1) in for_parens
+            if prev in _JS_REGEX_AFTER_PUNCT or prev in _JS_REGEX_AFTER_WORD or prev == "" \
+                    or (in_for_header and prev in _JS_REGEX_AFTER_WORD_IN_FOR):
+                j = i + 1
+                in_class = False
+                closed = False
+                while j < n:
+                    c = source[j]
+                    if c == "\\":
+                        j += 2
+                        continue
+                    if c == "[":
+                        in_class = True
+                    elif c == "]":
+                        in_class = False
+                    elif c in _JS_LINE_BREAKS:
+                        break
+                    elif c == "/" and not in_class:
+                        closed = True
+                        break
+                    j += 1
+                if closed:
+                    # A regex literal cannot span a line, so an unclosed guess was DIVISION after
+                    # all (`a++ / 2` reads `+` as a value position). Falling through re-reads it as
+                    # an operator instead of swallowing the rest of the line.
+                    i = j + 1
+                    while i < n and _JS_ID_CHAR.match(source[i]):   # flags
+                        i += 1
+                    prev = "/regex/"
+                    line_break = False
+                    continue
+            prev = "/"
+            line_break = False
+            i += 1
+            continue
+        if ch in "([":
+            if ch == "(" and pending_for:
+                for_parens.add(len(stack))
+            pending_for = False
+            stack.append(ch)
+            prev = ch
+            line_break = False
+            i += 1
+            continue
+        if ch in ")]}":
+            opener = stack.pop() if stack else ""
+            for_parens.discard(len(stack))
+            if not closes(opener, ch):
+                problems.append((i, "a %r closed a %r" % (ch, opener or "nothing")))
+            if ch == "}" and opener == "${":
+                in_template_text = True
+            if scope_key is not None and unwound_at < 0 and len(stack) < len(scope_key):
+                unwound_at = i
+            prev = ch
+            line_break = False
+            i += 1
+            continue
+        if ch == "{":
+            stack.append("{")
+            if scope_key is None:
+                scope_key = tuple(stack)
+                scope_at = i
+            elif unwound_at >= 0:
+                code_after_unwind = True
+            prev = "{"
+            line_break = False
+            i += 1
+            continue
+        if ch == "\\":
+            # Only ever legal here as an identifier escape, which spells a name this walk would
+            # read as a different one. Fail closed rather than compare the wrong names.
+            problems.append((i, "an identifier escape the walk does not decode"))
+            prev = "\\"
+            line_break = False
+            i += 1
+            continue
+        if _JS_ID_START.match(ch):
+            word, after = read_identifier(i)
+            member = prev == "."          # `obj.of` is a property, not the `of` keyword
+            if unwound_at >= 0 and word in _JS_HOISTING_KEYWORDS:
+                # A DECLARATION after the wrapper closed means the walk is reading at the wrong
+                # depth; a plain trailing statement (`window.cmhReady();` after `})();`) does not,
+                # and refusing that would red a legitimate bootstrap line.
+                code_after_unwind = True
+            shared = scope_key is not None and tuple(stack) == scope_key
+            statement = (prev in _JS_STATEMENT_HEAD or prev in _JS_STATEMENT_AFTER_WORD
+                         or (line_break and _js_ends_statement(prev)))
+            if shared and statement:
+                # A LABEL, not an expression or a declaration: `retry: function dup() {}` declares
+                # `dup` in this scope just as a bare declaration would (sloppy mode), and `let:
+                # foo(), x = 1;` is a labelled comma expression, not a `let` declarator list.
+                # Consume the colon and keep the statement position. A ternary's colon never
+                # reaches here - its left operand is not in statement position.
+                colon = skip_trivia(after)
+                if colon < n and source[colon] == ":" and not source.startswith("::", colon) \
+                        and word not in ("function", "class", "async"):
+                    in_declarator_list = False
+                    prev = ";"
+                    line_break = False
+                    i = colon + 1
+                    continue
+            if shared and word in _JS_DECL_KEYWORDS and prev != ".":
+                # A declaration keyword is never an expression, so it needs no statement position -
+                # which is what keeps a semicolon-less predecessor from hiding it.
+                name, _ = read_identifier(after)
+                if name:
+                    declarations.append((word, name, i))
+                    in_declarator_list = True
+                    declarator_kind = word
+                elif skip_trivia(after) < n and source[skip_trivia(after)] in "{[":
+                    patterns.append(i)
+                    in_declarator_list = True
+                    declarator_kind = word
+                else:
+                    # Not a declaration at all: in sloppy mode `let` is a legal identifier, so
+                    # `let = 1, dup = 2;` is a comma expression. Entering declarator mode here
+                    # would invent a `let dup` and red an innocent partial.
+                    in_declarator_list = False
+            elif shared and (statement or pending_async) and word == "function":
+                start = skip_trivia(after)
+                if start < n and source[start] == "*":       # generator
+                    start = skip_trivia(start + 1)
+                name, _ = read_identifier(start)
+                if name:
+                    declarations.append(("function", name, i))
+            elif shared and statement and word == "class":
+                name, _ = read_identifier(after)
+                if name:
+                    declarations.append(("class", name, i))
+            elif shared and in_declarator_list and prev == ",":
+                # `let a = 1, b = 2;` - the stack is back at the shared scope, so the comma really
+                # does separate declarators rather than sitting inside a call or an array.
+                declarations.append((declarator_kind, word, i))
+            pending_async = word == "async" and shared and statement
+            pending_for = word == "for"
+            # A keyword used as a PROPERTY (`obj.of`, `obj.return`) must not put the walk in a
+            # value position, or the next `/` is read as a regex and swallows the line.
+            prev = "'member'" if member else word
+            line_break = False
+            i = after
+            continue
+        if ch == "," and scope_key is not None and tuple(stack) == scope_key \
+                and in_declarator_list:
+            # The other half of the destructuring check: `const a = 1, {b} = x;` binds `b` too.
+            nxt = skip_trivia(i + 1)
+            if nxt < n and source[nxt] in "{[":
+                patterns.append(i)
+        if ch == ";" and scope_key is not None and tuple(stack) == scope_key:
+            # Only a shared-scope `;` ends the declarator list; one inside an arrow body
+            # (`const a = () => { return 1; }, b = 2;`) must not hide `b`.
+            in_declarator_list = False
+        if (ch == "+" and source.startswith("++", i)) or (ch == "-" and source.startswith("--", i)):
+            prev = ch * 2      # postfix update, so a following `/` is division, not a regex
+            line_break = False
+            i += 2
+            continue
+        prev = ch
+        line_break = False
+        i += 1
+
+    if code_after_unwind:
+        problems.append((unwound_at, "the delimiter stack unwound out of the shared scope with "
+                                     "code still to come"))
+    return _JsScan(declarations, stack, patterns, problems, scope_key, scope_at)
 
 
 class NeedsDetectionTests(unittest.TestCase):
@@ -5099,6 +5528,384 @@ class RuntimeParityTests(unittest.TestCase):
                         "offline export strips its OWN script with that test, so every offline "
                         "file would ship without the runtime. Reword the comment, or restructure "
                         "the code." % (label, body[max(0, at - 60):at + 60]))
+
+    # Controls for the shared-scope declaration walk, asserted BEFORE the real bundle. A scan that
+    # quietly reported nothing - a mis-read regex that swallowed the file, a scope key that landed
+    # at the wrong depth - would otherwise satisfy the real assertion vacuously, which is the exact
+    # failure mode a guard against silent drift must not have. Each entry is
+    # (label, bundle, duplicate names it must report, names it must have seen at all). The last
+    # six pin shapes the FIRST version of this walk got wrong, every one of them a silent
+    # under-report that the leftover-stack and count self-checks did not notice.
+    _SHARED_SCOPE_CONTROLS = (
+        ("a redeclared top-level function (the #1183 shape: legal JS, the later one wins)",
+         "(() => {\nfunction f(a) { return a; }\nfunction f(a) { return !a; }\n})();",
+         {"f"}, {"f"}),
+        ("a redeclared top-level const (a bundle-wide SyntaxError)",
+         "(() => {\nconst R = /a/g;\nfunction use() { return R; }\nconst R = /b/g;\n})();",
+         {"R"}, {"R", "use"}),
+        ("a redeclared top-level class (also a SyntaxError)",
+         "(() => {\nclass Box {}\nfunction use() { return Box; }\nclass Box {}\n})();",
+         {"Box"}, {"Box", "use"}),
+        ("a function and a const that collide across kinds",
+         "(() => {\nfunction f() {}\nconst f = 1;\n})();", {"f"}, {"f"}),
+        ("a redeclared async function and a generator",
+         "(() => {\nasync function af() {}\nfunction* gf() {}\nasync function af() {}\n})();",
+         {"af"}, {"af", "gf"}),
+        ("a name repeated inside a multi-declarator list",
+         "(() => {\nlet a = 1, b = 2;\nlet c = 3, b = 4;\n})();", {"b"}, {"a", "b", "c"}),
+        ("the same LOCAL name in two function bodies (not a collision)",
+         "(() => {\nfunction one() { const url = 1; return url; }\n"
+         "function two() { const url = 2; return url; }\n})();", set(), {"one", "two"}),
+        ("a shared-scope name that a NESTED block also binds (not a collision)",
+         "(() => {\nconst v = 1;\nif (v) { const v = 2; log(v); }\n})();", set(), {"v"}),
+        ("a named function or class EXPRESSION (binds only inside itself, not a collision)",
+         "(() => {\nconst f = function inner() {};\nconst K = class Inner {};\n"
+         "const g = c ? function inner() {} : null;\nconst h = async function inner() {};\n"
+         "const inner = 1;\nconst Inner = 2;\n})();", set(), {"f", "K", "g", "h", "inner",
+                                                             "Inner"}),
+        ("the same declaration spelled in a string, a comment, a template and a regex",
+         '(() => {\nfunction f() {}\nconst s = "function f() {}";\n// function f() {}\n'
+         "const t = `function f() {} ${s} function f() {}`;\nconst r = /function f\\(\\) \\{\\}/;\n"
+         "})();", set(), {"f", "s", "t", "r"}),
+        ("division that is not a regex literal (a mis-read here swallows the rest of the file)",
+         "(() => {\nconst a = 6 / 2;\nfunction mid() {}\nconst b = a / 2;\nfunction tail() {}\n"
+         "})();", set(), {"a", "b", "mid", "tail"}),
+        ("a duplicate hiding behind ASI (no semicolon ends the previous statement)",
+         "(() => {\nconst seed = [1]\nfunction dup() {}\nfunction dup() {}\n})();",
+         {"dup"}, {"seed", "dup"}),
+        ("a duplicate hiding behind a postfix update before a division",
+         "(() => {\nlet i = 0;\nconst half = i++ / 2;\nfunction dup() {}\nfunction dup() {}\n"
+         "})();", {"dup"}, {"i", "half", "dup"}),
+        ("a declarator list whose arrow body carries its own semicolon",
+         "(() => {\nconst a = () => { return 1; }, dup = 2;\nconst dup = 3;\n})();",
+         {"dup"}, {"a", "dup"}),
+        ("a statement that only LOOKS like a declarator continuation",
+         "(() => {\nlet first = 1\nlog(first)\nvalue, notADeclaration = 2;\n})();",
+         set(), {"first"}),
+        ("a declarator list wrapping AFTER a binary operator (the other half of ASI)",
+         "(() => {\nvar a = one +\n  two, dup = 1;\nfunction dup() {}\n})();",
+         {"dup"}, {"a", "dup"}),
+        ("a declarator list wrapping after a keyword that demands an operand",
+         "(() => {\nconst a = new\n  Thing(), dup = 2;\nconst dup = 3;\n})();",
+         {"dup"}, {"a", "dup"}),
+        ("a declarator list wrapping after typeof",
+         "(() => {\nconst a = typeof\n  value, dup = 2;\nconst dup = 3;\n})();",
+         {"dup"}, {"a", "dup"}),
+        ("a declarator list whose initializer WRAPS onto a continuation line",
+         "(() => {\nconst a = one\n  || two, dup = 2;\nconst dup = 3;\n})();",
+         {"dup"}, {"a", "dup"}),
+        ("a declarator list wrapping onto a member access",
+         "(() => {\nconst a = obj\n  .prop, dup = 2;\nconst dup = 3;\n})();",
+         {"dup"}, {"a", "dup"}),
+        ("a declarator list wrapping onto an index",
+         "(() => {\nvar a = table\n  [0], dup = 2;\nvar dup = 3;\n})();",
+         {"dup"}, {"a", "dup"}),
+        ("a declarator list wrapping across a ternary",
+         "(() => {\nvar a = cond\n  ? 1\n  : 2, dup = 3;\nvar dup = 4;\n})();",
+         {"dup"}, {"a", "dup"}),
+        ("an object literal followed by a keyword operator inside a declarator list",
+         "(() => {\nconst a = {} instanceof Object, dup = 2;\nconst dup = 3;\n})();",
+         {"dup"}, {"a", "dup"}),
+        ("a duplicate declared in an else branch (Annex B, binds at this scope)",
+         "(() => {\nif (c) { g(); } else function dup() {}\nfunction dup() {}\n})();",
+         {"dup"}, {"dup"}),
+        ("a duplicate shared-scope var (legal JS; refused as a policy - the second wins)",
+         "(() => {\nvar dup = 1;\nfunction use() { return dup; }\nvar dup = 2;\n})();",
+         {"dup"}, {"dup", "use"}),
+        ("`let` used as a plain identifier in a comma expression (sloppy mode)",
+         "(() => {\nlet sink = 0;\nlet = 1, sink = 2;\n})();", set(), {"sink"}),
+        ("a label named `let`, which is not a declaration",
+         "(() => {\nlet first = 1, sink = 0;\nlet: foo(), sink = 2;\n})();",
+         set(), {"first", "sink"}),
+        ("a plain statement after the wrapper closes",
+         "(() => {\nfunction f() {}\n})();\nwindow.cmhReady && window.cmhReady();\n",
+         set(), {"f"}),
+        ("a duplicate behind a labelled statement (a label declares into this scope too)",
+         "(() => {\nretry: function dup() {}\nfunction dup() {}\n})();", {"dup"}, {"dup"}),
+        ("a duplicate after a postfix update ended the previous statement",
+         "(() => {\nlet i = 0;\ni++\nfunction dup() {}\nfunction dup() {}\n})();",
+         {"dup"}, {"i", "dup"}),
+        ("a statement starting with a literal or a unary, not a declarator continuation",
+         '(() => {\nlet first = 1, sink = 0\n"side", sink = 2;\n!0, sink = 3;\n})();',
+         set(), {"first", "sink"}),
+        ("a postfix update, a division and a string closer on one declarator line",
+         '(() => {\nlet n = 1;\nlet s = n++ / 2, t = ")";\nfunction one() {}\n'
+         "function two() {}\n})();", set(), {"n", "s", "t", "one", "two"}),
+        ("a keyword used as a property before a division",
+         "(() => {\nconst r = obj.of / 2, s = a / b;\nfunction dup() {}\nfunction dup() {}\n})();",
+         {"dup"}, {"r", "s", "dup"}),
+        ("a trailing comment holding a brace after the wrapper closes",
+         "(() => {\nfunction f() {}\n})();\n// a trailing note with a { brace\n",
+         set(), {"f"}),
+        ("`of` as a plain identifier before a division, not a for-of keyword",
+         "(() => {\nvar first = of / 2, dup = 1 / divisor;\nvar dup = 2;\n})();",
+         {"dup"}, {"first", "dup"}),
+        ("a regex in a for-of header, where `of` IS the keyword",
+         "(() => {\nfor (const m of /a/.exec(s)) { use(m); }\nfunction dup() {}\n"
+         "function dup() {}\n})();", {"dup"}, {"dup"}),
+        ("a line comment ended by U+2028, which also terminates one",
+         "(() => {\n// note\u2028function dup() {}\nfunction dup() {}\n})();",
+         {"dup"}, {"dup"}),
+        ("an Annex B HTML-like comment, which a classic script may carry",
+         "(() => {\n<" + "!--\nfunction dup() {}\nfunction dup() {}\n})();",
+         {"dup"}, {"dup"}),
+    )
+
+    # Controls for the walk's fail-closed reporting: each sample must be REFUSED (a non-empty
+    # `patterns` or `problems`), because the walk cannot name what it holds and a silent skip is
+    # how a duplicate would slip past. Each entry is (label, bundle, field).
+    _SHARED_SCOPE_REFUSALS = (
+        ("a destructuring binding at the shared scope",
+         "(() => {\nconst { a, b } = source;\n})();", "patterns"),
+        ("a destructuring binding after a comma in a declarator list",
+         "(() => {\nconst first = 1, { dup } = source;\n})();", "patterns"),
+        ("an array destructuring binding after a comma",
+         "(() => {\nlet first = 1, [dup] = source;\n})();", "patterns"),
+        ("an identifier spelled with a unicode escape",
+         "(() => {\nfunction \\u0064up() {}\nfunction dup() {}\n})();", "problems"),
+        ("a regex read as division, whose body then unwinds the shared scope",
+         '(() => {\nif (ok) /}/.test(s);\nfunction dup() {}\nfunction dup() {}\n})();',
+         "problems"),
+        ("a closer swallowed out of a regex that a control header made look like division",
+         '(() => {\nif (true) /\\)/.test("x");\nfunction dup() {}\nfunction dup() {}\n})();',
+         "problems"),
+    )
+
+    def _assert_v8_agrees(self, label, source, scan):
+        """A REAL JS engine as the independent oracle, when node is on PATH (CI always has it).
+
+        Two things V8 can settle that no Python walk can. First, PARSING: a duplicate top-level
+        `const`/`let`/`class` is a SyntaxError, so if the body parses, that half of the invariant
+        holds no matter what the walk thinks. Second, HOISTING: run the body as a script whose
+        first statement is a `throw`, and V8 instantiates the scope - creating every top-level
+        function binding on the global object - before executing a single statement of the
+        runtime. Those names are ground truth for "what the shared scope declares", and every one
+        of them must be a name the walk found. It is a SUPERSET check with no false reds: a
+        declaration inside a comment, a template, or a nested function is not hoisted, so none of
+        them can red this.
+        """
+        node = shutil.which("node")
+        if not node:
+            return
+        body = source[source.index("{") + 1:source.rindex("}")]
+        script = (
+            "const vm=require('vm');let raw='';"
+            "process.stdin.on('data',d=>raw+=d).on('end',()=>{"
+            "const body=JSON.parse(raw).body;const sandbox={};const ctx=vm.createContext(sandbox);"
+            "const before=new Set(Object.getOwnPropertyNames(sandbox));let ran='';"
+            "try{new vm.Script('throw 0;\\n'+body,{filename:'hoist.js'})"
+            ".runInContext(ctx,{timeout:20000});ran='no-throw';}"
+            "catch(e){ran=(e===0)?'ok':('unexpected: '+String(e&&e.message).slice(0,200));}"
+            "const names=Object.getOwnPropertyNames(sandbox).filter(n=>!before.has(n));"
+            "let parse='ok';"
+            "try{new vm.Script('(function () {\\n'+body+'\\n})',{filename:'parse.js'});}"
+            "catch(e){parse=String(e&&e.message).slice(0,200);}"
+            "process.stdout.write(JSON.stringify({ran:ran,parse:parse,names:names}));});"
+        )
+        proc = subprocess.run([node, "-e", script], input=json.dumps({"body": body}).encode(),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(proc.returncode, 0,
+                         "the node oracle failed on %s: %s"
+                         % (label, proc.stderr.decode("utf-8", "replace")[:400]))
+        result = json.loads(proc.stdout.decode("utf-8"))
+        self.assertEqual(
+            result["parse"], "ok",
+            "V8 refuses to parse %s: %s. A duplicate top-level `const`/`let`/`class` is a "
+            "SyntaxError, so this is the whole runtime failing to load - every report built from "
+            "it renders as inert HTML." % (label, result["parse"]))
+        self.assertEqual(
+            result["ran"], "ok",
+            "the node oracle did not abort before the body ran on %s (%s), so its hoisted-name "
+            "list is not trustworthy - fix the oracle rather than trusting this result."
+            % (label, result["ran"]))
+        hoisted = set(result["names"])
+        self.assertTrue(
+            len(hoisted) > 500,
+            "V8 hoisted only %d top-level names out of %s, so the oracle is not seeing the "
+            "runtime and is not checking anything." % (len(hoisted), label))
+        walked = set(name for _kind, name, _at in scan.declarations)
+        self.assertEqual(
+            sorted(hoisted - walked), [],
+            "V8 hoists %s at the top level of %s and the delimiter walk did not find them. The "
+            "walk is under-reporting, so a duplicate of any of those names would go unreported - "
+            "fix `_js_shared_scope_declarations`." % (sorted(hoisted - walked)[:20], label))
+
+    def test_no_declaration_in_the_bundle_is_made_twice(self):
+        """CMH-BUILD-23: one name, one declaration, across the whole concatenated runtime.
+
+        The `assets/js/NN-*.js` partials are concatenated into ONE classic script inside ONE IIFE,
+        so every partial's top-level `function` / `class` / `const` / `let` / `var` shares a single
+        scope - and nothing checked that a name is claimed once. A redeclared `function` is LEGAL
+        there: the LATER declaration wins, the earlier one becomes dead code, and #1183 shipped two
+        identical `_cmhCommentableLink` declarations through a fully green Playwright suite, the
+        Python suites, `rebuild_all.py --check` and the pre-push hook, baked into `SHAREABLE.html`
+        and every built example. A reviewer reading the file found it. The `const` case fails the
+        other way and just as unhelpfully: the bundle stops parsing, every report renders as inert
+        HTML, and the error names a line in a multi-megabyte artifact rather than the identifier.
+
+        The per-declaration text pins added in #1183 do not generalize - the next duplicate is some
+        other identifier - so this scans the whole bundle and names whatever it finds.
+
+        A duplicate shared-scope `var` is held to the same rule even though JS allows it: two
+        partials claiming one `var` is an accident, and a second initializer silently overwrites
+        the first. The walk is a heuristic and does not claim to see every binding - notably it
+        does not model hoisting out of a nested block (see the helper's docstring). What bounds
+        that is the layering here: V8's own PARSE settles the `const`/`let`/`class` half outright
+        (a duplicate there is a SyntaxError), V8's hoisted top-level names catch a `function` the
+        walk missed entirely, and the column-0 cross-check catches the walk seeing one of two
+        identical column-0 declarations - which is #1183's exact shape.
+        """
+        for label, sample, expected_dupes, expected_names in self._SHARED_SCOPE_CONTROLS:
+            scan = _js_shared_scope_declarations(sample)
+            self.assertEqual(scan.stack, [], "the scan lost track of a delimiter on %s" % label)
+            self.assertEqual(scan.patterns, [],
+                             "unexpected destructuring in the %s control" % label)
+            self.assertEqual(scan.problems, [], "unexpected refusal in the %s control: %r"
+                                                % (label, scan.problems))
+            names = [name for _kind, name, _at in scan.declarations]
+            self.assertLessEqual(
+                expected_names, set(names),
+                "the scan missed %s in %s - it saw %r, so it is under-reporting and the real "
+                "bundle below would pass vacuously" % (
+                    sorted(expected_names - set(names)), label, sorted(set(names))))
+            self.assertLessEqual(
+                set(names), expected_names,
+                "the scan invented %s in %s - a name it reports that is not declared at the "
+                "shared scope would red an innocent partial"
+                % (sorted(set(names) - expected_names), label))
+            duplicates = set(n for n in names if names.count(n) > 1)
+            self.assertEqual(
+                duplicates, expected_dupes,
+                "the scan reported %r as duplicated in %s, expected %r" % (
+                    sorted(duplicates), label, sorted(expected_dupes)))
+
+        for label, sample, field in self._SHARED_SCOPE_REFUSALS:
+            scan = _js_shared_scope_declarations(sample)
+            self.assertNotEqual(
+                getattr(scan, field), [],
+                "the scan accepted %s without reporting it in `%s`. It cannot name what that "
+                "construct binds, so accepting it silently is how a duplicate slips through - the "
+                "walk must refuse what it does not model." % (label, field))
+
+        js_dir = os.path.join(_paths.DEV, "assets", "js")
+        partials = sorted(n for n in os.listdir(js_dir) if n.endswith(".js"))
+        self.assertGreater(len(partials), 10,
+                           "only %d source partials found in %s - the split moved and this scan "
+                           "is reading the wrong directory" % (len(partials), js_dir))
+        chunks, offsets, at = [], [], 0
+        for name in partials:
+            text = self._read(name)
+            offsets.append((at, name))
+            chunks.append(text)
+            at += len(text)
+        bundle = "".join(chunks)
+
+        # The BUILT layer is scanned too, not only the concatenated source: a build step that
+        # emitted a partial twice would duplicate every declaration in it, and the built bytes are
+        # what ships inside `SHAREABLE.html` and every example. Required, not best-effort - making
+        # it conditional would let the only shipped-bytes check vanish exactly where the build is
+        # broken.
+        built_path = os.path.join(_paths.DEV, "skill", "dist", "commentable-html.js")
+        self.assertTrue(os.path.exists(built_path),
+                        "the built layer is missing at %s - run `python scripts/rebuild_all.py`"
+                        % built_path)
+        with open(built_path, "r", encoding="utf-8", newline="") as fh:
+            built = fh.read()
+
+        def source_place(index):
+            owner, start = offsets[0][1], offsets[0][0]
+            for begin, name in offsets:
+                if begin > index:
+                    break
+                owner, start = name, begin
+            return "assets/js/%s line %d" % (owner, bundle.count("\n", start, index) + 1)
+
+        def built_place(index):
+            return "skill/dist/commentable-html.js line %d" % (built.count("\n", 0, index) + 1)
+
+        for label, source, place in (
+                ("the concatenated source partials (assets/js/NN-*.js)", bundle, source_place),
+                ("the BUILT layer (skill/dist/commentable-html.js)", built, built_place)):
+            scan = _js_shared_scope_declarations(source)
+            self.assertEqual(
+                scan.stack, [],
+                "the declaration scan ended inside an unclosed %r while walking %s. It lost track "
+                "of the delimiter stack, so it can only UNDER-report duplicates - fix the walk "
+                "(a new syntax it does not model, or a `/` read as the wrong thing) rather than "
+                "trusting this result." % (scan.stack[-1:] or [""], label))
+            self.assertEqual(
+                scan.problems, [],
+                "the declaration scan refused to trust itself while walking %s:\n%s\n"
+                "Each entry is something the walk knows it cannot model, so the result would "
+                "under-report. Fix the construct, or teach `_js_shared_scope_declarations` to "
+                "handle it." % (label, "\n".join("  %s - %s" % (place(where), why)
+                                                 for where, why in scan.problems)))
+            self.assertEqual(
+                scan.patterns, [],
+                "%s now declares a destructuring binding at the shared scope (%s). The walk does "
+                "not name the bindings inside a pattern, so it would silently skip them - extend "
+                "`_js_shared_scope_declarations` to unpack the pattern."
+                % (label, ", ".join(place(where) for where in scan.patterns) or "nowhere"))
+            # The shared scope must be the bundle's outer WRAPPER, not some deep stack the walk
+            # happened to lock onto: a mis-lock would compare unrelated locals. Asserted
+            # structurally (grouping parens, then one brace) rather than by byte offset, so a
+            # longer header or an extra paren around the wrapper is not a failure.
+            self.assertTrue(
+                scan.scope_key is not None and scan.scope_key[-1:] == ("{",)
+                and set(scan.scope_key[:-1]) <= {"("},
+                "the scan locked its shared scope onto %r at offset %d in %s. That is not the "
+                "bundle's outer wrapper, so it is comparing the wrong names - re-point the walk "
+                "at whatever wraps the runtime now." % (scan.scope_key, scan.scope_at, label))
+            self.assertGreater(
+                len(scan.declarations), 500,
+                "the scan found only %d shared-scope declarations in %s. The runtime has well "
+                "over a thousand, so the walk is reading the wrong scope and this guard is not "
+                "guarding anything." % (len(scan.declarations), label))
+
+            # An independent floor on the walk, because the self-checks above catch a WHOLESALE
+            # failure and not a partial under-count: a plain column-0 regex must not find MORE
+            # declarations of a name than the walk did. It is deliberately restricted to names the
+            # walk already knows are shared-scope declarations - the point is to catch "the walk
+            # saw one of two identical declarations" (exactly #1183's shape, both copies at column
+            # 0), not to make the source avoid a comment or a template whose line happens to start
+            # with the word `function`. It is also deliberately anchored at column 0 rather than
+            # `^\s*`: allowing indentation makes it count the runtime's NESTED functions, which
+            # are correctly not shared-scope declarations, and that reds today (measured: `menu`
+            # and `root` are each a shared-scope name AND a local binding in a nested function).
+            walked = collections.Counter(name for _kind, name, _at in scan.declarations)
+            naive = collections.Counter(
+                m.group(1) for m in re.finditer(
+                    r"(?m)^(?:async\s+)?(?:function\s*\*?\s*|class\s+|const\s+|let\s+|var\s+)"
+                    r"((?:[^\W\d]|\$)[\w$]*)", source))
+            missed = sorted(name for name, count in naive.items()
+                            if walked[name] and walked[name] < count)
+            self.assertEqual(
+                missed, [],
+                "a plain column-0 scan of %s finds %s declared more often than the delimiter walk "
+                "did (%s). The walk skipped a declaration of a name it otherwise knows, so a "
+                "duplicate of it could go unreported. (If one of those lines is really inside a "
+                "block comment or a template literal, indent it.)" % (
+                    label, missed, ", ".join("%s: %d vs %d" % (name, naive[name], walked[name])
+                                             for name in missed)))
+
+            self._assert_v8_agrees(label, source, scan)
+
+            sites = {}
+            for kind, name, index in scan.declarations:
+                sites.setdefault(name, []).append((kind, index))
+            report = "\n".join(
+                "  %s `%s` declared %d times: %s" % (
+                    "/".join(sorted(set(kind for kind, _ in found))), name, len(found),
+                    ", ".join(place(index) for _kind, index in found))
+                for name, found in sorted(sites.items()) if len(found) > 1)
+            self.assertEqual(
+                report, "",
+                "%s declares a name more than once in the shared IIFE scope:\n%s\n"
+                "Every partial's top-level declarations share ONE scope. A duplicate `function` "
+                "is legal and the LATER one silently wins (so a pin that reads the first guards "
+                "dead code, and an edit to one copy is discarded); a duplicate `const`/`let`/"
+                "`class` is a bundle-wide SyntaxError that renders every report as inert HTML. "
+                "Delete the stale copy, or rename one of them." % (label, report))
 
     def test_the_vendored_bundles_pass_the_offline_capture_gates(self):
         """Both paths that inline a library run its bytes through the same content gates, so the
