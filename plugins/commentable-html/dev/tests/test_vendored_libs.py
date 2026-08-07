@@ -2860,6 +2860,39 @@ class RuntimeParityTests(unittest.TestCase):
                 "not a slow test. Keep both path scans in the shared file: arm bounded by "
                 "_PATH_SCAN_MAX." % (name, large, small))
 
+    def test_no_runtime_source_names_the_beacon_host_the_export_specs_forbid(self):
+        """The runtime's own SOURCE ships inside every export, so a comment is document content.
+
+        `tests/49-offline-export.spec.js` asserts that an exported file contains no `evil.example`
+        anywhere - that is how it proves a beacon was stripped rather than merely rewritten. The
+        runtime bundle is INLINED into that export, so an example host written in a comment in
+        `assets/js/**` lands in the exported HTML and fails those specs even though nothing fetches.
+        That is exactly what happened while this shared `file:` arm was being documented: four
+        comment lines naming the host reddened five offline-export specs, and only a CI round found
+        it, because no local gate reads the runtime source for it. This guard is that gate - it runs
+        in seconds and it is why the runtime's comments say `not-a-host` where the validator's may
+        say `evil.example` (the validator is tooling, and is not shipped inside a document).
+        """
+        assets = os.path.join(_paths.DEV, "assets")
+        offenders = []
+        for sub in ("js", "css"):
+            folder = os.path.join(assets, sub)
+            for name in sorted(os.listdir(folder)):
+                if not name.endswith((".js", ".css")):
+                    continue
+                with open(os.path.join(folder, name), encoding="utf-8") as handle:
+                    for lineno, line in enumerate(handle, 1):
+                        # Assembled from pieces so this guard's own source does not trip it.
+                        if ("evil" + ".example") in line:
+                            offenders.append("%s/%s:%d" % (sub, name, lineno))
+        self.assertEqual(
+            offenders, [],
+            "a runtime source names the beacon host the offline-export specs forbid, at %s. The "
+            "runtime is inlined into every export, so the string reaches the exported HTML and "
+            "reds `tests/49-offline-export.spec.js` - which asserts no export contains it - even "
+            "though a comment fetches nothing. Name the example host `not-a-host` in runtime "
+            "sources; only the (unshipped) validator may use the other one." % ", ".join(offenders))
+
     def test_the_python_and_js_network_url_predicates_agree(self):
         """Run the runtime's own network-URL predicate in node and require the expected verdicts.
 
