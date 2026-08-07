@@ -4,6 +4,52 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.817.0] - 2026-08-07
+
+### Fixed
+
+- A runtime DOM export no longer downgrades an authored CR back to LF. Every export that writes
+  HTML re-serializes the document through one shared serializer (`cmhSerializeElement`), which builds
+  its string from `getHTML()` / `outerHTML`. HTML's fragment serialization escapes `&`,
+  U+00A0, `<` and `>` in a text node (and `&`, U+00A0 and `"` in an attribute value) and
+  nothing else - it never escapes a CR. So a node holding a real CR (exactly what an authored
+  `&#13;` decodes to) was written out as a LITERAL CR, and the next load's input-stream
+  preprocessing folded every CR and CRLF to a single LF before the tokenizer ran. The authored CR
+  was lost on the round trip, silently, in both a text node (a `<title>`, a lede `<h1>`, a
+  checklist row, a note, a chart caption, a deck heading) and an attribute value (a generated
+  `data-doc-label`, `data-comment-key`, `data-doc-source`, `data-cmh-note-label`,
+  `data-diff-label`, `data-cmh-brand`).
+- The serializer now rewrites a CR back to `&#13;`, which IS decoded after preprocessing and so
+  round-trips - the runtime half of the rule the authoring writer already applies. It is ONE
+  post-pass inside `cmhSerializeElement`, not a copy per export path, so the four callers that
+  re-serialize (Export as Shareable, the checklist apply, the notes apply, the section-review
+  export) and the load-time snapshot cannot drift.
+- The rewrite is only correct where a browser decodes a character reference, so the pass walks the
+  string the way the tokenizer does and leaves two kinds of region verbatim: a comment, and the
+  body of an element whose text a serializer appends literally and a parser never decodes
+  (`script`, `style`, `xmp`, `iframe`, `noembed`, `noframes`, `noscript`, plus
+  `plaintext`, which swallows the rest of the document) - a `&#13;` written into one of those
+  would show those six characters instead of the CR. A raw-text element's own start tag is still
+  rewritten, because an attribute value is decoded whatever the element is, and `textarea` and
+  `title` are deliberately not verbatim (they are RCDATA, which the serializer escapes and the
+  tokenizer decodes). The walk is quote-aware, because attribute-value escaping does not escape
+  `<`: a `title="<script>"` would otherwise look like a raw-text element opening. A string
+  carrying no CR at all is returned unchanged by an early exit, so no document that never had one
+  can be altered by this pass.
+- Two re-serializers that sit OUTSIDE that shared serializer needed the same spelling applied
+  explicitly, and both were live on the file:// export base. The snapshot tail splice recovers
+  host content placed after the layer script node by node: an element goes through the
+  serializer, but a direct TEXT sibling was spliced in as its own data and carried its CR out
+  literally - and, because that data was emitted unescaped, an authored `<script>` inside such a
+  text node left as LIVE markup, which would in turn have put the CR spelling inside what a reload
+  reads as a raw-text body (six literal characters, not a CR). Such a node is now serialized the
+  way a serializer serializes a text node: escaped first, then with the CR spelled. And the `data-doc-source` rewrite runs downstream of the serializer, where the
+  decode read the value out of a `<textarea>`'s `value` - the API value, which NORMALIZES
+  newlines, so a CR and a CRLF both come back as a lone LF - and the CR was therefore
+  already gone before the re-encode, which itself would then have written a literal one back.
+  The decode reads a `<div>`'s text node instead (a text node's data is not normalized, and the
+  data state still decodes the reference), and both encoders spell the CR through one shared
+  helper.
 ## [1.816.0] - 2026-08-07
 
 ### Fixed
