@@ -323,6 +323,34 @@ class RetrofitCliTests(unittest.TestCase):
         self.assertLess(html.index("BEGIN: commentable-html - CONTENT"), html.index("END: commentable-html - CONTENT"))
         self._strict_clean(out)
 
+    def test_both_root_branches_write_a_label_the_same_way(self):
+        # #1196: retrofit stamps the content root two ways - `_root_tag` INJECTS a new one, and
+        # the `--root-selector` branch re-serializes an existing one through the shared writer.
+        # They kept separate escaping, so one invocation's `--label` could reach a browser as two
+        # different values depending on which branch ran. Both go through the shared writer now,
+        # so a CR in the label is written the same way either way - and it is `&#13;`, because a
+        # literal CR is a character preprocessing would fold to LF before the browser sees it.
+        label = "Host\rReport"
+        d = self._tmpdir()
+        injected = os.path.join(d, "injected.html")
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", self._write(d, "a.html", HOST_HTML), "--label", label,
+             "--out", injected])
+        self.assertEqual(code, 0, stderr)
+
+        stamped = os.path.join(d, "stamped.html")
+        src = self._write(d, "b.html", HOST_HTML.replace(
+            "<section", '<div id="content"><section').replace("</section>", "</section></div>"))
+        code, _stdout, stderr = self._run(
+            ["retrofit.py", src, "--label", label, "--root-selector", "#content",
+             "--out", stamped])
+        self.assertEqual(code, 0, stderr)
+
+        for path in (injected, stamped):
+            html = _read_text(path)
+            self.assertIn('data-doc-label="Host&#13;Report"', html, path)
+            self.assertNotIn("Host\rReport", html, path)
+
     def _root_div_pairs(self, html):
         """The stamped root `<div>`'s attribute pairs, IN ORDER (HTML keeps the first of a
         duplicate, so an ordered list is what a regression that re-emitted one would fail)."""

@@ -74,6 +74,10 @@ _PRE_TAG_RE = re.compile(r"""<pre\b((?:"[^"]*"|'[^']*'|[^>"'])*)>(.*?)</pre>""",
 # sidebar state on load, so these classes are redundant in a static file.
 _TRANSIENT_BODY_CLASSES = ("sidebar-open", "cm-sidebar-resizing", "cm-widget-dragging")
 
+# HTML's input-stream preprocessing: every CRLF and every lone CR becomes a single LF, BEFORE
+# tokenization (`raw_attrs_pairs` applies it; see the reasoning there).
+_CR_RE = re.compile("\r\n?")
+
 
 def raw_attrs_pairs(attrs):
     """A RAW start-tag attribute string's `(name, value)` pairs, browser-decoded and in order.
@@ -82,6 +86,15 @@ def raw_attrs_pairs(attrs):
     `raw_attrs_class_tokens` for the wrapper and the caller precondition), for a tool that has the
     attribute TEXT and needs more of it than the class - the deck scaffold, which REWRITES the
     start tag and so must not locate an attribute by searching the raw text.
+
+    The text is INPUT-STREAM PREPROCESSED first, which is a browser's own first step and the one
+    this reading was missing: every CRLF and every lone CR becomes a single LF BEFORE tokenization,
+    so no attribute value a browser holds can carry a CR unless a character reference put one
+    there. That is what makes the value unambiguous for a re-serializer, which must write a CR back
+    as `&#13;` (#1196): the two spellings decode to the same `"\\r"`, so the distinction has to be
+    made HERE, exactly where a browser makes it. It matters only for a reader that preserved the
+    document's line endings (one opened with `newline=""`); a caller on Python's default
+    universal-newline read has already had the same fold applied to the whole file.
     """
     return raw_attrs_pairs_consumed(attrs)[0]
 
@@ -96,8 +109,11 @@ def raw_attrs_pairs_consumed(attrs):
     what says the tokenizer and the character-by-character `scan_start_tag` below read the SAME
     start tag. A caller that finds this False fails closed rather than writing back a start tag
     with attributes silently dropped.
+
+    The input-stream fold is applied HERE, the one place both readings pass through, so the pairs
+    and the consumed verdict are decided on the same text.
     """
-    raw = "<x " + (attrs or "") + ">"
+    raw = "<x " + _CR_RE.sub("\n", attrs or "") + ">"
     found = _tokenize_raw_tag(raw, "x")
     if found is None:
         return [], False

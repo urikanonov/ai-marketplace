@@ -151,6 +151,85 @@ def unescape_attr_value(value):
     return shared(value or "") if shared else _fallback_unescape_attr_value(value or "")
 
 
+# HTML's input-stream preprocessing: every CRLF and every lone CR becomes a single LF, BEFORE
+# tokenization. `raw_attrs_pairs` applies it so a decoded value carries a CR only when a character
+# reference put one there, which is what lets `escape_attr_value` write a CR back as `&#13;`.
+_CR_RE = _re.compile("\r\n?")
+
+
+def preprocess_input_stream(text):
+    """`text` with HTML's INPUT-STREAM PREPROCESSING applied: every CRLF and every lone CR becomes
+    a single LF. A browser does this BEFORE it tokenizes, so no attribute value it holds carries a
+    CR unless a character reference put one there.
+
+    Exposed because it is half of a PAIR with `escape_attr_value`, and a rewriter that reads one
+    value's own span rather than going through `raw_attrs_pairs` (`authoring/upgrade.py`) has to
+    apply it itself or the pair comes apart: escaping without the fold turns a literal CR into a
+    `&#13;` the input never meant, and folding without the escape writes an authored `&#13;` back
+    as a literal CR the browser then reads as LF.
+    """
+    return _CR_RE.sub("\n", text or "")
+
+
+# The two characters an HTML document can never actually HOLD in an attribute value, folded to
+# U+FFFD by `escape_attr_value` before it writes one back: NUL (which a browser's attribute-value
+# tokenizer folds) and a lone surrogate (which cannot be encoded as UTF-8 at all, and which this
+# codebase's own numeric-reference decode already resolves to U+FFFD).
+_ATTR_UNHOLDABLE_RE = _re.compile("[\x00\ud800-\udfff]")
+
+
+def escape_attr_value(value):
+    """An attribute value ESCAPED for a double-quoted attribute, so what a browser decodes back is
+    the value that was passed in.
+
+    The write side of `unescape_attr_value`, and it lives beside it so the two rules cannot drift.
+    `html.escape(value, quote=True)` alone is not that inverse: it escapes `&`, `<`, `>`, `"` and
+    `'` but NOT CR, and HTML's input-stream preprocessing turns every CR (and every CRLF) into a
+    single LF BEFORE tokenization. A literal CR written into the document therefore is not the
+    character the input named - a re-serializer that read `title="a&#13;b"` wrote a literal CR and
+    the browser read the result back as `a\\nb`, silently changing an authored value (#1196).
+    `&#13;` is decoded after preprocessing, so it round-trips. LF and TAB need no escape:
+    preprocessing leaves them alone and the tokenizer keeps them in a quoted value verbatim.
+
+    This is unconditional because the READ applies preprocessing too (`raw_attrs_pairs`, and the
+    shared reading it delegates to): after that fold a CR in a decoded value can only have come
+    from `&#13;`. Without it the two spellings are indistinguishable here - a literal CR in a CRLF
+    document is a value a browser reads as LF, and escaping THAT to `&#13;` would write back a CR
+    the input never meant, the inverse of the bug this fixes. A rewriter that reads one value's own
+    span rather than going through `raw_attrs_pairs` (`authoring/upgrade.py`) must therefore call
+    `preprocess_input_stream` on that span itself - the two are a PAIR, and neither half is correct
+    alone.
+
+    The two characters a document can never actually HOLD are folded to U+FFFD first, so the escape
+    is TOTAL - every code point comes back as the character a browser would have. NUL is what a
+    browser's attribute-value tokenizer folds; a LONE SURROGATE cannot survive being written as
+    UTF-8 at all (it raises `UnicodeEncodeError` at the file write, far from the cause) and is what
+    this codebase's own numeric-reference decode already yields U+FFFD for. The fold is repeated on
+    the write side rather than left to the read side because it lives in `raw_attrs_pairs`, not in
+    `unescape_attr_value`, so a caller that decodes through `unescape_attr_value` alone still gets
+    a value the browser can hold. It runs BEFORE `html.escape` so nothing it emits can be
+    re-escaped; the CR replacement must run AFTER, because `&#13;` contains an `&` of its own.
+
+    That fold makes the escape deliberately LOSSY: an authored U+FFFD and a NUL produce identical
+    output (a browser holds U+FFFD for both), so this is not a change detector - do not diff its
+    output against its input to decide whether a value was rewritten.
+
+    `None` is the one non-string accepted, and only because a VALUELESS attribute decodes to the
+    empty string; any other non-string raises `TypeError` rather than silently serializing as empty
+    (a falsy `0` written as `value or ""` became `""`, the silent-rewrite class this exists to
+    stop). The check is explicit because leaving it to `str.replace` made the exception depend on
+    the argument - `0` raised `AttributeError`, `b"x"` raised `TypeError`, and any duck-typed object
+    with a `.replace` succeeded and wrote nonsense.
+    """
+    if value is None:
+        text = ""
+    elif isinstance(value, str):
+        text = _ATTR_UNHOLDABLE_RE.sub("\ufffd", value)
+    else:
+        raise TypeError("attribute value must be a str or None, got %r" % type(value).__name__)
+    return _html.escape(text, quote=True).replace("\r", "&#13;")
+
+
 def visible_text(text):
     """`text` with the characters a reader cannot SEE removed, by the shared rule every check
     uses. Degrades to `text` unchanged."""
@@ -504,9 +583,30 @@ def raw_attrs_pairs(attrs):
     the attributes it could not see and the values it decoded differently. That is why the
     partial-install fallback is a full split with the shared NUL fold and the shared value decode,
     and not a stand-in for the one attribute a caller happens to want. (`authoring/upgrade.py`
-    reads the same value decode through `unescape_attr_value` without rewriting a tag, and gains
-    the same fidelity.)
+    reads the same value decode through `unescape_attr_value` and gains the same fidelity; it
+    re-escapes over one value's own span rather than rebuilding the tag, so it is a narrower
+    rewrite - but a rewrite all the same.)
+
+    The raw text is INPUT-STREAM PREPROCESSED first, which is the browser's own first step and
+    the one this reading was missing: every CR and CRLF becomes a single LF BEFORE tokenization,
+    so no attribute value a browser holds can contain a CR unless a character reference put it
+    there. Doing it at the READ is what makes the value unambiguous for `serialize_start_tag`,
+    which must write a CR back as `&#13;` (#1196): both spellings decode to the same `"\\r"`, so
+    the distinction is undecidable downstream and has to be made exactly where a browser makes it.
+    The SHARED reading applies it too, so the rule is stated once and any future caller of it
+    inherits it; that is a no-op for the validator, which already folds the WHOLE document
+    (`validate._browser_newlines`) before it parses, and this is what brings the tools into line
+    with that. It is repeated here so the degraded partial-install split gets it as well.
+
+    It changes nothing for a caller on Python's default universal-newline read, which has already
+    had the same fold applied to the whole file - that is every reader in the skill but the ones
+    opened with `newline=""` to preserve the document's line endings. Of those, the one that
+    reaches here is `authoring/content_replace._read`, feeding `kusto/kql_highlight`'s run-link
+    refresh; for it the fold is NOT a no-op, and a CRLF inside a rewritten value comes back as a
+    lone LF. That is deliberate: it is the value a browser holds either way, and writing
+    `&#13;&#10;` to keep the bytes would hand the document a CR it never had.
     """
+    attrs = preprocess_input_stream(attrs)
     if _shared_raw_attrs_pairs is None:
         return _fallback_attr_pairs(attrs)
     return _shared_raw_attrs_pairs(attrs)
@@ -531,8 +631,12 @@ def serialize_start_tag(tag, pairs, self_closing=False):
     instead would be faithful only until the valueless attribute is written LAST, where it lands
     as the self-closing `/>` solidus.
 
-    Each value is escaped exactly ONCE, from its DECODED form, so a caller that reads through
-    `raw_attrs_pairs` round-trips rather than double-escaping an authored `&amp;`.
+    Each value is escaped exactly ONCE, from its DECODED form, through `escape_attr_value`, so a
+    caller that reads through `raw_attrs_pairs` round-trips rather than double-escaping an authored
+    `&amp;`. That escape is what `html.escape` alone is not - the true inverse of the read: it
+    writes a CR back as `&#13;` (a literal one is folded to LF by input-stream preprocessing before
+    the browser ever tokenizes it, so it would not be the character the input named), and folds the
+    two characters a document cannot hold, a NUL and a lone surrogate, to U+FFFD.
 
     `self_closing` re-emits the source tag's own ` /` terminator. Dropping it un-closed a FOREIGN
     self-closing element (`<rect .../>` inside an inline `<svg>`), which turns the next sibling
@@ -547,7 +651,7 @@ def serialize_start_tag(tag, pairs, self_closing=False):
     """
     out = []
     for name, value in pairs:
-        out.append(' %s="%s"' % (name, _html.escape("" if value is None else value, quote=True)))
+        out.append(' %s="%s"' % (name, escape_attr_value(value)))
     return "<%s%s%s>" % (tag, "".join(out), " /" if self_closing else "")
 def raw_attrs_pairs_consumed(attrs):
     """`raw_attrs_pairs(attrs)` paired with whether the tokenizer CONSUMED the whole region.

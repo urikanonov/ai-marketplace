@@ -83,6 +83,34 @@ class UpgradeUnitTests(unittest.TestCase):
         self.assertIn('data-doc-source="report.html"', out)
         self.assertNotIn("alice", out)
 
+    def test_the_source_rewrite_keeps_an_authored_cr_and_folds_a_literal_one(self):
+        # #1196, on the one rewrite that does NOT go through `raw_attrs_pairs` /
+        # `serialize_start_tag`: it reads and writes ONE value's own span, so it has to carry both
+        # halves of the CR rule itself. `_read` opens with `newline=""` to preserve the document's
+        # line endings, so BOTH spellings can reach it and they mean different things to a browser.
+        tpl = _tpl()
+
+        # Authored `&#13;`: a real CR to a browser, so the basename must come back carrying one -
+        # written as `&#13;`, never as a literal CR that preprocessing would turn into an LF.
+        legacy = tpl.replace(
+            'data-doc-source="SHAREABLE.html"',
+            'data-doc-source="C:/Users/alice/dir/re&#13;port.html"', 1)
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertIn("source provenance", changed)
+        self.assertIn('data-doc-source="re&#13;port.html"', out)
+        self.assertNotIn("alice", out)
+
+        # A LITERAL CR is a value a browser reads as LF, so it must come back as an LF. Escaping
+        # it to `&#13;` would hand the document a CR the input never had - the inverse of the bug.
+        legacy = tpl.replace(
+            'data-doc-source="SHAREABLE.html"',
+            'data-doc-source="C:/Users/alice/dir/re\rport.html"', 1)
+        out, changed = upgrade.upgrade(legacy, tpl)
+        self.assertIn("source provenance", changed)
+        self.assertIn('data-doc-source="re\nport.html"', out)
+        self.assertNotIn("&#13;", out)
+        self.assertNotIn("alice", out)
+
     def test_upgrade_normalizes_every_duplicate_source_attribute_cmh_sec_03(self):
         tpl = _tpl()
         legacy = tpl.replace(

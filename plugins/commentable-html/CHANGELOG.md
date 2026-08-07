@@ -4,6 +4,42 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.812.0] - 2026-08-07
+
+### Fixed
+
+- A start-tag re-serializer no longer changes an authored CR in an attribute value. The shared
+  writer escaped each value with `html.escape(quote=True)`, which escapes `&`, `<`, `>`, `"` and
+  `'` but NOT CR - and HTML's input-stream preprocessing turns every CR (and every CRLF) into a
+  single LF BEFORE tokenization. The literal CR written back was therefore not the character the
+  input named: an authored `title="a&#13;b"` came back as a `title` a browser reads as `a\nb`,
+  silently rewriting a value the author wrote, with a zero exit and a document that still passes
+  every gate.
+- Both sides of the shared pair were needed, because the two spellings of a CR are
+  indistinguishable once decoded. The READ (`validate/checks/parsing.raw_attrs_pairs`, mirrored in
+  the `_browser_attrs` wrapper so a partial install gets it too) now applies HTML's input-stream
+  preprocessing, the browser's own first step - which the validator already did for the whole
+  document before parsing, and which the tools were not doing - so a decoded value carries a CR
+  only when a character reference put one there; the WRITE (`serialize_start_tag`, through the new
+  `_browser_attrs.escape_attr_value`) escapes that CR back as `&#13;`. Escaping without the
+  read-side fold would have turned a LITERAL CR - which a browser reads as LF, and which a reader
+  that preserves line endings with `newline=""` can still present - into a CR the input never
+  meant, the exact inverse of the bug. LF and TAB are deliberately left alone: preprocessing does
+  not touch them and a quoted value keeps them verbatim. Because the fix sits in the one shared
+  writer, all four re-serializers - the deck scaffold, the KQL run-link refresh, and the two
+  authoring content-root stamps - get it at once.
+- Two writers that do NOT go through that pair were brought in line with it. `upgrade` rewrites one
+  `data-doc-source` value over its own span rather than rebuilding the tag, so it now carries both
+  halves itself; it reads with `newline=""`, which makes it the one tool that could meet either
+  spelling and get both wrong. And `retrofit`'s inject-a-new-root branch kept its own escaping, so
+  a `--label` carrying a CR reached a browser as two different values depending on which of
+  retrofit's two root branches ran; it builds that tag through the shared writer now.
+- The escape is also total: it folds to U+FFFD the two characters a document can never hold, a NUL
+  (what the attribute-value tokenizer does with one) and a lone surrogate (which cannot be encoded
+  as UTF-8 at all, so it would otherwise raise at the file write, far from the value that caused
+  it). It accepts only a string or `None`, and raises `TypeError` otherwise rather than serializing
+  a falsy `0` as an empty attribute.
+
 ## [1.811.0] - 2026-08-07
 
 ### Fixed

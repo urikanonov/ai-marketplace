@@ -617,6 +617,74 @@ class DeckScaffoldTests(unittest.TestCase):
         self.assertIn('<section class="slide active" data-slide-id="%s">a<section>b</section>'
                       % ids[0], prepared)
 
+    def test_an_authored_cr_in_an_attribute_value_survives_the_rewrite(self):
+        # #1196: the rewrite re-escapes each value, and `html.escape` does NOT escape CR - while
+        # HTML's input-stream preprocessing turns every CR (and every CRLF) into a single LF BEFORE
+        # tokenization. So the literal CR the rewrite wrote was not the character the input named:
+        # an authored `title="a&#13;b"` came back as a `title` a browser reads as `a\nb`, silently
+        # changing a value the author wrote. `&#13;` is decoded AFTER preprocessing, so it is the
+        # spelling that round-trips.
+        def browser_read(prepared, msg):
+            # What a BROWSER sees, in the browser's ORDER: preprocessing runs over the written
+            # TEXT first (CRLF and a lone CR alike become LF), and only then is the start tag
+            # tokenized and its values decoded. Reading the raw text without that first step is
+            # exactly what let the defect through - it reports the literal CR as if it survived.
+            normalized = re.sub("\r\n?", "\n", prepared)
+            secs = deck_scaffold._section_tags(normalized)
+            self.assertEqual(len(secs), 1, msg)
+            return dict(secs[0].pairs)
+
+        for authored, want in (("a&#13;b", "a\rb"),
+                               ("a&#13;&#10;b", "a\r\nb"),
+                               ("&#13;", "\r"),
+                               ("a&#xD;b", "a\rb")):
+            prepared, sids = deck_scaffold.prepare_slides(
+                '<section class="slide" title="%s"><p>x</p></section>' % authored)
+            self.assertEqual(len(sids), 1, authored)
+            self.assertEqual(browser_read(prepared, authored).get("title"), want, authored)
+        # An LF is NOT re-escaped: preprocessing leaves it alone, so a literal LF already decodes
+        # back to itself, and pinning it here keeps the fix to the one character that needs it.
+        prepared, _ = deck_scaffold.prepare_slides(
+            '<section class="slide" title="a&#10;b"><p>x</p></section>')
+        self.assertIn('title="a\nb"', prepared)
+        # End to end, through both gates: the deck the tool actually WRITES must carry the escaped
+        # form and still pass the base validator and the deck contract, so a later tightening
+        # cannot turn a writable deck into a hard failure with nothing recording the loss.
+        frag = os.path.join(self.tmp, "cr.html")
+        Path(frag).write_text(
+            '<section class="slide" title="a&#13;b"><p>x</p></section>\n', encoding="utf-8")
+        out = self._make("--content", frag, "--force")
+        self.assertIn('title="a&#13;b"', out)
+        errors, _ = cmh_validate.validate(self.out)
+        self.assertEqual(errors, [], errors)
+
+    def test_a_literal_cr_in_the_fragment_file_is_not_escaped_back_into_a_cr(self):
+        # The other half of #1196. Escaping CR to `&#13;` is the right inverse ONLY because the
+        # READ applies input-stream preprocessing too: a LITERAL CR in the fragment is a value a
+        # browser reads as LF, so writing it back as `&#13;` would hand the deck a CR the input
+        # never meant - the inverse of the bug the escape fixes.
+        #
+        # `deck_scaffold` gets that fold for free from `Path.read_text` / `sys.stdin.read`
+        # (Python's default universal-newline mode), so what this pins is the READER belt: the
+        # literal CRs are already LF before `raw_attrs_pairs` is reached, and a reader switched to
+        # the CR-preserving `newline=""` would fail here. The fold itself is pinned separately, by
+        # `test_shared_attr_decoding.InputStreamPreprocessingTests` - do not read this test as its
+        # guard, or the fold looks removable.
+        frag = os.path.join(self.tmp, "literal-cr.html")
+        # Written with `newline=""` so Python's translation is disabled and the CRLF and the lone
+        # CR reach the file verbatim; a default text write would translate them on the way out.
+        with open(frag, "w", encoding="utf-8", newline="") as fh:
+            fh.write('<section class="slide" title="a\r\nb\rc"><p>x</p></section>\n')
+        self._make("--content", frag, "--force")
+        # Asserted on BYTES. `_make` reads the deck back with `read_text`, which is itself
+        # universal-newline, so a literal CR the tool wrote would already have become an LF by the
+        # time a text assertion saw it - the positive half would pass either way.
+        raw = Path(self.out).read_bytes()
+        self.assertIn(b'title="a\nb\nc"', raw)
+        self.assertNotIn(b"&#13;", raw)
+        self.assertNotIn(b"\r", raw)
+
+
     def test_a_non_slide_section_does_not_reserve_a_slide_id(self):
         # Only a SLIDE's id is reserved. `deck_validate` reads ids from `section.slide` alone, so
         # reserving an unrelated section's would push a real slide onto the `-2` branch and make

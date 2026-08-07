@@ -387,12 +387,19 @@ def _resolve_key(args, out_path):
 
 
 def _root_tag(key, label, source, tag="main"):
-    attrs = 'id="commentRoot" data-cmh-content-root data-comment-key="%s" data-doc-label="%s" data-doc-source="%s"' % (
-        _html.escape(key, quote=True),
-        _html.escape(label, quote=True),
-        _html.escape(source, quote=True),
-    )
-    return "<%s %s>" % (tag, attrs)
+    # Built through the SHARED writer, like the `--root-selector` branch (`_stamp_root_tag` ->
+    # `_replace_start_tag`). Its own `html.escape` copy wrote the same three values differently -
+    # a CR in a `--label` came out literal here and as `&#13;` there, so one invocation's input
+    # gave a browser two different values depending on which branch ran (#1196). The valueless
+    # `data-cmh-content-root` is a `None` pair, which the writer spells `name=""` - the same
+    # attribute to a browser, and the spelling that cannot fuse with a following name's `=`.
+    return _browser_attrs.serialize_start_tag(tag, [
+        ("id", "commentRoot"),
+        ("data-cmh-content-root", None),
+        ("data-comment-key", key),
+        ("data-doc-label", label),
+        ("data-doc-source", source),
+    ])
 
 
 def _edits_apply(text, edits):

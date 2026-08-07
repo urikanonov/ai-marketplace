@@ -51,6 +51,17 @@ class _HostValueProbe(HTMLParser):
 
 
 @contextlib.contextmanager
+def _no_shared_reading():
+    """`_browser_attrs` as a PARTIAL install sees it: the shared raw-attribute split gone, so the
+    degraded local `_fallback_attr_pairs` answers instead. Self-verifying, so a future rename of
+    the shared binding cannot turn every test built on it into a vacuous pass."""
+    with mock.patch.object(_browser_attrs, "_shared_raw_attrs_pairs", None):
+        assert _browser_attrs.raw_attrs_pairs('a="1"') == [("a", "1")], (
+            "the degraded split was not actually exercised")
+        yield
+
+
+@contextlib.contextmanager
 def pre_3_13_host(case):
     """Make the host `html.parser` decode attribute values the way Python 3.12 does - a plain
     `html.unescape`, which resolves a named reference that is only a PREFIX of the value.
@@ -820,6 +831,178 @@ class AuthoringToolAttributeTests(unittest.TestCase):
         self.assertIsNotNone(span)
         start, end = span
         self.assertEqual(html[start:end], "<p>y</p>")
+
+
+class AttributeValueEscapeTests(unittest.TestCase):
+    """CMH-DECK-02: `escape_attr_value` is the TOTAL inverse of the browser's attribute-value read.
+
+    Every re-serializer in the skill now writes through one `serialize_start_tag`, which escapes
+    each decoded value with this, so the escape must be exact: what a browser decodes out of the
+    written attribute has to be the value that went in. `html.escape(quote=True)` is not that
+    inverse - it leaves CR (which input-stream preprocessing turns into LF) and NUL and a lone
+    surrogate (which no document can hold at all) untouched.
+    """
+
+    def _browser_reads(self, escaped):
+        """The value a browser holds for `title="<escaped>"`, in the browser's own ORDER: the
+        written TEXT is preprocessed first (CR and CRLF alike become LF), and only then is the
+        start tag split and its value decoded. Decoding without that first step is exactly the
+        blind spot that let a literal CR pass for a CR."""
+        preprocessed = re.sub("\r\n?", "\n", '<section title="%s">' % escaped)
+        return dict(_browser_attrs.raw_attrs_pairs(preprocessed[len("<section"):-1]))["title"]
+
+    def test_the_escape_round_trips_every_code_point(self):
+        # A sweep, not a handful of cases: the point of one shared escape is that no character is
+        # left to a caller's judgement. Two code points do not round-trip to THEMSELVES, because
+        # no HTML document can hold them - a NUL (the tokenizer folds it) and a lone surrogate (it
+        # cannot be encoded as UTF-8 at all) - and for those the escape writes U+FFFD, which IS
+        # what a browser ends up holding. This sweep alone cannot fail on either fold, because the
+        # read side folds NUL too; the next test is what actually pins them.
+        for cp in (list(range(0x00, 0x120))
+                   + [0xD7FF, 0xD800, 0xDC00, 0xDFFF, 0xE000]
+                   + [0x2028, 0x2029, 0x2192, 0xFEFF, 0xFFFD, 0x10FFFF]):
+            ch = chr(cp)
+            want = "\ufffd" if cp == 0 or 0xD800 <= cp <= 0xDFFF else ch
+            self.assertEqual(self._browser_reads(_browser_attrs.escape_attr_value("a%sb" % ch)),
+                             "a%sb" % want, hex(cp))
+
+    def test_the_unholdable_characters_are_folded_on_the_write_side(self):
+        # The sweep above CANNOT catch a missing fold: `raw_attrs_pairs` folds a NUL itself, so a
+        # literal NUL written into the tag reads back as U+FFFD either way and deleting the write
+        # side leaves every round-trip test green. The fold exists for the readers that do NOT do
+        # it - `unescape_attr_value` alone returns a NUL unchanged, and `authoring/upgrade.py`
+        # decodes through exactly that - so it is pinned as a SPELLING, on the escape's own output.
+        self.assertEqual(_browser_attrs.escape_attr_value("a\x00b"), "a\ufffdb")
+        self.assertEqual(_browser_attrs.escape_attr_value("a\ud800b"), "a\ufffdb")
+        self.assertEqual(_browser_attrs.escape_attr_value("a\udfffb"), "a\ufffdb")
+        self.assertEqual(_browser_attrs.unescape_attr_value("a\x00b"), "a\x00b")
+        self.assertEqual(
+            _browser_attrs.unescape_attr_value(_browser_attrs.escape_attr_value("a\x00b")),
+            "a\ufffdb")
+        # A lone surrogate is what makes the fold load-bearing rather than tidy: without it the
+        # value cannot be written to a UTF-8 file at all, and the failure lands at the file write,
+        # nowhere near the value that caused it.
+        _browser_attrs.escape_attr_value("a\ud800b").encode("utf-8")
+
+    def test_a_cr_is_escaped_and_an_lf_is_left_alone(self):
+        # The two halves of the CR clause, pinned as SPELLINGS rather than only as behavior, so a
+        # regression is reported at the escape and not three layers away. LF must stay literal:
+        # preprocessing does not touch it, so escaping it would be a needless rewrite.
+        self.assertEqual(_browser_attrs.escape_attr_value("a\rb"), "a&#13;b")
+        self.assertEqual(_browser_attrs.escape_attr_value("a\nb"), "a\nb")
+        self.assertEqual(_browser_attrs.escape_attr_value("a\tb"), "a\tb")
+
+    def test_an_authored_reference_text_is_not_turned_into_the_character(self):
+        # The double-encode trap: a value whose TEXT is `&#13;` (authored `&amp;#13;`) must come
+        # back as that text, never as a CR. The `&` is escaped first and the CR replacement runs on
+        # the escaped string, so the `&` of the injected `&#13;` can never be re-escaped and an
+        # authored one can never be un-escaped.
+        self.assertEqual(_browser_attrs.escape_attr_value("&#13;"), "&amp;#13;")
+        self.assertEqual(self._browser_reads(_browser_attrs.escape_attr_value("&#13;")), "&#13;")
+
+    def test_it_still_escapes_everything_html_escape_does(self):
+        # The CR and fold clauses are ADDED to `html.escape(quote=True)`, never traded against it:
+        # dropping `'` or `>` would let a value break out of the attribute it is written into.
+        self.assertEqual(_browser_attrs.escape_attr_value("&<>\"'"),
+                         "&amp;&lt;&gt;&quot;&#x27;")
+
+    def test_only_none_is_treated_as_the_empty_value(self):
+        # A VALUELESS attribute decodes to the empty string, so `None` is accepted. Any other
+        # non-string raises `TypeError`: the earlier `value or ""` turned a falsy `0` into `""`,
+        # which is the silent-rewrite class this exists to stop. The check is explicit, so the
+        # exception no longer depends on which method the argument happens to be missing - `0` used
+        # to raise `AttributeError`, `b"x"` `TypeError`, and any object with a `.replace` succeeded
+        # and wrote nonsense.
+        self.assertEqual(_browser_attrs.escape_attr_value(None), "")
+        self.assertEqual(_browser_attrs.escape_attr_value(""), "")
+        for bad in (0, False, b"x", ["x"]):
+            with self.assertRaises(TypeError):
+                _browser_attrs.escape_attr_value(bad)
+
+    def test_the_shared_writer_escapes_through_it(self):
+        # The escape is only worth anything if the ONE writer every re-serializer goes through
+        # uses it. Pinned on the writer's own output so a later "simplification" back to
+        # `html.escape` fails here rather than in one tool's suite.
+        self.assertEqual(
+            _browser_attrs.serialize_start_tag("section", [("title", "a\rb"), ("data-x", None)]),
+            '<section title="a&#13;b" data-x="">')
+
+
+class InputStreamPreprocessingTests(unittest.TestCase):
+    """CMH-DECK-02: the RAW start-tag reading applies HTML's input-stream preprocessing.
+
+    A browser folds every CR and CRLF to a single LF BEFORE it tokenizes, so no attribute value it
+    holds carries a CR unless a character reference put one there. Applying the same fold at the
+    read is what makes the write side's `CR -> &#13;` unconditional: without it the two spellings
+    are indistinguishable downstream (both decode to `"\\r"`), and escaping a LITERAL CR - which a
+    browser reads as LF - would write back a CR the input never meant.
+    """
+
+    def test_a_literal_cr_reads_as_an_lf(self):
+        # Only a caller that reads with `newline=""` to preserve line endings can even present
+        # one (`authoring/content_replace._read`, `authoring/upgrade._read`); a default
+        # universal-newline read has already folded the whole file. Both CRLF and a LONE CR fold.
+        pairs = dict(_browser_attrs.raw_attrs_pairs('title="a\r\nb\rc" id="x"'))
+        self.assertEqual(pairs["title"], "a\nb\nc")
+        self.assertEqual(pairs["id"], "x")
+
+    def test_a_character_reference_cr_is_kept(self):
+        # The other side of the same rule: preprocessing runs BEFORE tokenization, so a `&#13;` is
+        # decoded after it and survives as a real CR. This is the one way a value can hold one.
+        pairs = dict(_browser_attrs.raw_attrs_pairs('title="a&#13;b"'))
+        self.assertEqual(pairs["title"], "a\rb")
+
+    def test_a_literal_cr_round_trips_through_the_shared_writer_as_an_lf(self):
+        # End to end, and the regression this pairing exists to prevent: a CRLF document read with
+        # line endings preserved must come back out with the SAME value a browser saw - an LF, not
+        # a `&#13;` that would hand the document a CR it never had.
+        pairs = _browser_attrs.raw_attrs_pairs('title="a\r\nb" id="x"')
+        written = _browser_attrs.serialize_start_tag("section", pairs)
+        self.assertEqual(written, '<section title="a\nb" id="x">')
+        self.assertNotIn("&#13;", written)
+
+    def test_the_fold_reaches_every_quoting_form_and_the_tag_structure(self):
+        # A CR is HTML whitespace, so folding it to LF must leave the SPLIT identical while fixing
+        # the value - in all three quoting forms, and wherever else a CR can legally sit in a tag.
+        # Pinning the structure is what rules out a fold that quietly merges or splits attributes.
+        self.assertEqual(dict(_browser_attrs.raw_attrs_pairs("title='a\r\nb'"))["title"], "a\nb")
+        self.assertEqual(dict(_browser_attrs.raw_attrs_pairs('a="1"\r\nb="2"')),
+                         {"a": "1", "b": "2"})
+        self.assertEqual(dict(_browser_attrs.raw_attrs_pairs('a=1\rb=2')), {"a": "1", "b": "2"})
+        self.assertEqual(dict(_browser_attrs.raw_attrs_pairs('a="1"\r')), {"a": "1"})
+
+    def test_the_degraded_reading_folds_the_same_way(self):
+        # The partial-install split is a separate implementation, and this fix only holds if BOTH
+        # readings answer the same thing - otherwise a degraded install writes a document a full
+        # one would not. The fold lives in the wrapper precisely so it covers this path too.
+        with _no_shared_reading():
+            self.assertEqual(dict(_browser_attrs.raw_attrs_pairs('title="a\r\nb\rc"'))["title"],
+                             "a\nb\nc")
+            self.assertEqual(dict(_browser_attrs.raw_attrs_pairs('title="a&#13;b"'))["title"],
+                             "a\rb")
+
+    def test_the_shared_and_degraded_readings_agree_on_a_cr(self):
+        # The parity the CMH-VAL-21 pinning tests assert for the rest of the reading, extended to
+        # the fold: the tool, the validator's own shared reading, and the degraded stand-in must
+        # not disagree about a document none of them may rewrite differently.
+        for attrs in ('title="a\r\nb\rc"', "title='a\rb'", 'title="a&#13;b"', 'a=1\rb=2'):
+            shared = parsing.raw_attrs_pairs(attrs)
+            wrapped = _browser_attrs.raw_attrs_pairs(attrs)
+            with _no_shared_reading():
+                degraded = _browser_attrs.raw_attrs_pairs(attrs)
+            self.assertEqual(wrapped, shared, attrs)
+            self.assertEqual(degraded, shared, attrs)
+
+    def test_a_second_pass_over_a_rewritten_tag_is_stable(self):
+        # Both re-serializers can run repeatedly over the same document, so the rewrite has to
+        # reach a FIXED POINT rather than drifting a value one spelling further on each pass.
+        for attrs in ('title="a&#13;b"', 'title="a\r\nb"', 'title="a&#xD;&#10;b"',
+                      'title="&amp;#13;"'):
+            once = _browser_attrs.serialize_start_tag(
+                "section", _browser_attrs.raw_attrs_pairs(attrs))
+            twice = _browser_attrs.serialize_start_tag(
+                "section", _browser_attrs.raw_attrs_pairs(once[len("<section"):-1]))
+            self.assertEqual(twice, once, attrs)
 
 
 if __name__ == "__main__":
