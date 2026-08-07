@@ -2756,7 +2756,6 @@ class RuntimeParityTests(unittest.TestCase):
         ("file://LOCALHOST/x.png", False),
         ("file://local%68ost/x.png", False),
         ("file:///theme/x.png", False),
-        ("file://localhost", False),
         ("file://", False),
         ("file:///", False),
         ("theme/x.png", False),
@@ -2764,6 +2763,13 @@ class RuntimeParityTests(unittest.TestCase):
         # `normalize_url_value` before testing. The CSS readers do not normalize, so they can only
         # agree here by refusing to treat one as the end of a value - see `CSS_VALUE_STOP`.
         ("file://localhost\tevil.example/x.png", True),
+        # A character that legally CONTINUES a host must not end one on either side: the host here
+        # really is `localhost)evil.example` (measured), so both readings report it.
+        ("file://localhost)evil.example/x.png", True),
+        ("file://localhost;evil.example/x.png", True),
+        # ... and one that genuinely ends a host ends it on both sides too: a SPACE makes the URL
+        # fail to parse, so nothing is fetched and neither reading may report it.
+        ("file://localhost evil.example/x.png", False),
         # A value terminator INSIDE the path, where a quoted CSS string makes it a legal path
         # character. Both readings must still see the popping segment behind it (Chromium 151
         # requests the first as `file://evil.example/x.png`).
@@ -2771,6 +2777,14 @@ class RuntimeParityTests(unittest.TestCase):
         ("file:///a b/..//evil.example/x.png", True),
         ("file:////localhost/a(b)/../../evil.example/x", True),
     ]
+    # The ONE shape the two readings answer differently, and deliberately: a bare authority with no
+    # path. The attribute value ends at true end-of-input, which IS a host end, so `file://localhost`
+    # is the local root; the CSS `url(file://localhost)` ends at a `)`, which is host-LEGAL, so a
+    # quote-agnostic reader cannot tell it from `url("file://localhost)evil.example/x")` and reports
+    # it fail-CLOSED. Listed here rather than dropped, so the divergence stays a recorded decision
+    # and any OTHER divergence still fails the agreement test below. Both verdicts are pinned in
+    # their own corpora.
+    _FILE_AUTHORITY_READING_DIVERGES = ("file://localhost",)
 
     def test_the_css_readers_and_the_attribute_predicate_agree_about_a_file_authority(self):
         """The `url()`, `@import` and `image-set()` readers must answer as `is_network_url` does.
@@ -2778,7 +2792,9 @@ class RuntimeParityTests(unittest.TestCase):
         All four are assembled from the ONE shared arm, so this is the test that would catch a
         hand-written second copy creeping back in: it compares the readers to each other rather
         than to a list of expected strings, and the expected column is only there so a change that
-        broke all four the same way cannot pass.
+        broke all four the same way cannot pass. `_FILE_AUTHORITY_READING_DIVERGES` records the one
+        shape where the two answers legitimately differ, and it is asserted to diverge rather than
+        merely skipped, so it cannot quietly converge (or grow) unnoticed.
         """
         for value, expected in self._FILE_AUTHORITY_VERDICTS:
             with self.subTest(value=value):
@@ -2799,6 +2815,17 @@ class RuntimeParityTests(unittest.TestCase):
                         "asymmetry issue #1230 closed; both must read the shared file: arm."
                         % (name, value, "network" if got else "local",
                            "network" if attr else "local"))
+        for value in self._FILE_AUTHORITY_READING_DIVERGES:
+            with self.subTest(diverges=value):
+                self.assertFalse(
+                    resources.is_network_url(value),
+                    "%r is no longer local to the attribute predicate, so the recorded divergence "
+                    "is stale - re-derive it or drop the entry" % value)
+                self.assertTrue(
+                    resources.CSS_NETWORK_URL_RE.search("a { background-image: url(%s); }" % value),
+                    "the CSS reader no longer reports %r, so the two readings have CONVERGED and "
+                    "this recorded divergence is stale. That is good news, but the entry must go, "
+                    "or it hides a future real divergence behind an exemption." % value)
 
     def test_every_css_network_reader_is_assembled_from_the_shared_start(self):
         """A new CSS reader must be built from `CSS_NETWORK_START`, not from a hand copy.
@@ -3168,8 +3195,16 @@ class RuntimeParityTests(unittest.TestCase):
         ("a { background: url(file://LOCALHOST/x.png); }", False),
         ("a { background: url(file://local%68ost/x.png); }", False),
         ("a { background: url(file:///theme/x.png); }", False),
-        ("a { background: url(file://localhost); }", False),
-        ('a { background: url("file://localhost"); }', False),
+        # A bare authority the CALLER's syntax ends at a host-LEGAL character is the residual the
+        # host-terminator reading costs, in the fail-CLOSED direction: a quote-agnostic pattern
+        # cannot tell `url(file://localhost)` (the local root) from
+        # `url("file://localhost)evil.example/x")` (an SMB name), so both are reported. Every
+        # realistic local reference carries a PATH, where the `/` ends the host and the exclusion
+        # still fires - the rows around this one pin that, including the space spelling, which the
+        # URL parser rejects outright.
+        ("a { background: url(file://localhost); }", True),
+        ('a { background: url("file://localhost"); }', True),
+        ("a { background: url(file://localhost ); }", False),
         ("a { background: url(file://); }", False),
         ("a { background: url(file:///); }", False),
         ('@import "file:///theme/t.css";', False),
@@ -3201,9 +3236,24 @@ class RuntimeParityTests(unittest.TestCase):
         # the round-2 multi-duck panel). The path scan reads `_PATH_CHAR` and is bounded by
         # `_PATH_SCAN_MAX` instead, which is what keeps it linear without calling a legal path
         # character the end of the value.
-        ('a { background: url("file:///a(/..//evil.example/x.png"); }', True),
-        ('a { background: url("file:///a b/..//evil.example/x.png"); }', True),
-        ('@import "file:////localhost/a(b)/../../evil.example/x.css";', True),
+        # A character that legally CONTINUES a host is not the end of one, whatever the caller's
+        # syntax says: `file://localhost)evil.example/x` parses to host `localhost)evil.example`,
+        # an off-machine SMB name (measured in a real engine). Reading the CSS value terminator as
+        # the end of the HOST fired the `localhost` exclusion and blessed the beacon - the same
+        # shape as the tab row above, generalized (raised by the Copilot reviewer on this PR). The
+        # exclusion asks `_HOST_END` instead, which is the URL parser's own answer.
+        ('a { background: url("file://localhost)evil.example/x.png"); }', True),
+        ('a { background: url("file://localhost;evil.example/x.png"); }', True),
+        ('a { background: url("file://localhost}evil.example/x.png"); }', True),
+        ('@import "file://localhost)evil.example/t.css";', True),
+        # ... and the characters that genuinely DO end a host, every one of them measured: `/`, `?`,
+        # `#` and a backslash empty it or start the path, while a space, form feed, `<` or `>` make
+        # the URL fail to parse outright, so a browser fetches nothing at all. None may be reported.
+        ("a { background: url(file://localhost/evil.example/x.png); }", False),
+        ("a { background: url(file://localhost?evil.example); }", False),
+        ("a { background: url(file://localhost#evil.example); }", False),
+        ('a { background: url("file://localhost evil.example/x.png"); }', False),
+        ('a { background: url("file://localhost<evil.example/x.png"); }', False),
     ]
 
     def _runtime_css_strip_source(self):

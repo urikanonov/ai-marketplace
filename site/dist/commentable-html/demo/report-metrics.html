@@ -19767,7 +19767,17 @@ const _OFFLINE_PCT_LOCALHOST =
   "(?:l|%[46]c)(?:o|%[46]f)(?:c|%[46]3)(?:a|%[46]1)(?:l|%[46]c)"
   + "(?:h|%[46]8)(?:o|%[46]f)(?:s|%[57]3)(?:t|%[57]4)";
 // What may FOLLOW that host for the exclusion to fire: the end of the value, a `?` or `#`, or a
-// SINGLE path slash. A second slash is an egress MISS, not a local path:
+// What may FOLLOW that host for the exclusion to fire. This is a property of the URL PARSER, not of
+// the caller's syntax, so it is its own set rather than the caller's value terminator. A character
+// that can legally CONTINUE a host does not end it: `file://localhost)not-a-host/x` parses to host
+// `localhost)not-a-host` (an off-machine SMB name), so treating the `)` as the end of a CSS value
+// fired the `localhost` exclusion and left the beacon in. Measured in a real engine, the only host
+// enders are `/`, `?`, `#` and a backslash, the characters that make the URL fail to parse at all
+// (space, form feed, `<`, `>`), and the true end of the value; `)`, `(`, `;`, `{`, `}`, either quote
+// and the parser-REMOVED tab/LF/CR all continue it. The residual is fail-CLOSED: a bare
+// `url(file://localhost)`, naming the local root with no path, is over-reported, because a
+// quote-agnostic reading cannot tell it from `url("file://localhost)not-a-host/x")`.
+// A second slash is an egress MISS, not a local path:
 // `file://localhost//not-a-host/x.js` empties the host and keeps `//not-a-host/x.js` as the PATH, so
 // the parser canonicalizes it to `file:////not-a-host/x.js` (measured in a spec-conformant WHATWG
 // parser; Chromium 149 instead KEEPS host `localhost` for that exact spelling, but re-parsing the
@@ -19776,8 +19786,8 @@ const _OFFLINE_PCT_LOCALHOST =
 // arm above calls an off-machine SMB load. The backslash spelling `file://localhost/\not-a-host/x.js`
 // reaches it too, since the cleanup maps `\` onto `/`. The cost is that `file://localhost//C:/x.js`,
 // canonically the LOCAL `file:////C:/x.js`, is over-reported; that is the fail-CLOSED direction this
-// predicate takes everywhere else. "The end of the value" is what `_offFileNetworkArm`'s `stop`
-// decides, which is why the terminator is spelled inside the builder rather than as a const here.
+// predicate takes everywhere else.
+const _OFFLINE_HOST_END = "(?:[?#\\\\ \\f<>]|$|/(?!/))";
 // The rule both of the following exist to keep is CANONICALIZATION STABILITY: a value and the href
 // the URL parser canonicalizes it to must get the SAME verdict, or a spelling hides an authority
 // that only the parser sees. Two shapes broke it, and neither is reachable by a test that reads only
@@ -19823,7 +19833,7 @@ function _offFileNetworkArm(stop) {
   const seg = stop ? _OFF_PATH_CHAR + "{0," + _OFF_PATH_SCAN_MAX + "}" : "[^?#]*";
   return "file:(?://(?!/)|/{4,}(?!/))(?![?#]|" + end + ")"
     + "(?:(?=" + seg + "/" + _OFFLINE_FILE_DOTDOT_SEGMENT + "(?:[/?#]|" + end + "))"
-    + "|(?!" + _OFFLINE_PCT_LOCALHOST + "(?:[?#]|" + end + "|/(?!/)))(?![A-Za-z][:|]))"
+    + "|(?!" + _OFFLINE_PCT_LOCALHOST + _OFFLINE_HOST_END + ")(?![A-Za-z][:|]))"
     + "|file:/*(?!/)" + seg + "?//";
 }
 const _OFFLINE_NETWORK_URL_RE = new RegExp(

@@ -109,8 +109,23 @@ _CSP_ASCII_WS_RE = re.compile(r"[\t\n\f\r ]+")
 # spellings as network so a future edit cannot move them silently.
 _PCT_LOCALHOST = (r"(?:l|%[46]c)(?:o|%[46]f)(?:c|%[46]3)(?:a|%[46]1)(?:l|%[46]c)"
                   r"(?:h|%[46]8)(?:o|%[46]f)(?:s|%[57]3)(?:t|%[57]4)")
-# What may FOLLOW that host for the exclusion to fire: the end of the value, a `?` or `#`, or a
-# SINGLE path slash. A second slash is an egress MISS, not a local path:
+# What may FOLLOW that host for the exclusion to fire. This is a property of the URL PARSER, not of
+# the caller's syntax, so it is its own set rather than the caller's value terminator - conflating
+# the two was a measured bypass in both directions. A character that can legally CONTINUE a host
+# does not end it: `file://localhost)evil.example/x` parses to host `localhost)evil.example` (an
+# off-machine SMB name), and treating the `)` as the end of a CSS value fired the `localhost`
+# exclusion and blessed it. Measured in a real engine, the ONLY things that end a `localhost` host
+# are `/`, `?`, `#` and a backslash (which empty it or start the path), the characters that make the
+# URL fail to parse outright - SPACE, FORM FEED, `<` and `>`, none of which a browser then fetches -
+# and the true end of the value. Everything else continues the host: `)`, `(`, `;`, `{`, `}`, either
+# quote, and the parser-REMOVED tab, LF and CR (which splice the label onto what follows, so
+# `file://localhost<TAB>evil.example/x` is host `localhostevil.example`). The residual is the
+# fail-CLOSED direction: a value whose authority the CALLER's syntax ends at a host-legal character
+# - the bare `url(file://localhost)`, naming the local root with no path - is over-reported, because
+# a quote-agnostic reading cannot tell it from `url("file://localhost)evil.example/x")`. Every
+# realistic local reference carries a PATH (`file://localhost/x.png`), so the `/` ends the host and
+# the exclusion still fires.
+# A second slash is an egress MISS, not a local path:
 # `file://localhost//not-a-host/x.js` empties the host and keeps `//not-a-host/x.js` as the PATH, so
 # the parser canonicalizes it to `file:////not-a-host/x.js` (measured in a spec-conformant WHATWG
 # parser; Chromium 149 instead KEEPS host `localhost` for that exact spelling, but re-parsing the
@@ -119,9 +134,8 @@ _PCT_LOCALHOST = (r"(?:l|%[46]c)(?:o|%[46]f)(?:c|%[46]3)(?:a|%[46]1)(?:l|%[46]c)
 # arm right here calls an off-machine SMB load. The backslash spelling
 # `file://localhost/\not-a-host/x.js` reaches it too, since the cleanup maps `\` onto `/`. The cost
 # is that `file://localhost//C:/x.js`, canonically the LOCAL `file:////C:/x.js`, is over-reported;
-# that is the fail-CLOSED direction this predicate takes everywhere else. "The end of the value" is
-# what `file_network_arm`'s `stop` parameter decides, which is why the terminator is spelled inside
-# the builder rather than as a constant beside the host.
+# that is the fail-CLOSED direction this predicate takes everywhere else.
+_HOST_END = r"(?:[?#\\ \f<>]|\Z|/(?!/))"
 # The rule both of the following exist to keep is CANONICALIZATION STABILITY: a value and the href
 # the URL parser canonicalizes it to must get the SAME verdict, or a spelling hides an authority
 # that only the parser sees. Two shapes broke it, and neither is reachable by a test that reads only
@@ -191,7 +205,7 @@ def file_network_arm(stop=""):
     seg = (_PATH_CHAR + r"{0,%d}" % _PATH_SCAN_MAX) if stop else r"[^?#]*"
     return (r"file:(?://(?!/)|/{4,}(?!/))(?![?#]|" + end + r")"
             r"(?:(?=" + seg + r"/" + _FILE_DOTDOT_SEGMENT + r"(?:[/?#]|" + end + r"))"
-            r"|(?!" + _PCT_LOCALHOST + r"(?:[?#]|" + end + r"|/(?!/)))(?![A-Za-z][:|]))"
+            r"|(?!" + _PCT_LOCALHOST + _HOST_END + r")(?![A-Za-z][:|]))"
             r"|file:/*(?!/)" + seg + r"?//")
 
 

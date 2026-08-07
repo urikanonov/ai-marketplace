@@ -54,6 +54,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   recorded: a canonicalization-only spelling whose path runs past the cap before its popping segment
   is not scanned. It costs nothing on the channel this change exists for - the two authority arms,
   which decide `file://host/x` and `file:////host/x`, are exact and uncapped.
+- What may FOLLOW a `localhost` or drive-letter host for the exclusion to fire is a property of the
+  URL PARSER, not of the caller's syntax, and it now has its own set. A character that can legally
+  CONTINUE a host does not end one: `file://localhost)evil.example/x` parses to host
+  `localhost)evil.example`, an off-machine SMB name, so reading the CSS value terminator as the end
+  of the host fired the `localhost` exclusion and blessed exactly the beacon this change exists to
+  catch. Measured in a real engine, the only host enders are `/`, `?`, `#` and a backslash, the
+  characters that make the URL fail to parse at all (space, form feed, `<`, `>`), and the true end of
+  the value; `)`, `(`, `;`, `{`, `}`, either quote and the parser-removed tab, LF and CR all continue
+  it. The residual is fail-CLOSED and narrow: a bare authority with no path whose value ends at a
+  host-legal character - `url(file://localhost)`, the local root - is over-reported, because a
+  quote-agnostic reader cannot tell it from `url("file://localhost)evil.example/x")`. Every realistic
+  local reference carries a path, where the `/` ends the host and the exclusion still fires.
 - The deck gate's DEGRADED fallback - the reading used when a broken or partial install cannot import
   the shared CSS predicates - now recognizes `file:` too. It had been left at http/https and
   scheme-relative, so the one path whose entire purpose is to fail closed would have blessed the very
