@@ -150,8 +150,8 @@
     display: revert !important;
   }
 
-  #commentRoot .cmh-note.cmh-note-collapsed .cmh-note-input,
-  #commentRoot .cmh-note.cmh-note-collapsed .cmh-note-head {
+  #commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-input,
+  #commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-head {
     display: revert !important;
   }
 

@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.827.0" />
+<meta name="commentable-html-version" content="1.828.0" />
 <meta name="commentable-html-kind" content="plan" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.827.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.828.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Planning a Community Garden</title>
 
@@ -2357,7 +2357,10 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code
   padding: 0.4rem 0.55rem;
   white-space: pre-wrap;
 }
-#commentRoot .cmh-note.cmh-note-single .cmh-note-input {
+/* Keyed on RUNTIME-owned classes only (see the fold rules below): `cmh-note-ready` is added by the
+   runtime to every upgraded note, so compounding with it keeps the pre-existing selector strength
+   without depending on the author's `cmh-note`. */
+#commentRoot .cmh-note-ready.cmh-note-single .cmh-note-input {
   resize: none;
   white-space: nowrap;
   overflow-x: auto;
@@ -2375,7 +2378,14 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code
 
 /* Foldable notes: a +/- disclosure button reveals or hides the field on the line below. Collapse is
    session-only presentation. The collapsed rules are #commentRoot-scoped so they outrank the base
-   `#commentRoot .cmh-note-input { display: block }` rule above. */
+   `#commentRoot .cmh-note-input { display: block }` rule above, and they compound the RUNTIME-owned
+   `cmh-note-ready` with the runtime-owned state class. Never qualify them with the AUTHOR's
+   `cmh-note` class instead: the runtime adds `cm-skip`/`cmh-note-ready` but never `cmh-note`, so a
+   note authored without that class (hand written, retrofitted, or class-rewritten) got a fully
+   reactive button whose field never hid (issue #1242). `cmh-note` is card chrome the author opts
+   into; it is not load-bearing. Keep `cmh-note-ready` in the compound rather than dropping to the
+   state class alone, so these keep the selector strength they have always had against an author's
+   own note styling. */
 #commentRoot .cmh-note-fold {
   display: inline-flex; align-items: center; justify-content: center;
   width: 1.4rem; height: 1.4rem; padding: 0; margin-right: 0.15rem;
@@ -2386,18 +2396,28 @@ html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code
   cursor: pointer;
 }
 #commentRoot .cmh-note-fold::before { content: "\2212"; }          /* minus: expanded */
-#commentRoot .cmh-note-collapsed .cmh-note-fold::before { content: "+"; }
-#commentRoot .cmh-note-fold:hover { background: var(--cp-accent, #d7e4ff); }
+#commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-fold::before { content: "+"; }
+/* Hover fills with the accent and repaints the glyph in the accent's own foreground token - the
+   pairing 00-base.css already uses for a filled accent control. Filling with `var(--cp-accent)`
+   while the glyph STAYED `var(--cp-accent)` is what erased the +/- into a solid accent square once
+   a theme defined the token (issue #1242); repainting both together keeps the fill as a real,
+   visible hover cue AND the glyph legible on it. The fallbacks are self-consistent, so a theme that
+   defines neither token still gets white on blue rather than a mismatched pair. */
+#commentRoot .cmh-note-fold:hover {
+  color: var(--cp-accent-fg, #ffffff);
+  background: var(--cp-accent, #1d4ed8);
+  border-color: var(--cp-accent, #1d4ed8);
+}
 #commentRoot .cmh-note-fold:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
-#commentRoot .cmh-note.cmh-note-collapsed .cmh-note-input,
-#commentRoot .cmh-note.cmh-note-collapsed .cmh-note-toggle { display: none; }
-#commentRoot .cmh-note.cmh-note-collapsed .cmh-note-head { margin-bottom: 0; }
+#commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-input,
+#commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-toggle { display: none; }
+#commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-head { margin-bottom: 0; }
 /* A badge on a collapsed note that still holds content, so hidden text is discoverable. */
 #commentRoot .cmh-note-label::after {
   content: "\25CF"; display: none;
   margin-left: 0.4rem; font-size: 0.7rem; color: var(--cp-accent, #1d4ed8);
 }
-#commentRoot .cmh-note.cmh-note-has-content .cmh-note-label::after { display: inline; }
+#commentRoot .cmh-note-ready.cmh-note-has-content .cmh-note-label::after { display: inline; }
 
 /* Per-note change card in the sidebar (shaped like a comment card, not counted as one). */
 .cm-card-note .cmh-note-diff {
@@ -3875,8 +3895,8 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
     display: revert !important;
   }
 
-  #commentRoot .cmh-note.cmh-note-collapsed .cmh-note-input,
-  #commentRoot .cmh-note.cmh-note-collapsed .cmh-note-head {
+  #commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-input,
+  #commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-head {
     display: revert !important;
   }
 
@@ -5345,7 +5365,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.827.0";
+const CMH_VERSION = "1.828.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -11226,6 +11246,12 @@ function setupNotesLayer() {
     if (ov != null && normalizeNote(ov) === baseline) ov = null;   // reconcile a stale post-apply override
     const current = (ov != null) ? normalizeNote(ov) : baseline;
 
+    // The state classes below are RUNTIME-owned (setup and _noteApplyFold/_noteApplyMode set them,
+    // and every export strips them), so drop any the author's markup happens to carry: a stale one
+    // would style the note into a state the runtime never set - a non-foldable note wearing
+    // `cmh-note-collapsed` would hide its own field with no control able to bring it back.
+    el.classList.remove("cmh-note-collapsed", "cmh-note-has-content",
+      "cmh-note-single", "cmh-note-multiline");
     el.classList.add("cm-skip", "cmh-note-ready");
     el.setAttribute("data-cmh-note-role", "field");
     el.textContent = "";
@@ -24152,8 +24178,8 @@ function setupSinglePagePrint() {
     return ".cmh-print-comments,.cmh-print-noscript{display:block !important}"
       + "#commentRoot section.cmh-section-collapsed>*{display:revert !important}"
       + "#commentRoot section.cm-toc-filtered{display:revert !important}"
-      + "#commentRoot .cmh-note.cmh-note-collapsed .cmh-note-input,"
-      + "#commentRoot .cmh-note.cmh-note-collapsed .cmh-note-head{display:revert !important}"
+      + "#commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-input,"
+      + "#commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-head{display:revert !important}"
       + "#commentRoot pre,#commentRoot code,#commentRoot .cmh-diff-view pre,#commentRoot .cmh-diff-view code,"
       + "#commentRoot figure.cmh-kql pre,#commentRoot figure.cmh-kql code{white-space:pre-wrap !important;"
       + "overflow-wrap:anywhere !important;word-break:break-word !important}"

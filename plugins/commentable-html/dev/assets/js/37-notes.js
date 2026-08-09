@@ -227,6 +227,12 @@ function setupNotesLayer() {
     if (ov != null && normalizeNote(ov) === baseline) ov = null;   // reconcile a stale post-apply override
     const current = (ov != null) ? normalizeNote(ov) : baseline;
 
+    // The state classes below are RUNTIME-owned (setup and _noteApplyFold/_noteApplyMode set them,
+    // and every export strips them), so drop any the author's markup happens to carry: a stale one
+    // would style the note into a state the runtime never set - a non-foldable note wearing
+    // `cmh-note-collapsed` would hide its own field with no control able to bring it back.
+    el.classList.remove("cmh-note-collapsed", "cmh-note-has-content",
+      "cmh-note-single", "cmh-note-multiline");
     el.classList.add("cm-skip", "cmh-note-ready");
     el.setAttribute("data-cmh-note-role", "field");
     el.textContent = "";

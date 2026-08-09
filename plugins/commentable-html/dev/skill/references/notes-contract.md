@@ -26,6 +26,20 @@ not nest inside another notes field or inside a checklist / diff / widget / deck
      data-cmh-note-label="Reviewer risk summary">No blocking risks identified yet.</div>
 ```
 
+The `class="cmh-note"` in that snippet is optional card chrome (the bordered block surface the
+scaffolder emits). No BEHAVIOR depends on it: the editable field, the fold, the single / multi-line
+switch and the has-content badge all key off classes the runtime itself adds, so a note that carries
+only `data-cmh-note` behaves identically and simply renders without the card surround. The one thing
+that class does carry besides the surround is `display: block`, so on a host that is not already a
+block box - an inline `<span>`, say - either keep `class="cmh-note"` or give the element
+`display: block` yourself, otherwise the header and field the runtime injects lay out inside an
+inline box.
+
+Do not put a `cmh-note-*` STATE class in the authored markup. `cmh-note-collapsed`,
+`cmh-note-has-content`, `cmh-note-single` and `cmh-note-multiline` belong to the runtime, which
+clears any it finds at load and then sets them itself; `cmh-note-ready` is likewise runtime-owned
+(the runtime asserts it on every note it upgrades).
+
 Do not hand-write the attributes; generate the markup with
 `python tools/notes/notes_scaffold.py --id risk-summary --label "Reviewer risk summary" --text "..."`
 (add `--multiline` to default to a multi-line field).

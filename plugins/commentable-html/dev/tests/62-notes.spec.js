@@ -309,6 +309,122 @@ test("CMH-NOTE-16: fold state is presentation only - the export keeps data-cmh-n
   expect(tag[0]).not.toContain("cmh-note-collapsed");
 });
 
+// The runtime STATE classes must be self-sufficient: `class="cmh-note"` is author card chrome, so a
+// hand-written / retrofitted / class-rewritten note that carries only `data-cmh-note` still folds
+// (issue #1242 - the collapse rules were qualified with the author class the glyph rule omitted, so
+// the button reacted while the field stayed open).
+const FOLD_DOC_NO_CLASS = `
+  <h1>Foldable note without the author class</h1>
+  <p id="before">Leading prose before the note.</p>
+  <div data-cmh-note="bare-fold" data-cmh-note-label="Sign-off" data-cmh-note-foldable="true">Looks good.</div>`;
+
+test("CMH-NOTE-16: hide collapses a foldable note carrying no author cmh-note class", async ({ page }) => {
+  await open(page, FOLD_DOC_NO_CLASS, "cmh-note-16e");
+  const note = page.locator('[data-cmh-note="bare-fold"]');
+  await expect(note).not.toHaveClass(/(^|\s)cmh-note(\s|$)/);
+  await expect(noteInput(page, "bare-fold")).toBeVisible();
+  // The single-line state rule is runtime-owned too: it must shape the field without the card class.
+  await expect(note).toHaveClass(/cmh-note-single/);
+  await expect(noteInput(page, "bare-fold")).toHaveCSS("white-space", "nowrap");
+  await foldBtn(page, "bare-fold").click();
+  await expect(noteInput(page, "bare-fold")).toBeHidden();
+  await expect(page.locator('[data-cmh-note="bare-fold"] .cmh-note-toggle')).toBeHidden();
+  await expect(foldBtn(page, "bare-fold")).toHaveAttribute("aria-expanded", "false");
+  // ...and the has-content badge, the third runtime-owned state rule, still renders.
+  await expect(note).toHaveClass(/cmh-note-has-content/);
+  const badge = await page.locator('[data-cmh-note="bare-fold"] .cmh-note-label')
+    .evaluate((el) => getComputedStyle(el, "::after").display);
+  expect(badge).toBe("inline");
+  await foldBtn(page, "bare-fold").click();
+  await expect(noteInput(page, "bare-fold")).toBeVisible();
+});
+
+// A runtime STATE class in the AUTHORED markup is not an instruction: the runtime owns those names
+// and clears them at load, so a note cannot be authored into a state its controls cannot undo (a
+// non-foldable note wearing cmh-note-collapsed would otherwise hide its own field for good).
+const STALE_STATE_DOC = `
+  <h1>Note carrying a stale runtime state class</h1>
+  <div class="cmh-note-collapsed cmh-note-has-content" data-cmh-note="stale" data-cmh-note-label="Stale">Authored text.</div>`;
+
+test("CMH-NOTE-16: an authored runtime state class is cleared, so the field is never stuck hidden", async ({ page }) => {
+  await open(page, STALE_STATE_DOC, "cmh-note-16g");
+  const note = page.locator('[data-cmh-note="stale"]');
+  await expect(note).not.toHaveClass(/cmh-note-collapsed/);
+  await expect(note).not.toHaveClass(/cmh-note-has-content/);
+  await expect(noteInput(page, "stale")).toBeVisible();
+  // It is not foldable, so there is no control that could have revealed it had it stayed collapsed.
+  await expect(foldBtn(page, "stale")).toHaveCount(0);
+});
+
+// Relative luminance / contrast ratio per WCAG 2.x, so the assertion is about LEGIBILITY rather
+// than mere string inequality (an almost-invisible glyph would pass a !== check).
+function _contrastRatio(fg, bg) {
+  const parse = (s) => {
+    const m = String(s).match(/rgba?\(([^)]+)\)/);
+    if (!m) return null;
+    const p = m[1].split(",").map((v) => parseFloat(v.trim()));
+    return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+  };
+  const lum = (c) => {
+    const ch = [c.r, c.g, c.b].map((v) => {
+      const s = v / 255;
+      return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  };
+  const f = parse(fg), b = parse(bg);
+  if (!f || !b) return null;
+  const [hi, lo] = [lum(f), lum(b)].sort((x, y) => y - x);
+  return { ratio: (hi + 0.05) / (lo + 0.05), bgAlpha: b.a };
+}
+
+test("CMH-NOTE-16: the fold button keeps its +/- glyph legible on hover", async ({ page }) => {
+  await open(page, FOLD_DOC, "cmh-note-16f");
+  const btn = foldBtn(page, "content-fold");
+  // The glyph is a ::before, so read ITS color, not the button's own computed color.
+  const paint = () => btn.evaluate((el) => ({
+    glyph: getComputedStyle(el, "::before").color,
+    background: getComputedStyle(el).backgroundColor,
+  }));
+  const rest = await paint();
+  await btn.hover();
+  // Poll rather than read once: the :hover repaint is not guaranteed to have landed the instant
+  // hover() resolves, and a fixed sleep would be either flaky or wasteful.
+  await expect.poll(async () => (await paint()).background).not.toBe(rest.background);
+  const hovered = await paint();
+  // 1. Hover is a REAL cue: the fill actually changes (the pre-fix rule and a hover rule deleted
+  //    outright would both leave the fill untouched here).
+  expect(hovered.background).not.toBe(rest.background);
+  // 2. The glyph stays legible ON that fill. Painting the fill in the glyph's own token erased the
+  //    +/- entirely (issue #1242); a merely low-contrast fill fails this too.
+  const hoverContrast = _contrastRatio(hovered.glyph, hovered.background);
+  expect(hoverContrast, `unparsed colors: ${JSON.stringify(hovered)}`).not.toBeNull();
+  expect(hoverContrast.bgAlpha).toBe(1);
+  expect(hoverContrast.ratio).toBeGreaterThanOrEqual(4.5);
+  // 3. Both halves hold in the DARK theme too, which swaps BOTH tokens the rule pairs
+  //    (--cp-accent and --cp-accent-fg), so a dark-only break cannot slip through. The pointer has
+  //    not moved, so the button is still hovered; only the tokens change.
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+  await expect.poll(async () => (await paint()).background).not.toBe(hovered.background);
+  const dark = await paint();
+  const darkContrast = _contrastRatio(dark.glyph, dark.background);
+  expect(darkContrast, `unparsed dark colors: ${JSON.stringify(dark)}`).not.toBeNull();
+  expect(darkContrast.bgAlpha).toBe(1);
+  expect(darkContrast.ratio).toBeGreaterThanOrEqual(4.5);
+});
+
+test("CMH-NOTE-16: print reveals a collapsed class-less note", async ({ page }) => {
+  await open(page, FOLD_DOC_NO_CLASS, "cmh-note-16h");
+  await foldBtn(page, "bare-fold").click();
+  await expect(noteInput(page, "bare-fold")).toBeHidden();
+  // The print override must reach the same de-qualified note the screen rules do, so a reviewer
+  // never prints a document with a collapsed note's text silently missing.
+  await page.emulateMedia({ media: "print" });
+  await expect(noteInput(page, "bare-fold")).toBeVisible();
+  await page.emulateMedia({ media: "screen" });
+  await expect(noteInput(page, "bare-fold")).toBeHidden();
+});
+
 test("CMH-NOTE-17: typing coalesces the sidebar re-render (one debounced render per burst, not one per keystroke)", async ({ page }) => {
   await open(page, DOC, "cmh-note-17");
   // Fire a burst of input events SYNCHRONOUSLY in one JS turn. renderComments() runs two
