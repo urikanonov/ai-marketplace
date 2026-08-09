@@ -50,6 +50,21 @@ root.addEventListener("mouseout", (e) => {
   if (to && to.closest && (to.closest("mark.cm-hl") || to.closest(".cm-hl-bubble"))) return;
   scheduleHideHlBubble();
 });
+// A tap has no hover, and the mousedown below drops the bubble, so a plain click on a highlight
+// would otherwise leave the reader no way to reach the comment inline. Clicking one raises the SAME
+// bubble hovering raises; the click itself is never repurposed, so a link-wrapped highlight still
+// navigates and the sidebar jump (50-sidebar.js) still runs. While the inline dialog is open its
+// capture-phase dismiss stops a click in the document before this listener, so this cannot re-raise
+// a bubble over a dialog that same click is closing.
+root.addEventListener("click", (e) => {
+  const mark = e.target.closest && e.target.closest("mark.cm-hl");
+  if (!mark || !root.contains(mark) || !mark.dataset.cid) return;
+  // A click that ENDS A SELECTION is a text-selection gesture (the Add-comment menu owns that one),
+  // not a request to open the comment.
+  const sel = window.getSelection && window.getSelection();
+  if (sel && !sel.isCollapsed && String(sel)) return;
+  showHlBubbleFor(mark);
+});
 hlBubble.addEventListener("mouseenter", () => {
   if (hlBubbleHideTimer) { clearTimeout(hlBubbleHideTimer); hlBubbleHideTimer = null; }
 });

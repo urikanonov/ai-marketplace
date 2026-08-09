@@ -162,6 +162,48 @@ test.describe("comment interactions", () => {
     await expect(page.locator(".cm-card.active")).toContainText("activate me");
   });
 
+  test("CMH-CORE-13: clicking a highlight raises the same Open comment bubble hovering does", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "click for the bubble");
+    const cid = (await allCids(page))[0];
+    const bubble = page.locator("#hlBubble");
+    await expect(bubble).toBeHidden();
+
+    // A click with no hover before it - a tap, or any click after the mousedown dropped the bubble.
+    // Dispatched rather than driven with the mouse so the pointer never enters the highlight and it
+    // is genuinely the CLICK that raises the bubble.
+    const clickMark = () => page.evaluate((id) => {
+      document.querySelector(`mark.cm-hl[data-cid="${id}"]`)
+        .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    }, cid);
+    await clickMark();
+    await expect(bubble).toBeVisible();
+    // The existing sidebar jump still runs alongside it.
+    await expect(page.locator(`.cm-card.active[data-cid="${cid}"]`)).toHaveCount(1);
+
+    // It is the same bubble, pointed at that comment, so it opens that comment inline.
+    await bubble.click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    await expect(pop).toHaveAttribute("data-cid", cid);
+    await expect(pop).toContainText("click for the bubble");
+    await page.keyboard.press("Escape");
+    await expect(pop).toHaveCount(0);
+
+    // A click that ENDS A SELECTION is a text-selection gesture, not a request to open the comment
+    // (the Add-comment menu owns that one), so it leaves the bubble alone.
+    await page.evaluate((id) => {
+      const mark = document.querySelector(`mark.cm-hl[data-cid="${id}"]`);
+      const range = document.createRange();
+      range.selectNodeContents(mark);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }, cid);
+    await clickMark();
+    await expect(bubble).toBeHidden();
+  });
+
   test("the comment bubble opens a comment on a link-wrapped highlight without navigating", async ({ page }) => {
     await openKitchenSink(page);
     // The first inline-soup paragraph contains a real <a>; the highlight wraps its text.
@@ -249,18 +291,55 @@ test.describe("comment interactions", () => {
     await page.keyboard.press("Escape");
     await expect(pop).toBeHidden();
 
-    // Saving in place updates the note, the sidebar card, and storage, and returns to the note view.
+    // Saving in place updates the note, the sidebar card, and storage, and CLOSES the dialog.
     await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
     await page.locator("#hlBubble").click();
     await pop.locator('[data-act="edit"]').click();
     await pop.locator(".cm-comment-popover-edit textarea").fill("edited in the dialog");
     await pop.locator('[data-act="edit-save"]').click();
-    await expect(pop).toBeVisible();
-    await expect(pop.locator(".cm-comment-popover-edit")).toHaveCount(0);
-    await expect(pop.locator(".cm-comment-popover-note")).toContainText("edited in the dialog");
-    await expect(pop.locator(".cm-comment-popover-meta")).toContainText("(edited)");
+    await expect(pop).toHaveCount(0);
     await expect(page.locator("#commentList")).toContainText("edited in the dialog");
     expect((await storedComments(page))[0].note).toBe("edited in the dialog");
+  });
+
+  test("CMH-CORE-16: the note view puts Edit before Close, and Save closes the dialog", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "close me on save");
+    const cid = (await allCids(page))[0];
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+
+    // Reading order and visual order agree: Delete held apart (CMH-CORE-22), then Edit, then Close.
+    expect(await pop.evaluate((el) => Array.from(
+      el.querySelectorAll(".cm-comment-popover-acts button"), (b) => b.dataset.act)))
+      .toEqual(["popover-del", "edit", "close"]);
+    const lefts = await pop.evaluate((el) => ({
+      edit: el.querySelector('[data-act="edit"]').getBoundingClientRect().left,
+      close: el.querySelector('[data-act="close"]').getBoundingClientRect().left,
+    }));
+    expect(lefts.edit).toBeLessThan(lefts.close);
+
+    // Save persists the note and closes the dialog instead of leaving it open on the note view.
+    await pop.locator('[data-act="edit"]').click();
+    await pop.locator(".cm-comment-popover-edit textarea").fill("saved and closed");
+    await pop.locator('[data-act="edit-save"]').click();
+    await expect(pop).toHaveCount(0);
+    await expect(page.locator("#commentList")).toContainText("saved and closed");
+    expect((await storedComments(page))[0].note).toBe("saved and closed");
+    // The dialog held focus, so closing it must not drop the reader on <body> and restart the
+    // keyboard order at the top of the page (the same landing spot a dialog delete uses).
+    expect(await page.evaluate(() => {
+      const a = document.activeElement;
+      return a && a.id ? a.id : (a ? a.tagName : "none");
+    })).toBe("commentList");
+
+    // Re-opening shows the saved note, marked edited.
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    await expect(pop.locator(".cm-comment-popover-note")).toContainText("saved and closed");
+    await expect(pop.locator(".cm-comment-popover-meta")).toContainText("(edited)");
   });
 
   test("CMH-CORE-18: the dialog fits a short viewport and keeps Save and Cancel reachable", async ({ page }) => {
@@ -345,7 +424,7 @@ test.describe("comment interactions", () => {
 
     await pop.locator("textarea.cm-comment-popover-input").fill("saved from a short viewport");
     await pop.locator('[data-act="edit-save"]').click();
-    await expect(pop.locator(".cm-comment-popover-note")).toContainText("saved from a short viewport");
+    await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
     expect((await storedComments(page))[0].note).toBe("saved from a short viewport");
   });
 
@@ -426,7 +505,8 @@ test.describe("comment interactions", () => {
     expect(b.top).toBeGreaterThanOrEqual(-0.5);
     expect(b.dialog).toBeLessThanOrEqual(b.vh + 0.5);
     await pop.locator('[data-act="edit-save"]').click();
-    await expect(pop.locator(".cm-comment-popover-note")).toContainText("grow me after placement");
+    await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
+    expect((await storedComments(page))[0].note).toBe("grow me after placement");
   });
 
   test("CMH-CORE-16: a dirty in-place edit is not swallowed, switched away, or duplicated (CMH-THREAD-10)", async ({ page }) => {
@@ -733,10 +813,10 @@ test.describe("comment interactions", () => {
       // With the shipped labels the enlarged row still fits ONE line at 320px, so the wrap below is
       // a fallback rather than the everyday layout...
       expect(actRows(note), density).toBe(1);
-      // ...and on that line the phone layout is still the desktop one: Edit ends at the row's right
+      // ...and on that line the phone layout is still the desktop one: Close ends at the row's right
       // edge, with Delete held well clear of the pair rather than a plain gap away (CMH-CORE-22).
-      expect(act(note, "edit").right).toBeGreaterThanOrEqual(note.right - 0.5);
-      expect(act(note, "close").left - act(note, "popover-del").right).toBeGreaterThanOrEqual(20);
+      expect(act(note, "close").right).toBeGreaterThanOrEqual(note.right - 0.5);
+      expect(act(note, "edit").left - act(note, "popover-del").right).toBeGreaterThanOrEqual(20);
     }
 
     // The edit view's Cancel / Save row is enlarged the same way (it was 33px too, not just the
@@ -755,8 +835,18 @@ test.describe("comment interactions", () => {
     // The enlarged buttons still do their job at that size.
     await pop.locator("textarea.cm-comment-popover-input").fill("saved from a phone");
     await pop.locator('[data-act="edit-save"]').click();
-    await expect(pop.locator(".cm-comment-popover-note.cmh-rich")).toHaveText("saved from a phone");
+    await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
     expect((await storedComments(page))[0].note).toBe("saved from a phone");
+    // Saving closed the dialog and left the phone's full-width comments sheet over the document, so
+    // close it again before reaching for the highlight.
+    if (await page.evaluate(() => document.body.classList.contains("sidebar-open"))) {
+      await page.locator("#btnCloseSidebar").click();
+      await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
+    }
+    const cid = (await allCids(page))[0];
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    await expect(pop.locator(".cm-comment-popover-note.cmh-rich")).toHaveText("saved from a phone");
     await pop.locator('[data-act="close"]').click();
     await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
   });
@@ -1412,7 +1502,7 @@ test.describe("comment interactions", () => {
       .not.toBe(noteIdBefore);
   });
 
-  test("CMH-CORE-16: an overlay or toast the dialog's own Save raised acts on the first click", async ({ page }) => {
+  test("CMH-CORE-16: a Save that cannot be stored closes the dialog and its overlay or toast acts on the first click", async ({ page }) => {
     const key = "cmh-popover-quota";
     const { html } = stageContent("<section><p>reviewable paragraph text here for anchoring.</p></section>",
       { key, source: "popover-quota.html" });
@@ -1450,26 +1540,24 @@ test.describe("comment interactions", () => {
     await openDialog();
     await saveQuotaEdit("edited note that cannot be stored");
 
-    // Save raised the storage manager while the dialog is still open and armed. The overlay is the
-    // layer's own chrome, so the reviewer's FIRST click on its controls must act on it.
+    // Save closed the dialog and still raised the storage manager, so the failure is surfaced with
+    // nothing left to swallow the reviewer's first click on the overlay's controls.
     const manager = page.locator(".cm-storage-manager");
     await expect(manager).toBeVisible();
-    await expect(pop).toBeVisible();
+    await expect(pop).toHaveCount(0);
     await manager.locator(".cm-storage-foot-close").click();
     await expect(manager).toHaveCount(0);
-    await expect(pop).toHaveCount(0);
 
     // With the write still pending the manager will not re-open itself for the same quota episode,
-    // so the next Save from the dialog raises an ACTIONABLE TOAST instead - again while the dialog
-    // is open and armed. Its first click must run the action, not be spent closing the dialog.
+    // so the next Save from the dialog raises an ACTIONABLE TOAST instead. Its first click must run
+    // the action, not be spent closing anything.
     await openDialog();
     await saveQuotaEdit("edited again, still unstorable");
     const toast = page.locator("#toast");
     await expect(toast).toContainText("is shown but this browser's storage is full");
-    await expect(pop).toBeVisible();
+    await expect(pop).toHaveCount(0);
     await toast.locator(".cm-toast-action").click();
     await expect(page.locator(".cm-storage-manager")).toBeVisible();
-    await expect(pop).toHaveCount(0);
   });
 
   test("CMH-CORE-16: the body-fallback root still swallows document clicks and still spares the editors", async ({ page }) => {

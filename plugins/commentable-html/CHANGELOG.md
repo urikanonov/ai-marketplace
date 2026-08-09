@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.825.0] - 2026-08-09
+
+### Changed
+
+- Clicking a highlight now raises the same `Open comment` bubble that hovering raises, so the
+  inline comment dialog is reachable by click as well as by hover. A tap has no hover at all, and
+  any mousedown drops the bubble, so a reader who clicked a highlighted phrase previously had no
+  way to open its note from the document. The click itself is not repurposed: it still activates
+  the comment's card, a link-wrapped highlight still follows its link, and a click that ends a text
+  selection leaves the bubble alone.
+- The in-document comment dialog's note view now reads `Delete`, `Edit`, `Close` (Edit and Close
+  swapped), and saving an in-place edit CLOSES the dialog instead of returning it to the note view.
+  The edit is done, so nothing is left to show, and a lingering dialog would re-arm the
+  outside-click swallow; focus lands in the comments list rather than on `<body>`, and anything the
+  save raises (the storage manager or an actionable toast on a quota failure) comes up with nothing
+  in front of it.
+
 ## [1.824.0] - 2026-08-09
 
 ### Fixed
