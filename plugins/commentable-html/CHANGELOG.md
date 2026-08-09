@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.830.0] - 2026-08-09
+
+### Fixed
+
+- The in-document `Contents` table of contents and the side navigation menu now show the SAME
+  number for the same heading. `generate_toc.py` used to emit one flat `<ol>`, so the browser's
+  list marker numbered a subsection as if it were a top-level section (`4`) while the side menu
+  called the same heading `3.1`, and a reader could not cross-reference the two. The generated
+  Contents list now carries the number itself - the number the heading displays when the document
+  numbers its own sections, else a hierarchical `1`, `1.1`, `1.2`, `2` computed from the heading
+  depth - and the side menu reads that number instead of computing a second one, so both surfaces
+  are driven by one source. The number is a `cm-skip` span carrying its own separator, so re-baking
+  a document's Contents list adds no counted text and never moves an existing comment's anchor, and
+  the generated list suppresses its own ordered-list marker inline so a document whose embedded
+  layer predates this release is not double-numbered. A hand-authored `.cm-toc` is untouched and
+  keeps its browser marker, and the author-numbered de-dup (CMH-TOC-10) still holds. Two notes for
+  an existing document: a Contents list an OLDER version generated keeps its flat marker until
+  `generate_toc.py` (or `finalize.py --toc`) is re-run, because an upgrade never rewrites
+  `#commentRoot`; and on that re-bake a document that numbers only SOME of its headings now leaves
+  the unnumbered entries bare, matching the side menu, where the list marker used to number them.
+
 ## [1.829.0] - 2026-08-09
 
 ### Changed

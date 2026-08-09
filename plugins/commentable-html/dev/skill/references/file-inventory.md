@@ -47,7 +47,7 @@ subdirectories under `tools/` (for example `tools/validate/validate.py`, `tools/
  closed (writes nothing) when it cannot self-validate; `--allow-unvalidated-output` opts out.
 - `kql_highlight.py` and `kusto_link.py` - build KQL figures and Run in Azure Data Explorer deep links.
 - `highlight_code.py` - emits highlighted code blocks.
-- `generate_toc.py` - creates a `nav.cm-toc` from headings and strips redundant author section numbers from an ordered-list TOC.
+- `generate_toc.py` - creates a `nav.cm-toc` from headings, strips redundant author section numbers from an ordered-list TOC, and bakes the entry's own number into it as a `cm-skip` `span.cm-toc-num` (suppressing the list marker) so the Contents list and the runtime side menu show one number for the same heading.
 - `doc_stats.py` - bakes the report/plan document-overview strip (section count, word count, reading time).
 - `fix_skip.py` - adds `cm-skip` to bare Mermaid blocks.
 - `inline_images.py` - inlines local images as data URIs.

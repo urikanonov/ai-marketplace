@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { stageContent, fileUrl, ready, addTextComment } from "./helpers.js";
+import fs from "fs";
+import { execFileSync } from "child_process";
+import { stageContent, fileUrl, ready, addTextComment, PYTHON, SKILL } from "./helpers.js";
 
 // Three tall, distinctly-worded sections so the side TOC renders (>= 2 items), scroll-spy
 // moves between them, and a query matches exactly one section's body text.
@@ -314,6 +316,114 @@ test.describe("side-TOC search and aria-current", () => {
     await expect(tocNum(toc, "one-a-i")).toHaveText("1.1.1");
     await expect(tocNum(toc, "two")).toHaveText("2");
     expect(await linkLeft(toc, "one-a-i")).toBeGreaterThan(await linkLeft(toc, "one-a"));
+  });
+
+  test("the in-document Contents list and the side menu show the same number (CMH-TOC-10)", async ({ page }) => {
+    // The two surfaces number the SAME headings, so they must agree: the side menu reads the
+    // number generate_toc.py baked into the Contents entry instead of computing a second one,
+    // and the Contents list no longer leans on a flat ordered-list marker that made a subsection
+    // read as a top-level section.
+    const BODY = `
+      <h1>Quarterly review</h1>
+      <h2 id="one">Findings</h2><p>lead</p>
+      <h3 id="one-a">Signals</h3><p>detail</p>
+      <h3 id="one-b">Sampling</h3><p>detail</p>
+      <h2 id="two">Next steps</h2><p>lead</p>`;
+    const { html } = stageContent(BODY, { key: "cmh-toc-agree", source: "toc-agree.html" });
+    execFileSync(PYTHON, ["tools/authoring/generate_toc.py", "--in-place", html], { cwd: SKILL, stdio: "pipe" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    const toc = page.locator("#cmSideToc");
+    await expect(toc).toBeVisible();
+    for (const [id, number] of [["one", "1"], ["one-a", "1.1"], ["one-b", "1.2"], ["two", "2"]]) {
+      const inDoc = page.locator(`#commentRoot .cm-toc li:has(> a[href="#${id}"]) > .cm-toc-num`);
+      await expect(inDoc).toHaveText(number);
+      await expect(tocNum(toc, id)).toHaveText(number);
+    }
+    // The list marker would be that second, flat number, so the generated list drops it.
+    const marker = await page.locator("#commentRoot .cm-toc ol").first()
+      .evaluate((el) => getComputedStyle(el).listStyleType);
+    expect(marker).toBe("none");
+  });
+
+  test("a document that numbers its own headings keeps those numbers on both surfaces (CMH-TOC-10)", async ({ page }) => {
+    // The generator's second numbering path, end to end: when the headings display their own
+    // numbers the Contents list bakes THOSE (not a computed sequence), and the side menu shows the
+    // same string - so a document numbered 10 / 10.3 / 11 is never renumbered 1 / 1.1 / 2.
+    const BODY = `
+      <h1>Risk review</h1>
+      <h2 id="risk">10. Risk register</h2><p>lead</p>
+      <h3 id="vendor">10.3 Vendor exposure</h3><p>detail</p>
+      <h2 id="rollout">11. Rollout</h2><p>lead</p>`;
+    const { html } = stageContent(BODY, { key: "cmh-toc-docnum", source: "toc-docnum.html" });
+    execFileSync(PYTHON, ["tools/authoring/generate_toc.py", "--in-place", html], { cwd: SKILL, stdio: "pipe" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    const toc = page.locator("#cmSideToc");
+    await expect(toc).toBeVisible();
+    for (const [id, number] of [["risk", "10"], ["vendor", "10.3"], ["rollout", "11"]]) {
+      await expect(page.locator(`#commentRoot .cm-toc li:has(> a[href="#${id}"]) > .cm-toc-num`)).toHaveText(number);
+      await expect(tocNum(toc, id)).toHaveText(number);
+    }
+    // A number the DOCUMENT supplies is part of the row's title for the filter too (CMH-TOC-09), so
+    // typing it still finds the row it labels now that the number lives in its own span.
+    await toc.locator(".cm-side-toc-search").fill("10.3");
+    await expect(tocRow(toc, "vendor")).toBeVisible();
+    await expect(tocRow(toc, "rollout")).toBeHidden();
+  });
+
+  test("baking the Contents numbers does not move an existing comment's anchor (CMH-TOC-10)", async ({ page }) => {
+    // The number lands inside `#commentRoot`, where a reader's comments are anchored by TEXT
+    // OFFSET - so it is `cm-skip` and carries its own separator, adding no counted character.
+    // Without that, re-baking an older document's Contents list (what `content_replace.py` ->
+    // `finalize.py` does) would shift every comment saved below it onto unrelated text.
+    const BODY = `
+      <h1>Quarterly review</h1>
+      <h2 id="one">Findings</h2><p id="lead">The anchored sentence lives here.</p>
+      <h3 id="one-a">Signals</h3><p>detail</p>`;
+    const { html } = stageContent(BODY, { key: "cmh-toc-anchor", source: "toc-anchor.html" });
+    // Build the canonical nav, then rewind it to the pre-1.830 shape (flat `<ol>`, no baked
+    // number) so the ONLY thing the re-bake below changes is the number itself.
+    execFileSync(PYTHON, ["tools/authoring/generate_toc.py", "--in-place", html], { cwd: SKILL, stdio: "pipe" });
+    const legacy = fs.readFileSync(html, "utf8")
+      .replace(/<ol class="cm-toc-numbered"[^>]*>/, "<ol>")
+      .replace(/<span class="cm-toc-num[^"]*">[^<]*<\/span> ?/g, "");
+    expect(legacy).not.toMatch(/<span class="cm-toc-num/);
+    fs.writeFileSync(html, legacy);
+
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await addTextComment(page, "#lead", "anchored before the numbers were baked");
+    const anchored = (await page.locator("#commentRoot mark.cm-hl").first().textContent()) || "";
+    expect(anchored.trim().length).toBeGreaterThan(10);
+
+    // Re-bake, then reload the SAME file so the stored offsets are replayed against the rewrite.
+    execFileSync(PYTHON, ["tools/authoring/generate_toc.py", "--in-place", html], { cwd: SKILL, stdio: "pipe" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await expect(page.locator(`#commentRoot .cm-toc li:has(> a[href="#one-a"]) > .cm-toc-num`)).toHaveText("1.1");
+    await expect(page.locator("#commentRoot mark.cm-hl")).toHaveCount(1);
+    await expect(page.locator("#commentRoot mark.cm-hl")).toHaveText(anchored);
+  });
+
+  test("an author list that repeats its own number in the label shows it once (CMH-TOC-10)", async ({ page }) => {
+    // A hand-written contents list can carry BOTH a `.cm-toc-num` and a label that repeats the same
+    // number. Reading the span and then rendering the label verbatim would print "7 7. Intro"; the
+    // menu drops an EXACT repeat so the number is shown once.
+    const BODY = `
+      <nav class="cm-toc"><ol>
+        <li><span class="cm-toc-num">7</span> <a href="#intro">7. Intro</a></li>
+        <li><span class="cm-toc-num">8</span> <a href="#body">8. Body</a></li>
+      </ol></nav>
+      <section><h2 id="intro">7. Intro</h2><p>lead</p>
+      <h2 id="body">8. Body</h2><p>detail</p></section>`;
+    const toc = await openNested(page, BODY, "cmh-toc-author-num");
+    await expect(tocNum(toc, "intro")).toHaveText("7");
+    await expect(tocLink(toc, "intro")).toHaveText("7 Intro");
+    await expect(tocLink(toc, "body")).toHaveText("8 Body");
   });
 
   test("the filter narrows the navigation to matching headings and keeps ancestor context (CMH-TOC-09)", async ({ page }) => {
