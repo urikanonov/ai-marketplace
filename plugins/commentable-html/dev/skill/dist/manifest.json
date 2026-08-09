@@ -2,7 +2,7 @@
   "files": {
     "commentable-html.assets.js": {
       "bytes": 1458607,
-      "sha256": "e58eb9180b3fee216da37aa1326256b217db66107659ff36dada4a29953e7971"
+      "sha256": "3b2be39468bc8129dfb5d0949970dfa792636fca601ec4883a279349c124b229"
     },
     "commentable-html.css": {
       "bytes": 211604,
@@ -10,8 +10,8 @@
     },
     "commentable-html.js": {
       "bytes": 1203393,
-      "sha256": "c03d852c82de51f3762a69ac41136bc55d2e92d59f82adb001de49a6a054aa26"
+      "sha256": "f99d93fbd410734dc718d72075ef61021ef4345f959af7264e0e85a0a9a0b372"
     }
   },
-  "version": "1.822.0"
+  "version": "1.823.0"
 }

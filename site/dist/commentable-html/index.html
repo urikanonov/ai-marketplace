@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.822.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.823.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.823.0] - 2026-08-09</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The generated table of contents now sits BELOW the document title and its reading-time strip instead of above them. <code>generate_toc.py</code> used to anchor <code>nav.cm-toc</code> immediately after the <code>#commentRoot</code> start tag, so a reader opening a finalized report met the contents list before they saw what the document was called or how long it takes to read. The nav is now placed after the top-level title container (the <code>&lt;h1&gt;</code> itself or its wrapper, for example <code>header.cmh-lede</code>) and after a <code>div[data-cmh-doc-stats]</code> overview strip that immediately follows that title, giving the order title, overview strip, contents. An existing nav above the title is moved down rather than duplicated, and re-running the tool is idempotent for the shapes above. The nav keeps its top-of-root placement wherever anchoring under the title would be wrong or unsafe: a document with no <code>&lt;h1&gt;</code>, one whose title container was never closed by its own end tag, one whose title only exists inside the nav being replaced, one where a listed heading sits inside the title container or before the title (a slide deck, a single-wrapper document, a lede carrying a listed subtitle), and one with no sections for the nav to list at all.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.822.0] - 2026-08-07</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -508,6 +515,8 @@
               <li>The deck gate&#x27;s DEGRADED fallback - the reading used when a broken or partial install cannot import the shared CSS predicates - now recognizes <code>file:</code> too. It had been left at http/https and scheme-relative, so the one path whose entire purpose is to fail closed would have blessed the very beacon the shared reading catches. Like the rest of that fallback it carries no separator arithmetic and no exclusions, so it over-reports a local <code>file:</code> reference as well; refusing a deck is the safe direction when the reading that can tell them apart is unavailable.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.821.0] - 2026-08-07</h3></div>
             <div class="group-label">Changed</div>
@@ -515,8 +524,6 @@
               <li>SETTLED, by measuring a real Chromium rather than by reading the URL spec, the question the previous release left open (issue #1229): whether any surface makes a zero- or one-separator <code>file:</code> reference reach a host the VALUE names. It does not, and the two spellings stay uncounted. The reason is now recorded and ENFORCED instead of tracked: their leading run is a PATH. <code>file:</code> is a special scheme - its backslashes are mapped like any other&#x27;s, so <code>file:\\host/x</code> really is counted - but the parser routes it to the file state rather than to the states that collapse the slash-less <code>https:host/x</code> onto a host, so it resolves them against the document&#x27;s own base. Every surface that consumes the predicate resolves against that base, including an <code>iframe srcdoc</code>, which inherits its parent&#x27;s. Measured through <code>&lt;a href&gt;</code>, <code>&lt;img src&gt;</code> and a CAPTURED <code>meta http-equiv=refresh</code> navigation out of a <code>file:///</code> document, both resolve to an EMPTY-host local path - the ordinary sibling an author means by <code>file:notes.html</code> - and from a UNC base they take the document&#x27;s own host, which the value cannot choose. Counting either would have refused a document with no egress at all and made Export Offline delete the author&#x27;s reference. The exemption is scoped to the leading run: a value whose path canonicalizes onto the four-separator form is still counted. Two neighbouring contexts were measured rather than assumed - a <code>&lt;base href&gt;</code> onto a non-<code>file:</code> base, which is closed unconditionally one layer up, and a report served over http(s), where the engine refuses the load outright - and the four-or-more reading is recorded as the WINDOWS one it is (the same engine build reads it as an empty-host local path on Linux), with the gate deliberately fail-closed on both. The measurement is re-run in a real engine on every CI pass and compared to the shipped predicate&#x27;s verdicts, and the Python predicate and its JavaScript mirror are pinned to the same answers over a shared corpus, so a future widening has to be measured first and has to move both sides at once.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.820.0] - 2026-08-07</h3></div>
             <div class="group-label">Changed</div>
@@ -550,18 +557,7 @@
               <li>Two further bindings were needed to keep the Save-as-PDF single continuous page honest for that diagram. Such a diagram is usually also narrow-scaled on screen, and that screen rule out-specified the measurement mirror&#x27;s cap, so the page was measured at the narrow cap while the print used the full column and the &quot;single page&quot; spilled onto three sheets; both surfaces now re-bind <code>max-width</code>. And because a width-bound diagram (unlike a height-capped one) is proportionally taller at the wide reading column the height cache is refreshed at, the cache floor was stamping about nine inches of trailing blank onto the page - moving the wasted space to the bottom of the sheet - so the measurement mirror now bounds the diagram to the width the honored page actually renders at.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.814.0] - 2026-08-07</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The value GENERATORS no longer downgrade an authored CR to LF. <code>#1196</code> made the attribute round trip faithful for every tool that RE-SERIALIZES a start tag, but it did not reach the places that BUILD a value from a CLI argument or a JSON field: those still wrote a literal CR, which HTML&#x27;s input-stream preprocessing folds to a single LF before the browser tokenizes, so the CR the input genuinely carried was silently lost. Worse, once the shared writer applied the rule, ONE <code>--label</code> could reach a browser as TWO different values in the same document - <code>data-doc-label=&quot;a&amp;#13;b&quot;</code> (a CR) beside a <code>&lt;title&gt;</code> a browser reads as <code>a\nb</code>.</li>
-              <li>A shared TEXT escape, <code>_browser_attrs.escape_text()</code>, now lives beside <code>escape_attr_value()</code> and applies the same CR rule for a text run: no quote escaping (<code>&quot;</code> and <code>&#x27;</code> are ordinary characters in text, and a reader would otherwise see <code>&amp;quot;</code> spelled out), the same <code>&amp;#13;</code> for a CR, and the same U+FFFD fold for the two code points an HTML document cannot hold, so both escapes are TOTAL over the code-point space. The one visible serialization change is that a <code>&quot;</code> in a generated <code>&lt;title&gt;</code>, lede header, checklist item or note seed is now written literally instead of as <code>&amp;quot;</code>; a browser reads the same value either way.</li>
-              <li>Every generator now goes through the shared pair: <code>retrofit</code>&#x27;s content-root attributes and its inserted <code>&lt;title&gt;</code>, <code>new_document</code>&#x27;s lede header and <code>&lt;title&gt;</code> substitution, <code>checklist_scaffold</code> and <code>notes_scaffold</code> (attributes and text), <code>diff_block</code>&#x27;s <code>data-diff-label</code> / <code>data-diff-lang</code>, <code>chart_block</code>&#x27;s figcaption and ARIA label, <code>highlight_code</code>&#x27;s language class, <code>_brand_profile</code>&#x27;s <code>data-cmh-brand</code>, <code>doc_stamp.set_meta()</code> (which hand-rolled a third private copy of the escape, so a <code>--session-id</code> carrying a CR was stamped literally), <code>kql_highlight</code>&#x27;s caption title, and <code>deck_common.esc()</code> (the slide title and paragraph text <code>pptx_to_fragment</code> builds from a JSON field; its one attribute caller, the image <code>src</code>, moves to the attribute escape, since the text rule leaves a <code>&quot;</code> alone and that would end the value).</li>
-              <li><code>notes_apply.py</code> cements a note with the shared text escape too. On <code>html.escape</code> it wrote a literal CR that its own read then folded to LF - and because it compares the escaped value against the file to decide whether anything changed, a note carrying a <code>&amp;#13;</code> was reported as changed and rewritten on EVERY run.</li>
-              <li>The spec now lists the REMAINING plain-escape write sites in full, each with its reason, so the enumeration can be checked rather than re-derived - including the ones spelled through the <code>html_lib</code> alias, which an earlier pass of the list missed. Four are provably CR-free at the write (the deck theme label, the code-body escape, the diff body, and the document-overview <code>aria-label</code> synthesized from integer counts). The fifth, <code>generate_toc.py</code>&#x27;s TOC <code>href</code> and link text, is a REAL residual left deliberately unfixed: it reads with <code>newline=&quot;&quot;</code> and splices by offsets, and its parsed attribute view does not apply input-stream preprocessing, so moving it onto the escape ALONE would write back a CR the input never meant - the inverse of this bug. What it owes is the read-boundary pairing, which is tracked with the rest of that work.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">384 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">385 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

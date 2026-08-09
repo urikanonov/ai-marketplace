@@ -60,6 +60,9 @@ def _apply_normalize(html):
 
 
 def _apply_toc(html):
+    # No document-kind gate, unlike _apply_wrap_sections / _apply_stats: every kind may carry a
+    # table of contents, and generate_toc itself keeps the nav at the top of #commentRoot for a
+    # deck or any document whose title shares a container with its sections (CMH-TOOL-11).
     rewritten = generate_toc.rewrite_html(html)
     return rewritten, (rewritten != html)
 
