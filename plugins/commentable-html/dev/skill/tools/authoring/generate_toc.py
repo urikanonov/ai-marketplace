@@ -414,15 +414,28 @@ def _toc_removal_span(html, start, end):
     return start, _leading_ws_end(html, end)
 
 
+def _follows_after_removals(html, start, target, removals):
+    """True if only whitespace and `.cm-toc` regions being deleted lie between start and target."""
+    pos = _leading_ws_end(html, start)
+    while pos < target:
+        span = next((s for s in removals if s[0] == pos), None)
+        if span is None:
+            return False
+        pos = _leading_ws_end(html, span[1])
+    return pos == target
+
+
 def _nav_anchor(html, parser, removals):
     """Return the offset the generated `nav.cm-toc` is inserted at.
 
     The reader meets the document's title, and the reading-time strip under it, before its table of
     contents, so the nav goes AFTER the top-level title container inside `#commentRoot` - and after
     a direct-child `doc_stats` overview strip when that strip IMMEDIATELY follows the title, which
-    is the only shape `doc_stats.py` produces. The TITLE is what earns the move: with no usable
-    title candidate the nav keeps its top-of-`#commentRoot` placement, and a strip an author put
-    anywhere else never drags the nav down to it. Three things disqualify a candidate:
+    is the only shape `doc_stats.py` produces. "Immediately" is measured against the text this
+    rewrite is about to LEAVE BEHIND, so an old `.cm-toc` sitting between the two is skipped rather
+    than pinning the document at title, nav, strip forever. The TITLE is what earns the move: with
+    no usable title candidate the nav keeps its top-of-`#commentRoot` placement, and a strip an
+    author put anywhere else never drags the nav down to it. Three things disqualify a candidate:
 
     - It lands INSIDE a `.cm-toc` region this rewrite is about to delete, so the insert and the
       removal would overlap. A candidate exactly AT a removal's start is kept: those spans are
@@ -434,21 +447,21 @@ def _nav_anchor(html, parser, removals):
     - It would land AFTER the first section the nav lists - because the title shares a container
       with every section (a slide deck, or a document written inside one wrapper element), or
       because a section precedes the title. Either way the contents would sit below content it
-      indexes. A nav that lists no sections at all has nothing to sit below, so this one does not
-      apply to it.
+      indexes. A nav that lists NO sections is held to the same rule rather than exempted from it:
+      with nothing to measure against, the title container's extent is exactly as misleading, so
+      an empty nav stays at the top of the root where it has always been.
     """
     first_section = min((item["start"] for item in parser.headings), default=None)
 
     def usable(pos, own):
-        return (pos is not None and own
-                and (first_section is None or pos <= first_section)
+        return (pos is not None and own and first_section is not None and pos <= first_section
                 and not any(start < pos <= end for start, end in removals))
 
     title_end = parser.title_container_end
     if not usable(title_end, parser.title_own_close):
         return parser.root_start_end
     if (usable(parser.stats_end, parser.stats_own_close)
-            and parser.stats_start == _leading_ws_end(html, title_end)):
+            and _follows_after_removals(html, title_end, parser.stats_start, removals)):
         return parser.stats_end
     return title_end
 

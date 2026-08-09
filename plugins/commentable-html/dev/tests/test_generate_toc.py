@@ -481,8 +481,10 @@ class GenerateTocTests(unittest.TestCase):
                 self.assertEqual(out, generate_toc.rewrite_html(out))
 
     def test_rewrite_falls_back_when_the_stats_strip_never_closes(self):
+        # Not cm-skip, so the section after it is still listed and only the strip's missing end tag
+        # is under test.
         html = doc('<h1>Title</h1>\n'
-                   '<div class="cmh-doc-stats cm-skip" data-cmh-doc-stats="1">x\n<h2>Alpha</h2>')
+                   '<div class="cmh-doc-stats" data-cmh-doc-stats="1">x\n<h2>Alpha</h2>')
         out = generate_toc.rewrite_html(html)
         self.assertIn('<h1>Title</h1>\n<nav class="cm-toc"', out)
         self.assertEqual(out, generate_toc.rewrite_html(out))
@@ -529,6 +531,39 @@ class GenerateTocTests(unittest.TestCase):
                    "<h1>Title</h1>\n<h2>Alpha</h2>")
         out = generate_toc.rewrite_html(html)
         self.assertIn('<h1>Title</h1>\n<nav class="cm-toc"', out)
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_keeps_top_of_root_when_the_nav_lists_no_sections(self):
+        # With no section to measure against, a wrapper's extent is exactly as misleading as it is
+        # for a deck, so the empty nav stays where it has always been.
+        for body in ('<div class="wrap"><h1>Title</h1>\n<p>body</p></div>',
+                     '<div class="wrap"><h1>Title</h1>\n<h4>Minor</h4></div>',
+                     '<div class="wrap"><h1>Title</h1>\n'
+                     '<div class="cm-skip"><h2>Chrome</h2></div></div>'):
+            with self.subTest(body=body):
+                out = generate_toc.rewrite_html(doc(body))
+                self.assertIn(
+                    '<main id="commentRoot" data-comment-key="k">\n<nav class="cm-toc"', out)
+                self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_ignores_a_self_closed_stats_strip_that_swallows_the_sections(self):
+        # HTML ignores the trailing slash on a non-void tag, so the strip stays OPEN and its
+        # cm-skip swallows every heading after it; there is then no section to anchor above.
+        html = doc('<h1>Title</h1>\n<div class="cm-skip" data-cmh-doc-stats="1"/>\n<h2>Alpha</h2>')
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('<main id="commentRoot" data-comment-key="k">\n<nav class="cm-toc"', out)
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_moves_the_nav_past_a_stats_strip_it_used_to_precede(self):
+        # Adjacency is measured against what the rewrite LEAVES BEHIND, so the old nav between the
+        # title and the strip does not pin the document at title, nav, strip.
+        html = doc('<h1>Title</h1>\n<nav class="cm-toc"><ol><li>Old</li></ol></nav>\n'
+                   '<div class="cmh-doc-stats cm-skip" data-cmh-doc-stats="1">x</div>\n'
+                   "<h2>Alpha</h2>")
+        out = generate_toc.rewrite_html(html)
+        self.assertLess(out.index("<h1>Title</h1>"), out.index("data-cmh-doc-stats"))
+        self.assertLess(out.index("data-cmh-doc-stats"), out.index('<nav class="cm-toc"'))
+        self.assertEqual(out.count('class="cm-toc"'), 1)
         self.assertEqual(out, generate_toc.rewrite_html(out))
 
     def test_rewrite_ignores_a_stats_strip_that_does_not_follow_the_title(self):
