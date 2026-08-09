@@ -15,9 +15,11 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   Contents list now carries the number itself - the number the heading displays when the document
   numbers its own sections, else a hierarchical `1`, `1.1`, `1.2`, `2` computed from the heading
   depth - and the side menu reads that number instead of computing a second one, so both surfaces
-  are driven by one source. The ordered list drops its marker for a generated list only, so a
-  hand-authored `.cm-toc` that relies on it is untouched, and the author-numbered de-dup
-  (CMH-TOC-10) still holds.
+  are driven by one source. The number is a `cm-skip` span carrying its own separator, so re-baking
+  a document's Contents list adds no counted text and never moves an existing comment's anchor, and
+  the generated list suppresses its own ordered-list marker inline so a document whose embedded
+  layer predates this release is not double-numbered. A hand-authored `.cm-toc` is untouched and
+  keeps its browser marker, and the author-numbered de-dup (CMH-TOC-10) still holds.
 
 ## [1.829.0] - 2026-08-09
 

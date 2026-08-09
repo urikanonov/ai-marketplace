@@ -18567,10 +18567,13 @@ function _cmAssignTocLevels(items) {
 }
 // The number an author `.cm-toc` entry already DISPLAYS, or "" when it shows none. `generate_toc.py`
 // bakes the hierarchical number into the Contents entry, so reading it keeps the in-document list
-// and this menu on ONE number from one source instead of two algorithms that can disagree.
+// and this menu on ONE number from one source instead of two algorithms that can disagree. Bounded
+// by the nav the anchor lives in (as `_cmTocListDepth` is), so a `.cm-toc` nested inside a document
+// list item can never read a number from the item OUTSIDE it.
 function _cmTocEntryNumber(a) {
+  const nav = a.closest(".cm-toc");
   const li = a.closest("li");
-  if (!li) return "";
+  if (!nav || !li || !nav.contains(li)) return "";
   for (let n = li.firstElementChild; n; n = n.nextElementSibling) {
     if (n.classList && n.classList.contains("cm-toc-num")) return (n.textContent || "").replace(/\s+/g, " ").trim();
   }

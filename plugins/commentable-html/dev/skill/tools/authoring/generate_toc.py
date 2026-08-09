@@ -21,6 +21,12 @@ STATS_ATTR = "data-cmh-doc-stats"
 # A leading author section number (e.g. "1.", "3.1", "2)") that the ordered-list TOC would
 # otherwise double-number. Mirrors the runtime side-toc pattern in assets/js/82-toc.js.
 SECTION_NUMBER_RE = re.compile(r"^(?:\d+(?:\.\d+)*[.)]|\d+\.\d+(?:\.\d+)*)\s+")
+# The same shape, but ASCII-only, for READING the number a heading displays. JavaScript's `\d` is
+# ASCII while Python's also matches every Unicode decimal digit, so without this a full-width or
+# Devanagari "1." would be a section number here and not to the runtime - and because the number
+# source is a WHOLE-LIST decision, one such heading would flip an entire otherwise-unnumbered
+# document into doc-number mode and leave every other entry bare.
+LEADING_SECTION_NUMBER_RE = re.compile(r"^(?:[0-9]+(?:\.[0-9]+)*[.)]|[0-9]+\.[0-9]+(?:\.[0-9]+)*)\s+")
 SHADOW_ROOT_MODES = frozenset(("open", "closed"))
 
 
@@ -370,7 +376,7 @@ def _leading_section_number(text):
     Mirrors the runtime `_cmTocLeadingNumber()` in `assets/js/82-toc.js` so the in-document
     Contents list and the side navigation menu read the document's own numbering identically.
     """
-    match = SECTION_NUMBER_RE.match(text or "")
+    match = LEADING_SECTION_NUMBER_RE.match(text or "")
     if not match:
         return ""
     return match.group(0).strip().rstrip(".)")
@@ -420,18 +426,27 @@ def _render_nav(items):
     # numbers every `<li>` sequentially and so labelled a subsection as a top-level section while
     # the side menu called the same heading 3.1. The runtime reads this number instead of
     # computing a second one, so both surfaces show one number from one source (CMH-TOC-10).
+    #
+    # Two details are load-bearing. The number span is `cm-skip`, and it carries its own trailing
+    # space, so it adds NO text to the offset space a reader's comments are anchored in - baking a
+    # counted character into every entry would have shifted every comment saved below the contents
+    # list the first time a document's TOC was regenerated. And the marker suppression is repeated
+    # as an inline style rather than left to the layer stylesheet alone: the number lands in the
+    # CONTENT region while the rule lives in the layer, and `content_replace.py` -> `finalize.py`
+    # regenerates the nav WITHOUT swapping the layer, so a document carrying an older layer would
+    # otherwise render the marker and the baked number together ("1. 1.1 Signals").
     levels = _entry_levels(items)
     numbers = _entry_numbers(items, levels)
     lines = [
         '<nav class="cm-toc" aria-label="Table of contents">',
         '  <div class="cm-toc-title">Contents</div>',
-        '  <ol class="cm-toc-numbered">',
+        '  <ol class="cm-toc-numbered" style="list-style: none; padding-left: 0;">',
     ]
     for item, level, number in zip(items, levels, numbers):
         class_attr = ' class="is-sub"' if level > 1 else ""
         href = html_lib.escape("#" + item["id"], quote=True)
         text = html_lib.escape(_strip_section_number(item["text"]), quote=False)
-        num = ('<span class="cm-toc-num">%s</span> '
+        num = ('<span class="cm-toc-num cm-skip">%s </span>'
                % html_lib.escape(number, quote=False)) if number else ""
         lines.append('    <li%s>%s<a href="%s">%s</a></li>' % (class_attr, num, href, text))
     lines.extend(["  </ol>", "</nav>"])

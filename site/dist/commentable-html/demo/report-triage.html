@@ -1782,7 +1782,10 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot .cm-toc a:hover { text-decoration: underline; }
 /* A generated Contents list carries the same hierarchical number the side menu shows (CMH-TOC-10),
    so the ordered-list marker would print a SECOND, flat number beside it - and that flat number is
-   what labelled a subsection as a top-level section. An author's own `<ol>` list keeps its marker. */
+   what labelled a subsection as a top-level section. The generated markup repeats the suppression
+   as an inline style so a document whose embedded layer predates it is not double-numbered; this
+   rule is what still applies when a theme conversion drops the attribute. An author's own `<ol>`
+   list keeps its marker. */
 #commentRoot .cm-toc ol.cm-toc-numbered { list-style: none; padding-left: 0; }
 #commentRoot .cm-toc ol.cm-toc-numbered li.is-sub { padding-left: 1.4rem; }
 #commentRoot .cm-toc .cm-toc-num { color: var(--cp-text-muted); font-variant-numeric: tabular-nums; }
@@ -23070,10 +23073,13 @@ function _cmAssignTocLevels(items) {
 }
 // The number an author `.cm-toc` entry already DISPLAYS, or "" when it shows none. `generate_toc.py`
 // bakes the hierarchical number into the Contents entry, so reading it keeps the in-document list
-// and this menu on ONE number from one source instead of two algorithms that can disagree.
+// and this menu on ONE number from one source instead of two algorithms that can disagree. Bounded
+// by the nav the anchor lives in (as `_cmTocListDepth` is), so a `.cm-toc` nested inside a document
+// list item can never read a number from the item OUTSIDE it.
 function _cmTocEntryNumber(a) {
+  const nav = a.closest(".cm-toc");
   const li = a.closest("li");
-  if (!li) return "";
+  if (!nav || !li || !nav.contains(li)) return "";
   for (let n = li.firstElementChild; n; n = n.nextElementSibling) {
     if (n.classList && n.classList.contains("cm-toc-num")) return (n.textContent || "").replace(/\s+/g, " ").trim();
   }

@@ -41,14 +41,14 @@ class GenerateTocTests(unittest.TestCase):
     def test_missing_ids_get_stable_slugs(self):
         toc = generate_toc.build_toc(doc("<h2>Alpha Beta!</h2><h3>Child Topic</h3>"))
         self.assertIn('<a href="#alpha-beta">Alpha Beta!</a></li>', toc)
-        self.assertIn('<li class="is-sub"><span class="cm-toc-num">1.1</span> <a href="#child-topic">Child Topic</a></li>', toc)
+        self.assertIn('<li class="is-sub"><span class="cm-toc-num cm-skip">1.1 </span><a href="#child-topic">Child Topic</a></li>', toc)
 
     def test_duplicate_heading_texts_are_deduplicated(self):
         html = doc('<h2 id="alpha">Alpha</h2><h2>Alpha</h2><h3>Alpha</h3>')
         toc = generate_toc.build_toc(html)
         self.assertIn('<a href="#alpha">Alpha</a></li>', toc)
         self.assertIn('<a href="#alpha-2">Alpha</a></li>', toc)
-        self.assertIn('<li class="is-sub"><span class="cm-toc-num">2.1</span> <a href="#alpha-3">Alpha</a></li>', toc)
+        self.assertIn('<li class="is-sub"><span class="cm-toc-num cm-skip">2.1 </span><a href="#alpha-3">Alpha</a></li>', toc)
 
     def test_void_element_ids_are_reserved_for_generated_slugs(self):
         html = doc('<img id="alpha" /><h2>Alpha</h2>')
@@ -241,7 +241,10 @@ class GenerateTocTests(unittest.TestCase):
         toc = generate_toc.build_toc(html)
         self.assertIn("#inside", toc)
         self.assertNotIn("outside", toc)
-        self.assertNotIn("skip", toc)
+        # Not the substring "skip" any more: the generated number span is itself `cm-skip`, so
+        # assert the SKIPPED heading is absent rather than the letters it shares with that class.
+        self.assertNotIn("#skip", toc)
+        self.assertNotIn("Skip", toc)
 
     def test_heading_text_is_html_escaped(self):
         toc = generate_toc.build_toc(doc("<h2>Fish &amp; <em>Chips</em> &lt;ok&gt;</h2>"))
@@ -293,7 +296,7 @@ class GenerateTocTests(unittest.TestCase):
         # listed, so the listed entry carries its own text and not the h4's.
         toc = generate_toc.build_toc(doc('<h2 id="alpha">Alpha<h4>Deep</h4><h3 id="gamma">Gamma</h3>'))
         self.assertIn('<a href="#alpha">Alpha</a></li>', toc)
-        self.assertIn('<li class="is-sub"><span class="cm-toc-num">1.1</span> <a href="#gamma">Gamma</a></li>', toc)
+        self.assertIn('<li class="is-sub"><span class="cm-toc-num cm-skip">1.1 </span><a href="#gamma">Gamma</a></li>', toc)
         self.assertNotIn("Deep", toc)
 
     def test_a_heading_the_toc_did_not_capture_is_still_popped(self):
@@ -334,7 +337,7 @@ class GenerateTocTests(unittest.TestCase):
         self.assertNotIn("1. Executive", toc)
         self.assertNotIn("2. How", toc)
         # The ordered list is kept; it supplies the single number.
-        self.assertIn('<ol class="cm-toc-numbered">', toc)
+        self.assertIn('<ol class="cm-toc-numbered" style="list-style: none; padding-left: 0;">', toc)
 
     def test_generated_toc_numbers_subsections_hierarchically(self):
         # The Contents list carries the SAME number the side menu computes, so a subsection reads
@@ -342,12 +345,12 @@ class GenerateTocTests(unittest.TestCase):
         html = doc('<h2 id="a">Findings</h2><h3 id="b">Signals</h3>'
                    '<h3 id="c">Sampling</h3><h2 id="d">Next steps</h2>')
         toc = generate_toc.build_toc(html)
-        self.assertIn('<li><span class="cm-toc-num">1</span> <a href="#a">Findings</a></li>', toc)
-        self.assertIn('<li class="is-sub"><span class="cm-toc-num">1.1</span> <a href="#b">Signals</a></li>', toc)
-        self.assertIn('<li class="is-sub"><span class="cm-toc-num">1.2</span> <a href="#c">Sampling</a></li>', toc)
-        self.assertIn('<li><span class="cm-toc-num">2</span> <a href="#d">Next steps</a></li>', toc)
+        self.assertIn('<li><span class="cm-toc-num cm-skip">1 </span><a href="#a">Findings</a></li>', toc)
+        self.assertIn('<li class="is-sub"><span class="cm-toc-num cm-skip">1.1 </span><a href="#b">Signals</a></li>', toc)
+        self.assertIn('<li class="is-sub"><span class="cm-toc-num cm-skip">1.2 </span><a href="#c">Sampling</a></li>', toc)
+        self.assertIn('<li><span class="cm-toc-num cm-skip">2 </span><a href="#d">Next steps</a></li>', toc)
         # The list is marked so the stylesheet drops the marker that would be a second number.
-        self.assertIn('<ol class="cm-toc-numbered">', toc)
+        self.assertIn('<ol class="cm-toc-numbered" style="list-style: none; padding-left: 0;">', toc)
 
     def test_generated_toc_reuses_the_documents_own_heading_numbers(self):
         # When the headings display their own numbers, the Contents list shows those rather than a
@@ -355,9 +358,9 @@ class GenerateTocTests(unittest.TestCase):
         html = doc('<h2 id="a">10. Risk register</h2><h3 id="b">10.3 Vendor exposure</h3>'
                    '<h2 id="c">11. Rollout</h2>')
         toc = generate_toc.build_toc(html)
-        self.assertIn('<span class="cm-toc-num">10</span> <a href="#a">Risk register</a>', toc)
-        self.assertIn('<span class="cm-toc-num">10.3</span> <a href="#b">Vendor exposure</a>', toc)
-        self.assertIn('<span class="cm-toc-num">11</span> <a href="#c">Rollout</a>', toc)
+        self.assertIn('<span class="cm-toc-num cm-skip">10 </span><a href="#a">Risk register</a>', toc)
+        self.assertIn('<span class="cm-toc-num cm-skip">10.3 </span><a href="#b">Vendor exposure</a>', toc)
+        self.assertIn('<span class="cm-toc-num cm-skip">11 </span><a href="#c">Rollout</a>', toc)
 
     def test_generated_toc_leaves_a_partly_numbered_document_partly_numbered(self):
         # A WHOLE-LIST decision: once the document numbers its own headings, an entry that carries
@@ -365,8 +368,31 @@ class GenerateTocTests(unittest.TestCase):
         # one - the rule the side menu already follows.
         html = doc('<h2 id="a">3. Scope</h2><h2 id="b">Appendix</h2>')
         toc = generate_toc.build_toc(html)
-        self.assertIn('<span class="cm-toc-num">3</span> <a href="#a">Scope</a>', toc)
-        self.assertIn('<a href="#b">Appendix</a></li>', toc)
+        self.assertIn('<span class="cm-toc-num cm-skip">3 </span><a href="#a">Scope</a>', toc)
+        self.assertIn('<li><a href="#b">Appendix</a></li>', toc)
+        self.assertNotRegex(toc, r'cm-toc-num[^>]*>[^<]*</span><a href="#b"')
+
+    def test_generated_toc_number_is_offset_neutral(self):
+        # The number is `cm-skip` and carries its own trailing space, so it adds NO text to the
+        # offset space the runtime anchors comments in (assets/js/10-offsets.js skips `.cm-skip`).
+        # Without that, regenerating an older document's Contents list would insert a counted
+        # character into every entry and shift every comment saved below it.
+        html = doc('<h2 id="a">Findings</h2><h3 id="b">Signals</h3>')
+        toc = generate_toc.build_toc(html)
+        for number in re.findall(r'<span class="([^"]*)">[^<]*</span>', toc):
+            self.assertIn("cm-skip", number.split())
+        # No counted text between the skipped span and the link it numbers.
+        self.assertNotRegex(toc, r"</span>\s+<a href=")
+
+    def test_generated_toc_ignores_a_non_ascii_leading_number(self):
+        # JavaScript's `\d` is ASCII, so a full-width "1." is not a section number to the runtime.
+        # Reading it as one here would flip the WHOLE list into doc-number mode and leave every
+        # ASCII-unnumbered entry bare, a decision the side menu would never make.
+        self.assertEqual(generate_toc._leading_section_number("\uff11. Overview"), "")
+        html = doc('<h2 id="a">\uff11. Overview</h2><h2 id="b">Scope</h2>')
+        toc = generate_toc.build_toc(html)
+        self.assertIn('<span class="cm-toc-num cm-skip">1 </span>', toc)
+        self.assertIn('<span class="cm-toc-num cm-skip">2 </span><a href="#b">Scope</a>', toc)
 
     def test_leading_section_number_helper(self):
         self.assertEqual(generate_toc._leading_section_number("1. Alpha"), "1")
@@ -403,8 +429,8 @@ class GenerateTocTests(unittest.TestCase):
     def test_strip_toc_numbers_dedups_existing_ordered_toc(self):
         html = doc(
             '<nav class="cm-toc"><div class="cm-toc-title">Contents</div><ol>'
-            '<a href="#a">1. Executive summary</a></li>'
-            '<a href="#b">2. How the two source plans merge</a></li>'
+            '<li><a href="#a">1. Executive summary</a></li>'
+            '<li><a href="#b">2. How the two source plans merge</a></li>'
             "</ol></nav>"
             '<h2 id="a">1. Executive summary</h2><h2 id="b">2. How the two source plans merge</h2>'
         )
@@ -672,8 +698,8 @@ class GenerateTocTests(unittest.TestCase):
         self.assertEqual(once, doc(
             '<nav class="cm-toc" aria-label="Table of contents">\n'
             '  <div class="cm-toc-title">Contents</div>\n'
-            "  <ol class=\"cm-toc-numbered\">\n"
-            '    <li><span class="cm-toc-num">1</span> <a href="#real">Real</a></li>\n'
+            '  <ol class="cm-toc-numbered" style="list-style: none; padding-left: 0;">\n'
+            '    <li><span class="cm-toc-num cm-skip">1 </span><a href="#real">Real</a></li>\n'
             "  </ol>\n"
             '</nav>\n<h2 id="real">Real</h2>'))
         self.assertEqual(generate_toc.rewrite_html(once), once)

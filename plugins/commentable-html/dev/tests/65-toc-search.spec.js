@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import fs from "fs";
 import { execFileSync } from "child_process";
 import { stageContent, fileUrl, ready, addTextComment, PYTHON, SKILL } from "./helpers.js";
 
@@ -344,6 +345,63 @@ test.describe("side-TOC search and aria-current", () => {
     const marker = await page.locator("#commentRoot .cm-toc ol").first()
       .evaluate((el) => getComputedStyle(el).listStyleType);
     expect(marker).toBe("none");
+  });
+
+  test("a document that numbers its own headings keeps those numbers on both surfaces (CMH-TOC-10)", async ({ page }) => {
+    // The generator's second numbering path, end to end: when the headings display their own
+    // numbers the Contents list bakes THOSE (not a computed sequence), and the side menu shows the
+    // same string - so a document numbered 10 / 10.3 / 11 is never renumbered 1 / 1.1 / 2.
+    const BODY = `
+      <h1>Risk review</h1>
+      <h2 id="risk">10. Risk register</h2><p>lead</p>
+      <h3 id="vendor">10.3 Vendor exposure</h3><p>detail</p>
+      <h2 id="rollout">11. Rollout</h2><p>lead</p>`;
+    const { html } = stageContent(BODY, { key: "cmh-toc-docnum", source: "toc-docnum.html" });
+    execFileSync(PYTHON, ["tools/authoring/generate_toc.py", "--in-place", html], { cwd: SKILL, stdio: "pipe" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    const toc = page.locator("#cmSideToc");
+    await expect(toc).toBeVisible();
+    for (const [id, number] of [["risk", "10"], ["vendor", "10.3"], ["rollout", "11"]]) {
+      await expect(page.locator(`#commentRoot .cm-toc li:has(> a[href="#${id}"]) > .cm-toc-num`)).toHaveText(number);
+      await expect(tocNum(toc, id)).toHaveText(number);
+    }
+  });
+
+  test("baking the Contents numbers does not move an existing comment's anchor (CMH-TOC-10)", async ({ page }) => {
+    // The number lands inside `#commentRoot`, where a reader's comments are anchored by TEXT
+    // OFFSET - so it is `cm-skip` and carries its own separator, adding no counted character.
+    // Without that, re-baking an older document's Contents list (what `content_replace.py` ->
+    // `finalize.py` does) would shift every comment saved below it onto unrelated text.
+    const BODY = `
+      <h1>Quarterly review</h1>
+      <h2 id="one">Findings</h2><p id="lead">The anchored sentence lives here.</p>
+      <h3 id="one-a">Signals</h3><p>detail</p>`;
+    const { html } = stageContent(BODY, { key: "cmh-toc-anchor", source: "toc-anchor.html" });
+    // Build the canonical nav, then rewind it to the pre-1.829 shape (flat `<ol>`, no baked
+    // number) so the ONLY thing the re-bake below changes is the number itself.
+    execFileSync(PYTHON, ["tools/authoring/generate_toc.py", "--in-place", html], { cwd: SKILL, stdio: "pipe" });
+    const legacy = fs.readFileSync(html, "utf8")
+      .replace(/<ol class="cm-toc-numbered"[^>]*>/, "<ol>")
+      .replace(/<span class="cm-toc-num[^"]*">[^<]*<\/span> ?/g, "");
+    expect(legacy).not.toMatch(/<span class="cm-toc-num/);
+    fs.writeFileSync(html, legacy);
+
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await addTextComment(page, "#lead", "anchored before the numbers were baked");
+    const anchored = (await page.locator("#commentRoot mark.cm-hl").first().textContent()) || "";
+    expect(anchored.trim().length).toBeGreaterThan(10);
+
+    // Re-bake, then reload the SAME file so the stored offsets are replayed against the rewrite.
+    execFileSync(PYTHON, ["tools/authoring/generate_toc.py", "--in-place", html], { cwd: SKILL, stdio: "pipe" });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    await expect(page.locator(`#commentRoot .cm-toc li:has(> a[href="#one-a"]) > .cm-toc-num`)).toHaveText("1.1");
+    await expect(page.locator("#commentRoot mark.cm-hl")).toHaveCount(1);
+    await expect(page.locator("#commentRoot mark.cm-hl")).toHaveText(anchored);
   });
 
   test("the filter narrows the navigation to matching headings and keeps ancestor context (CMH-TOC-09)", async ({ page }) => {
