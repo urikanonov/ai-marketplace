@@ -350,19 +350,27 @@ function _focusPopoverEditButton() {
 
 // The dialog held focus and has just been closed (its comment deleted, or its edit saved), so focus
 // would otherwise fall to <body> and restart the keyboard order at the top of the page. Land the
-// reader on the comments list instead (a `tabindex="-1"` region), without scrolling the document.
+// reader on the comments list (a `tabindex="-1"` region), without scrolling the document.
 function _focusAfterPopoverClosed() {
-  const el = (typeof listEl !== "undefined") ? listEl : null;
-  if (el) {
+  // Every candidate is VERIFIED, because focusing a hidden or `inert` element is a silent no-op that
+  // would leave the reader on <body> after all: the panel is `inert` while collapsed (a mid-edit
+  // outside click is deliberately let through, so it can be collapsed from under the dialog), and a
+  // deck hides the panel AND the toolbar wholesale, leaving only its own corner control.
+  const deckToggle = document.querySelector(".cmh-deck-mode-toggle");
+  const targets = [
+    (typeof listEl !== "undefined") ? listEl : null,
+    document.getElementById("btnToggleSidebar"),
+    // Resolved by class, so exclude anything inside the annotated document: author content there is
+    // untrusted and could wear the same class (CMH-CORE-21). Where the layer anchors to `<body>`
+    // (CMH-CORE-15) the two cannot be told apart, but that mode has no deck either.
+    (deckToggle && (root === document.body || !root.contains(deckToggle))) ? deckToggle : null,
+  ];
+  for (let i = 0; i < targets.length; i++) {
+    const el = targets[i];
+    if (!el) continue;
     try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
     if (document.activeElement === el) return;
   }
-  // The panel can be HIDDEN by the time the dialog closes - a mid-edit outside click is deliberately
-  // let through, so the reviewer can collapse the panel while editing - and it is `inert` then, which
-  // makes focusing it a silent no-op that drops the reader on <body> after all. Land on the toggle
-  // that brings the panel back instead.
-  const toggle = document.getElementById("btnToggleSidebar");
-  if (toggle) { try { toggle.focus({ preventScroll: true }); } catch (e) {} }
 }
 
 function _renderCommentPopoverEdit(c) {

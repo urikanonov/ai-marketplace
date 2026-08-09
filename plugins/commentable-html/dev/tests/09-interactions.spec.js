@@ -233,10 +233,40 @@ test.describe("comment interactions", () => {
     await expect(bubble).toBeVisible();
 
     // ...and the other order is covered too: a panel opened OVER an already-raised bubble hides it
-    // rather than leaving it floating on top of the sheet.
-    await page.locator("#btnToggleSidebar").click();
-    await expect(page.locator("body")).toHaveClass(/sidebar-open/);
-    await expect(bubble).toBeHidden();
+    // rather than leaving it floating on top of the sheet. The panel is opened WITHOUT a pointer
+    // press: any mousedown off the bubble drops it on its own (`52-hover-bubble.js`), which would
+    // make this leg pass even if the layout-shift path stopped re-checking.
+    // The panel is opened WITHOUT a pointer press (any mousedown off the bubble drops it on its
+    // own) and the bubble's state is read SYNCHRONOUSLY in the same task, before the 240ms
+    // mouseout timer could hide it for an unrelated reason - either shortcut would make this leg
+    // pass even if the layout-shift path stopped re-checking.
+    await expect(bubble).toBeVisible();
+    const hiddenOnOpen = await page.evaluate(() => {
+      document.getElementById("btnToggleSidebar")
+        .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+      return { open: document.body.classList.contains("sidebar-open"), hidden: document.getElementById("hlBubble").hidden };
+    });
+    expect(hiddenOnOpen).toEqual({ open: true, hidden: true });
+
+    // The sheet is a FIXED element sized `width: 100%`, so it resolves against the initial
+    // containing block - `documentElement.clientWidth`, which EXCLUDES a classic scrollbar that
+    // `window.innerWidth` includes. Headless Chromium renders no scrollbar, so that gap is
+    // simulated here: reading the wrong width would leave the bubble stranded over the sheet on
+    // every desktop browser that still renders one.
+    await page.locator("#btnCloseSidebar").click();
+    await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await expect(bubble).toBeVisible();
+    const hiddenWithScrollbar = await page.evaluate(() => {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        get: () => document.documentElement.clientWidth + 15,
+      });
+      document.getElementById("btnToggleSidebar")
+        .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+      return { open: document.body.classList.contains("sidebar-open"), hidden: document.getElementById("hlBubble").hidden };
+    });
+    expect(hiddenWithScrollbar).toEqual({ open: true, hidden: true });
   });
 
   test("the comment bubble opens a comment on a link-wrapped highlight without navigating", async ({ page }) => {
@@ -252,6 +282,20 @@ test.describe("comment interactions", () => {
     await bubble.click();
     await expect(page.locator(".cm-card.active")).toContainText("on a link");
     expect(page.url()).toBe(url); // did NOT follow the link
+
+    // The CLICK path raises the bubble on that same link-wrapped highlight WITHOUT hijacking the
+    // link: the click keeps its default action (dispatchEvent returns true when nothing cancelled
+    // it), so the browser still follows the link exactly as it would with no comment layer. The
+    // event is dispatched rather than driven with the mouse so the assertion is about the default
+    // action, not about where the navigation lands.
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
+    const notCancelled = await page.evaluate(() => {
+      const mark = document.querySelector('a[data-testid="sample-link"] mark.cm-hl');
+      return mark.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    });
+    expect(notCancelled).toBe(true);
+    await expect(bubble).toBeVisible();
   });
 
   test("CMH-CORE-16: the bubble opens an inline comment dialog with an Edit button and still opens the sidebar", async ({ page }) => {

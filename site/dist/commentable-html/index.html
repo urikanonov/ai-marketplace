@@ -505,7 +505,7 @@
             <div class="group-label">Fixed</div>
             <ul>
               <li>The <code>Open comment</code> bubble is no longer left floating over the comments panel when that panel is a full-width sheet over the document (a phone): the highlight it points at is hidden underneath and the bubble paints above the panel, so it would be a disc pointing at nothing that also swallowed taps meant for the card below it. The bubble now hides in that state, whichever order the two happen in. On a phone the highlight click therefore surfaces the comment as its CARD in the panel.</li>
-              <li>Saving an in-place dialog edit with the comments panel collapsed no longer drops focus on <code>&lt;body&gt;</code>. A mid-edit outside click is deliberately let through, so the reviewer can collapse the panel while editing, and a collapsed panel is <code>inert</code> - which made focusing the comments list a silent no-op. Focus now falls back to the toggle that brings the panel back.</li>
+              <li>Saving an in-place dialog edit with the comments panel collapsed no longer drops focus on <code>&lt;body&gt;</code>. A mid-edit outside click is deliberately let through, so the reviewer can collapse the panel while editing, and a collapsed panel is <code>inert</code> - which made focusing the comments list a silent no-op. Focus now falls back to the toggle that brings the panel back, and then to a deck&#x27;s own corner control (a deck hides the panel AND the toolbar wholesale), each landing verified to have taken focus before the next is tried.</li>
             </ul>
           </div>
           <div class="release">

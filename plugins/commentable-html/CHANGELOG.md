@@ -31,7 +31,9 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 - Saving an in-place dialog edit with the comments panel collapsed no longer drops focus on
   `<body>`. A mid-edit outside click is deliberately let through, so the reviewer can collapse the
   panel while editing, and a collapsed panel is `inert` - which made focusing the comments list a
-  silent no-op. Focus now falls back to the toggle that brings the panel back.
+  silent no-op. Focus now falls back to the toggle that brings the panel back, and then to a deck's
+  own corner control (a deck hides the panel AND the toolbar wholesale), each landing verified to
+  have taken focus before the next is tried.
 
 ## [1.824.0] - 2026-08-09
 
@@ -52,7 +54,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   end tag or end of input closed, one wrapping or being `#commentRoot` - still has its headings
   listed, so the tool never silently writes an empty table of contents over a document. The edit
   applier now also refuses two overlapping spans instead of silently writing bad bytes.
-
 
 ## [1.823.0] - 2026-08-09
 

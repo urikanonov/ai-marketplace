@@ -8,10 +8,14 @@ let hlBubbleCid = null, hlBubbleMark = null, hlBubbleHideTimer = null;
 // while the bubble floats above it (z-index 210 vs 90), so the highlight it points at is hidden
 // underneath: the bubble would be an orange disc stranded over the panel, intercepting taps meant
 // for the card below it. Treat that as "the anchor is not visible" and hide, the same answer
-// `_clipAwareRect` gives for an anchor scrolled out of view.
+// `_clipAwareRect` gives for an anchor scrolled out of view. The reference width is
+// `documentElement.clientWidth`, the SAME box the sheet's `width: 100%` resolves against (a fixed
+// element sizes to the initial containing block): `window.innerWidth` includes a classic scrollbar
+// that the sheet does not, so comparing against it would miss the sheet by the scrollbar's width on
+// every desktop browser that still renders one.
 function _sidebarCoversDocument() {
   if (!sidebar || !document.body.classList.contains("sidebar-open")) return false;
-  const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+  const vw = document.documentElement.clientWidth || window.innerWidth || 0;
   return vw > 0 && sidebar.getBoundingClientRect().width >= vw - 1;
 }
 function positionHlBubble(mark) {
