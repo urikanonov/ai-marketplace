@@ -249,53 +249,11 @@ function _cmTocLeadingNumber(text) {
   const m = /^((?:\d+(?:\.\d+)*[.)]|\d+\.\d+(?:\.\d+)*))\s+/.exec(String(text || ""));
   return m ? m[1].replace(/[.)]$/, "") : "";
 }
-// Each entry's OWN text: its heading plus the prose that follows it, up to the next entry. Reading
-// the whole enclosing <section> instead makes every entry of a single-wrapper document share one
-// haystack, so the filter matches everything and narrows nothing. Text nodes are joined with no
-// separator (what textContent would give) so inline markup cannot split a word in two.
-function _cmTocSkipNode(n) {
-  // Foreign-namespace elements (an inline SVG's <style>/<script>) report a lowercase name, so read
-  // localName and compare case-insensitively rather than trusting HTML's uppercase tagName.
-  if (/^(script|style|template)$/.test((n.localName || n.tagName || "").toLowerCase())) return true;
-  return !!(n.classList && (n.classList.contains("cm-skip") || n.classList.contains("cm-toc")));
-}
-function _cmTocPlainText(el) {
-  const out = [];
-  (function walk(node) {
-    for (let n = node.firstChild; n; n = n.nextSibling) {
-      if (n.nodeType === 3) { out.push(n.nodeValue); continue; }
-      if (n.nodeType !== 1 || _cmTocSkipNode(n)) continue;
-      walk(n);
-    }
-  })(el);
-  return out.join("");
-}
-function _cmTocOwnText(root, items) {
-  const index = new Map();
-  items.forEach(function (it, i) {
-    if (!it.el) return;
-    const at = index.get(it.el);
-    if (at) at.push(i); else index.set(it.el, [i]); // two entries may point at the same element
-  });
-  const bufs = items.map(function () { return []; });
-  let cur = index.get(root) || null;
-  (function walk(node) {
-    for (let n = node.firstChild; n; n = n.nextSibling) {
-      if (n.nodeType === 3) { if (cur) for (let k = 0; k < cur.length; k++) bufs[cur[k]].push(n.nodeValue); continue; }
-      if (n.nodeType !== 1 || _cmTocSkipNode(n)) continue;
-      const at = index.get(n);
-      if (at) cur = at;
-      walk(n);
-    }
-  })(root);
-  return items.map(function (it, i) {
-    // An entry the walk never attributed text to - one outside the content root, or one inside a
-    // subtree the walk skips - falls back to its own text so it still filters on its body rather
-    // than its label alone. An entry that CONTAINS the root is excluded: its text is the whole
-    // document, which would make that row match every query.
-    if (!bufs[i].length && it.el && !(it.el.contains && it.el.contains(root))) return _cmTocPlainText(it.el);
-    return bufs[i].join("");
-  });
+// Both sides of the section filter go through one normalizer: a query and a title match on their
+// visible words, so surrounding whitespace and the exact run of whitespace inside a title (source
+// line breaks and indentation) never decide whether an entry is listed.
+function _cmTocNormalize(text) {
+  return String(text == null ? "" : text).replace(/\s+/g, " ").trim().toLowerCase();
 }
 function setupCollapsibleSections() {
   _cmSectionToggles.length = 0;
@@ -399,6 +357,17 @@ function setupSideToc() {
     });
   }
   const docNumbered = !authorNumbered && items.some(function (it) { return !!it.docNum; });
+  // The title each row SHOWS, resolved once so the row and the filter can never disagree. An author
+  // nav link with no text of its own (an icon-only link) has no title to show, so fall back to the
+  // heading it targets, minus the number already rendered in its own span - resolved here, AFTER the
+  // numbering mode is decided, so a heading-derived title can never flip `authorNumbered` for the
+  // whole document or suppress another entry's number.
+  items.forEach(function (it) {
+    it.title = it.label || (_cmHeadingDepth(it.el) ? cmhHeadingText(it.el) : "");
+    if (it.docNum && _cmTocLeadingNumber(it.title) === it.docNum) {
+      it.title = it.title.slice(it.docNum.length).replace(/^[.)]?\s*/, "");
+    }
+  });
   const counters = [];
   items.forEach(function (it) {
     const li = document.createElement("li");
@@ -408,7 +377,7 @@ function setupSideToc() {
     const a = document.createElement("a");
     a.href = "#" + it.id;
     if (authorNumbered) {
-      a.textContent = it.label;
+      a.textContent = it.title;
     } else {
       // Section numbers follow the heading hierarchy to any depth: 1, 1.1, 1.1.1, 1.2, 2...
       let num = it.docNum || "";
@@ -418,8 +387,8 @@ function setupSideToc() {
         counters[it.level - 1]++;
         num = counters.join(".");
       }
-      if (num) a.innerHTML = '<span class="cm-toc-num">' + escapeHtml(num) + '</span> ' + escapeHtml(it.label);
-      else a.textContent = it.label;
+      if (num) a.innerHTML = '<span class="cm-toc-num">' + escapeHtml(num) + '</span> ' + escapeHtml(it.title);
+      else a.textContent = it.title;
     }
     li.appendChild(a);
     list.appendChild(li);
@@ -461,7 +430,7 @@ function setupSideToc() {
       _cmReviewFilterBtns[pair[0]] = b;
       reviewFilter.appendChild(b);
     });
-  // A11: filter the visible sections (and their menu entries) by heading + body text.
+  // A11: filter the visible sections (and their menu entries) by section title.
   // Scope the section lookup to the content root at BOTH ends: an author TOC may target an element
   // outside it, and even an in-root target's nearest `<section>` ancestor can be a host-page one
   // (when the root sits inside the page's own section). The runtime must never write a filter class
@@ -471,12 +440,13 @@ function setupSideToc() {
     const s = it.el.closest("section");
     return (s && s !== root && root.contains(s)) ? s : null;
   }
-  // Cache each item's lowercase haystack (label + the text that entry OWNS) once, so typing does
-  // not re-read textContent on each keystroke - and so a query narrows to the entries that really
-  // carry it rather than to every entry that shares an enclosing <section>.
-  const ownText = _cmTocOwnText(root, items);
-  items.forEach(function (it, i) {
-    it._cmHay = ((it.label || "") + " " + (ownText[i] || "")).toLowerCase();
+  // Cache each item's normalized lowercase TITLE once, so typing does not re-read it on each
+  // keystroke. What a query sees is exactly what the row shows: the resolved title plus the number
+  // the DOCUMENT itself supplies, never the sequential one the runtime computes for a document that
+  // has none (that number is chrome, not title text). Body prose is not part of a title, and the
+  // review status mark is a CSS pseudo-element, so neither can reach a query.
+  items.forEach(function (it) {
+    it._cmHay = _cmTocNormalize((it.docNum ? it.docNum + " " : "") + it.title);
   });
   // Every <section> any entry lives in, with the entries it holds: a section is hidden only when
   // EVERY entry inside it is filtered out, so a single wrapper section around the whole document
@@ -498,7 +468,7 @@ function setupSideToc() {
     }
   });
   function applyTocFilter(q) {
-    const query = String(q || "").trim().toLowerCase();
+    const query = _cmTocNormalize(q);
     const vis = [];
     for (let i = 0; i < items.length; i++) vis[i] = !query || items[i]._cmHay.indexOf(query) !== -1;
     // Keep the ancestors of a match listed so a matching subsection still shows where it lives.

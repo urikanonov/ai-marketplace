@@ -4,6 +4,27 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.829.0] - 2026-08-09
+
+### Changed
+
+- The side-menu **Filter sections** box now matches SECTION TITLES ONLY. It used to search each
+  entry's heading PLUS the prose that entry owns, so a query that appeared nowhere in a title -
+  a word buried in one paragraph - still kept that section and its menu entry listed, which made
+  the filter noisy and surprising for a reader who expects it to narrow the list of titles.
+  Matching is still case-insensitive, and both the query and the title are now compared with
+  their internal whitespace runs collapsed and trimmed, so a heading broken across source lines
+  matches the words a reader actually sees. The title a query sees is what the menu shows: the
+  entry label plus the number the DOCUMENT itself supplies, so typing `10.3` still finds the row
+  that reads `10.3 Vendor exposure` whether the author left that number in the label or
+  `generate_toc` moved it into its own span. The sequential number the runtime computes for a
+  document that carries none is chrome rather than title text and never matches, and the review
+  status mark is a CSS pseudo-element, so it cannot leak in either. The row and the filter now
+  resolve one title per entry, so a query can never surface a row whose title the reader cannot
+  read: an author nav link with no text of its own falls back to the text of the heading it
+  targets (minus a leading number the menu already shows in its own span), and that same title is
+  what the row renders. (CMH-TOC-09)
+
 ## [1.828.0] - 2026-08-09
 
 ### Fixed

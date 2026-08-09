@@ -121,21 +121,27 @@ test.describe("side-TOC search and aria-current", () => {
     await expect(valid).not.toContainText("Duplicate hidden");
   });
 
-  test("the search box filters visible sections by heading and body text, Escape clears (CMH-TOC-09)", async ({ page }) => {
+  test("the search box filters visible sections by section title only, Escape clears (CMH-TOC-09)", async ({ page }) => {
     const toc = await openDoc(page);
     const search = toc.locator(".cm-side-toc-search");
     await expect(search).toBeVisible();
 
-    // A body-only word (in Gamma) hides the other sections and their TOC entries.
-    await search.fill("zebra");
+    // A heading word narrows to its own section, hiding the others and their TOC entries, and the
+    // comparison is case-insensitive.
+    await search.fill("gamma");
     await expect(sec(page, "gamma")).toBeVisible();
     await expect(sec(page, "alpha")).toBeHidden();
     await expect(sec(page, "beta")).toBeHidden();
     await expect(toc.locator('.cm-side-toc-list a[href="#gamma"]')).toBeVisible();
     await expect(toc.locator('.cm-side-toc-list a[href="#alpha"]')).toBeHidden();
 
-    // A heading word matches too.
-    await search.fill("Beta");
+    // A word that appears ONLY in a section's body matches nothing: the reader is filtering the
+    // list of section TITLES, so body prose must never keep a section listed.
+    await search.fill("zebra");
+    await expect(toc.locator(".cm-side-toc-list li:not(.cm-toc-li-hidden)")).toHaveCount(0);
+
+    // Surrounding whitespace is ignored, and so is the exact run of whitespace inside a title.
+    await search.fill("  beta   DETAILS ");
     await expect(sec(page, "beta")).toBeVisible();
     await expect(sec(page, "alpha")).toBeHidden();
 
@@ -147,9 +153,88 @@ test.describe("side-TOC search and aria-current", () => {
     await expect(sec(page, "gamma")).toBeVisible();
   });
 
+  test("the filter ignores the numbering prefix and the review mark the menu renders (CMH-TOC-09)", async ({ page }) => {
+    // The menu renders a computed 1.1-style number in its own span and the review status mark as a
+    // CSS pseudo-element (CMH-REVIEW-11). Neither belongs to the section title, so neither may
+    // match - otherwise typing a number would filter on chrome the document never wrote.
+    const PLAIN = `
+      <section><h2 id="one">Findings</h2><p>lead</p></section>
+      <section><h3 id="one-a">Signals</h3><p>detail</p></section>
+      <section><h2 id="two">Next steps</h2><p>lead</p></section>`;
+    const toc = await openNested(page, PLAIN, "cmh-toc-num-nomatch");
+    await expect(tocNum(toc, "one-a")).toHaveText("1.1");
+    await toc.locator(".cm-side-toc-search").fill("1.1");
+    await expect(toc.locator(".cm-side-toc-list li:not(.cm-toc-li-hidden)")).toHaveCount(0);
+    // The title itself still matches, so the entry is reachable by what the document says.
+    await toc.locator(".cm-side-toc-search").fill("signals");
+    await expect(tocRow(toc, "one-a")).toBeVisible();
+    await expect(tocRow(toc, "two")).toBeHidden();
+
+    // With the review UI active each entry also carries a single-character status mark. It is a
+    // pseudo-element, not link text, so a query for it matches nothing (no title here holds an "r").
+    await toc.locator(".cm-side-toc-search").fill("");
+    const badge = page.locator("#one .cmh-review-badge");
+    await expect(badge).toBeAttached();
+    await badge.click({ force: true });
+    await expect(page.locator("#cmSideToc .cmh-toc-mark").first()).toBeAttached();
+    await toc.locator(".cm-side-toc-search").fill("r");
+    await expect(toc.locator(".cm-side-toc-list li:not(.cm-toc-li-hidden)")).toHaveCount(0);
+  });
+
+  test("the number the document itself supplies is part of the title a query matches (CMH-TOC-09)", async ({ page }) => {
+    // The menu row and the heading both read "10.3 Vendor exposure", so typing 10.3 must find it.
+    // The number lives in its own span only because generate_toc strips it from the nav label
+    // (CMH-TOC-10); it is the DOCUMENT's own number, unlike the sequential one the runtime computes.
+    const toc = await openNested(page, NESTED, "cmh-toc-docnum-match");
+    await expect(tocNum(toc, "vendor")).toHaveText("10.3");
+    await toc.locator(".cm-side-toc-search").fill("10.3");
+    await expect(tocRow(toc, "vendor")).toBeVisible();
+    // The match is a substring one, as it is for any other title text, so the 10.3.1 subsection
+    // stays listed under it; an unrelated top-level number does not.
+    await expect(tocRow(toc, "audit")).toBeVisible();
+    await expect(tocRow(toc, "mitigation")).toBeHidden();
+    await expect(tocRow(toc, "rollout")).toBeHidden();
+  });
+
+  test("an icon-only nav entry still matches its heading's own title (CMH-TOC-09)", async ({ page }) => {
+    // An author nav link with no text of its own has no label to show or match, so it falls back to
+    // the title its heading shows - the row and the filter resolve the same title, so a query can
+    // never surface a row whose title the reader cannot read.
+    const ICON_NAV = `
+      <nav class="cm-toc"><ol>
+        <li><a href="#i-one"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt=""></a></li>
+        <li><a href="#i-two">Rollout</a></li>
+      </ol></nav>
+      <section><h2 id="i-one">10.3 Vendor exposure</h2><p>Third-party surface notes.</p></section>
+      <section><h2 id="i-two">Rollout</h2><p>Sequencing notes.</p></section>`;
+    const toc = await openNested(page, ICON_NAV, "cmh-toc-icon-nav");
+    // The row reads the heading's title, with the document's number in its own span (not twice).
+    await expect(tocNum(toc, "i-one")).toHaveText("10.3");
+    await expect(tocLink(toc, "i-one")).toHaveText("10.3 Vendor exposure");
+    await toc.locator(".cm-side-toc-search").fill("vendor");
+    await expect(tocRow(toc, "i-one")).toBeVisible();
+    await expect(tocRow(toc, "i-two")).toBeHidden();
+    // The number the row shows matches too, and it is stored once - not "10.3 10.3".
+    await toc.locator(".cm-side-toc-search").fill("10.3 vendor");
+    await expect(tocRow(toc, "i-one")).toBeVisible();
+  });
+
+  test("a title broken across source lines matches a normally spaced query (CMH-TOC-09)", async ({ page }) => {
+    // Heading text carries the source's own line breaks and indentation. A reader types the words
+    // they see, so both sides of the comparison collapse their whitespace runs.
+    const WRAPPED = `
+      <section><h2 id="w-one">Vendor
+            exposure</h2><p>lead</p></section>
+      <section><h2 id="w-two">Rollout</h2><p>lead</p></section>`;
+    const toc = await openNested(page, WRAPPED, "cmh-toc-wrapped-title");
+    await toc.locator(".cm-side-toc-search").fill("vendor exposure");
+    await expect(tocRow(toc, "w-one")).toBeVisible();
+    await expect(tocRow(toc, "w-two")).toBeHidden();
+  });
+
   test("navigating to a filtered-out section reveals it (CMH-TOC-09)", async ({ page }) => {
     const toc = await openDoc(page);
-    await toc.locator(".cm-side-toc-search").fill("zebra");
+    await toc.locator(".cm-side-toc-search").fill("Gamma");
     await expect(sec(page, "alpha")).toBeHidden();
     // A deep-link to a hidden section must reveal it rather than scroll to nothing.
     await page.evaluate(() => { location.hash = "#alpha"; });
@@ -167,7 +252,7 @@ test.describe("side-TOC search and aria-current", () => {
     const toc = await openDoc(page);
     // Comment on text in Gamma, then filter to a query that matches only Alpha (hiding Gamma).
     await addTextComment(page, "#gp", "note on cherry");
-    await toc.locator(".cm-side-toc-search").fill("Apple");
+    await toc.locator(".cm-side-toc-search").fill("Alpha");
     await expect(sec(page, "gamma")).toBeHidden();
     // Activating the comment card must clear the filter so the highlight is laid out and reachable.
     await page.locator(".cm-card").first().click();
@@ -246,13 +331,18 @@ test.describe("side-TOC search and aria-current", () => {
     // The wrapper section still holds a visible entry, so it is never hidden out from under it.
     await expect(page.locator("#wrap")).toBeVisible();
 
-    // Body text still matches, and it belongs to the heading that owns it - not to every
-    // heading that happens to share the wrapper.
-    await search.fill("controls");
+    // A title word belonging to one heading matches only that heading - not every heading that
+    // happens to share the wrapper section.
+    await search.fill("Mitigation");
     await expect(tocRow(toc, "mitigation")).toBeVisible();
     await expect(tocRow(toc, "risk")).toBeVisible();
     await expect(tocRow(toc, "audit")).toBeHidden();
     await expect(tocRow(toc, "rollout")).toBeHidden();
+
+    // A word that lives only in that heading's prose matches nothing at all, even though every
+    // heading here shares one wrapper <section>.
+    await search.fill("Controls");
+    await expect(toc.locator(".cm-side-toc-list li:not(.cm-toc-li-hidden)")).toHaveCount(0);
 
     // Clearing restores the complete tree.
     await search.press("Escape");
@@ -263,7 +353,10 @@ test.describe("side-TOC search and aria-current", () => {
   });
 
   test("a deep match keeps its ancestors even when a shallower entry matches later (CMH-TOC-09)", async ({ page }) => {
-    const toc = await openNested(page, NESTED, "cmh-toc-two-matches");
+    // The deepest and the shallowest entry share a word in their TITLES.
+    const SHARED = NESTED.replaceAll("Audit cadence", "Audit cadence milestone")
+      .replaceAll("Rollout", "Rollout milestone");
+    const toc = await openNested(page, SHARED, "cmh-toc-two-matches");
     // Two matches at different levels, the DEEPER one first in the list: the level-3 match must
     // still be listed under its own parents, not stranded with no context by the later level-1 match.
     await toc.locator(".cm-side-toc-search").fill("milestone");
@@ -276,12 +369,14 @@ test.describe("side-TOC search and aria-current", () => {
 
   test("a match on a parent heading narrows away its non-matching subsections (CMH-TOC-09)", async ({ page }) => {
     const toc = await openNested(page, NESTED, "cmh-toc-parent-match");
-    await toc.locator(".cm-side-toc-search").fill("Sequencing");
-    await expect(tocRow(toc, "rollout")).toBeVisible();
-    await expect(tocRow(toc, "risk")).toBeHidden();
+    await toc.locator(".cm-side-toc-search").fill("Risk register");
+    // The parent itself matches; its subsections do not, so they are narrowed away (ancestors of a
+    // match are kept, descendants are not).
+    await expect(tocRow(toc, "risk")).toBeVisible();
     await expect(tocRow(toc, "vendor")).toBeHidden();
     await expect(tocRow(toc, "audit")).toBeHidden();
     await expect(tocRow(toc, "mitigation")).toBeHidden();
+    await expect(tocRow(toc, "rollout")).toBeHidden();
   });
 
   test("a query that matches nothing narrows the menu without blanking the document (CMH-TOC-09)", async ({ page }) => {
@@ -296,7 +391,7 @@ test.describe("side-TOC search and aria-current", () => {
 
   test("a deep link to a filtered-out entry inside a visible wrapper reveals it (CMH-TOC-09)", async ({ page }) => {
     const toc = await openNested(page);
-    await toc.locator(".cm-side-toc-search").fill("Sequencing");
+    await toc.locator(".cm-side-toc-search").fill("Rollout");
     await expect(tocRow(toc, "mitigation")).toBeHidden();
     await page.evaluate(() => { location.hash = "#mitigation"; });
     await expect(toc.locator(".cm-side-toc-search")).toHaveValue("");
