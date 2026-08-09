@@ -21,6 +21,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   save raises (the storage manager or an actionable toast on a quota failure) comes up with nothing
   in front of it.
 
+### Fixed
+
+- The `Open comment` bubble is no longer left floating over the comments panel when that panel is a
+  full-width sheet over the document (a phone): the highlight it points at is hidden underneath and
+  the bubble paints above the panel, so it would be a disc pointing at nothing that also swallowed
+  taps meant for the card below it. The bubble now hides in that state, whichever order the two
+  happen in. On a phone the highlight click therefore surfaces the comment as its CARD in the panel.
+- Saving an in-place dialog edit with the comments panel collapsed no longer drops focus on
+  `<body>`. A mid-edit outside click is deliberately let through, so the reviewer can collapse the
+  panel while editing, and a collapsed panel is `inert` - which made focusing the comments list a
+  silent no-op. Focus now falls back to the toggle that brings the panel back.
+
 ## [1.824.0] - 2026-08-09
 
 ### Fixed
@@ -40,6 +52,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   end tag or end of input closed, one wrapping or being `#commentRoot` - still has its headings
   listed, so the tool never silently writes an empty table of contents over a document. The edit
   applier now also refuses two overlapping spans instead of silently writing bad bytes.
+
 
 ## [1.823.0] - 2026-08-09
 

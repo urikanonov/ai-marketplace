@@ -204,6 +204,41 @@ test.describe("comment interactions", () => {
     await expect(bubble).toBeHidden();
   });
 
+  test("CMH-CORE-13: a highlight click never strands the bubble over the full-width comments sheet", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "phone sheet bubble");
+    const cid = (await allCids(page))[0];
+    // On a phone the panel is a full-width sheet OVER the document, and the bubble paints above it,
+    // so a bubble raised for a highlight hidden underneath would point at nothing and swallow taps
+    // meant for the card below it.
+    await page.setViewportSize({ width: 390, height: 780 });
+    const bubble = page.locator("#hlBubble");
+    const clickMark = () => page.evaluate((id) => {
+      document.querySelector(`mark.cm-hl[data-cid="${id}"]`)
+        .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    }, cid);
+
+    // The click itself opens the panel (the existing sidebar jump), so the sheet is up by the time
+    // the bubble would be raised: on a phone the reader gets the card in the sheet rather than a
+    // bubble stranded over it.
+    await clickMark();
+    await expect(page.locator("body")).toHaveClass(/sidebar-open/);
+    await expect(page.locator(`.cm-card.active[data-cid="${cid}"]`)).toHaveCount(1);
+    await expect(bubble).toBeHidden();
+
+    // With the sheet closed the highlight is reachable again and raises the bubble as usual...
+    await page.locator("#btnCloseSidebar").click();
+    await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await expect(bubble).toBeVisible();
+
+    // ...and the other order is covered too: a panel opened OVER an already-raised bubble hides it
+    // rather than leaving it floating on top of the sheet.
+    await page.locator("#btnToggleSidebar").click();
+    await expect(page.locator("body")).toHaveClass(/sidebar-open/);
+    await expect(bubble).toBeHidden();
+  });
+
   test("the comment bubble opens a comment on a link-wrapped highlight without navigating", async ({ page }) => {
     await openKitchenSink(page);
     // The first inline-soup paragraph contains a real <a>; the highlight wraps its text.
@@ -340,6 +375,48 @@ test.describe("comment interactions", () => {
     await page.locator("#hlBubble").click();
     await expect(pop.locator(".cm-comment-popover-note")).toContainText("saved and closed");
     await expect(pop.locator(".cm-comment-popover-meta")).toContainText("(edited)");
+
+    // With the dialog open on its NOTE view, a click on another highlight is swallowed by the
+    // capture-phase dismiss, so it closes the dialog WITHOUT raising that highlight's bubble
+    // (CMH-CORE-13) - one click does one thing.
+    await addTextComment(page, "#commentRoot section:nth-of-type(3) p", "the other note");
+    const other = (await storedComments(page)).find((c) => c.note === "the other note").id;
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    await expect(pop).toBeVisible();
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 0)));
+    await page.evaluate((id) => {
+      document.querySelector(`mark.cm-hl[data-cid="${id}"]`)
+        .dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 }));
+    }, other);
+    await expect(pop).toHaveCount(0);
+    await expect(page.locator("#hlBubble")).toBeHidden();
+  });
+
+  test("CMH-CORE-16: a save with the panel collapsed lands focus on the panel toggle, not <body>", async ({ page }) => {
+    await openKitchenSink(page);
+    await addTextComment(page, "#commentRoot section:nth-of-type(2) p", "collapse then save");
+    const cid = (await allCids(page))[0];
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    await pop.locator('[data-act="edit"]').click();
+    await pop.locator(".cm-comment-popover-edit textarea").fill("saved with the panel hidden");
+
+    // A mid-edit outside click is deliberately let through, so the reviewer CAN collapse the panel
+    // while editing; a collapsed panel is `inert`, which makes focusing the comments list a silent
+    // no-op that would drop the reader on <body>.
+    await page.locator("#btnCloseSidebar").click();
+    await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
+    await expect(pop).toBeVisible();
+    await pop.locator('[data-act="edit-save"]').click();
+    await expect(pop).toHaveCount(0);
+    expect((await storedComments(page))[0].note).toBe("saved with the panel hidden");
+    expect(await page.evaluate(() => {
+      const a = document.activeElement;
+      return a && a.id ? a.id : (a ? a.tagName : "none");
+    })).toBe("btnToggleSidebar");
   });
 
   test("CMH-CORE-18: the dialog fits a short viewport and keeps Save and Cancel reachable", async ({ page }) => {

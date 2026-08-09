@@ -353,8 +353,16 @@ function _focusPopoverEditButton() {
 // reader on the comments list instead (a `tabindex="-1"` region), without scrolling the document.
 function _focusAfterPopoverClosed() {
   const el = (typeof listEl !== "undefined") ? listEl : null;
-  if (!el) return;
-  try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
+  if (el) {
+    try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
+    if (document.activeElement === el) return;
+  }
+  // The panel can be HIDDEN by the time the dialog closes - a mid-edit outside click is deliberately
+  // let through, so the reviewer can collapse the panel while editing - and it is `inert` then, which
+  // makes focusing it a silent no-op that drops the reader on <body> after all. Land on the toggle
+  // that brings the panel back instead.
+  const toggle = document.getElementById("btnToggleSidebar");
+  if (toggle) { try { toggle.focus({ preventScroll: true }); } catch (e) {} }
 }
 
 function _renderCommentPopoverEdit(c) {
