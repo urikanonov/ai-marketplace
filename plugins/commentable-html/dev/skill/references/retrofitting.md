@@ -101,6 +101,12 @@ When a newer version of the skill ships, upgrading a deployed HTML is mechanical
 3. **For HANDLED IDS and EMBEDDED COMMENTS:** keep the existing regions intact. The agent owns the HANDLED IDS array and **Export as Shareable** owns the EMBEDDED COMMENTS snapshot; the skill never overwrites them on upgrade.
 4. **Leave the `#commentRoot` element alone.** Its `data-*` attributes carry the document's per-instance config, so `data-comment-key` continues to point at the same `localStorage` bucket and comments survive the upgrade.
 
+Because an upgrade never rewrites `#commentRoot`, a `nav.cm-toc` a PRE-1.829 generator produced keeps its
+flat browser list marker, so its numbers still disagree with the runtime side menu on a document with
+subsections. Re-run `tools/authoring/generate_toc.py --in-place <file>` (or `finalize.py --toc`) once after
+upgrading such a document to bake the shared number in; that re-bake is offset-neutral, so it does not move
+existing comments.
+
 Net result: an upgrade is "replace three regions (CSS, COMMENT UI, JS), leave three things alone (HANDLED IDS, EMBEDDED COMMENTS, `#commentRoot`), done". No merge, no per-doc patching. The `upgrade.py` helper additionally re-emits the shell-baked mermaid loader bootstrap in `<head>` (outside the regions) so deck/mermaid shell fixes reach already-generated documents; a hand-vendored offline loader (relative mermaid `import(...)`) is left alone so the upgrade never re-points it at the CDN.
 
 ### Upgrade safety and check mode

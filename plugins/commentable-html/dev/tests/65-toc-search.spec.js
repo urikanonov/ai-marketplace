@@ -404,6 +404,23 @@ test.describe("side-TOC search and aria-current", () => {
     await expect(page.locator("#commentRoot mark.cm-hl")).toHaveText(anchored);
   });
 
+  test("an author list that repeats its own number in the label shows it once (CMH-TOC-10)", async ({ page }) => {
+    // A hand-written contents list can carry BOTH a `.cm-toc-num` and a label that repeats the same
+    // number. Reading the span and then rendering the label verbatim would print "7 7. Intro"; the
+    // menu drops an EXACT repeat so the number is shown once.
+    const BODY = `
+      <nav class="cm-toc"><ol>
+        <li><span class="cm-toc-num">7</span> <a href="#intro">7. Intro</a></li>
+        <li><span class="cm-toc-num">8</span> <a href="#body">8. Body</a></li>
+      </ol></nav>
+      <section><h2 id="intro">7. Intro</h2><p>lead</p>
+      <h2 id="body">8. Body</h2><p>detail</p></section>`;
+    const toc = await openNested(page, BODY, "cmh-toc-author-num");
+    await expect(tocNum(toc, "intro")).toHaveText("7");
+    await expect(tocLink(toc, "intro")).toHaveText("7 Intro");
+    await expect(tocLink(toc, "body")).toHaveText("8 Body");
+  });
+
   test("the filter narrows the navigation to matching headings and keeps ancestor context (CMH-TOC-09)", async ({ page }) => {
     const toc = await openNested(page);
     const search = toc.locator(".cm-side-toc-search");

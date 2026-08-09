@@ -385,8 +385,10 @@ def _leading_section_number(text):
 def _entry_levels(items):
     """1-based menu levels, from an open-depth stack over the heading tags.
 
-    The same rule the runtime `_cmAssignTocLevels()` applies, so a document that skips a heading
-    level keeps equal-depth headings as peers instead of nesting them one step further each time.
+    The same open-depth stack the runtime `_cmAssignTocLevels()` runs for a real heading target, so
+    a document that skips a heading level keeps equal-depth headings as peers instead of nesting them
+    one step further each time. (The runtime also has a list-nesting fallback for an anchor that does
+    not point at a heading; this tool lists only `h2`/`h3`, so it never needs one.)
     """
     levels = []
     stack = []
@@ -400,7 +402,7 @@ def _entry_levels(items):
 
 
 def _entry_numbers(items, levels):
-    """The number each entry displays, in the runtime's order of preference (CMH-TOC-11).
+    """The number each entry displays: the heading's own, else a computed hierarchical one.
 
     The number the HEADING itself displays wins, so the Contents list never renumbers a document
     that numbers its own sections; otherwise a hierarchical number is computed from the levels.

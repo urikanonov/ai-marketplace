@@ -354,7 +354,7 @@ class GenerateTocTests(unittest.TestCase):
 
     def test_generated_toc_reuses_the_documents_own_heading_numbers(self):
         # When the headings display their own numbers, the Contents list shows those rather than a
-        # computed sequence - the same order of preference the side menu applies (CMH-TOC-11).
+        # computed sequence, which is the whole-list rule the side menu applies too (CMH-TOC-11).
         html = doc('<h2 id="a">10. Risk register</h2><h3 id="b">10.3 Vendor exposure</h3>'
                    '<h2 id="c">11. Rollout</h2>')
         toc = generate_toc.build_toc(html)

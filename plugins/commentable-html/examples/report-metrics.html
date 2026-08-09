@@ -1784,7 +1784,7 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
    so the ordered-list marker would print a SECOND, flat number beside it - and that flat number is
    what labelled a subsection as a top-level section. The generated markup repeats the suppression
    as an inline style so a document whose embedded layer predates it is not double-numbered; this
-   rule is what still applies when a theme conversion drops the attribute. An author's own `<ol>`
+   rule is the layer-side half, so the suppression does not rest on one mechanism alone. An author's own `<ol>`
    list keeps its marker. */
 #commentRoot .cm-toc ol.cm-toc-numbered { list-style: none; padding-left: 0; }
 #commentRoot .cm-toc ol.cm-toc-numbered li.is-sub { padding-left: 1.4rem; }

@@ -19,7 +19,11 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   a document's Contents list adds no counted text and never moves an existing comment's anchor, and
   the generated list suppresses its own ordered-list marker inline so a document whose embedded
   layer predates this release is not double-numbered. A hand-authored `.cm-toc` is untouched and
-  keeps its browser marker, and the author-numbered de-dup (CMH-TOC-10) still holds.
+  keeps its browser marker, and the author-numbered de-dup (CMH-TOC-10) still holds. Two notes for
+  an existing document: a Contents list an OLDER version generated keeps its flat marker until
+  `generate_toc.py` (or `finalize.py --toc`) is re-run, because an upgrade never rewrites
+  `#commentRoot`; and on that re-bake a document that numbers only SOME of its headings now leaves
+  the unnumbered entries bare, matching the side menu, where the list marker used to number them.
 
 ## [1.829.0] - 2026-08-09
 
