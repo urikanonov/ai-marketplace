@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.827.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.828.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,23 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.828.0] - 2026-08-09</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>A foldable note (<code>data-cmh-note-foldable=&quot;true&quot;</code>) now hides its field for every element carrying <code>data-cmh-note</code>, whatever class list the author gave it. The collapse rules were qualified with the AUTHOR-supplied <code>cmh-note</code> class (<code>.cmh-note.cmh-note-collapsed .cmh-note-input</code>) while the runtime only ever added <code>cm-skip</code> / <code>cmh-note-ready</code> and the glyph rule keyed off <code>cmh-note-collapsed</code> alone. A note that reached the runtime without that class - hand-written markup, a retrofit pass, a class rewritten by a later edit - therefore got a fully reactive button (the glyph flipped to <code>+</code>, the tooltip to &quot;Show the note field&quot;) while the textarea stayed open. The runtime state rules (collapsed, single-line, has-content), and their print and print-measure overrides, now compound the runtime-owned <code>cmh-note-ready</code> with the state class, so they no longer depend on the author class and keep the exact selector strength they had. <code>cmh-note</code> stays a purely cosmetic author opt-in (the bordered block surround), which <code>references/notes-contract.md</code> now says outright.</li>
+              <li>A <code>cmh-note-*</code> STATE class found in the AUTHORED markup is now cleared when the runtime upgrades the note. Those names belong to the runtime (it sets them, and every export strips them), so a stale one used to style a note into a state its controls could not undo - a non-foldable note wearing <code>cmh-note-collapsed</code> hid its own field with no fold button able to bring it back.</li>
+              <li>The fold button keeps its <code>+</code>/<code>-</code> glyph on hover, and hovering is once again a visible cue. <code>.cmh-note-fold:hover</code> painted the background with <code>var(--cp-accent)</code> - the very token the glyph is drawn in - so once a theme defined the token (every generated report does) the control became a solid block of the accent color with nothing visible in it. Hover now repaints the glyph in <code>var(--cp-accent-fg)</code> along with the accent fill, the pairing the toolbar&#x27;s filled accent controls already use, so the fill remains a real hover affordance and the glyph stays legible on it in both the light and dark themes.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.827.0] - 2026-08-09</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>The Commentable HTML brand mark is now a link to the project site, and it also appears in the collapsed floating toolbar immediately left of the three-dot overflow button. Both marks open the project page in a new tab and carry the tooltip &quot;Open Commentable HTML Site&quot;; the icon inside each is decorative so the link name wins, and activating the toolbar mark never opens the overflow menu. Both are chrome, so neither bakes into a Plain HTML export (CMH-MENU-ICON-02, CMH-MENU-ICON-04).</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.825.0] - 2026-08-09</h3></div>
             <div class="group-label">Changed</div>
@@ -515,8 +526,6 @@
               <li>Saving an in-place dialog edit with the comments panel collapsed no longer drops focus on <code>&lt;body&gt;</code>. A mid-edit outside click is deliberately let through, so the reviewer can collapse the panel while editing, and a collapsed panel is <code>inert</code> - which made focusing the comments list a silent no-op. Focus now falls back to the toggle that brings the panel back, and then to a deck&#x27;s own corner control (a deck hides the panel AND the toolbar wholesale), each landing verified to have taken focus before the next is tried.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.826.0] - 2026-08-09</h3></div>
             <div class="group-label">Fixed</div>
@@ -553,14 +562,7 @@
               <li>The deck gate&#x27;s DEGRADED fallback - the reading used when a broken or partial install cannot import the shared CSS predicates - now recognizes <code>file:</code> too. It had been left at http/https and scheme-relative, so the one path whose entire purpose is to fail closed would have blessed the very beacon the shared reading catches. Like the rest of that fallback it carries no separator arithmetic and no exclusions, so it over-reports a local <code>file:</code> reference as well; refusing a deck is the safe direction when the reading that can tell them apart is unavailable.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.821.0] - 2026-08-07</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>SETTLED, by measuring a real Chromium rather than by reading the URL spec, the question the previous release left open (issue #1229): whether any surface makes a zero- or one-separator <code>file:</code> reference reach a host the VALUE names. It does not, and the two spellings stay uncounted. The reason is now recorded and ENFORCED instead of tracked: their leading run is a PATH. <code>file:</code> is a special scheme - its backslashes are mapped like any other&#x27;s, so <code>file:\\host/x</code> really is counted - but the parser routes it to the file state rather than to the states that collapse the slash-less <code>https:host/x</code> onto a host, so it resolves them against the document&#x27;s own base. Every surface that consumes the predicate resolves against that base, including an <code>iframe srcdoc</code>, which inherits its parent&#x27;s. Measured through <code>&lt;a href&gt;</code>, <code>&lt;img src&gt;</code> and a CAPTURED <code>meta http-equiv=refresh</code> navigation out of a <code>file:///</code> document, both resolve to an EMPTY-host local path - the ordinary sibling an author means by <code>file:notes.html</code> - and from a UNC base they take the document&#x27;s own host, which the value cannot choose. Counting either would have refused a document with no egress at all and made Export Offline delete the author&#x27;s reference. The exemption is scoped to the leading run: a value whose path canonicalizes onto the four-separator form is still counted. Two neighbouring contexts were measured rather than assumed - a <code>&lt;base href&gt;</code> onto a non-<code>file:</code> base, which is closed unconditionally one layer up, and a report served over http(s), where the engine refuses the load outright - and the four-or-more reading is recorded as the WINDOWS one it is (the same engine build reads it as an empty-host local path on Linux), with the gate deliberately fail-closed on both. The measurement is re-run in a real engine on every CI pass and compared to the shipped predicate&#x27;s verdicts, and the Python predicate and its JavaScript mirror are pinned to the same answers over a shared corpus, so a future widening has to be measured first and has to move both sides at once.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">389 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">390 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

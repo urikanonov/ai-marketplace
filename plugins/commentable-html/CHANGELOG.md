@@ -4,6 +4,34 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.828.0] - 2026-08-09
+
+### Fixed
+
+- A foldable note (`data-cmh-note-foldable="true"`) now hides its field for every element carrying
+  `data-cmh-note`, whatever class list the author gave it. The collapse rules were qualified with
+  the AUTHOR-supplied `cmh-note` class (`.cmh-note.cmh-note-collapsed .cmh-note-input`) while the
+  runtime only ever added `cm-skip` / `cmh-note-ready` and the glyph rule keyed off
+  `cmh-note-collapsed` alone. A note that reached the runtime without that class - hand-written
+  markup, a retrofit pass, a class rewritten by a later edit - therefore got a fully reactive
+  button (the glyph flipped to `+`, the tooltip to "Show the note field") while the textarea
+  stayed open. The runtime state rules (collapsed, single-line, has-content), and their print and
+  print-measure overrides, now compound the runtime-owned `cmh-note-ready` with the state class, so
+  they no longer depend on the author class and keep the exact selector strength they had.
+  `cmh-note` stays a purely cosmetic author opt-in (the bordered block surround), which
+  `references/notes-contract.md` now says outright.
+- A `cmh-note-*` STATE class found in the AUTHORED markup is now cleared when the runtime upgrades
+  the note. Those names belong to the runtime (it sets them, and every export strips them), so a
+  stale one used to style a note into a state its controls could not undo - a non-foldable note
+  wearing `cmh-note-collapsed` hid its own field with no fold button able to bring it back.
+- The fold button keeps its `+`/`-` glyph on hover, and hovering is once again a visible cue.
+  `.cmh-note-fold:hover` painted the background with `var(--cp-accent)` - the very token the glyph
+  is drawn in - so once a theme defined the token (every generated report does) the control became
+  a solid block of the accent color with nothing visible in it. Hover now repaints the glyph in
+  `var(--cp-accent-fg)` along with the accent fill, the pairing the toolbar's filled accent
+  controls already use, so the fill remains a real hover affordance and the glyph stays legible on
+  it in both the light and dark themes.
+
 ## [1.827.0] - 2026-08-09
 
 ### Added

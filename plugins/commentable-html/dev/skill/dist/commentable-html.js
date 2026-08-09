@@ -588,7 +588,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.827.0";
+const CMH_VERSION = "1.828.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -6469,6 +6469,12 @@ function setupNotesLayer() {
     if (ov != null && normalizeNote(ov) === baseline) ov = null;   // reconcile a stale post-apply override
     const current = (ov != null) ? normalizeNote(ov) : baseline;
 
+    // The state classes below are RUNTIME-owned (setup and _noteApplyFold/_noteApplyMode set them,
+    // and every export strips them), so drop any the author's markup happens to carry: a stale one
+    // would style the note into a state the runtime never set - a non-foldable note wearing
+    // `cmh-note-collapsed` would hide its own field with no control able to bring it back.
+    el.classList.remove("cmh-note-collapsed", "cmh-note-has-content",
+      "cmh-note-single", "cmh-note-multiline");
     el.classList.add("cm-skip", "cmh-note-ready");
     el.setAttribute("data-cmh-note-role", "field");
     el.textContent = "";
@@ -19395,8 +19401,8 @@ function setupSinglePagePrint() {
     return ".cmh-print-comments,.cmh-print-noscript{display:block !important}"
       + "#commentRoot section.cmh-section-collapsed>*{display:revert !important}"
       + "#commentRoot section.cm-toc-filtered{display:revert !important}"
-      + "#commentRoot .cmh-note.cmh-note-collapsed .cmh-note-input,"
-      + "#commentRoot .cmh-note.cmh-note-collapsed .cmh-note-head{display:revert !important}"
+      + "#commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-input,"
+      + "#commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-head{display:revert !important}"
       + "#commentRoot pre,#commentRoot code,#commentRoot .cmh-diff-view pre,#commentRoot .cmh-diff-view code,"
       + "#commentRoot figure.cmh-kql pre,#commentRoot figure.cmh-kql code{white-space:pre-wrap !important;"
       + "overflow-wrap:anywhere !important;word-break:break-word !important}"
