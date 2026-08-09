@@ -447,6 +447,87 @@ class GenerateTocTests(unittest.TestCase):
         self.assertNotIn("Old Title", out)
         self.assertIn('<main id="commentRoot" data-comment-key="k">\n<nav class="cm-toc"', out)
 
+    def test_rewrite_places_the_nav_below_a_directly_adjacent_title(self):
+        # The anchor lands exactly ON the old nav's start: the spans are adjacent, not
+        # overlapping, so the candidate must be kept rather than falling back to the root.
+        html = doc('<h1>Title</h1><nav class="cm-toc"><ol><li>Old</li></ol></nav>\n<h2>Alpha</h2>')
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('<h1>Title</h1>\n<nav class="cm-toc"', out)
+        self.assertEqual(out.count('class="cm-toc"'), 1)
+        self.assertNotIn("Old", out)
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_places_the_nav_below_a_directly_adjacent_stats_strip(self):
+        html = doc(
+            "<h1>Title</h1>\n"
+            '<div class="cmh-doc-stats cm-skip" data-cmh-doc-stats="1">x</div>'
+            '<nav class="cm-toc"><ol><li>Old</li></ol></nav>\n<h2>Alpha</h2>'
+        )
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('</div>\n<nav class="cm-toc"', out)
+        self.assertEqual(out.count('class="cm-toc"'), 1)
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_falls_back_when_the_title_container_never_closes(self):
+        # An extent an ancestor's closer, an implicit close, or end of input ended is still INSIDE
+        # the open element, so anchoring there would put the whole nav inside the title.
+        for body in ("<h1>Title\n<h2>Alpha</h2>",
+                     "<h1>Title\n<h2>Alpha</h2>\n<p>tail",
+                     '<header class="cmh-lede">\n<h1>Title</h1>\n<h2>Alpha</h2>'):
+            with self.subTest(body=body):
+                out = generate_toc.rewrite_html(doc(body))
+                self.assertIn(
+                    '<main id="commentRoot" data-comment-key="k">\n<nav class="cm-toc"', out)
+                self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_falls_back_when_the_stats_strip_never_closes(self):
+        html = doc('<h1>Title</h1>\n'
+                   '<div class="cmh-doc-stats cm-skip" data-cmh-doc-stats="1">x\n<h2>Alpha</h2>')
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('<h1>Title</h1>\n<nav class="cm-toc"', out)
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_ignores_a_title_inside_an_unclosed_nav(self):
+        # An unclosed .cm-toc is never REMOVED, so anchoring on a title inside it would append a
+        # second nav on every run.
+        html = doc('<nav class="cm-toc"><h1>Title</h1>\n<h2>Alpha</h2>')
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('<main id="commentRoot" data-comment-key="k">\n<nav class="cm-toc"', out)
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_keeps_top_of_root_when_the_title_container_holds_the_sections(self):
+        # A slide deck (and any document written inside one wrapper element) keeps its <h1> in the
+        # same container as every section, so anchoring after that container would put the table of
+        # contents BELOW the content it indexes.
+        html = doc('<div class="cmh-deck">\n<section><h1>Deck</h1></section>\n'
+                   "<section><h2>Alpha</h2></section>\n</div>")
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('<main id="commentRoot" data-comment-key="k">\n<nav class="cm-toc"', out)
+        self.assertLess(out.index('<nav class="cm-toc"'), out.index("<h1>Deck</h1>"))
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_ignores_a_nested_stats_strip(self):
+        # Only the DIRECT-CHILD strip doc_stats.py bakes under the title moves the nav; a nested
+        # one already sits inside the title container.
+        html = doc('<header class="cmh-lede"><h1>Title</h1>'
+                   '<div class="cmh-doc-stats cm-skip" data-cmh-doc-stats="1">x</div>'
+                   "</header>\n<p>Intro</p>\n<h2>Alpha</h2>")
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('</header>\n<nav class="cm-toc"', out)
+        self.assertLess(out.index('<nav class="cm-toc"'), out.index("<p>Intro</p>"))
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_uses_dominant_crlf_below_the_title(self):
+        html = doc(
+            "<h1>Title</h1>\n"
+            '<div class="cmh-doc-stats cm-skip" data-cmh-doc-stats="1">x</div>\n'
+            "<h2>Alpha</h2>"
+        ).replace("\n", "\r\n")
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('</div>\r\n<nav class="cm-toc"', out)
+        self.assertNotIn('\n<nav class="cm-toc"', out.replace("\r\n", ""))
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
     def test_rewrite_replaces_existing_nav_and_is_idempotent(self):
         html = doc(
             '<nav class="cm-toc" aria-label="Table of contents"><ol><li>Old</li></ol></nav>\n'

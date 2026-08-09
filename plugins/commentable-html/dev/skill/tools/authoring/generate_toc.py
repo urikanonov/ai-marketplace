@@ -58,8 +58,10 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         self._toc_start = None
         self._title_index = None
         self.title_container_end = None   # end of the top-level container holding the <h1>
+        self.title_own_close = False
         self._stats_index = None
         self.stats_end = None             # end of the direct-child doc-stats overview strip
+        self.stats_own_close = False
 
     def _truncate_stacks(self, depth):
         # EVERY close runs through here - the element's own end tag, an ANCESTOR's end tag, HTML5's
@@ -71,10 +73,12 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
             self._finish_heading()
         if (self._title_index is not None and self.title_container_end is None
                 and depth <= self._title_index):
-            self.title_container_end = self._extent_end(depth == self._title_index)
+            self.title_own_close = self._end_tag_close and depth == self._title_index
+            self.title_container_end = self._extent_end(self.title_own_close)
         if (self._stats_index is not None and self.stats_end is None
                 and depth <= self._stats_index):
-            self.stats_end = self._extent_end(depth == self._stats_index)
+            self.stats_own_close = self._end_tag_close and depth == self._stats_index
+            self.stats_end = self._extent_end(self.stats_own_close)
         if self._toc_start is not None and self._toc_index >= depth:
             # Only a region the browser closed with its OWN end tag has a span that can be
             # REPLACED: one an ancestor's closer (or end of input) ended runs past every following
@@ -413,13 +417,26 @@ def _nav_anchor(parser, removals):
 
     The reader meets the document's title, and the reading-time strip under it, before its table
     of contents, so the nav goes AFTER the top-level title container and after any direct-child
-    `doc_stats` overview strip. A document with neither (a deck, a board) keeps the nav at the top
-    of `#commentRoot`. A candidate that lands inside a `.cm-toc` region this rewrite is about to
-    delete is discarded, so the insert and the removal can never overlap.
+    `doc_stats` overview strip. Three things disqualify a candidate, and when none survives the nav
+    keeps the top-of-`#commentRoot` placement:
+
+    - It lands INSIDE a `.cm-toc` region this rewrite is about to delete, so the insert and the
+      removal would overlap. A candidate exactly AT a removal's start is kept: those spans are
+      adjacent, not overlapping, and the reverse-sorted edit application deletes the old nav before
+      inserting the new one at the same offset.
+    - Its element was not closed by its OWN end tag. An extent an ancestor's closer, an implicit
+      close, or end of input ended is still INSIDE the open element, so the nav would land inside
+      the title or the strip.
+    - Its container swallows the sections the nav lists (a slide deck, or a document written inside
+      one wrapper element): anchoring after it would put the table of contents BELOW the content it
+      indexes.
     """
-    candidates = [pos for pos in (parser.title_container_end, parser.stats_end)
-                  if pos is not None
-                  and not any(start <= pos <= end for start, end in removals)]
+    first_section = min((item["start"] for item in parser.headings), default=None)
+    candidates = [pos for pos, own in ((parser.title_container_end, parser.title_own_close),
+                                       (parser.stats_end, parser.stats_own_close))
+                  if pos is not None and own
+                  and (first_section is None or pos <= first_section)
+                  and not any(start < pos <= end for start, end in removals)]
     return max(candidates) if candidates else parser.root_start_end
 
 

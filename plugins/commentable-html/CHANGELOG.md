@@ -14,9 +14,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   list before they saw what the document was called or how long it takes to read. The nav is now
   placed after the top-level title container (the `<h1>` itself or its wrapper, for example
   `header.cmh-lede`) and after the `div[data-cmh-doc-stats]` overview strip that `doc_stats.py`
-  bakes under it, giving the order title, overview strip, contents. A document with no such title
-  (a slide deck, a board) keeps the top-of-root placement, an existing nav above the title is moved
-  down rather than duplicated, and re-running the tool is still idempotent.
+  bakes under it, giving the order title, overview strip, contents. An existing nav above the title
+  is moved down rather than duplicated, and re-running the tool is still idempotent. The nav keeps
+  its top-of-root placement where anchoring under the title would be wrong or unsafe: a document
+  with no `<h1>`, one whose title container was never closed by its own end tag, one whose title
+  only exists inside the nav being replaced, and a slide deck or single-wrapper document whose
+  title container also holds every section the nav lists.
 
 ## [1.822.0] - 2026-08-07
 
