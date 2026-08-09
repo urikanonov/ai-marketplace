@@ -35,6 +35,36 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   own corner control (a deck hides the panel AND the toolbar wholesale), each landing verified to
   have taken focus before the next is tried.
 
+## [1.826.0] - 2026-08-09
+
+### Fixed
+
+- The runtime section menu now reflects the document's own hierarchy instead of flattening it.
+  When a document carries an author `nav.cm-toc`, every entry was given level 1, so a `10.3`
+  subsection was renumbered as a flat sequential `25` and sat at the same indentation as a
+  top-level section. Entry level now comes from the target heading's tag (falling back to the
+  nav's own list nesting for an anchor that points at something other than a heading), the
+  computed numbering is hierarchical to any depth (`1`, `1.1`, `1.1.1`), and the number the
+  HEADING displays wins over a computed one - `generate_toc.py` strips that number from the TOC
+  label (CMH-TOC-10), which is exactly why it has to be read back off the heading. Each level is
+  indented one step further than its parent, and the no-author-TOC fallback now lists `h4` ids too.
+- The section filter box now narrows the menu. Each entry was matched against the whole text of
+  its enclosing `<section>`, so in a document whose headings share ONE wrapper section every entry
+  matched every query and nothing was filtered out. An entry is now matched on the text it OWNS -
+  its heading plus the prose up to the next entry - the ancestors of a match stay listed so a
+  matching subsection still shows where it lives, and a `<section>` is hidden only when every
+  entry inside it is filtered out, so a wrapper can never be hidden out from under a match. A
+  level is decided by an open-depth stack, so a document that SKIPS a heading level keeps
+  equal-depth headings as peers (`h2`, `h4`, `h4`, `h3` reads 1, 2, 2, 2), and a shallower entry
+  matching later in the list no longer cancels the ancestor chain a deeper match still needs.
+- Printing (and Save as PDF) now ignores an active section filter. The filter hides a non-matching
+  `<section>` with `display:none`, which print honored, so a reader who printed while a query was
+  in the Filter sections box silently got a PDF missing the sections they had filtered out - the
+  same class of runtime state print already forces open for a collapsed section. A query that
+  matches NOTHING now narrows the menu only, rather than hiding every section and blanking the
+  document over what is usually a typo, and a deep link to a filtered-out entry reveals it even
+  when its wrapper section stayed visible.
+
 ## [1.824.0] - 2026-08-09
 
 ### Fixed

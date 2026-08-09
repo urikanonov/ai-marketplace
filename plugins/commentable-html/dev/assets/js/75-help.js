@@ -138,6 +138,8 @@ function showHelp(restoreEl) {
       T('Navigation',
         '<ul>' +
           '<li>On wide screens a <strong>section menu</strong> appears on the left, highlights the section you are reading, and collapses to <em>Navigation &raquo;</em>.</li>' +
+          '<li>Menu entries mirror the document: each keeps the section number the document already shows - the one in your contents list, or the one on the heading itself - and falls back to a computed <code>1.1</code>-style number only when there is none. Each entry is indented to its level, so subsections read as subsections.</li>' +
+          '<li><strong>Filter sections</strong> narrows the menu to the entries whose heading or prose matches what you type, hides the sections they do not match, and keeps the parent entries that place a match; clearing the box or pressing <kbd>Esc</kbd> restores the whole document. Printing always carries the whole document, whatever the filter shows.</li>' +
           '<li>Every section title has a caret to <strong>collapse or expand</strong> that section; <strong>Expand All</strong> / <strong>Collapse All</strong> act on every section at once.</li>' +
           '<li><strong>Scroll to Top</strong> / <strong>Scroll to Bottom</strong> jump the document, and a small bubble shows your scroll position.</li>' +
         '</ul>') +

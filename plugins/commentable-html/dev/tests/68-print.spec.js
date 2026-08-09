@@ -403,3 +403,28 @@ test("CMH-PRINT-08: print drops the diagram scroll-fade mask on both mermaid hos
   expect(inPrint.preHost.mask, "a pre.mermaid host prints with no unprefixed edge mask").toBe("none");
   expect(inPrint.divHost.mask, "a div.mermaid host prints with no unprefixed edge mask").toBe("none");
 });
+
+test("CMH-TOC-09: an active section filter never truncates the printed document", async ({ page }) => {
+  // A reader's transient Filter sections... query hides non-matching sections on screen with
+  // display:none. Print must ignore that runtime state exactly as it ignores a collapsed section,
+  // or a Save as PDF silently drops authored content the reader never chose to remove.
+  const content = `
+    <section id="keep"><h2 id="k">Kept alpha</h2><p>Alpha body text.</p></section>
+    <section id="drop"><h2 id="d">Dropped beta</h2><p id="dropbody">Beta body text.</p></section>`;
+  const staged = stagePrintContent(content, { key: "cmh-print-toc-filter", source: "print-toc-filter.html" });
+  await page.setViewportSize({ width: 1600, height: 800 });
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+  await page.locator("#cmSideToc .cm-side-toc-search").fill("Alpha");
+  await expect(page.locator("#drop")).toBeHidden();
+
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  await expect(page.locator("#drop")).toBeVisible();
+  await expect(page.locator("#dropbody")).toBeVisible();
+  // The single-page MEASUREMENT css mirrors the print rules; if it missed this one the @page would
+  // be locked to a document shorter than the one that actually prints.
+  expect(fs.readFileSync(path.join(DEV, "assets", "css", "92-print.css"), "utf8")).toContain("section.cm-toc-filtered");
+  expect(fs.readFileSync(path.join(DEV, "assets", "js", "83-print.js"), "utf8"))
+    .toContain("#commentRoot section.cm-toc-filtered{display:revert !important}");
+});
