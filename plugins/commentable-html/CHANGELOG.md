@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.827.0] - 2026-08-09
+
+### Added
+
+- The Commentable HTML brand mark is now a link to the project site, and it also appears in the
+  collapsed floating toolbar immediately left of the three-dot overflow button. Both marks open
+  the project page in a new tab and carry the tooltip "Open Commentable HTML Site"; the icon
+  inside each is decorative so the link name wins, and activating the toolbar mark never opens
+  the overflow menu. Both are chrome, so neither bakes into a Plain HTML export
+  (CMH-MENU-ICON-02, CMH-MENU-ICON-04).
+
 ## [1.825.0] - 2026-08-09
 
 ### Changed

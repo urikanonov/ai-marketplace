@@ -153,8 +153,16 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 .cm-help-about .cm-brand-link { color: var(--cp-accent); text-decoration: underline; text-underline-offset: 2px; }
 .cm-help-about .cm-brand-link:hover { color: var(--cp-accent-hover); }
 .cm-toolbar-menu-head { display: flex; align-items: center; justify-content: space-between; gap: var(--cp-chrome-wide-gap); width: 100%; }
-.cm-toolbar-menu-brand { display: inline-flex; align-items: center; justify-content: center; color: var(--cp-accent); }
+.cm-toolbar-menu-brand { display: inline-flex; align-items: center; justify-content: center; color: var(--cp-accent); flex: none; }
 .cm-toolbar-menu-brand .cm-brand-icon { width: 20px; height: 20px; margin: 0; }
+.cm-toolbar-menu-brand:hover { text-decoration: none; }
+/* Icon-only brand link in the collapsed toolbar, left of the overflow (...) button. */
+.cm-toolbar .cm-toolbar-brand {
+  color: var(--cp-accent); flex: none; justify-content: center;
+  padding: var(--cp-chrome-button-y) calc(var(--cp-chrome-action-x) * 0.5); border-radius: 999px;
+}
+.cm-toolbar .cm-toolbar-brand:hover { background: var(--cp-accent-soft); text-decoration: none; }
+.cm-toolbar .cm-toolbar-brand .cm-brand-icon { width: 18px; height: 18px; margin: 0; vertical-align: 0; }
 .cm-toolbar-menu-head .cm-menu-version { align-self: center; white-space: nowrap; }
 .cm-toolbar #btnCopyAllTop[aria-disabled="true"],
 .cm-sidebar .head-primary #btnCopyAll[aria-disabled="true"] {
