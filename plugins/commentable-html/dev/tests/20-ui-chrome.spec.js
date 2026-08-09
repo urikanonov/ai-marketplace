@@ -4,6 +4,20 @@ import { test, expect } from "@playwright/test";
 import { openInline, openNonShareable, openToolbarMenu, addTextComment, ready, fileUrl, stageInline, readDownload, INLINE } from "./helpers.js";
 import fs from "fs";
 
+const SITE_URL = "https://urikanonov.github.io/ai-marketplace/commentable-html/";
+const SITE_LINK_LABEL = "Open Commentable HTML Site";
+const SITE_LINK_NAME = SITE_LINK_LABEL + " (opens in a new tab)";
+// Identify each focusable by its id, falling back to a STABLE identity for id-less controls
+// (the brand link) rather than its class string, which a class reorder would break. Every
+// descendant is enumerated, so an id-less tab stop of ANY tag (summary, iframe, contenteditable)
+// is still seen rather than filtered away.
+const MENU_FOCUS_IDENTITY = (el) => Array.from(el.querySelectorAll("*"))
+  .filter((node) => node.tabIndex >= 0)
+  .map((node) => node.id || (node.matches("a.cm-brand-link") ? "brand-site-link" : node.tagName.toLowerCase()));
+const MENU_ACTION_IDS = ["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnStorageTop", "btnClearAllTop", "btnHelpTop"];
+const TOOLBAR_MARK = ".cm-toolbar > a.cm-brand-link";
+const MENU_MARK = "#toolbarMenu a.cm-brand-link.cm-toolbar-menu-brand";
+
 test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
   test("the sidebar/menu toggles declare the element they control via aria-controls (CMH-A11Y-06)", async ({ page }) => {
     await openInline(page);
@@ -82,19 +96,153 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     }
   });
 
-  test("the overflow menu header shows a decorative brand icon without adding a tab stop (CMH-MENU-ICON-02)", async ({ page }) => {
+  test("the toolbar brand mark links to the project site left of the overflow button (CMH-MENU-ICON-04)", async ({ page }) => {
     await openInline(page);
-    await openToolbarMenu(page);
-    const menu = page.locator("#toolbarMenu");
-    const icon = menu.locator(".cm-toolbar-menu-brand svg.cm-brand-icon");
+    const link = page.locator(".cm-toolbar > a.cm-brand-link");
+    await expect(link).toHaveCount(1);
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", SITE_URL);
+    await expect(link).toHaveAttribute("target", "_blank");
+    await expect(link).toHaveAttribute("rel", /noopener/);
+    await expect(link).toHaveAttribute("rel", /noreferrer/);
+    // the tooltip text lives in `title` until the styled tooltip layer moves it to data-cmh-tip.
+    const tip = (await link.getAttribute("title")) || (await link.getAttribute("data-cmh-tip"));
+    expect(tip).toBe(SITE_LINK_LABEL);
+    await expect(link).toHaveAttribute("aria-label", SITE_LINK_NAME);
+    // The icon inside is decorative, so the link's own name and tooltip win over the version bubble.
+    const icon = link.locator("svg.cm-brand-icon");
     await expect(icon).toHaveCount(1);
     await expect(icon).toHaveAttribute("aria-hidden", "true");
     await expect(icon).toHaveAttribute("focusable", "false");
+    expect(await icon.getAttribute("data-cmh-tip")).toBeNull();
+    // It sits immediately before the three-dot overflow button.
+    const nextClass = await link.evaluate((el) => (el.nextElementSibling ? el.nextElementSibling.className : ""));
+    expect(nextClass).toContain("cm-toolbar-more");
+  });
+
+  test("clicking the toolbar brand mark leaves the overflow menu closed (CMH-MENU-ICON-04)", async ({ page }) => {
+    await openInline(page);
+    const link = page.locator(".cm-toolbar > a.cm-brand-link");
+    // Prove INVARIANCE across the click, not just the final state.
+    await expect(page.locator("#toolbarMenu")).toBeHidden();
+    // Keep the click hermetic: the anchor still carries its real href/target, but the
+    // navigation is cancelled so no new tab is opened during the assertion.
+    await link.evaluate((el) => el.addEventListener("click", (e) => e.preventDefault()));
+    await link.click();
+    await expect(page.locator("#toolbarMenu")).toBeHidden();
+    await expect(page.locator("#btnToolbarMenu")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("the overflow menu header brand mark links to the project site (CMH-MENU-ICON-02)", async ({ page }) => {
+    await openInline(page);
+    await openToolbarMenu(page);
+    const menu = page.locator("#toolbarMenu");
+    const brand = menu.locator("a.cm-brand-link.cm-toolbar-menu-brand");
+    await expect(brand).toHaveCount(1);
+    await expect(brand).toBeVisible();
+    await expect(brand).toHaveAttribute("href", SITE_URL);
+    await expect(brand).toHaveAttribute("target", "_blank");
+    await expect(brand).toHaveAttribute("rel", /noopener/);
+    await expect(brand).toHaveAttribute("rel", /noreferrer/);
+    const tip = (await brand.getAttribute("title")) || (await brand.getAttribute("data-cmh-tip"));
+    expect(tip).toBe(SITE_LINK_LABEL);
+    await expect(brand).toHaveAttribute("aria-label", SITE_LINK_NAME);
+    const icon = brand.locator("svg.cm-brand-icon");
+    await expect(icon).toHaveCount(1);
+    await expect(icon).toHaveAttribute("aria-hidden", "true");
+    await expect(icon).toHaveAttribute("focusable", "false");
+    expect(await icon.getAttribute("data-cmh-tip")).toBeNull();
     expect(await icon.getAttribute("tabindex")).toBeNull();
-    const focusableIds = await menu.evaluate((el) => Array.from(el.querySelectorAll("button, a[href], input, textarea, select, [tabindex]"))
-      .filter((node) => node.tabIndex >= 0)
-      .map((node) => node.id));
-    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnStorageTop", "btnClearAllTop", "btnHelpTop"]);
+    // The brand link is the header's only added tab stop; the action items keep their order.
+    expect(await menu.evaluate(MENU_FOCUS_IDENTITY)).toEqual(["brand-site-link", ...MENU_ACTION_IDS]);
+  });
+
+  // Both marks get the same two behaviors, so the checks live in helpers and each test keeps a
+  // literal title (the spec-citation gate resolves literal titles, not template literals).
+  const expectSiteTooltip = async (page, selector) => {
+    // The runtime tooltip layer walks UP from the hovered node, so the decorative icon must not
+    // shadow its own link with the "Commentable HTML v<version>" bubble it carries elsewhere.
+    await page.locator(selector).hover();
+    await expect(page.locator(".cm-tooltip.is-visible")).toHaveText(SITE_LINK_LABEL);
+  };
+  const expectOpensSite = async (page, context, selector) => {
+    // The site is never actually fetched: the whole origin is intercepted (the document is
+    // served a local stub, any other request on it is aborted), so the spec stays hermetic
+    // while still proving the link really navigates to CMH_SITE_URL.
+    await context.route("https://urikanonov.github.io/**", (route) => (
+      route.request().url() === SITE_URL
+        ? route.fulfill({ status: 200, contentType: "text/html", body: "<html><body>stub</body></html>" })
+        : route.abort()
+    ));
+    const [popup] = await Promise.all([
+      context.waitForEvent("page"),
+      page.locator(selector).click(),
+    ]);
+    try {
+      // The page event fires as soon as the tab exists (often still about:blank), so poll
+      // rather than reading the URL once.
+      await expect(popup).toHaveURL(SITE_URL);
+    } finally {
+      await popup.close();
+    }
+  };
+
+  test("Help advertises the brand marks only on a document that can show them (CMH-MENU-ICON-04)", async ({ page }) => {
+    await openInline(page);
+    const bullet = page.locator(".cm-help li", { hasText: "comment-bubble mark" });
+    const reopenHelp = async () => {
+      await page.keyboard.press("Escape");
+      await page.evaluate(() => document.querySelector(".cm-footer-help").click());
+      await expect(page.locator(".cm-help")).toHaveCount(1);
+    };
+    await openToolbarMenu(page);
+    await page.click("#btnHelpTop");
+    await expect(bullet).toHaveCount(1);
+    await expect(bullet).toContainText("the matching mark at the top of that menu");
+    // A shell whose overflow menu predates the head mark keeps the toolbar half of the sentence
+    // and drops the menu half, rather than naming a mark it never got.
+    await page.evaluate(() => document.querySelector("#toolbarMenu a.cm-brand-link").remove());
+    await reopenHelp();
+    await expect(bullet).toHaveCount(1);
+    await expect(bullet).not.toContainText("the matching mark at the top of that menu");
+    // A shell that predates the toolbar mark entirely gets no bullet at all.
+    await page.evaluate(() => document.querySelector(".cm-toolbar > a.cm-brand-link").remove());
+    await reopenHelp();
+    await expect(bullet).toHaveCount(0);
+    // A deck hides the whole floating toolbar, so Help must stop naming a mark the reader cannot
+    // reach even though both marks are still in the DOM. The gate is read when Help is built.
+    await page.reload();
+    await ready(page);
+    await page.evaluate(() => document.getElementById("commentRoot").setAttribute("data-cmh-mode", "deck"));
+    await page.evaluate(() => document.querySelector(".cm-footer-help").click());
+    await expect(page.locator(".cm-help")).toHaveCount(1);
+    await expect(bullet).toHaveCount(0);
+  });
+
+  test("hovering the toolbar brand mark shows the site tooltip, not the version bubble (CMH-MENU-ICON-04)", async ({ page }) => {
+    await openInline(page);
+    await expectSiteTooltip(page, TOOLBAR_MARK);
+  });
+
+  test("hovering the overflow menu brand mark shows the site tooltip, not the version bubble (CMH-MENU-ICON-02)", async ({ page }) => {
+    await openInline(page);
+    await openToolbarMenu(page);
+    await expectSiteTooltip(page, MENU_MARK);
+  });
+
+  test("activating the toolbar brand mark opens the project site (CMH-MENU-ICON-04)", async ({ page, context }) => {
+    await openInline(page);
+    await expectOpensSite(page, context, TOOLBAR_MARK);
+  });
+
+  test("activating the overflow menu brand mark opens the site and returns focus to the trigger (CMH-MENU-ICON-02)", async ({ page, context }) => {
+    await openInline(page);
+    await openToolbarMenu(page);
+    await expectOpensSite(page, context, MENU_MARK);
+    // This mark's own click closes the menu it lives in, so focus must land on the still-visible
+    // trigger rather than being dropped on <body>.
+    await expect(page.locator("#toolbarMenu")).toBeHidden();
+    await expect(page.locator("#btnToolbarMenu")).toBeFocused();
   });
 
   test("the overflow menu header shows the layer version between the badge and brand icon (CMH-MENU-ICON-03)", async ({ page }) => {
@@ -118,11 +266,9 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
     expect(order.badge).toBeGreaterThanOrEqual(0);
     expect(order.ver).toBeGreaterThan(order.badge);
     expect(order.brand).toBeGreaterThan(order.ver);
-    // Decorative header text does not alter the interactive control order.
-    const focusableIds = await menu.evaluate((el) => Array.from(el.querySelectorAll("button, a[href], input, textarea, select, [tabindex]"))
-      .filter((node) => node.tabIndex >= 0)
-      .map((node) => node.id));
-    expect(focusableIds).toEqual(["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnStorageTop", "btnClearAllTop", "btnHelpTop"]);
+    // Decorative header text does not alter the interactive control order (the id-less brand
+    // link is identified too, so an unexpected id-less tab stop cannot slip past this guard).
+    expect(await menu.evaluate(MENU_FOCUS_IDENTITY)).toEqual(["brand-site-link", ...MENU_ACTION_IDS]);
   });
 
   test("every toolbar and sidebar control has a tooltip", async ({ page }) => {

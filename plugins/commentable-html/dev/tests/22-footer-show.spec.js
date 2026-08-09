@@ -116,6 +116,7 @@ test.describe("attribution footer + Show affordance", () => {
     const out = await readDownload(dl);
     expect(out).not.toContain("urikanonov.github.io/ai-marketplace/commentable-html");
     expect(out).not.toContain('aria-label="commentable-html project site (opens in a new tab)"');
+    expect(out).not.toContain("Open Commentable HTML Site");
   });
 
   test("the footer does not leak into a Plain HTML export", async ({ page }) => {

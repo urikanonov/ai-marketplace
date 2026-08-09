@@ -588,7 +588,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.826.0";
+const CMH_VERSION = "1.827.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -603,10 +603,35 @@ const CMH_ICON_SVG = (
 // Public project site the brand mark links to (opens in a new tab). Used by the sidebar
 // meta-row brand icon and the footer brand.
 const CMH_SITE_URL = "https://urikanonov.github.io/ai-marketplace/commentable-html/";
+// Tooltip/accessible name for an icon-only brand link (the toolbar and overflow-menu marks).
+const CMH_SITE_LINK_LABEL = "Open Commentable HTML Site";
 function cmBrandLink(inner) {
   return '<a class="cm-brand-link" href="' + CMH_SITE_URL
     + '" target="_blank" rel="noopener noreferrer"'
     + ' aria-label="commentable-html project site (opens in a new tab)">' + inner + '</a>';
+}
+// Icon-only brand link for chrome that has no accompanying text. Its accessible name names the
+// ACTION (the icon carries no text of its own), which is why it differs from cmBrandLink's name -
+// that helper wraps a label the reader can already see. The inner icon is stripped of its own
+// tooltip and accessible name so the link's - not the version bubble's - wins.
+function cmBrandSiteMark(extraClass) {
+  const a = document.createElement("a");
+  a.className = "cm-brand-link" + (extraClass ? " " + extraClass : "");
+  a.href = CMH_SITE_URL;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.title = CMH_SITE_LINK_LABEL;
+  a.setAttribute("aria-label", CMH_SITE_LINK_LABEL + " (opens in a new tab)");
+  a.innerHTML = CMH_ICON_SVG; // trusted, static
+  const svg = a.querySelector("svg");
+  if (svg) {
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.removeAttribute("role");
+    svg.removeAttribute("aria-label");
+    svg.removeAttribute("data-cmh-tip");
+  }
+  return a;
 }
 // Small monochrome line-icons (stroke = currentColor) for chrome controls. Kept as
 // path data so a single helper renders them at any size without external assets.
@@ -10718,19 +10743,17 @@ document.getElementById("btnCloseSidebar").addEventListener("click", closeSideba
     ver.title = "commentable-html version that generated this file";
     ver.textContent = "v" + CMH_VERSION;
     head.appendChild(ver);
-    const brand = document.createElement("span");
-    brand.className = "cm-toolbar-menu-brand";
-    brand.setAttribute("aria-hidden", "true");
-    brand.innerHTML = CMH_ICON_SVG;
-    const svg = brand.querySelector("svg");
-    if (svg) {
-      svg.setAttribute("aria-hidden", "true");
-      svg.setAttribute("focusable", "false");
-      svg.removeAttribute("role");
-      svg.removeAttribute("aria-label");
-      svg.removeAttribute("data-cmh-tip");
-    }
-    head.appendChild(brand);
+    // Activating this link closes the menu it lives in, so hand focus to the still-visible
+    // trigger rather than letting the browser drop it on <body> (the CMH-UI-13 contract).
+    const headMark = cmBrandSiteMark("cm-toolbar-menu-brand");
+    headMark.addEventListener("click", () => { setOpen(false); btn.focus(); });
+    head.appendChild(headMark);
+  }
+  // The same brand link sits in the collapsed toolbar, immediately left of this menu's trigger.
+  const more = btn.closest(".cm-toolbar-more");
+  const bar = more && more.parentNode;
+  if (bar && !bar.querySelector(":scope > a.cm-brand-link")) {
+    bar.insertBefore(cmBrandSiteMark("cm-toolbar-brand"), more);
   }
   function setOpen(open) {
     menu.hidden = !open;
@@ -18027,6 +18050,14 @@ function showHelp(restoreEl) {
   // An older document's shell may predate the toolbar Clear item while loading current companion
   // assets, so only advertise that entry point when this document actually has it.
   const hasToolbarClear = !!document.getElementById("btnClearAllTop");
+  // Same reason, plus deck mode: a shell that predates the toolbar brand mark does not have one,
+  // and a deck hides the whole floating toolbar, so neither must be told the mark is there.
+  const isDeck = !!document.querySelector('#commentRoot[data-cmh-mode="deck"]')
+    || document.body.classList.contains("cmh-deck-present");
+  const hasBrandMark = !isDeck && !!document.querySelector(".cm-toolbar > a.cm-brand-link");
+  // The menu-head mark is injected under its own guard (it needs the shareability badge), so a
+  // shell can carry one mark and not the other; describe only the ones this document has.
+  const hasMenuBrandMark = !isDeck && !!document.querySelector("#toolbarMenu a.cm-brand-link");
   box.innerHTML =
     '<div class="cm-help-head">' +
       '<h2>' + CMH_ICON_SVG + ' Commentable HTML v' + CMH_VERSION + ' - Help</h2>' +
@@ -18104,6 +18135,7 @@ function showHelp(restoreEl) {
           '<li>Below it, a row of captioned buttons - <strong>Search</strong>, <strong>Sort</strong>, <strong>More</strong>, <strong>Help</strong>, and <strong>Hide</strong>. <strong>Help</strong> opens this dialog; <strong>Hide</strong> collapses the panel, leaving a small floating toolbar to bring it back.</li>' +
           '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, the <strong>Export</strong> button opens the file-format menu. The <strong>Search</strong> button in the ribbon reveals a search field (hidden by default) that filters the list by each comment\'s note text.</li>' +
           '<li><strong>More</strong> opens a menu with a <strong>Preferences</strong> group and the <strong>Manage storage</strong> and <strong>Clear all comments</strong> actions. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, ' + (hasToolbarClear ? '<strong>Clear all comments</strong> (the same confirmed clear), ' : '') + 'and <strong>Help &amp; About</strong>.</li>' +
+          (hasBrandMark ? '<li>The <strong>comment-bubble mark</strong> just left of the <kbd>...</kbd> button in the floating toolbar' + (hasMenuBrandMark ? ' - and the matching mark at the top of that menu -' : '') + ' opens the Commentable HTML site in a new tab.</li>' : '') +
           '<li><strong>Auto-open panel on comment</strong> (in <em>More &gt; Preferences</em>) decides whether this panel opens <em>itself</em>. It is <strong>on</strong> by default and is your setting for <em>every</em> commentable-html document in this browser, so turning it off once lets you read full width and dip into the panel only when you want it: saving a comment, reopening a document that already has review items, and a first review-note, checklist, or widget layout change all leave the panel exactly where you put it. Your comment is still saved and still highlighted either way, and <strong>Comments</strong> in the floating toolbar always brings the panel back.</li>' +
           '<li><strong>Override for this document</strong>, indented under it, is the exception: leave it unchecked and this document follows the default above; check it and this document keeps its own setting (the label then shows it, for example <em>Override for this document: Off</em>) no matter how you later change the default. Unchecking it makes the document follow the default again.</li>' +
         '</ul>') +

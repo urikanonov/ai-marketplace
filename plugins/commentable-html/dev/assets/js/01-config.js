@@ -204,7 +204,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.826.0";
+const CMH_VERSION = "1.827.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -219,10 +219,35 @@ const CMH_ICON_SVG = (
 // Public project site the brand mark links to (opens in a new tab). Used by the sidebar
 // meta-row brand icon and the footer brand.
 const CMH_SITE_URL = "https://urikanonov.github.io/ai-marketplace/commentable-html/";
+// Tooltip/accessible name for an icon-only brand link (the toolbar and overflow-menu marks).
+const CMH_SITE_LINK_LABEL = "Open Commentable HTML Site";
 function cmBrandLink(inner) {
   return '<a class="cm-brand-link" href="' + CMH_SITE_URL
     + '" target="_blank" rel="noopener noreferrer"'
     + ' aria-label="commentable-html project site (opens in a new tab)">' + inner + '</a>';
+}
+// Icon-only brand link for chrome that has no accompanying text. Its accessible name names the
+// ACTION (the icon carries no text of its own), which is why it differs from cmBrandLink's name -
+// that helper wraps a label the reader can already see. The inner icon is stripped of its own
+// tooltip and accessible name so the link's - not the version bubble's - wins.
+function cmBrandSiteMark(extraClass) {
+  const a = document.createElement("a");
+  a.className = "cm-brand-link" + (extraClass ? " " + extraClass : "");
+  a.href = CMH_SITE_URL;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.title = CMH_SITE_LINK_LABEL;
+  a.setAttribute("aria-label", CMH_SITE_LINK_LABEL + " (opens in a new tab)");
+  a.innerHTML = CMH_ICON_SVG; // trusted, static
+  const svg = a.querySelector("svg");
+  if (svg) {
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.removeAttribute("role");
+    svg.removeAttribute("aria-label");
+    svg.removeAttribute("data-cmh-tip");
+  }
+  return a;
 }
 // Small monochrome line-icons (stroke = currentColor) for chrome controls. Kept as
 // path data so a single helper renders them at any size without external assets.

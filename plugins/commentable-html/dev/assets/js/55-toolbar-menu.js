@@ -14,19 +14,17 @@
     ver.title = "commentable-html version that generated this file";
     ver.textContent = "v" + CMH_VERSION;
     head.appendChild(ver);
-    const brand = document.createElement("span");
-    brand.className = "cm-toolbar-menu-brand";
-    brand.setAttribute("aria-hidden", "true");
-    brand.innerHTML = CMH_ICON_SVG;
-    const svg = brand.querySelector("svg");
-    if (svg) {
-      svg.setAttribute("aria-hidden", "true");
-      svg.setAttribute("focusable", "false");
-      svg.removeAttribute("role");
-      svg.removeAttribute("aria-label");
-      svg.removeAttribute("data-cmh-tip");
-    }
-    head.appendChild(brand);
+    // Activating this link closes the menu it lives in, so hand focus to the still-visible
+    // trigger rather than letting the browser drop it on <body> (the CMH-UI-13 contract).
+    const headMark = cmBrandSiteMark("cm-toolbar-menu-brand");
+    headMark.addEventListener("click", () => { setOpen(false); btn.focus(); });
+    head.appendChild(headMark);
+  }
+  // The same brand link sits in the collapsed toolbar, immediately left of this menu's trigger.
+  const more = btn.closest(".cm-toolbar-more");
+  const bar = more && more.parentNode;
+  if (bar && !bar.querySelector(":scope > a.cm-brand-link")) {
+    bar.insertBefore(cmBrandSiteMark("cm-toolbar-brand"), more);
   }
   function setOpen(open) {
     menu.hidden = !open;
