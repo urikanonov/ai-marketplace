@@ -821,6 +821,36 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(pop).toBeHidden();
   });
 
+  test("CMH-CORE-16: a dialog save in a deck lands focus on the deck's own control, not <body>", async ({ page }) => {
+    await openDeck(page);
+    await addTextComment(page, ".slide.active p", "deck save focus");
+    await leaveCommentMode(page);
+    const cid = await page.locator("mark.cm-hl").first().getAttribute("data-cid");
+
+    await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+    await page.locator("#hlBubble").click();
+    const pop = page.locator(".cm-comment-popover");
+    await expect(pop).toBeVisible();
+    await pop.locator('[data-act="edit"]').click();
+    await pop.locator(".cm-comment-popover-edit textarea").fill("edited on a slide");
+    // A mid-edit outside click is deliberately let through, so the reviewer can collapse the panel
+    // while editing. In a deck the toolbar is hidden wholesale too, so neither the comments list nor
+    // the panel toggle can take focus when the dialog closes.
+    await page.locator("#btnCloseSidebar").click();
+    await expect(page.locator("body")).not.toHaveClass(/sidebar-open/);
+    await expect(pop).toBeVisible();
+    await pop.locator('[data-act="edit-save"]').click();
+    await expect(pop).toHaveCount(0);
+
+    // Without a verified fallback the reader would be dropped on <body> and the keyboard order
+    // would restart at the top of the deck.
+    expect(await page.evaluate(() => {
+      const a = document.activeElement;
+      return a && a.className && String(a.className).indexOf("cmh-deck-mode-toggle") !== -1
+        ? "deck-toggle" : (a ? (a.id || a.tagName) : "none");
+    })).toBe("deck-toggle");
+  });
+
   test("CMH-DECK-05: the stage refits on viewport resize and open mode narrows it", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openDeck(page);

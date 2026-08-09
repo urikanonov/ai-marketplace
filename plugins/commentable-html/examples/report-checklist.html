@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.824.0" />
+<meta name="commentable-html-version" content="1.825.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.824.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.825.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Release readiness review</title>
 
@@ -5045,7 +5045,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.824.0";
+const CMH_VERSION = "1.825.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -14270,7 +14270,24 @@ function setupCommentSearch() {
    this small bubble; clicking it opens the comment regardless of what the text links to. */
 const hlBubble = document.getElementById("hlBubble");
 let hlBubbleCid = null, hlBubbleMark = null, hlBubbleHideTimer = null;
+// On a phone the comments panel is a full-width SHEET over the document (`assets/css/00-base.css`)
+// while the bubble floats above it (z-index 210 vs 90), so the highlight it points at is hidden
+// underneath: the bubble would be an orange disc stranded over the panel, intercepting taps meant
+// for the card below it. Treat that as "the anchor is not visible" and hide, the same answer
+// `_clipAwareRect` gives for an anchor scrolled out of view. The reference width is
+// `documentElement.clientWidth`, the SAME box the sheet's `width: 100%` resolves against (a fixed
+// element sizes to the initial containing block): `window.innerWidth` includes a classic scrollbar
+// that the sheet does not, so comparing against it would miss the sheet by the scrollbar's width on
+// every desktop browser that still renders one.
+function _sidebarCoversDocument() {
+  if (!sidebar || !document.body.classList.contains("sidebar-open")) return false;
+  const vw = document.documentElement.clientWidth || window.innerWidth || 0;
+  return vw > 0 && sidebar.getBoundingClientRect().width >= vw - 1;
+}
 function positionHlBubble(mark) {
+  if (_sidebarCoversDocument()) {
+    hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null; return;
+  }
   const rect = mark.getClientRects()[0] || mark.getBoundingClientRect();
   const visible = _clipAwareRect(mark, rect);
   if (!visible) {
@@ -14315,6 +14332,23 @@ root.addEventListener("mouseout", (e) => {
   const to = e.relatedTarget;
   if (to && to.closest && (to.closest("mark.cm-hl") || to.closest(".cm-hl-bubble"))) return;
   scheduleHideHlBubble();
+});
+// A tap has no hover, and the mousedown below drops the bubble, so a plain click on a highlight
+// would otherwise leave the reader no way to reach the comment inline. Clicking one raises the SAME
+// bubble hovering raises; the click itself is never repurposed, so a link-wrapped highlight still
+// navigates and the sidebar jump (50-sidebar.js) still runs. In the dialog's NOTE view its
+// capture-phase dismiss stops a click in the document before this listener, so this cannot re-raise
+// a bubble over a dialog that same click is closing; mid-edit that dismiss deliberately lets the
+// click through, and the bubble then behaves exactly as it does on hover (the dirty-draft guard in
+// `openCommentPopover` is what protects the edit).
+root.addEventListener("click", (e) => {
+  const mark = e.target.closest && e.target.closest("mark.cm-hl");
+  if (!mark || !root.contains(mark) || !mark.dataset.cid) return;
+  // A click that ENDS A SELECTION is a text-selection gesture (the Add-comment menu owns that one),
+  // not a request to open the comment.
+  const sel = window.getSelection && window.getSelection();
+  if (sel && !sel.isCollapsed && String(sel)) return;
+  showHlBubbleFor(mark);
 });
 hlBubble.addEventListener("mouseenter", () => {
   if (hlBubbleHideTimer) { clearTimeout(hlBubbleHideTimer); hlBubbleHideTimer = null; }
@@ -14511,8 +14545,10 @@ function setupSidebarResize() {
 }
 /* ---------- Inline comment dialog (opened from the hover bubble) ----------
    Clicking the hover bubble opens a small on-screen dialog next to the highlight showing the
-   comment note and an Edit button. Edit turns the dialog itself into an editor IN PLACE, so the
-   reviewer edits exactly where they clicked instead of being sent to a floating composer. A click
+   comment note, with Delete held apart from Edit and Close. Edit turns the dialog itself into an
+   editor IN PLACE, so the
+   reviewer edits exactly where they clicked instead of being sent to a floating composer; Save
+   stores the note and closes the dialog, Cancel returns to the note. A click
    anywhere else closes the dialog; a pointer click in the ANNOTATED DOCUMENT is also swallowed so
    it performs no other action (for example it does not follow a link the highlight sits on), while
    a keyboard-activated click, and a click on the layer's own surfaces, still reach their target -
@@ -14773,8 +14809,8 @@ function _renderCommentPopoverView(c) {
     + '<div class="cm-comment-popover-meta"></div>'
     + '<div class="cm-comment-popover-acts">'
     + '<button type="button" class="cm-comment-popover-del" data-act="popover-del">Delete</button>'
-    + '<button type="button" data-act="close">Close</button>'
     + '<button type="button" class="primary" data-act="edit">Edit</button>'
+    + '<button type="button" data-act="close">Close</button>'
     + "</div>";
   el.setAttribute("aria-describedby", noteId);
   // The button's own text is just "Delete", which does not say what goes with it. Name it the way
@@ -14834,7 +14870,7 @@ function _renderCommentPopoverView(c) {
     // leave a dialog anchored to a highlight that no longer exists.
     const removed = (typeof cmhConfirmDeleteThread === "function")
       && cmhConfirmDeleteThread(cur.id, { scrollFirst: false });
-    if (removed) { _focusAfterPopoverDelete(); return; }
+    if (removed) { _focusAfterPopoverClosed(); return; }
     // Declined: the dialog stays exactly as it was, with the reader still on Delete.
     const btn = commentPopover && commentPopover.querySelector('[data-act="popover-del"]');
     if (btn) { try { btn.focus(); } catch (err) {} }
@@ -14857,13 +14893,29 @@ function _focusPopoverEditButton() {
   if (eb) { try { eb.focus(); } catch (e) {} }
 }
 
-// The dialog held focus and has just been removed with the comment it was showing, so focus would
-// otherwise fall to <body> and restart the keyboard order at the top of the page. Land the reader on
-// the comments list instead (a `tabindex="-1"` region), without scrolling the document.
-function _focusAfterPopoverDelete() {
-  const el = (typeof listEl !== "undefined") ? listEl : null;
-  if (!el) return;
-  try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
+// The dialog held focus and has just been closed (its comment deleted, or its edit saved), so focus
+// would otherwise fall to <body> and restart the keyboard order at the top of the page. Land the
+// reader on the comments list (a `tabindex="-1"` region), without scrolling the document.
+function _focusAfterPopoverClosed() {
+  // Every candidate is VERIFIED, because focusing a hidden or `inert` element is a silent no-op that
+  // would leave the reader on <body> after all: the panel is `inert` while collapsed (a mid-edit
+  // outside click is deliberately let through, so it can be collapsed from under the dialog), and a
+  // deck hides the panel AND the toolbar wholesale, leaving only its own corner control.
+  const deckToggle = document.querySelector(".cmh-deck-mode-toggle");
+  const targets = [
+    (typeof listEl !== "undefined") ? listEl : null,
+    document.getElementById("btnToggleSidebar"),
+    // Resolved by class, so exclude anything inside the annotated document: author content there is
+    // untrusted and could wear the same class (CMH-CORE-21). Where the layer anchors to `<body>`
+    // (CMH-CORE-15) the two cannot be told apart, but that mode has no deck either.
+    (deckToggle && (root === document.body || !root.contains(deckToggle))) ? deckToggle : null,
+  ];
+  for (let i = 0; i < targets.length; i++) {
+    const el = targets[i];
+    if (!el) continue;
+    try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
+    if (document.activeElement === el) return;
+  }
 }
 
 function _renderCommentPopoverEdit(c) {
@@ -14914,11 +14966,12 @@ function _renderCommentPopoverEdit(c) {
     cur.updatedAt = new Date().toISOString();
     const ok = saveComments();
     renderComments();
-    _renderCommentPopoverView(cur);
-    // Editing suspended the clip-aware close; with the edit done, re-apply it (the anchor may have
-    // scrolled out of view meanwhile) so the dialog is never stranded away from its highlight.
-    _syncCommentPopoverToAnchor();
-    _focusPopoverEditButton();
+    // The edit is done, so the dialog has nothing left to show: close it rather than leaving a
+    // note-view dialog sitting over the document (which would also re-arm the outside-click
+    // swallow). The quota follow-up runs AFTER the close, so anything it raises - the storage
+    // manager, an actionable toast - comes up with nothing in front of it.
+    closeCommentPopover();
+    _focusAfterPopoverClosed();
     if (typeof _afterInlineSaveQuota === "function") _afterInlineSaveQuota(ok, "edit");
   }
   const acts = el.querySelector(".cm-comment-popover-acts");
@@ -22488,7 +22541,7 @@ function showHelp(restoreEl) {
       T('Managing comments',
         '<ul>' +
           '<li><strong>Edit</strong> a comment from its card: the editor opens <em>inline</em> in the card, so the document stays exactly where you left it. <kbd>Ctrl/Cmd</kbd>+<kbd>Enter</kbd> saves and <kbd>Esc</kbd> cancels. <strong>Delete</strong> sits beside it.</li>' +
-          '<li><strong>Edit from the document:</strong> hover a highlight and click the orange <em>Open comment</em> bubble to see the note right there, then click <strong>Edit</strong> to edit it in place in that little dialog - no jumping to another part of the page. <strong>Delete</strong> is right there too, so a comment can be removed from the document without hunting down its card; it asks the same confirmation (and takes the whole thread with a reply) and then closes the dialog.</li>' +
+          '<li><strong>Edit from the document:</strong> hover <em>or click</em> a highlight and click the orange <em>Open comment</em> bubble to see the note right there, then click <strong>Edit</strong> to edit it in place in that little dialog - no jumping to another part of the page. <strong>Save</strong> stores the note and closes the dialog. <strong>Delete</strong> is right there too, so a comment can be removed from the document without hunting down its card; it asks the same confirmation (and takes the whole thread with a reply) and then closes the dialog.</li>' +
           '<li><strong>Jump</strong> from a card to its highlight (collapsed sections auto-expand first).</li>' +
           '<li><strong>Sort</strong> the cards oldest-first or newest-first with the arrows, or click again for document order.</li>' +
           '<li><strong>Clear all comments</strong> (in the sidebar\'s <strong>More</strong> menu' + (hasToolbarClear ? ', or the collapsed toolbar\'s overflow <kbd>...</kbd> menu' : '') + ') deletes every comment and always asks for confirmation first (Cancel is the default)' + (hasToolbarClear ? ', so you can clear without re-opening the panel' : '') + '.</li>' +

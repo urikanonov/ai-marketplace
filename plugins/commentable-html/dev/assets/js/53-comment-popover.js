@@ -1,7 +1,9 @@
 /* ---------- Inline comment dialog (opened from the hover bubble) ----------
    Clicking the hover bubble opens a small on-screen dialog next to the highlight showing the
-   comment note and an Edit button. Edit turns the dialog itself into an editor IN PLACE, so the
-   reviewer edits exactly where they clicked instead of being sent to a floating composer. A click
+   comment note, with Delete held apart from Edit and Close. Edit turns the dialog itself into an
+   editor IN PLACE, so the
+   reviewer edits exactly where they clicked instead of being sent to a floating composer; Save
+   stores the note and closes the dialog, Cancel returns to the note. A click
    anywhere else closes the dialog; a pointer click in the ANNOTATED DOCUMENT is also swallowed so
    it performs no other action (for example it does not follow a link the highlight sits on), while
    a keyboard-activated click, and a click on the layer's own surfaces, still reach their target -
@@ -262,8 +264,8 @@ function _renderCommentPopoverView(c) {
     + '<div class="cm-comment-popover-meta"></div>'
     + '<div class="cm-comment-popover-acts">'
     + '<button type="button" class="cm-comment-popover-del" data-act="popover-del">Delete</button>'
-    + '<button type="button" data-act="close">Close</button>'
     + '<button type="button" class="primary" data-act="edit">Edit</button>'
+    + '<button type="button" data-act="close">Close</button>'
     + "</div>";
   el.setAttribute("aria-describedby", noteId);
   // The button's own text is just "Delete", which does not say what goes with it. Name it the way
@@ -323,7 +325,7 @@ function _renderCommentPopoverView(c) {
     // leave a dialog anchored to a highlight that no longer exists.
     const removed = (typeof cmhConfirmDeleteThread === "function")
       && cmhConfirmDeleteThread(cur.id, { scrollFirst: false });
-    if (removed) { _focusAfterPopoverDelete(); return; }
+    if (removed) { _focusAfterPopoverClosed(); return; }
     // Declined: the dialog stays exactly as it was, with the reader still on Delete.
     const btn = commentPopover && commentPopover.querySelector('[data-act="popover-del"]');
     if (btn) { try { btn.focus(); } catch (err) {} }
@@ -346,13 +348,29 @@ function _focusPopoverEditButton() {
   if (eb) { try { eb.focus(); } catch (e) {} }
 }
 
-// The dialog held focus and has just been removed with the comment it was showing, so focus would
-// otherwise fall to <body> and restart the keyboard order at the top of the page. Land the reader on
-// the comments list instead (a `tabindex="-1"` region), without scrolling the document.
-function _focusAfterPopoverDelete() {
-  const el = (typeof listEl !== "undefined") ? listEl : null;
-  if (!el) return;
-  try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
+// The dialog held focus and has just been closed (its comment deleted, or its edit saved), so focus
+// would otherwise fall to <body> and restart the keyboard order at the top of the page. Land the
+// reader on the comments list (a `tabindex="-1"` region), without scrolling the document.
+function _focusAfterPopoverClosed() {
+  // Every candidate is VERIFIED, because focusing a hidden or `inert` element is a silent no-op that
+  // would leave the reader on <body> after all: the panel is `inert` while collapsed (a mid-edit
+  // outside click is deliberately let through, so it can be collapsed from under the dialog), and a
+  // deck hides the panel AND the toolbar wholesale, leaving only its own corner control.
+  const deckToggle = document.querySelector(".cmh-deck-mode-toggle");
+  const targets = [
+    (typeof listEl !== "undefined") ? listEl : null,
+    document.getElementById("btnToggleSidebar"),
+    // Resolved by class, so exclude anything inside the annotated document: author content there is
+    // untrusted and could wear the same class (CMH-CORE-21). Where the layer anchors to `<body>`
+    // (CMH-CORE-15) the two cannot be told apart, but that mode has no deck either.
+    (deckToggle && (root === document.body || !root.contains(deckToggle))) ? deckToggle : null,
+  ];
+  for (let i = 0; i < targets.length; i++) {
+    const el = targets[i];
+    if (!el) continue;
+    try { el.focus({ preventScroll: true }); } catch (e) { try { el.focus(); } catch (e2) {} }
+    if (document.activeElement === el) return;
+  }
 }
 
 function _renderCommentPopoverEdit(c) {
@@ -403,11 +421,12 @@ function _renderCommentPopoverEdit(c) {
     cur.updatedAt = new Date().toISOString();
     const ok = saveComments();
     renderComments();
-    _renderCommentPopoverView(cur);
-    // Editing suspended the clip-aware close; with the edit done, re-apply it (the anchor may have
-    // scrolled out of view meanwhile) so the dialog is never stranded away from its highlight.
-    _syncCommentPopoverToAnchor();
-    _focusPopoverEditButton();
+    // The edit is done, so the dialog has nothing left to show: close it rather than leaving a
+    // note-view dialog sitting over the document (which would also re-arm the outside-click
+    // swallow). The quota follow-up runs AFTER the close, so anything it raises - the storage
+    // manager, an actionable toast - comes up with nothing in front of it.
+    closeCommentPopover();
+    _focusAfterPopoverClosed();
     if (typeof _afterInlineSaveQuota === "function") _afterInlineSaveQuota(ok, "edit");
   }
   const acts = el.querySelector(".cm-comment-popover-acts");

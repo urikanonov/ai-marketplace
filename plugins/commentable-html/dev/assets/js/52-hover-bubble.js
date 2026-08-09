@@ -4,7 +4,24 @@
    this small bubble; clicking it opens the comment regardless of what the text links to. */
 const hlBubble = document.getElementById("hlBubble");
 let hlBubbleCid = null, hlBubbleMark = null, hlBubbleHideTimer = null;
+// On a phone the comments panel is a full-width SHEET over the document (`assets/css/00-base.css`)
+// while the bubble floats above it (z-index 210 vs 90), so the highlight it points at is hidden
+// underneath: the bubble would be an orange disc stranded over the panel, intercepting taps meant
+// for the card below it. Treat that as "the anchor is not visible" and hide, the same answer
+// `_clipAwareRect` gives for an anchor scrolled out of view. The reference width is
+// `documentElement.clientWidth`, the SAME box the sheet's `width: 100%` resolves against (a fixed
+// element sizes to the initial containing block): `window.innerWidth` includes a classic scrollbar
+// that the sheet does not, so comparing against it would miss the sheet by the scrollbar's width on
+// every desktop browser that still renders one.
+function _sidebarCoversDocument() {
+  if (!sidebar || !document.body.classList.contains("sidebar-open")) return false;
+  const vw = document.documentElement.clientWidth || window.innerWidth || 0;
+  return vw > 0 && sidebar.getBoundingClientRect().width >= vw - 1;
+}
 function positionHlBubble(mark) {
+  if (_sidebarCoversDocument()) {
+    hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null; return;
+  }
   const rect = mark.getClientRects()[0] || mark.getBoundingClientRect();
   const visible = _clipAwareRect(mark, rect);
   if (!visible) {
@@ -49,6 +66,23 @@ root.addEventListener("mouseout", (e) => {
   const to = e.relatedTarget;
   if (to && to.closest && (to.closest("mark.cm-hl") || to.closest(".cm-hl-bubble"))) return;
   scheduleHideHlBubble();
+});
+// A tap has no hover, and the mousedown below drops the bubble, so a plain click on a highlight
+// would otherwise leave the reader no way to reach the comment inline. Clicking one raises the SAME
+// bubble hovering raises; the click itself is never repurposed, so a link-wrapped highlight still
+// navigates and the sidebar jump (50-sidebar.js) still runs. In the dialog's NOTE view its
+// capture-phase dismiss stops a click in the document before this listener, so this cannot re-raise
+// a bubble over a dialog that same click is closing; mid-edit that dismiss deliberately lets the
+// click through, and the bubble then behaves exactly as it does on hover (the dirty-draft guard in
+// `openCommentPopover` is what protects the edit).
+root.addEventListener("click", (e) => {
+  const mark = e.target.closest && e.target.closest("mark.cm-hl");
+  if (!mark || !root.contains(mark) || !mark.dataset.cid) return;
+  // A click that ENDS A SELECTION is a text-selection gesture (the Add-comment menu owns that one),
+  // not a request to open the comment.
+  const sel = window.getSelection && window.getSelection();
+  if (sel && !sel.isCollapsed && String(sel)) return;
+  showHlBubbleFor(mark);
 });
 hlBubble.addEventListener("mouseenter", () => {
   if (hlBubbleHideTimer) { clearTimeout(hlBubbleHideTimer); hlBubbleHideTimer = null; }

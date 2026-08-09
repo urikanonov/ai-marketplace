@@ -835,13 +835,14 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     await expect(pop).toBeVisible();
     expect((await storedComments(page))[0].note).toBe("root note");
 
-    // Ctrl+Enter still saves, markers and all, and the dialog returns to the rendered note.
+    // Ctrl+Enter still saves, markers and all, and the save closes the dialog (CMH-CORE-16).
     await pop.locator('[data-act="edit"]').click();
     const ta2 = pop.locator("textarea.cm-comment-popover-input");
     await ta2.fill("**saved** note");
     await ta2.press("Control+Enter");
-    await expect(pop.locator(".cm-comment-popover-note.cmh-rich strong")).toHaveText("saved");
+    await expect(pop).toHaveCount(0);
     expect((await storedComments(page))[0].note).toBe("**saved** note");
+    await expect(page.locator("#commentList .note.cmh-rich strong").first()).toHaveText("saved");
   });
 
   test("the popover toolbar keeps >=44px touch targets on a phone (CMH-RICH-20)", async ({ page }) => {

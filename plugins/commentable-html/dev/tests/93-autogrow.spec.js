@@ -177,7 +177,7 @@ test.describe("authoring inputs: autogrow and readable size", () => {
 
     // Re-opening the dialog on that now-long note must present it at content size, not collapsed.
     await pop.locator('[data-act="edit-save"]').click();
-    await page.keyboard.press("Escape");
+    await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
     const reopened = await openPopoverEditor(page);
     expect(await heightOf(reopened.locator("textarea.cm-comment-popover-input"))).toBeGreaterThan(start + 60);
   });
