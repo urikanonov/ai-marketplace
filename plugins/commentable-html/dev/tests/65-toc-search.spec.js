@@ -367,6 +367,11 @@ test.describe("side-TOC search and aria-current", () => {
       await expect(page.locator(`#commentRoot .cm-toc li:has(> a[href="#${id}"]) > .cm-toc-num`)).toHaveText(number);
       await expect(tocNum(toc, id)).toHaveText(number);
     }
+    // A number the DOCUMENT supplies is part of the row's title for the filter too (CMH-TOC-09), so
+    // typing it still finds the row it labels now that the number lives in its own span.
+    await toc.locator(".cm-side-toc-search").fill("10.3");
+    await expect(tocRow(toc, "vendor")).toBeVisible();
+    await expect(tocRow(toc, "rollout")).toBeHidden();
   });
 
   test("baking the Contents numbers does not move an existing comment's anchor (CMH-TOC-10)", async ({ page }) => {
@@ -379,7 +384,7 @@ test.describe("side-TOC search and aria-current", () => {
       <h2 id="one">Findings</h2><p id="lead">The anchored sentence lives here.</p>
       <h3 id="one-a">Signals</h3><p>detail</p>`;
     const { html } = stageContent(BODY, { key: "cmh-toc-anchor", source: "toc-anchor.html" });
-    // Build the canonical nav, then rewind it to the pre-1.829 shape (flat `<ol>`, no baked
+    // Build the canonical nav, then rewind it to the pre-1.830 shape (flat `<ol>`, no baked
     // number) so the ONLY thing the re-bake below changes is the number itself.
     execFileSync(PYTHON, ["tools/authoring/generate_toc.py", "--in-place", html], { cwd: SKILL, stdio: "pipe" });
     const legacy = fs.readFileSync(html, "utf8")

@@ -336,7 +336,7 @@ class GenerateTocTests(unittest.TestCase):
         self.assertIn('<a href="#b">How the two source plans merge</a>', toc)
         self.assertNotIn("1. Executive", toc)
         self.assertNotIn("2. How", toc)
-        # The ordered list is kept; it supplies the single number.
+        # The list is kept, but the entry - not the list marker - now carries the single number.
         self.assertIn('<ol class="cm-toc-numbered" style="list-style: none; padding-left: 0;">', toc)
 
     def test_generated_toc_numbers_subsections_hierarchically(self):

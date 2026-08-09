@@ -23314,11 +23314,13 @@ function setupSideToc() {
   }
   // Cache each item's normalized lowercase TITLE once, so typing does not re-read it on each
   // keystroke. What a query sees is exactly what the row shows: the resolved title plus the number
-  // the DOCUMENT itself supplies, never the sequential one the runtime computes for a document that
-  // has none (that number is chrome, not title text). Body prose is not part of a title, and the
-  // review status mark is a CSS pseudo-element, so neither can reach a query.
+  // the DOCUMENT itself supplies - the one baked into its Contents entry, else the one the heading
+  // displays - never the sequential one the runtime computes for a document that has none (that
+  // number is chrome, not title text). Body prose is not part of a title, and the review status mark
+  // is a CSS pseudo-element, so neither can reach a query.
   items.forEach(function (it) {
-    it._cmHay = _cmTocNormalize((it.docNum ? it.docNum + " " : "") + it.title);
+    const docSupplied = it.tocNum || it.docNum;
+    it._cmHay = _cmTocNormalize((docSupplied ? docSupplied + " " : "") + it.title);
   });
   // Every <section> any entry lives in, with the entries it holds: a section is hidden only when
   // EVERY entry inside it is filtered out, so a single wrapper section around the whole document
