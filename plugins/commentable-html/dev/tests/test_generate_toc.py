@@ -619,6 +619,76 @@ class GenerateTocTests(unittest.TestCase):
         self.assertEqual(out.count("<nav"), 1)
         self.assertNotIn("Old", out)
 
+    def test_headings_inside_a_replaced_cm_toc_are_navigation_chrome(self):
+        # A `.cm-toc` this rewrite REPLACES is the table of contents itself, so a heading inside
+        # it is chrome: listing it invented a phantom entry, and generating an id for it queued an
+        # insertion INSIDE the span the same rewrite deletes, which corrupted the document. The
+        # full-output equality is the losslessness assertion - the only bytes that may change are
+        # the replaced nav and the injected id.
+        html = doc('<nav class="cm-toc"><h2>Old</h2><h3>Older</h3></nav>\n<h2>Real</h2>')
+        toc = generate_toc.build_toc(html)
+        self.assertNotIn("Old", toc)
+        self.assertIn('<li><a href="#real">Real</a></li>', toc)
+        once = generate_toc.rewrite_html(html)
+        self.assertEqual(once, doc(
+            '<nav class="cm-toc" aria-label="Table of contents">\n'
+            '  <div class="cm-toc-title">Contents</div>\n'
+            "  <ol>\n"
+            '    <li><a href="#real">Real</a></li>\n'
+            "  </ol>\n"
+            '</nav>\n<h2 id="real">Real</h2>'))
+        self.assertEqual(generate_toc.rewrite_html(once), once)
+
+    def test_ids_inside_a_replaced_cm_toc_do_not_break_the_rewrite(self):
+        # An id inside the replaced nav dies with it, so it must NOT reserve the slug a real
+        # heading would otherwise get (that baked a gratuitous `real-2` anchor into the file).
+        html = doc('<nav class="cm-toc"><h2 id="real">Old</h2></nav>\n<h2>Real</h2>')
+        self.assertNotIn("Old", generate_toc.build_toc(html))
+        once = generate_toc.rewrite_html(html)
+        self.assertNotIn("Old", once)
+        self.assertEqual(once.count("<nav"), 1)
+        self.assertIn('<h2 id="real">Real</h2>', once)
+        self.assertNotIn('id="real-2"', once)
+        self.assertEqual(generate_toc.rewrite_html(once), once)
+
+    def test_headings_under_a_cm_toc_the_rewrite_keeps_are_still_listed(self):
+        # The chrome rule is scoped to the navs the rewrite REPLACES. A `.cm-toc` it leaves in
+        # place still holds live headings and live ids, so excluding them would silently write an
+        # EMPTY table of contents over the author's document. Each shape below yields a span the
+        # rewrite never deletes: closed by an ancestor's end tag, wrapping `#commentRoot`, and
+        # being `#commentRoot` itself.
+        for body in ('<main id="commentRoot">\n<nav class="cm-toc">\n<h2>Alpha</h2>\n</main>\n',
+                     '<nav class="cm-toc"><main id="commentRoot"><h2>Alpha</h2></main></nav>\n',
+                     '<nav id="commentRoot" class="cm-toc"><h2>Alpha</h2></nav>\n'):
+            with self.subTest(body=body):
+                self.assertIn('<li><a href="#alpha">Alpha</a></li>',
+                              generate_toc.build_toc(body))
+                once = generate_toc.rewrite_html(body)
+                self.assertIn('<h2 id="alpha">Alpha</h2>', once)
+                self.assertEqual(generate_toc.rewrite_html(once), once)
+
+    def test_a_self_closed_element_id_still_reserves_a_slug(self):
+        # An id and the offset that decides whether it survives the rewrite live in ONE list of
+        # pairs. Two parallel lists silently truncated the zip when an append site (here a
+        # self-closed foreign element) updated only one of them, dropping every id after it from
+        # the reserved set - which the tool then generated a second time as a duplicate id.
+        html = doc('<svg><rect id="alpha" /></svg><p id="beta">x</p><h2>Alpha</h2><h2>Beta</h2>')
+        parsed = generate_toc._parse(html)
+        self.assertEqual([element_id for element_id, _start in parsed.ids],
+                         ["chrome", "commentRoot", "alpha", "beta"])
+        for element_id, start in parsed.ids:
+            self.assertIn('id="%s"' % element_id, html[start:html.index(">", start) + 1])
+        toc = generate_toc.build_toc(html)
+        self.assertIn('<a href="#alpha-2">Alpha</a>', toc)
+        self.assertIn('<a href="#beta-2">Beta</a>', toc)
+
+    def test_apply_edits_refuses_overlapping_spans(self):
+        text = "0123456789"
+        self.assertEqual(generate_toc._apply_edits(text, [(2, 4, "X"), (4, 6, "Y")]), "01XY6789")
+        self.assertEqual(generate_toc._apply_edits(text, [(3, 3, "X"), (3, 5, "")]), "012X56789")
+        with self.assertRaisesRegex(ValueError, "overlap"):
+            generate_toc._apply_edits(text, [(2, 6, ""), (4, 4, ' id="x"')])
+
     def test_rewrite_uses_dominant_crlf_for_inserted_nav(self):
         html = doc("<h2>Alpha</h2>").replace("\n", "\r\n")
         out = generate_toc.rewrite_html(html)
