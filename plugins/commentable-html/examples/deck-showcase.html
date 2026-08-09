@@ -24144,11 +24144,16 @@ function setupSideToc() {
     return (s && s !== root && root.contains(s)) ? s : null;
   }
   // Cache each item's normalized lowercase TITLE once, so typing does not re-read it on each
-  // keystroke. Only the entry's own label is matched: body prose is not part of the title, and the
-  // label excludes both the numbering prefix the menu renders in its own span and the review status
-  // mark (a CSS pseudo-element), so neither can leak into what a query compares against.
+  // keystroke. Only the title the menu shows is matched - the entry label plus the number the
+  // DOCUMENT itself supplies, never the sequential one the runtime computes when the document has
+  // none (that number is chrome, not title text). Body prose is not part of a title, and the review
+  // status mark is a CSS pseudo-element, so neither can reach a query. An icon-only author nav link
+  // leaves an empty label, so fall back to its heading's own text rather than to nothing - that
+  // entry would otherwise be unmatchable by any query.
   items.forEach(function (it) {
-    it._cmHay = _cmTocNormalize(it.label);
+    const label = _cmTocNormalize(it.label)
+      || _cmTocNormalize(_cmHeadingDepth(it.el) ? cmhHeadingText(it.el) : "");
+    it._cmHay = _cmTocNormalize((it.docNum ? it.docNum + " " : "") + label);
   });
   // Every <section> any entry lives in, with the entries it holds: a section is hidden only when
   // EVERY entry inside it is filtered out, so a single wrapper section around the whole document

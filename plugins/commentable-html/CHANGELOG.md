@@ -14,9 +14,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   the filter noisy and surprising for a reader who expects it to narrow the list of titles.
   Matching is still case-insensitive, and both the query and the title are now compared with
   their internal whitespace runs collapsed and trimmed, so a heading broken across source lines
-  matches the words a reader actually sees. The numbering prefix the menu renders in its own
-  `.cm-toc-num` span and the review status mark (a CSS pseudo-element) are not part of the entry
-  label, so neither can leak into what a query matches. (CMH-TOC-09)
+  matches the words a reader actually sees. The title a query sees is what the menu shows: the
+  entry label plus the number the DOCUMENT itself supplies, so typing `10.3` still finds the row
+  that reads `10.3 Vendor exposure` whether the author left that number in the label or
+  `generate_toc` moved it into its own span. The sequential number the runtime computes for a
+  document that carries none is chrome rather than title text and never matches, and the review
+  status mark is a CSS pseudo-element, so it cannot leak in either. An author nav link with no
+  text of its own falls back to its heading's own title rather than to an empty one that no query
+  could match. (CMH-TOC-09)
 
 ## [1.828.0] - 2026-08-09
 
