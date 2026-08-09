@@ -173,7 +173,9 @@ test.describe("side-TOC search and aria-current", () => {
     // With the review UI active each entry also carries a single-character status mark. It is a
     // pseudo-element, not link text, so a query for it matches nothing (no title here holds an "r").
     await toc.locator(".cm-side-toc-search").fill("");
-    await page.locator("#one .cmh-review-badge").click({ force: true });
+    const badge = page.locator("#one .cmh-review-badge");
+    await expect(badge).toBeAttached();
+    await badge.click({ force: true });
     await expect(page.locator("#cmSideToc .cmh-toc-mark").first()).toBeAttached();
     await toc.locator(".cm-side-toc-search").fill("r");
     await expect(toc.locator(".cm-side-toc-list li:not(.cm-toc-li-hidden)")).toHaveCount(0);
@@ -187,23 +189,34 @@ test.describe("side-TOC search and aria-current", () => {
     await expect(tocNum(toc, "vendor")).toHaveText("10.3");
     await toc.locator(".cm-side-toc-search").fill("10.3");
     await expect(tocRow(toc, "vendor")).toBeVisible();
+    // The match is a substring one, as it is for any other title text, so the 10.3.1 subsection
+    // stays listed under it; an unrelated top-level number does not.
+    await expect(tocRow(toc, "audit")).toBeVisible();
+    await expect(tocRow(toc, "mitigation")).toBeHidden();
     await expect(tocRow(toc, "rollout")).toBeHidden();
   });
 
   test("an icon-only nav entry still matches its heading's own title (CMH-TOC-09)", async ({ page }) => {
-    // An author nav link with no text of its own has no label to match, so it falls back to the
-    // title its heading shows - otherwise no query could ever list that entry.
+    // An author nav link with no text of its own has no label to show or match, so it falls back to
+    // the title its heading shows - the row and the filter resolve the same title, so a query can
+    // never surface a row whose title the reader cannot read.
     const ICON_NAV = `
       <nav class="cm-toc"><ol>
         <li><a href="#i-one"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt=""></a></li>
         <li><a href="#i-two">Rollout</a></li>
       </ol></nav>
-      <section><h2 id="i-one">Vendor exposure</h2><p>Third-party surface notes.</p></section>
+      <section><h2 id="i-one">10.3 Vendor exposure</h2><p>Third-party surface notes.</p></section>
       <section><h2 id="i-two">Rollout</h2><p>Sequencing notes.</p></section>`;
     const toc = await openNested(page, ICON_NAV, "cmh-toc-icon-nav");
+    // The row reads the heading's title, with the document's number in its own span (not twice).
+    await expect(tocNum(toc, "i-one")).toHaveText("10.3");
+    await expect(tocLink(toc, "i-one")).toHaveText("10.3 Vendor exposure");
     await toc.locator(".cm-side-toc-search").fill("vendor");
     await expect(tocRow(toc, "i-one")).toBeVisible();
     await expect(tocRow(toc, "i-two")).toBeHidden();
+    // The number the row shows matches too, and it is stored once - not "10.3 10.3".
+    await toc.locator(".cm-side-toc-search").fill("10.3 vendor");
+    await expect(tocRow(toc, "i-one")).toBeVisible();
   });
 
   test("a title broken across source lines matches a normally spaced query (CMH-TOC-09)", async ({ page }) => {

@@ -23148,6 +23148,17 @@ function setupSideToc() {
     });
   }
   const docNumbered = !authorNumbered && items.some(function (it) { return !!it.docNum; });
+  // The title each row SHOWS, resolved once so the row and the filter can never disagree. An author
+  // nav link with no text of its own (an icon-only link) has no title to show, so fall back to the
+  // heading it targets, minus the number already rendered in its own span - resolved here, AFTER the
+  // numbering mode is decided, so a heading-derived title can never flip `authorNumbered` for the
+  // whole document or suppress another entry's number.
+  items.forEach(function (it) {
+    it.title = it.label || (_cmHeadingDepth(it.el) ? cmhHeadingText(it.el) : "");
+    if (it.docNum && _cmTocLeadingNumber(it.title) === it.docNum) {
+      it.title = it.title.slice(it.docNum.length).replace(/^[.)]?\s*/, "");
+    }
+  });
   const counters = [];
   items.forEach(function (it) {
     const li = document.createElement("li");
@@ -23157,7 +23168,7 @@ function setupSideToc() {
     const a = document.createElement("a");
     a.href = "#" + it.id;
     if (authorNumbered) {
-      a.textContent = it.label;
+      a.textContent = it.title;
     } else {
       // Section numbers follow the heading hierarchy to any depth: 1, 1.1, 1.1.1, 1.2, 2...
       let num = it.docNum || "";
@@ -23167,8 +23178,8 @@ function setupSideToc() {
         counters[it.level - 1]++;
         num = counters.join(".");
       }
-      if (num) a.innerHTML = '<span class="cm-toc-num">' + escapeHtml(num) + '</span> ' + escapeHtml(it.label);
-      else a.textContent = it.label;
+      if (num) a.innerHTML = '<span class="cm-toc-num">' + escapeHtml(num) + '</span> ' + escapeHtml(it.title);
+      else a.textContent = it.title;
     }
     li.appendChild(a);
     list.appendChild(li);
@@ -23221,16 +23232,12 @@ function setupSideToc() {
     return (s && s !== root && root.contains(s)) ? s : null;
   }
   // Cache each item's normalized lowercase TITLE once, so typing does not re-read it on each
-  // keystroke. Only the title the menu shows is matched - the entry label plus the number the
-  // DOCUMENT itself supplies, never the sequential one the runtime computes when the document has
-  // none (that number is chrome, not title text). Body prose is not part of a title, and the review
-  // status mark is a CSS pseudo-element, so neither can reach a query. An icon-only author nav link
-  // leaves an empty label, so fall back to its heading's own text rather than to nothing - that
-  // entry would otherwise be unmatchable by any query.
+  // keystroke. What a query sees is exactly what the row shows: the resolved title plus the number
+  // the DOCUMENT itself supplies, never the sequential one the runtime computes for a document that
+  // has none (that number is chrome, not title text). Body prose is not part of a title, and the
+  // review status mark is a CSS pseudo-element, so neither can reach a query.
   items.forEach(function (it) {
-    const label = _cmTocNormalize(it.label)
-      || _cmTocNormalize(_cmHeadingDepth(it.el) ? cmhHeadingText(it.el) : "");
-    it._cmHay = _cmTocNormalize((it.docNum ? it.docNum + " " : "") + label);
+    it._cmHay = _cmTocNormalize((it.docNum ? it.docNum + " " : "") + it.title);
   });
   // Every <section> any entry lives in, with the entries it holds: a section is hidden only when
   // EVERY entry inside it is filtered out, so a single wrapper section around the whole document

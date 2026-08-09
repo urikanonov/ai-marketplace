@@ -19,9 +19,11 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   that reads `10.3 Vendor exposure` whether the author left that number in the label or
   `generate_toc` moved it into its own span. The sequential number the runtime computes for a
   document that carries none is chrome rather than title text and never matches, and the review
-  status mark is a CSS pseudo-element, so it cannot leak in either. An author nav link with no
-  text of its own falls back to its heading's own title rather than to an empty one that no query
-  could match. (CMH-TOC-09)
+  status mark is a CSS pseudo-element, so it cannot leak in either. The row and the filter now
+  resolve one title per entry, so a query can never surface a row whose title the reader cannot
+  read: an author nav link with no text of its own falls back to the text of the heading it
+  targets (minus a leading number the menu already shows in its own span), and that same title is
+  what the row renders. (CMH-TOC-09)
 
 ## [1.828.0] - 2026-08-09
 
