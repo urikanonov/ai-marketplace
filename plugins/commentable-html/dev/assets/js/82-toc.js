@@ -212,6 +212,61 @@ let _cmTocItems = [];
 let _cmTocLinks = [];
 let _cmReviewFilterBtns = null;
 let _cmReviewFilterEl = null;
+// Heading depth (H2 -> 2) of a side-menu target, or 0 when the anchor points at something else.
+function _cmHeadingDepth(el) {
+  const m = el && /^H([1-6])$/.exec(el.tagName || "");
+  return m ? Number(m[1]) : 0;
+}
+// How deeply an author `.cm-toc` link is nested in that nav's own lists (1 for a top-level entry).
+function _cmTocListDepth(a) {
+  const nav = a.closest(".cm-toc");
+  let depth = 0;
+  for (let n = a.parentNode; n && n !== nav; n = n.parentNode) {
+    if (n.tagName === "OL" || n.tagName === "UL") depth++;
+  }
+  return depth || 1;
+}
+// Turn each entry's raw depth into a 1-based menu level: heading tags win (an author TOC can list
+// h2/h3/h4, and a flat list of them must still nest), an anchor that points at a non-heading falls
+// back to the nav's own list nesting, and a level never jumps more than one step past its
+// predecessor so the numbering below can never index a counter that was never opened.
+function _cmAssignTocLevels(items) {
+  let base = 0;
+  items.forEach(function (it) { if (it.hLevel && (!base || it.hLevel < base)) base = it.hLevel; });
+  if (!base) base = 1;
+  let prev = 0;
+  items.forEach(function (it) {
+    const raw = it.hLevel || (base + (it.listDepth || 1) - 1);
+    it.level = Math.min(Math.max(1, raw - base + 1), prev + 1);
+    prev = it.level;
+  });
+}
+// A leading section number an author already wrote ("3.", "2)", "10.3"), or "" when there is none.
+// A year-prefixed title ("2024 review") carries no separator, so it is not a number.
+function _cmTocLeadingNumber(text) {
+  const m = /^((?:\d+(?:\.\d+)*[.)]|\d+\.\d+(?:\.\d+)*))\s+/.exec(String(text || ""));
+  return m ? m[1].replace(/[.)]$/, "") : "";
+}
+// Each entry's OWN text: its heading plus the prose that follows it, up to the next entry. Reading
+// the whole enclosing <section> instead makes every entry of a single-wrapper document share one
+// haystack, so the filter matches everything and narrows nothing.
+function _cmTocOwnText(root, items) {
+  const index = new Map();
+  items.forEach(function (it, i) { if (it.el) index.set(it.el, i); });
+  const bufs = items.map(function () { return []; });
+  let cur = -1;
+  (function walk(node) {
+    for (let n = node.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3) { if (cur >= 0) bufs[cur].push(n.nodeValue); continue; }
+      if (n.nodeType !== 1) continue;
+      if (/^(SCRIPT|STYLE|TEMPLATE)$/.test(n.tagName)) continue;
+      if (n.classList && (n.classList.contains("cm-skip") || n.classList.contains("cm-toc"))) continue;
+      if (index.has(n)) cur = index.get(n);
+      walk(n);
+    }
+  })(root);
+  return bufs.map(function (b) { return b.join(" "); });
+}
 function setupCollapsibleSections() {
   _cmSectionToggles.length = 0;
   _cmSectionEntries.length = 0;
@@ -266,14 +321,15 @@ function setupSideToc() {
       let id = (a.getAttribute("href") || "").slice(1);
       try { id = decodeURIComponent(id); } catch (e) { /* malformed %-encoding: keep the raw id */ }
       const el = id && document.getElementById(id);
-      if (el) items.push({ id: id, label: (a.textContent || "").trim(), el: el, level: 1 });
+      if (el) items.push({ id: id, label: (a.textContent || "").trim(), el: el, hLevel: _cmHeadingDepth(el), listDepth: _cmTocListDepth(a) });
     });
   } else {
-    root.querySelectorAll("h2[id], h3[id]").forEach(function (h) {
-      items.push({ id: h.id, label: cmhHeadingText(h), el: h, level: h.tagName === "H3" ? 2 : 1 });
+    root.querySelectorAll("h2[id], h3[id], h4[id]").forEach(function (h) {
+      items.push({ id: h.id, label: cmhHeadingText(h), el: h, hLevel: _cmHeadingDepth(h), listDepth: 0 });
     });
   }
   if (items.length < 2) return; // not worth a side menu
+  _cmAssignTocLevels(items);
   const nav = document.createElement("nav");
   nav.className = "cm-side-toc cm-skip";
   nav.id = "cmSideToc";
@@ -300,24 +356,37 @@ function setupSideToc() {
   const list = document.createElement("ul");
   list.className = "cm-side-toc-list";
   const links = [];
-  // If the author already numbered their headings (e.g. "1. Summary", "3.1 Goals"), do NOT
-  // add a second computed number - show the label as-is so there is a single number.
-  const _numRe = /^(?:\d+(?:\.\d+)*[.)]|\d+\.\d+(?:\.\d+)*)\s+/;
-  const authorNumbered = items.some(function (it) { return _numRe.test(it.label); });
-  let n1 = 0, n2 = 0;
+  // If the author already numbered their TOC labels (e.g. "1. Summary", "3.1 Goals"), do NOT add a
+  // second computed number - show the label as-is so there is a single number. Otherwise prefer the
+  // number the DOCUMENT itself displays on the heading (generate_toc strips it from the label,
+  // CMH-TOC-10, so "10.3" must not resurface as a flat "25"), and only compute one when there is
+  // none to preserve.
+  const authorNumbered = items.some(function (it) { return !!_cmTocLeadingNumber(it.label); });
+  if (!authorNumbered) {
+    items.forEach(function (it) {
+      it.docNum = _cmHeadingDepth(it.el) ? _cmTocLeadingNumber(cmhHeadingText(it.el)) : "";
+    });
+  }
+  const docNumbered = !authorNumbered && items.some(function (it) { return !!it.docNum; });
+  const counters = [];
   items.forEach(function (it) {
     const li = document.createElement("li");
-    if (it.level === 2) li.className = "is-sub";
+    li.className = "is-level-" + it.level + (it.level > 1 ? " is-sub" : "");
     const a = document.createElement("a");
     a.href = "#" + it.id;
     if (authorNumbered) {
       a.textContent = it.label;
     } else {
-      // Section numbers: top-level items count 1, 2, 3...; sub-items count 1.1, 1.2...
-      let num;
-      if (it.level === 2) { n2++; num = (n1 || 1) + "." + n2; }
-      else { n1++; n2 = 0; num = String(n1); }
-      a.innerHTML = '<span class="cm-toc-num">' + num + '</span> ' + escapeHtml(it.label);
+      // Section numbers follow the heading hierarchy to any depth: 1, 1.1, 1.1.1, 1.2, 2...
+      let num = it.docNum || "";
+      if (!docNumbered) {
+        counters.length = it.level;
+        for (let d = 0; d < it.level; d++) if (typeof counters[d] !== "number") counters[d] = 0;
+        counters[it.level - 1]++;
+        num = counters.join(".");
+      }
+      if (num) a.innerHTML = '<span class="cm-toc-num">' + escapeHtml(num) + '</span> ' + escapeHtml(it.label);
+      else a.textContent = it.label;
     }
     li.appendChild(a);
     list.appendChild(li);
@@ -361,22 +430,44 @@ function setupSideToc() {
     });
   // A11: filter the visible sections (and their menu entries) by heading + body text.
   function _cmTocSectionOf(it) { return (it.el && it.el.closest) ? it.el.closest("section") : null; }
-  // Cache each item's lowercase haystack (label + its section/heading text) once, so typing does
-  // not re-read textContent of every section on each keystroke.
+  // Cache each item's lowercase haystack (label + the text that entry OWNS) once, so typing does
+  // not re-read textContent on each keystroke - and so a query narrows to the entries that really
+  // carry it rather than to every entry that shares an enclosing <section>.
+  const ownText = _cmTocOwnText(root, items);
+  items.forEach(function (it, i) {
+    it._cmHay = ((it.label || "") + " " + (ownText[i] || "")).toLowerCase();
+  });
+  // Every <section> any entry lives in, with the entries it holds: a section is hidden only when
+  // EVERY entry inside it is filtered out, so a single wrapper section around the whole document
+  // can never be hidden out from under a matching heading.
+  const filterSecs = [];
   items.forEach(function (it) {
-    const sec = _cmTocSectionOf(it);
-    it._cmHay = ((it.label || "") + " " + (sec ? sec.textContent : (it.el.textContent || ""))).toLowerCase();
+    const s = _cmTocSectionOf(it);
+    if (s && filterSecs.indexOf(s) === -1) filterSecs.push(s);
+  });
+  const filterSecItems = filterSecs.map(function (s) {
+    const idxs = [];
+    for (let i = 0; i < items.length; i++) if (s.contains(items[i].el)) idxs.push(i);
+    return idxs;
   });
   function applyTocFilter(q) {
     const query = String(q || "").trim().toLowerCase();
+    const vis = [];
+    for (let i = 0; i < items.length; i++) vis[i] = !query || items[i]._cmHay.indexOf(query) !== -1;
+    // Keep the ancestors of a match listed so a matching subsection still shows where it lives.
+    let need = Infinity;
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (need < Infinity && items[i].level < need) vis[i] = true;
+      if (vis[i] && items[i].level < need) need = items[i].level;
+    }
     for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      const sec = _cmTocSectionOf(it);
-      const match = !query || it._cmHay.indexOf(query) !== -1;
-      it._cmFiltered = !match; // scroll-spy reads this so it skips hidden entries (sectioned or not)
+      items[i]._cmFiltered = !vis[i]; // scroll-spy reads this so it skips hidden entries (sectioned or not)
       const li = links[i].closest("li");
-      if (li) li.classList.toggle("cm-toc-li-hidden", !match);
-      if (sec) sec.classList.toggle("cm-toc-filtered", !match);
+      if (li) li.classList.toggle("cm-toc-li-hidden", !vis[i]);
+    }
+    for (let k = 0; k < filterSecs.length; k++) {
+      const shown = filterSecItems[k].some(function (i) { return vis[i]; });
+      filterSecs[k].classList.toggle("cm-toc-filtered", !shown);
     }
     if (typeof schedule === "function") schedule(); // re-run scroll-spy so aria-current follows the filter
   }

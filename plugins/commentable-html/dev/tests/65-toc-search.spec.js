@@ -18,6 +18,48 @@ const CONTENT = `
 // The sections carry no id (only their headings do), so address each by its heading.
 const sec = (page, hid) => page.locator(`#commentRoot section:has(#${hid})`);
 
+// The shape a generated multi-level report has: an author `nav.cm-toc` whose labels carry NO
+// number (generate_toc strips a redundant leading one, CMH-TOC-10) while the headings themselves
+// display the document's own hierarchical numbering, and a single wrapper <section> around the
+// whole body rather than one <section> per heading.
+const NESTED = `
+<nav class="cm-toc"><ol>
+  <li><a href="#risk">Risk register</a><ol>
+    <li><a href="#vendor">Vendor exposure</a><ol>
+      <li><a href="#audit">Audit cadence</a></li>
+    </ol></li>
+    <li><a href="#mitigation">Mitigation plan</a></li>
+  </ol></li>
+  <li><a href="#rollout">Rollout</a></li>
+</ol></nav>
+<section id="wrap">
+  <h2 id="risk">10. Risk register</h2>
+  <p>Register overview prose.</p>
+  <h3 id="vendor">10.3 Vendor exposure</h3>
+  <p>Third-party surface notes.</p>
+  <h4 id="audit">10.3.1 Audit cadence</h4>
+  <p>Walkthrough every quarter.</p>
+  <h3 id="mitigation">10.4 Mitigation plan</h3>
+  <p>Controls and owners.</p>
+  <h2 id="rollout">11. Rollout</h2>
+  <p>Sequencing notes.</p>
+</section>`;
+
+async function openNested(page, content = NESTED, key = "cmh-toc-nested") {
+  const { html } = stageContent(content, { key, source: "nested.html" });
+  await page.setViewportSize({ width: 1600, height: 800 });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  const toc = page.locator("#cmSideToc");
+  await expect(toc).toBeVisible();
+  return toc;
+}
+
+const tocRow = (toc, id) => toc.locator(`.cm-side-toc-list li:has(> a[href="#${id}"])`);
+const tocLink = (toc, id) => toc.locator(`.cm-side-toc-list a[href="#${id}"]`);
+const tocNum = (toc, id) => tocLink(toc, id).locator(".cm-toc-num");
+const linkLeft = async (toc, id) => (await tocLink(toc, id).boundingBox()).x;
+
 async function openDoc(page) {
   const { html } = stageContent(CONTENT, { key: "cmh-toc-search-test", source: "toc-search.html" });
   await page.setViewportSize({ width: 1600, height: 800 });
@@ -147,5 +189,72 @@ test.describe("side-TOC search and aria-current", () => {
     // A query matching nothing leaves no current link at all.
     await toc.locator(".cm-side-toc-search").fill("nomatchxyz");
     await expect(toc.locator('.cm-side-toc-list a[aria-current="location"]')).toHaveCount(0);
+  });
+
+  test("the side menu keeps the document's own section numbering and nests subsections (CMH-TOC-11)", async ({ page }) => {
+    const toc = await openNested(page);
+    // Every nav entry carries the number its heading displays - a subsection is 10.3, never a
+    // flat sequential 2 - and a deeper heading is never numbered as a top-level peer.
+    await expect(tocNum(toc, "risk")).toHaveText("10");
+    await expect(tocNum(toc, "vendor")).toHaveText("10.3");
+    await expect(tocNum(toc, "audit")).toHaveText("10.3.1");
+    await expect(tocNum(toc, "mitigation")).toHaveText("10.4");
+    await expect(tocNum(toc, "rollout")).toHaveText("11");
+    // Hierarchy is visible: each level is indented further than its parent.
+    await expect(tocRow(toc, "vendor")).toHaveClass(/is-sub/);
+    await expect(tocRow(toc, "audit")).toHaveClass(/is-level-3/);
+    const top = await linkLeft(toc, "risk");
+    const sub = await linkLeft(toc, "vendor");
+    const subSub = await linkLeft(toc, "audit");
+    expect(sub).toBeGreaterThan(top);
+    expect(subSub).toBeGreaterThan(sub);
+    expect(await linkLeft(toc, "rollout")).toBeCloseTo(top, 0);
+  });
+
+  test("an unnumbered nested document is numbered hierarchically, not flat (CMH-TOC-11)", async ({ page }) => {
+    // No author numbers anywhere (nav or headings) and no author nav: the h2/h3/h4 fallback
+    // computes 1, 1.1, 1.1.1 from the real heading depth instead of 1, 2, 3.
+    const PLAIN = `
+      <h2 id="one">Findings</h2><p>lead</p>
+      <h3 id="one-a">Signals</h3><p>detail</p>
+      <h4 id="one-a-i">Sampling</h4><p>detail</p>
+      <h2 id="two">Next steps</h2><p>lead</p>`;
+    const toc = await openNested(page, PLAIN, "cmh-toc-plain");
+    await expect(tocNum(toc, "one")).toHaveText("1");
+    await expect(tocNum(toc, "one-a")).toHaveText("1.1");
+    await expect(tocNum(toc, "one-a-i")).toHaveText("1.1.1");
+    await expect(tocNum(toc, "two")).toHaveText("2");
+    expect(await linkLeft(toc, "one-a-i")).toBeGreaterThan(await linkLeft(toc, "one-a"));
+  });
+
+  test("the filter narrows the navigation to matching headings and keeps ancestor context (CMH-TOC-09)", async ({ page }) => {
+    const toc = await openNested(page);
+    const search = toc.locator(".cm-side-toc-search");
+
+    // Case-insensitive, and it narrows: only the matching heading and the ancestors that place
+    // it stay listed, even though every heading shares one wrapper <section>.
+    await search.fill("CADENCE");
+    await expect(tocRow(toc, "audit")).toBeVisible();
+    await expect(tocRow(toc, "vendor")).toBeVisible();
+    await expect(tocRow(toc, "risk")).toBeVisible();
+    await expect(tocRow(toc, "mitigation")).toBeHidden();
+    await expect(tocRow(toc, "rollout")).toBeHidden();
+    // The wrapper section still holds a visible entry, so it is never hidden out from under it.
+    await expect(page.locator("#wrap")).toBeVisible();
+
+    // Body text still matches, and it belongs to the heading that owns it - not to every
+    // heading that happens to share the wrapper.
+    await search.fill("controls");
+    await expect(tocRow(toc, "mitigation")).toBeVisible();
+    await expect(tocRow(toc, "risk")).toBeVisible();
+    await expect(tocRow(toc, "audit")).toBeHidden();
+    await expect(tocRow(toc, "rollout")).toBeHidden();
+
+    // Clearing restores the complete tree.
+    await search.press("Escape");
+    await expect(search).toHaveValue("");
+    for (const id of ["risk", "vendor", "audit", "mitigation", "rollout"]) {
+      await expect(tocRow(toc, id)).toBeVisible();
+    }
   });
 });
