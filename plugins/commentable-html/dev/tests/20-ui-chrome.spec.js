@@ -190,14 +190,30 @@ test.describe("UI chrome: version, type bubble, help, TOC side menu", () => {
   test("Help advertises the brand marks only on a document that can show them (CMH-MENU-ICON-04)", async ({ page }) => {
     await openInline(page);
     const bullet = page.locator(".cm-help li", { hasText: "comment-bubble mark" });
+    const reopenHelp = async () => {
+      await page.keyboard.press("Escape");
+      await page.evaluate(() => document.querySelector(".cm-footer-help").click());
+      await expect(page.locator(".cm-help")).toHaveCount(1);
+    };
     await openToolbarMenu(page);
     await page.click("#btnHelpTop");
     await expect(bullet).toHaveCount(1);
-    await page.keyboard.press("Escape");
+    await expect(bullet).toContainText("the matching mark at the top of that menu");
+    // A shell whose overflow menu predates the head mark keeps the toolbar half of the sentence
+    // and drops the menu half, rather than naming a mark it never got.
+    await page.evaluate(() => document.querySelector("#toolbarMenu a.cm-brand-link").remove());
+    await reopenHelp();
+    await expect(bullet).toHaveCount(1);
+    await expect(bullet).not.toContainText("the matching mark at the top of that menu");
+    // A shell that predates the toolbar mark entirely gets no bullet at all.
+    await page.evaluate(() => document.querySelector(".cm-toolbar > a.cm-brand-link").remove());
+    await reopenHelp();
+    await expect(bullet).toHaveCount(0);
     // A deck hides the whole floating toolbar, so Help must stop naming a mark the reader cannot
-    // reach. The gate is read when Help is built, so flipping the mode before reopening is enough.
+    // reach even though both marks are still in the DOM. The gate is read when Help is built.
+    await page.reload();
+    await ready(page);
     await page.evaluate(() => document.getElementById("commentRoot").setAttribute("data-cmh-mode", "deck"));
-    // A deck hides the toolbar the Help trigger lives in, so drive the same handler directly.
     await page.evaluate(() => document.querySelector(".cm-footer-help").click());
     await expect(page.locator(".cm-help")).toHaveCount(1);
     await expect(bullet).toHaveCount(0);
