@@ -144,6 +144,12 @@
     display: revert !important;
   }
 
+  /* The reader's transient "Filter sections..." query is screen chrome, not an edit: a print or a
+     Save as PDF must carry the whole authored document, never the filtered view. */
+  #commentRoot section.cm-toc-filtered {
+    display: revert !important;
+  }
+
   #commentRoot .cmh-note.cmh-note-collapsed .cmh-note-input,
   #commentRoot .cmh-note.cmh-note-collapsed .cmh-note-head {
     display: revert !important;

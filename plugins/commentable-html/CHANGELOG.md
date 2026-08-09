@@ -57,6 +57,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   level is decided by an open-depth stack, so a document that SKIPS a heading level keeps
   equal-depth headings as peers (`h2`, `h4`, `h4`, `h3` reads 1, 2, 2, 2), and a shallower entry
   matching later in the list no longer cancels the ancestor chain a deeper match still needs.
+- Printing (and Save as PDF) now ignores an active section filter. The filter hides a non-matching
+  `<section>` with `display:none`, which print honored, so a reader who printed while a query was
+  in the Filter sections box silently got a PDF missing the sections they had filtered out - the
+  same class of runtime state print already forces open for a collapsed section. A query that
+  matches NOTHING now narrows the menu only, rather than hiding every section and blanking the
+  document over what is usually a typo, and a deep link to a filtered-out entry reveals it even
+  when its wrapper section stayed visible.
 
 ## [1.824.0] - 2026-08-09
 

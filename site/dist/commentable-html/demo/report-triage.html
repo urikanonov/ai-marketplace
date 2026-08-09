@@ -3849,6 +3849,12 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
     display: revert !important;
   }
 
+  /* The reader's transient "Filter sections..." query is screen chrome, not an edit: a print or a
+     Save as PDF must carry the whole authored document, never the filtered view. */
+  #commentRoot section.cm-toc-filtered {
+    display: revert !important;
+  }
+
   #commentRoot .cmh-note.cmh-note-collapsed .cmh-note-input,
   #commentRoot .cmh-note.cmh-note-collapsed .cmh-note-head {
     display: revert !important;
@@ -22610,7 +22616,7 @@ function showHelp(restoreEl) {
         '<ul>' +
           '<li>On wide screens a <strong>section menu</strong> appears on the left, highlights the section you are reading, and collapses to <em>Navigation &raquo;</em>.</li>' +
           '<li>Menu entries mirror the document: each keeps the section number the document already shows - the one in your contents list, or the one on the heading itself - and falls back to a computed <code>1.1</code>-style number only when there is none. Each entry is indented to its level, so subsections read as subsections.</li>' +
-          '<li><strong>Filter sections</strong> narrows the menu to the headings matching what you type, keeping the parent entries that place them; clearing the box restores the whole list.</li>' +
+          '<li><strong>Filter sections</strong> narrows the menu to the entries whose heading or prose matches what you type, hides the sections they do not match, and keeps the parent entries that place a match; clearing the box or pressing <kbd>Esc</kbd> restores the whole document. Printing always carries the whole document, whatever the filter shows.</li>' +
           '<li>Every section title has a caret to <strong>collapse or expand</strong> that section; <strong>Expand All</strong> / <strong>Collapse All</strong> act on every section at once.</li>' +
           '<li><strong>Scroll to Top</strong> / <strong>Scroll to Bottom</strong> jump the document, and a small bubble shows your scroll position.</li>' +
         '</ul>') +
@@ -23000,6 +23006,23 @@ function _cmTocLeadingNumber(text) {
 // the whole enclosing <section> instead makes every entry of a single-wrapper document share one
 // haystack, so the filter matches everything and narrows nothing. Text nodes are joined with no
 // separator (what textContent would give) so inline markup cannot split a word in two.
+function _cmTocSkipNode(n) {
+  // Foreign-namespace elements (an inline SVG's <style>/<script>) report a lowercase name, so read
+  // localName and compare case-insensitively rather than trusting HTML's uppercase tagName.
+  if (/^(script|style|template)$/.test((n.localName || n.tagName || "").toLowerCase())) return true;
+  return !!(n.classList && (n.classList.contains("cm-skip") || n.classList.contains("cm-toc")));
+}
+function _cmTocPlainText(el) {
+  const out = [];
+  (function walk(node) {
+    for (let n = node.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3) { out.push(n.nodeValue); continue; }
+      if (n.nodeType !== 1 || _cmTocSkipNode(n)) continue;
+      walk(n);
+    }
+  })(el);
+  return out.join("");
+}
 function _cmTocOwnText(root, items) {
   const index = new Map();
   items.forEach(function (it, i) {
@@ -23012,20 +23035,18 @@ function _cmTocOwnText(root, items) {
   (function walk(node) {
     for (let n = node.firstChild; n; n = n.nextSibling) {
       if (n.nodeType === 3) { if (cur) for (let k = 0; k < cur.length; k++) bufs[cur[k]].push(n.nodeValue); continue; }
-      if (n.nodeType !== 1) continue;
-      // Foreign-namespace elements (an inline SVG's <style>/<script>) report a lowercase name, so
-      // read localName and compare case-insensitively rather than trusting HTML's uppercase tagName.
-      if (/^(script|style|template)$/.test((n.localName || n.tagName || "").toLowerCase())) continue;
-      if (n.classList && (n.classList.contains("cm-skip") || n.classList.contains("cm-toc"))) continue;
+      if (n.nodeType !== 1 || _cmTocSkipNode(n)) continue;
       const at = index.get(n);
       if (at) cur = at;
       walk(n);
     }
   })(root);
   return items.map(function (it, i) {
-    // An author TOC may point outside the content root, which this walk never visits; fall back to
-    // that element's own text so such an entry still filters on its body rather than its label alone.
-    if (!bufs[i].length && it.el && !root.contains(it.el)) return it.el.textContent || "";
+    // An entry the walk never attributed text to - one outside the content root, or one inside a
+    // subtree the walk skips - falls back to its own text so it still filters on its body rather
+    // than its label alone. An entry that CONTAINS the root is excluded: its text is the whole
+    // document, which would make that row match every query.
+    if (!bufs[i].length && it.el && !(it.el.contains && it.el.contains(root))) return _cmTocPlainText(it.el);
     return bufs[i].join("");
   });
 }
@@ -23194,7 +23215,11 @@ function setupSideToc() {
       reviewFilter.appendChild(b);
     });
   // A11: filter the visible sections (and their menu entries) by heading + body text.
-  function _cmTocSectionOf(it) { return (it.el && it.el.closest) ? it.el.closest("section") : null; }
+  // Scope the section lookup to the content root: an author TOC may target an element outside it,
+  // and the runtime must never write a filter class onto the host page's own chrome.
+  function _cmTocSectionOf(it) {
+    return (it.el && it.el.closest && root.contains(it.el)) ? it.el.closest("section") : null;
+  }
   // Cache each item's lowercase haystack (label + the text that entry OWNS) once, so typing does
   // not re-read textContent on each keystroke - and so a query narrows to the entries that really
   // carry it rather than to every entry that shares an enclosing <section>.
@@ -23233,6 +23258,8 @@ function setupSideToc() {
       if (need < Infinity && items[i].level < need) vis[i] = true;
       if (vis[i]) need = items[i].level;
     }
+    let anyMatch = false;
+    for (let i = 0; i < items.length; i++) if (vis[i]) { anyMatch = true; break; }
     for (let i = 0; i < items.length; i++) {
       items[i]._cmFiltered = !vis[i]; // scroll-spy reads this so it skips hidden entries (sectioned or not)
       const li = links[i].closest("li");
@@ -23240,7 +23267,9 @@ function setupSideToc() {
     }
     for (let k = 0; k < filterSecs.length; k++) {
       const shown = filterSecItems[k].some(function (i) { return vis[i]; });
-      filterSecs[k].classList.toggle("cm-toc-filtered", !shown);
+      // A query that matches NOTHING narrows the menu only: hiding every section would blank the
+      // whole document (a single-wrapper report especially) over what is usually a typo.
+      filterSecs[k].classList.toggle("cm-toc-filtered", anyMatch && !shown);
     }
     if (typeof schedule === "function") schedule(); // re-run scroll-spy so aria-current follows the filter
   }
@@ -23249,17 +23278,24 @@ function setupSideToc() {
   search.addEventListener("keydown", function (e) {
     if (e.key === "Escape") { e.preventDefault(); clearTocFilter(); search.blur(); }
   });
-  // Reveal a filtered-out section when a deep link targets it, rather than scrolling to nothing.
+  // Reveal a filtered-out entry when a deep link targets it, rather than scrolling to nothing. Test
+  // for ANY filtered section ancestor (an outer one hides the target just as well as the nearest),
+  // and for the entry's own hidden row - inside a wrapper that stays visible, the row is the only
+  // thing the filter took away.
   window.addEventListener("hashchange", function () {
     let id = (location.hash || "").slice(1);
     try { id = decodeURIComponent(id); } catch (e) { /* keep the raw id */ }
     const el = id && document.getElementById(id);
-    const sec = el && el.closest && el.closest("section");
-    if (sec && sec.classList.contains("cm-toc-filtered")) {
-      // expandCollapsedAncestors (shared bundle scope) clears the filter AND expands collapsed
-      // ancestors so a revealed section shows its body, not just its heading.
+    if (!el) return;
+    const hidden = (el.closest && el.closest("section.cm-toc-filtered"))
+      || items.some(function (it) { return it._cmFiltered && it.el === el; });
+    if (hidden) {
+      // Clear the filter first: expandCollapsedAncestors only clears it for a filtered SECTION, and
+      // a hidden row inside a visible wrapper is exactly the case that has no filtered section.
+      clearTocFilter();
+      // expandCollapsedAncestors (shared bundle scope) also expands collapsed ancestors so a
+      // revealed section shows its body, not just its heading.
       if (typeof expandCollapsedAncestors === "function") expandCollapsedAncestors(el);
-      else clearTocFilter();
       el.scrollIntoView({ block: "start" });
     }
   });
@@ -23791,6 +23827,7 @@ function setupSinglePagePrint() {
   function measureCss() {
     return ".cmh-print-comments,.cmh-print-noscript{display:block !important}"
       + "#commentRoot section.cmh-section-collapsed>*{display:revert !important}"
+      + "#commentRoot section.cm-toc-filtered{display:revert !important}"
       + "#commentRoot .cmh-note.cmh-note-collapsed .cmh-note-input,"
       + "#commentRoot .cmh-note.cmh-note-collapsed .cmh-note-head{display:revert !important}"
       + "#commentRoot pre,#commentRoot code,#commentRoot .cmh-diff-view pre,#commentRoot .cmh-diff-view code,"

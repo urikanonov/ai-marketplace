@@ -58,7 +58,11 @@ async function openNested(page, content = NESTED, key = "cmh-toc-nested") {
 const tocRow = (toc, id) => toc.locator(`.cm-side-toc-list li:has(> a[href="#${id}"])`);
 const tocLink = (toc, id) => toc.locator(`.cm-side-toc-list a[href="#${id}"]`);
 const tocNum = (toc, id) => tocLink(toc, id).locator(".cm-toc-num");
-const linkLeft = async (toc, id) => (await tocLink(toc, id).boundingBox()).x;
+const linkLeft = async (toc, id) => {
+  const box = await tocLink(toc, id).boundingBox();
+  if (!box) throw new Error("linkLeft: #" + id + " has no bounding box (not laid out)");
+  return box.x;
+};
 
 async function openDoc(page) {
   const { html } = stageContent(CONTENT, { key: "cmh-toc-search-test", source: "toc-search.html" });
@@ -274,9 +278,80 @@ test.describe("side-TOC search and aria-current", () => {
     const toc = await openNested(page, NESTED, "cmh-toc-parent-match");
     await toc.locator(".cm-side-toc-search").fill("Sequencing");
     await expect(tocRow(toc, "rollout")).toBeVisible();
+    await expect(tocRow(toc, "risk")).toBeHidden();
     await expect(tocRow(toc, "vendor")).toBeHidden();
     await expect(tocRow(toc, "audit")).toBeHidden();
     await expect(tocRow(toc, "mitigation")).toBeHidden();
+  });
+
+  test("a query that matches nothing narrows the menu without blanking the document (CMH-TOC-09)", async ({ page }) => {
+    const toc = await openNested(page);
+    await toc.locator(".cm-side-toc-search").fill("nomatchxyz");
+    await expect(toc.locator(".cm-side-toc-list li:not(.cm-toc-li-hidden)")).toHaveCount(0);
+    // Every entry shares one wrapper section: hiding it would leave the reader a blank page with
+    // nothing but the filter box, so an empty result narrows the MENU only.
+    await expect(page.locator("#wrap")).toBeVisible();
+    await expect(page.locator("#risk")).toBeVisible();
+  });
+
+  test("a deep link to a filtered-out entry inside a visible wrapper reveals it (CMH-TOC-09)", async ({ page }) => {
+    const toc = await openNested(page);
+    await toc.locator(".cm-side-toc-search").fill("Sequencing");
+    await expect(tocRow(toc, "mitigation")).toBeHidden();
+    await page.evaluate(() => { location.hash = "#mitigation"; });
+    await expect(toc.locator(".cm-side-toc-search")).toHaveValue("");
+    await expect(tocRow(toc, "mitigation")).toBeVisible();
+  });
+
+  test("a flat author contents list still nests by heading tag (CMH-TOC-11)", async ({ page }) => {
+    // One flat <ol> listing an h2, an h3 and an h4: the nesting must come from the heading tags,
+    // since the nav's own list depth is 1 for every entry.
+    const FLAT_NAV = `
+      <nav class="cm-toc"><ol>
+        <li><a href="#f-one">Scope</a></li>
+        <li><a href="#f-two">Inputs</a></li>
+        <li><a href="#f-three">Sampling</a></li>
+      </ol></nav>
+      <h2 id="f-one">Scope</h2><p>lead</p>
+      <h3 id="f-two">Inputs</h3><p>detail</p>
+      <h4 id="f-three">Sampling</h4><p>detail</p>`;
+    const toc = await openNested(page, FLAT_NAV, "cmh-toc-flat-nav");
+    await expect(tocRow(toc, "f-two")).toHaveClass(/is-level-2/);
+    await expect(tocRow(toc, "f-three")).toHaveClass(/is-level-3/);
+    expect(await linkLeft(toc, "f-two")).toBeGreaterThan(await linkLeft(toc, "f-one"));
+    expect(await linkLeft(toc, "f-three")).toBeGreaterThan(await linkLeft(toc, "f-two"));
+  });
+
+  test("the fallback skips chrome headings and stops indenting at level 6 (CMH-TOC-01, CMH-TOC-11)", async ({ page }) => {
+    const DEEP = `
+      <h2 id="d2">Two</h2><p>a</p>
+      <h3 id="d3">Three</h3><p>b</p>
+      <h4 id="d4">Four</h4><p>c</p>
+      <div class="cm-skip"><h4 id="chrome-h4">Runtime chrome</h4></div>
+      <p>after chrome</p>`;
+    const toc = await openNested(page, DEEP, "cmh-toc-deep");
+    // A heading inside cm-skip chrome is not a document section, so it is never listed.
+    await expect(toc.locator('.cm-side-toc-list a[href="#chrome-h4"]')).toHaveCount(0);
+    await expect(tocRow(toc, "d4")).toHaveClass(/is-level-3/);
+    // The indent steps stop at level 6: a deeper entry HOLDS that indent instead of dropping back.
+    const levels = await page.evaluate(() => {
+      const nav = document.getElementById("cmSideToc");
+      const li = nav.querySelector('.cm-side-toc-list li:has(> a[href="#d4"])');
+      li.className = "is-level-7 is-sub";
+      const seven = getComputedStyle(li).paddingLeft;
+      li.className = "is-level-6 is-sub";
+      const six = getComputedStyle(li).paddingLeft;
+      li.className = "is-level-3 is-sub";
+      return { seven: seven, six: six };
+    });
+    // is-level-7 has no rule of its own, which is exactly why the runtime caps the class at 6.
+    expect(levels.seven).not.toBe(levels.six);
+    const capped = await page.evaluate(() => {
+      const nav = document.getElementById("cmSideToc");
+      return [...nav.querySelectorAll(".cm-side-toc-list li")]
+        .every((li) => !/is-level-([7-9]|\d\d)/.test(li.className));
+    });
+    expect(capped).toBe(true);
   });
 
   test("headings at the same depth stay peers when the document skips a level (CMH-TOC-11)", async ({ page }) => {
