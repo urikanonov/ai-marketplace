@@ -462,10 +462,14 @@ function setupSideToc() {
       reviewFilter.appendChild(b);
     });
   // A11: filter the visible sections (and their menu entries) by heading + body text.
-  // Scope the section lookup to the content root: an author TOC may target an element outside it,
-  // and the runtime must never write a filter class onto the host page's own chrome.
+  // Scope the section lookup to the content root at BOTH ends: an author TOC may target an element
+  // outside it, and even an in-root target's nearest `<section>` ancestor can be a host-page one
+  // (when the root sits inside the page's own section). The runtime must never write a filter class
+  // onto anything but a section the document owns.
   function _cmTocSectionOf(it) {
-    return (it.el && it.el.closest && root.contains(it.el)) ? it.el.closest("section") : null;
+    if (!it.el || !it.el.closest || !root.contains(it.el)) return null;
+    const s = it.el.closest("section");
+    return (s && s !== root && root.contains(s)) ? s : null;
   }
   // Cache each item's lowercase haystack (label + the text that entry OWNS) once, so typing does
   // not re-read textContent on each keystroke - and so a query narrows to the entries that really

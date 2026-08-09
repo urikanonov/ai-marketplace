@@ -333,25 +333,50 @@ test.describe("side-TOC search and aria-current", () => {
     // A heading inside cm-skip chrome is not a document section, so it is never listed.
     await expect(toc.locator('.cm-side-toc-list a[href="#chrome-h4"]')).toHaveCount(0);
     await expect(tocRow(toc, "d4")).toHaveClass(/is-level-3/);
-    // The indent steps stop at level 6: a deeper entry HOLDS that indent instead of dropping back.
-    const levels = await page.evaluate(() => {
-      const nav = document.getElementById("cmSideToc");
-      const li = nav.querySelector('.cm-side-toc-list li:has(> a[href="#d4"])');
-      li.className = "is-level-7 is-sub";
-      const seven = getComputedStyle(li).paddingLeft;
-      li.className = "is-level-6 is-sub";
-      const six = getComputedStyle(li).paddingLeft;
-      li.className = "is-level-3 is-sub";
-      return { seven: seven, six: six };
-    });
-    // is-level-7 has no rule of its own, which is exactly why the runtime caps the class at 6.
-    expect(levels.seven).not.toBe(levels.six);
-    const capped = await page.evaluate(() => {
-      const nav = document.getElementById("cmSideToc");
-      return [...nav.querySelectorAll(".cm-side-toc-list li")]
-        .every((li) => !/is-level-([7-9]|\d\d)/.test(li.className));
-    });
-    expect(capped).toBe(true);
+    // Nothing the filter hides is ever written outside the content root.
+    await toc.locator(".cm-side-toc-search").fill("Three");
+    expect(await page.evaluate(() => [...document.querySelectorAll(".cm-toc-filtered")]
+      .every((el) => document.getElementById("commentRoot").contains(el)))).toBe(true);
+  });
+
+  test("a nav nested deeper than the indent steps holds the level-6 indent (CMH-TOC-11)", async ({ page }) => {
+    // Seven levels of author list nesting over NON-heading targets, so the level really is 7 and the
+    // runtime - not the CSS - must cap the class it emits at 6 (is-level-7 has no rule of its own,
+    // which would drop the deepest entry back to the much smaller sub-entry indent).
+    let nav = "";
+    let body = "";
+    for (let i = 1; i <= 7; i++) {
+      nav += `<ol><li><a href="#n${i}">Entry ${i}</a>`;
+      body += `<div id="n${i}">Body ${i}</div>`;
+    }
+    for (let i = 1; i <= 7; i++) nav += "</li></ol>";
+    const toc = await openNested(page, `<nav class="cm-toc">${nav}</nav>${body}`, "cmh-toc-deep-nav");
+    await expect(tocRow(toc, "n6")).toHaveClass(/is-level-6/);
+    await expect(tocRow(toc, "n7")).toHaveClass(/is-level-6/);
+    await expect(tocRow(toc, "n7")).not.toHaveClass(/is-level-7/);
+    expect(await linkLeft(toc, "n7")).toBeCloseTo(await linkLeft(toc, "n6"), 0);
+    expect(await linkLeft(toc, "n6")).toBeGreaterThan(await linkLeft(toc, "n5"));
+  });
+
+  test("a partly numbered document shows only the numbers it really has (CMH-TOC-11)", async ({ page }) => {
+    // One heading carries the document's own number and another does not: the unnumbered one is
+    // left unnumbered rather than being given a computed number that would sit in a different
+    // scheme beside a real one (and could duplicate it).
+    const MIXED = `
+      <nav class="cm-toc"><ol>
+        <li><a href="#m-one">Overview</a><ol><li><a href="#m-two">Detail</a></li></ol></li>
+        <li><a href="#m-three">Next</a></li>
+      </ol></nav>
+      <h2 id="m-one">10. Overview</h2><p>lead</p>
+      <h3 id="m-two">Detail</h3><p>detail</p>
+      <h2 id="m-three">11. Next</h2><p>lead</p>`;
+    const toc = await openNested(page, MIXED, "cmh-toc-mixed");
+    await expect(tocNum(toc, "m-one")).toHaveText("10");
+    await expect(tocNum(toc, "m-three")).toHaveText("11");
+    await expect(tocLink(toc, "m-two").locator(".cm-toc-num")).toHaveCount(0);
+    await expect(tocLink(toc, "m-two")).toContainText("Detail");
+    // The hierarchy is still visible even where the number is absent.
+    expect(await linkLeft(toc, "m-two")).toBeGreaterThan(await linkLeft(toc, "m-one"));
   });
 
   test("headings at the same depth stay peers when the document skips a level (CMH-TOC-11)", async ({ page }) => {
