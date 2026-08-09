@@ -4,6 +4,21 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.830.0] - 2026-08-09
+
+### Fixed
+
+- The in-document `Contents` table of contents and the side navigation menu now show the SAME
+  number for the same heading. `generate_toc.py` used to emit one flat `<ol>`, so the browser's
+  list marker numbered a subsection as if it were a top-level section (`4`) while the side menu
+  called the same heading `3.1`, and a reader could not cross-reference the two. The generated
+  Contents list now carries the number itself - the number the heading displays when the document
+  numbers its own sections, else a hierarchical `1`, `1.1`, `1.2`, `2` computed from the heading
+  depth - and the side menu reads that number instead of computing a second one, so both surfaces
+  are driven by one source. The ordered list drops its marker for a generated list only, so a
+  hand-authored `.cm-toc` that relies on it is untouched, and the author-numbered de-dup
+  (CMH-TOC-10) still holds.
+
 ## [1.829.0] - 2026-08-09
 
 ### Changed

@@ -588,7 +588,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.829.0";
+const CMH_VERSION = "1.830.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -18565,6 +18565,17 @@ function _cmAssignTocLevels(items) {
     it.level = stack.length;
   });
 }
+// The number an author `.cm-toc` entry already DISPLAYS, or "" when it shows none. `generate_toc.py`
+// bakes the hierarchical number into the Contents entry, so reading it keeps the in-document list
+// and this menu on ONE number from one source instead of two algorithms that can disagree.
+function _cmTocEntryNumber(a) {
+  const li = a.closest("li");
+  if (!li) return "";
+  for (let n = li.firstElementChild; n; n = n.nextElementSibling) {
+    if (n.classList && n.classList.contains("cm-toc-num")) return (n.textContent || "").replace(/\s+/g, " ").trim();
+  }
+  return "";
+}
 // A leading section number an author already wrote ("3.", "2)", "10.3"), or "" when there is none.
 // A year-prefixed title ("2024 review") carries no separator, so it is not a number.
 function _cmTocLeadingNumber(text) {
@@ -18631,12 +18642,12 @@ function setupSideToc() {
       let id = (a.getAttribute("href") || "").slice(1);
       try { id = decodeURIComponent(id); } catch (e) { /* malformed %-encoding: keep the raw id */ }
       const el = id && document.getElementById(id);
-      if (el) items.push({ id: id, label: (a.textContent || "").trim(), el: el, hLevel: _cmHeadingDepth(el), listDepth: _cmTocListDepth(a) });
+      if (el) items.push({ id: id, label: (a.textContent || "").trim(), el: el, hLevel: _cmHeadingDepth(el), listDepth: _cmTocListDepth(a), tocNum: _cmTocEntryNumber(a) });
     });
   } else {
     root.querySelectorAll("h2[id], h3[id], h4[id]").forEach(function (h) {
       if (h.closest(".cm-skip, .cm-toc")) return; // chrome and an author's own contents list, not sections
-      items.push({ id: h.id, label: cmhHeadingText(h), el: h, hLevel: _cmHeadingDepth(h), listDepth: 0 });
+      items.push({ id: h.id, label: cmhHeadingText(h), el: h, hLevel: _cmHeadingDepth(h), listDepth: 0, tocNum: "" });
     });
   }
   if (items.length < 2) return; // not worth a side menu
@@ -18667,27 +18678,35 @@ function setupSideToc() {
   const list = document.createElement("ul");
   list.className = "cm-side-toc-list";
   const links = [];
-  // If the author already numbered their TOC labels (e.g. "1. Summary", "3.1 Goals"), do NOT add a
+  // If the in-document Contents list already DISPLAYS a number for its entries (generate_toc.py
+  // bakes the same hierarchical number this menu would compute), show that one, so the two
+  // surfaces can never disagree about what a heading is called. Otherwise: if the author already
+  // numbered their TOC labels (e.g. "1. Summary", "3.1 Goals"), do NOT add a
   // second computed number - show the label as-is so there is a single number. Otherwise prefer the
   // number the DOCUMENT itself displays on the heading (generate_toc strips it from the label,
   // CMH-TOC-10, so "10.3" must not resurface as a flat "25"), and only compute one when there is
   // none to preserve.
-  const authorNumbered = items.some(function (it) { return !!_cmTocLeadingNumber(it.label); });
-  if (!authorNumbered) {
+  const tocNumbered = items.some(function (it) { return !!it.tocNum; });
+  const authorNumbered = !tocNumbered && items.some(function (it) { return !!_cmTocLeadingNumber(it.label); });
+  if (!authorNumbered && !tocNumbered) {
     items.forEach(function (it) {
       it.docNum = _cmHeadingDepth(it.el) ? _cmTocLeadingNumber(cmhHeadingText(it.el)) : "";
     });
   }
-  const docNumbered = !authorNumbered && items.some(function (it) { return !!it.docNum; });
+  const docNumbered = !authorNumbered && !tocNumbered && items.some(function (it) { return !!it.docNum; });
   // The title each row SHOWS, resolved once so the row and the filter can never disagree. An author
   // nav link with no text of its own (an icon-only link) has no title to show, so fall back to the
   // heading it targets, minus the number already rendered in its own span - resolved here, AFTER the
   // numbering mode is decided, so a heading-derived title can never flip `authorNumbered` for the
-  // whole document or suppress another entry's number.
+  // whole document or suppress another entry's number. A title that merely REPEATS the number the
+  // row already shows (a hand-written list carrying both a `.cm-toc-num` and a numbered label) is
+  // trimmed the same way, so the number reads once rather than "7 7. Intro"; only an EXACT repeat is
+  // dropped, so a title whose own number differs stays visible as the discrepancy it is.
   items.forEach(function (it) {
     it.title = it.label || (_cmHeadingDepth(it.el) ? cmhHeadingText(it.el) : "");
-    if (it.docNum && _cmTocLeadingNumber(it.title) === it.docNum) {
-      it.title = it.title.slice(it.docNum.length).replace(/^[.)]?\s*/, "");
+    const shown = it.tocNum || it.docNum;
+    if (shown && _cmTocLeadingNumber(it.title) === shown) {
+      it.title = it.title.slice(shown.length).replace(/^[.)]?\s*/, "");
     }
   });
   const counters = [];
@@ -18702,8 +18721,8 @@ function setupSideToc() {
       a.textContent = it.title;
     } else {
       // Section numbers follow the heading hierarchy to any depth: 1, 1.1, 1.1.1, 1.2, 2...
-      let num = it.docNum || "";
-      if (!docNumbered) {
+      let num = it.tocNum || it.docNum || "";
+      if (!tocNumbered && !docNumbered) {
         counters.length = it.level;
         for (let d = 0; d < it.level; d++) if (typeof counters[d] !== "number") counters[d] = 0;
         counters[it.level - 1]++;

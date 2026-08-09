@@ -364,17 +364,76 @@ def _heading_items(parser):
     return items
 
 
+def _leading_section_number(text):
+    """Return the section number a heading already displays ("10.3", "2"), or "".
+
+    Mirrors the runtime `_cmTocLeadingNumber()` in `assets/js/82-toc.js` so the in-document
+    Contents list and the side navigation menu read the document's own numbering identically.
+    """
+    match = SECTION_NUMBER_RE.match(text or "")
+    if not match:
+        return ""
+    return match.group(0).strip().rstrip(".)")
+
+
+def _entry_levels(items):
+    """1-based menu levels, from an open-depth stack over the heading tags.
+
+    The same rule the runtime `_cmAssignTocLevels()` applies, so a document that skips a heading
+    level keeps equal-depth headings as peers instead of nesting them one step further each time.
+    """
+    levels = []
+    stack = []
+    for item in items:
+        raw = int(item["tag"][1:])
+        while stack and stack[-1] >= raw:
+            stack.pop()
+        stack.append(raw)
+        levels.append(len(stack))
+    return levels
+
+
+def _entry_numbers(items, levels):
+    """The number each entry displays, in the runtime's order of preference (CMH-TOC-11).
+
+    The number the HEADING itself displays wins, so the Contents list never renumbers a document
+    that numbers its own sections; otherwise a hierarchical number is computed from the levels.
+    Which of the two applies is a WHOLE-LIST decision, so an unnumbered entry in an otherwise
+    numbered document is left unnumbered rather than given a computed number that could collide.
+    """
+    doc_numbers = [_leading_section_number(item["text"]) for item in items]
+    if any(doc_numbers):
+        return doc_numbers
+    numbers = []
+    counters = []
+    for level in levels:
+        del counters[level:]
+        while len(counters) < level:
+            counters.append(0)
+        counters[level - 1] += 1
+        numbers.append(".".join(str(n) for n in counters))
+    return numbers
+
+
 def _render_nav(items):
+    # The number is written into the entry rather than left to the ordered-list marker, which
+    # numbers every `<li>` sequentially and so labelled a subsection as a top-level section while
+    # the side menu called the same heading 3.1. The runtime reads this number instead of
+    # computing a second one, so both surfaces show one number from one source (CMH-TOC-10).
+    levels = _entry_levels(items)
+    numbers = _entry_numbers(items, levels)
     lines = [
         '<nav class="cm-toc" aria-label="Table of contents">',
         '  <div class="cm-toc-title">Contents</div>',
-        "  <ol>",
+        '  <ol class="cm-toc-numbered">',
     ]
-    for item in items:
-        class_attr = ' class="is-sub"' if item["tag"] == "h3" else ""
+    for item, level, number in zip(items, levels, numbers):
+        class_attr = ' class="is-sub"' if level > 1 else ""
         href = html_lib.escape("#" + item["id"], quote=True)
         text = html_lib.escape(_strip_section_number(item["text"]), quote=False)
-        lines.append('    <li%s><a href="%s">%s</a></li>' % (class_attr, href, text))
+        num = ('<span class="cm-toc-num">%s</span> '
+               % html_lib.escape(number, quote=False)) if number else ""
+        lines.append('    <li%s>%s<a href="%s">%s</a></li>' % (class_attr, num, href, text))
     lines.extend(["  </ol>", "</nav>"])
     return "\n".join(lines)
 

@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { stageContent, fileUrl, ready, addTextComment } from "./helpers.js";
+import { execFileSync } from "child_process";
+import { stageContent, fileUrl, ready, addTextComment, PYTHON, SKILL } from "./helpers.js";
 
 // Three tall, distinctly-worded sections so the side TOC renders (>= 2 items), scroll-spy
 // moves between them, and a query matches exactly one section's body text.
@@ -314,6 +315,35 @@ test.describe("side-TOC search and aria-current", () => {
     await expect(tocNum(toc, "one-a-i")).toHaveText("1.1.1");
     await expect(tocNum(toc, "two")).toHaveText("2");
     expect(await linkLeft(toc, "one-a-i")).toBeGreaterThan(await linkLeft(toc, "one-a"));
+  });
+
+  test("the in-document Contents list and the side menu show the same number (CMH-TOC-10)", async ({ page }) => {
+    // The two surfaces number the SAME headings, so they must agree: the side menu reads the
+    // number generate_toc.py baked into the Contents entry instead of computing a second one,
+    // and the Contents list no longer leans on a flat ordered-list marker that made a subsection
+    // read as a top-level section.
+    const BODY = `
+      <h1>Quarterly review</h1>
+      <h2 id="one">Findings</h2><p>lead</p>
+      <h3 id="one-a">Signals</h3><p>detail</p>
+      <h3 id="one-b">Sampling</h3><p>detail</p>
+      <h2 id="two">Next steps</h2><p>lead</p>`;
+    const { html } = stageContent(BODY, { key: "cmh-toc-agree", source: "toc-agree.html" });
+    execFileSync(PYTHON, ["tools/authoring/generate_toc.py", "--in-place", html], { cwd: SKILL, stdio: "pipe" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(html));
+    await ready(page);
+    const toc = page.locator("#cmSideToc");
+    await expect(toc).toBeVisible();
+    for (const [id, number] of [["one", "1"], ["one-a", "1.1"], ["one-b", "1.2"], ["two", "2"]]) {
+      const inDoc = page.locator(`#commentRoot .cm-toc li:has(> a[href="#${id}"]) > .cm-toc-num`);
+      await expect(inDoc).toHaveText(number);
+      await expect(tocNum(toc, id)).toHaveText(number);
+    }
+    // The list marker would be that second, flat number, so the generated list drops it.
+    const marker = await page.locator("#commentRoot .cm-toc ol").first()
+      .evaluate((el) => getComputedStyle(el).listStyleType);
+    expect(marker).toBe("none");
   });
 
   test("the filter narrows the navigation to matching headings and keeps ancestor context (CMH-TOC-09)", async ({ page }) => {

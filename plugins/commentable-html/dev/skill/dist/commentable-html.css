@@ -1549,6 +1549,12 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot .cm-toc li { margin: 0.25rem 0; font-size: 0.92rem; }
 #commentRoot .cm-toc a { color: var(--cp-link); text-decoration: none; }
 #commentRoot .cm-toc a:hover { text-decoration: underline; }
+/* A generated Contents list carries the same hierarchical number the side menu shows (CMH-TOC-10),
+   so the ordered-list marker would print a SECOND, flat number beside it - and that flat number is
+   what labelled a subsection as a top-level section. An author's own `<ol>` list keeps its marker. */
+#commentRoot .cm-toc ol.cm-toc-numbered { list-style: none; padding-left: 0; }
+#commentRoot .cm-toc ol.cm-toc-numbered li.is-sub { padding-left: 1.4rem; }
+#commentRoot .cm-toc .cm-toc-num { color: var(--cp-text-muted); font-variant-numeric: tabular-nums; }
 
 /* Document overview strip (doc_stats.py): section / word / reading-time counts under the title. */
 #commentRoot .cmh-doc-stats { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; align-items: baseline; margin: 0.35rem 0 1.4rem; color: var(--cp-text-muted); font-size: 0.9rem; }

@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.829.0" />
+<meta name="commentable-html-version" content="1.830.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.829.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.830.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -1780,6 +1780,12 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
 #commentRoot .cm-toc li { margin: 0.25rem 0; font-size: 0.92rem; }
 #commentRoot .cm-toc a { color: var(--cp-link); text-decoration: none; }
 #commentRoot .cm-toc a:hover { text-decoration: underline; }
+/* A generated Contents list carries the same hierarchical number the side menu shows (CMH-TOC-10),
+   so the ordered-list marker would print a SECOND, flat number beside it - and that flat number is
+   what labelled a subsection as a top-level section. An author's own `<ol>` list keeps its marker. */
+#commentRoot .cm-toc ol.cm-toc-numbered { list-style: none; padding-left: 0; }
+#commentRoot .cm-toc ol.cm-toc-numbered li.is-sub { padding-left: 1.4rem; }
+#commentRoot .cm-toc .cm-toc-num { color: var(--cp-text-muted); font-variant-numeric: tabular-nums; }
 
 /* Document overview strip (doc_stats.py): section / word / reading-time counts under the title. */
 #commentRoot .cmh-doc-stats { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; align-items: baseline; margin: 0.35rem 0 1.4rem; color: var(--cp-text-muted); font-size: 0.9rem; }
@@ -5057,7 +5063,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.829.0";
+const CMH_VERSION = "1.830.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
@@ -23034,6 +23040,17 @@ function _cmAssignTocLevels(items) {
     it.level = stack.length;
   });
 }
+// The number an author `.cm-toc` entry already DISPLAYS, or "" when it shows none. `generate_toc.py`
+// bakes the hierarchical number into the Contents entry, so reading it keeps the in-document list
+// and this menu on ONE number from one source instead of two algorithms that can disagree.
+function _cmTocEntryNumber(a) {
+  const li = a.closest("li");
+  if (!li) return "";
+  for (let n = li.firstElementChild; n; n = n.nextElementSibling) {
+    if (n.classList && n.classList.contains("cm-toc-num")) return (n.textContent || "").replace(/\s+/g, " ").trim();
+  }
+  return "";
+}
 // A leading section number an author already wrote ("3.", "2)", "10.3"), or "" when there is none.
 // A year-prefixed title ("2024 review") carries no separator, so it is not a number.
 function _cmTocLeadingNumber(text) {
@@ -23100,12 +23117,12 @@ function setupSideToc() {
       let id = (a.getAttribute("href") || "").slice(1);
       try { id = decodeURIComponent(id); } catch (e) { /* malformed %-encoding: keep the raw id */ }
       const el = id && document.getElementById(id);
-      if (el) items.push({ id: id, label: (a.textContent || "").trim(), el: el, hLevel: _cmHeadingDepth(el), listDepth: _cmTocListDepth(a) });
+      if (el) items.push({ id: id, label: (a.textContent || "").trim(), el: el, hLevel: _cmHeadingDepth(el), listDepth: _cmTocListDepth(a), tocNum: _cmTocEntryNumber(a) });
     });
   } else {
     root.querySelectorAll("h2[id], h3[id], h4[id]").forEach(function (h) {
       if (h.closest(".cm-skip, .cm-toc")) return; // chrome and an author's own contents list, not sections
-      items.push({ id: h.id, label: cmhHeadingText(h), el: h, hLevel: _cmHeadingDepth(h), listDepth: 0 });
+      items.push({ id: h.id, label: cmhHeadingText(h), el: h, hLevel: _cmHeadingDepth(h), listDepth: 0, tocNum: "" });
     });
   }
   if (items.length < 2) return; // not worth a side menu
@@ -23136,27 +23153,35 @@ function setupSideToc() {
   const list = document.createElement("ul");
   list.className = "cm-side-toc-list";
   const links = [];
-  // If the author already numbered their TOC labels (e.g. "1. Summary", "3.1 Goals"), do NOT add a
+  // If the in-document Contents list already DISPLAYS a number for its entries (generate_toc.py
+  // bakes the same hierarchical number this menu would compute), show that one, so the two
+  // surfaces can never disagree about what a heading is called. Otherwise: if the author already
+  // numbered their TOC labels (e.g. "1. Summary", "3.1 Goals"), do NOT add a
   // second computed number - show the label as-is so there is a single number. Otherwise prefer the
   // number the DOCUMENT itself displays on the heading (generate_toc strips it from the label,
   // CMH-TOC-10, so "10.3" must not resurface as a flat "25"), and only compute one when there is
   // none to preserve.
-  const authorNumbered = items.some(function (it) { return !!_cmTocLeadingNumber(it.label); });
-  if (!authorNumbered) {
+  const tocNumbered = items.some(function (it) { return !!it.tocNum; });
+  const authorNumbered = !tocNumbered && items.some(function (it) { return !!_cmTocLeadingNumber(it.label); });
+  if (!authorNumbered && !tocNumbered) {
     items.forEach(function (it) {
       it.docNum = _cmHeadingDepth(it.el) ? _cmTocLeadingNumber(cmhHeadingText(it.el)) : "";
     });
   }
-  const docNumbered = !authorNumbered && items.some(function (it) { return !!it.docNum; });
+  const docNumbered = !authorNumbered && !tocNumbered && items.some(function (it) { return !!it.docNum; });
   // The title each row SHOWS, resolved once so the row and the filter can never disagree. An author
   // nav link with no text of its own (an icon-only link) has no title to show, so fall back to the
   // heading it targets, minus the number already rendered in its own span - resolved here, AFTER the
   // numbering mode is decided, so a heading-derived title can never flip `authorNumbered` for the
-  // whole document or suppress another entry's number.
+  // whole document or suppress another entry's number. A title that merely REPEATS the number the
+  // row already shows (a hand-written list carrying both a `.cm-toc-num` and a numbered label) is
+  // trimmed the same way, so the number reads once rather than "7 7. Intro"; only an EXACT repeat is
+  // dropped, so a title whose own number differs stays visible as the discrepancy it is.
   items.forEach(function (it) {
     it.title = it.label || (_cmHeadingDepth(it.el) ? cmhHeadingText(it.el) : "");
-    if (it.docNum && _cmTocLeadingNumber(it.title) === it.docNum) {
-      it.title = it.title.slice(it.docNum.length).replace(/^[.)]?\s*/, "");
+    const shown = it.tocNum || it.docNum;
+    if (shown && _cmTocLeadingNumber(it.title) === shown) {
+      it.title = it.title.slice(shown.length).replace(/^[.)]?\s*/, "");
     }
   });
   const counters = [];
@@ -23171,8 +23196,8 @@ function setupSideToc() {
       a.textContent = it.title;
     } else {
       // Section numbers follow the heading hierarchy to any depth: 1, 1.1, 1.1.1, 1.2, 2...
-      let num = it.docNum || "";
-      if (!docNumbered) {
+      let num = it.tocNum || it.docNum || "";
+      if (!tocNumbered && !docNumbered) {
         counters.length = it.level;
         for (let d = 0; d < it.level; d++) if (typeof counters[d] !== "number") counters[d] = 0;
         counters[it.level - 1]++;
