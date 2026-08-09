@@ -96,7 +96,7 @@ For a document with roughly **4+ top-level sections**, add a table of contents s
 ```
 
 - Give each heading a stable, kebab-case `id` derived from its text.
-- Place the `nav.cm-toc` at the top of `#commentRoot`, after any intro paragraph.
+- Place the `nav.cm-toc` below the document title (and, on a report or plan, below the `doc_stats` reading-time strip that sits under it), after any intro paragraph, so the reader meets the title and the reading time before the contents list. `generate_toc.py` puts a generated nav there for you.
 - If your section headings are numbered (for example `1. Goals`, `2. Scope`), do NOT number the TOC entries yourself: the ordered list supplies the number, and `generate_toc.py` (and `finalize.py` / `retrofit.py` for an existing `<ol>` `.cm-toc`) strip the redundant leading number from each entry so it is never double-numbered. Keep the `<ol>`.
 - Keep it inside `#commentRoot` as normal content. Anchor links still work because highlighted links can be opened through the hover comment bubble.
 - The runtime side menu appears on wide screens. It uses author `.cm-toc` links when present, otherwise `h2`/`h3` ids. Its runtime heading is **Navigation** (the author-provided `.cm-toc-title` can still say **Contents**), it numbers entries, scroll-spies the active section, collapses to `Navigation >>`, expands with `<<`, and adds **Scroll to Top** / **Scroll to Bottom**.

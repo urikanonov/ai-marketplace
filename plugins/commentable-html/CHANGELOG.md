@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.823.0] - 2026-08-09
+
+### Changed
+
+- The generated table of contents now sits BELOW the document title and its reading-time strip
+  instead of above them. `generate_toc.py` used to anchor `nav.cm-toc` immediately after the
+  `#commentRoot` start tag, so a reader opening a finalized or retrofitted report met the contents
+  list before they saw what the document was called or how long it takes to read. The nav is now
+  placed after the top-level title container (the `<h1>` itself or its wrapper, for example
+  `header.cmh-lede`) and after the `div[data-cmh-doc-stats]` overview strip that `doc_stats.py`
+  bakes under it, giving the order title, overview strip, contents. A document with no such title
+  (a slide deck, a board) keeps the top-of-root placement, an existing nav above the title is moved
+  down rather than duplicated, and re-running the tool is still idempotent.
+
 ## [1.822.0] - 2026-08-07
 
 ### Fixed

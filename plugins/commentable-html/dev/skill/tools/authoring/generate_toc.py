@@ -16,6 +16,8 @@ HEADING_TAGS = {"h2", "h3"}
 # an open heading of ANY level, so an `<h4>` ends an open `<h2>` just as another `<h2>` does.
 ALL_HEADING_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 SLUG_RE = re.compile(r"[^a-z0-9]+")
+# The document-overview strip doc_stats.py bakes directly under the <h1> title.
+STATS_ATTR = "data-cmh-doc-stats"
 # A leading author section number (e.g. "1.", "3.1", "2)") that the ordered-list TOC would
 # otherwise double-number. Mirrors the runtime side-toc pattern in assets/js/82-toc.js.
 SECTION_NUMBER_RE = re.compile(r"^(?:\d+(?:\.\d+)*[.)]|\d+\.\d+(?:\.\d+)*)\s+")
@@ -54,6 +56,10 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         self._heading_index = None
         self._toc_index = None
         self._toc_start = None
+        self._title_index = None
+        self.title_container_end = None   # end of the top-level container holding the <h1>
+        self._stats_index = None
+        self.stats_end = None             # end of the direct-child doc-stats overview strip
 
     def _truncate_stacks(self, depth):
         # EVERY close runs through here - the element's own end tag, an ANCESTOR's end tag, HTML5's
@@ -63,6 +69,12 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         # tag, so the span must not swallow it (this tool REPLACES those bytes).
         if self._heading is not None and self._heading_index >= depth:
             self._finish_heading()
+        if (self._title_index is not None and self.title_container_end is None
+                and depth <= self._title_index):
+            self.title_container_end = self._extent_end(depth == self._title_index)
+        if (self._stats_index is not None and self.stats_end is None
+                and depth <= self._stats_index):
+            self.stats_end = self._extent_end(depth == self._stats_index)
         if self._toc_start is not None and self._toc_index >= depth:
             # Only a region the browser closed with its OWN end tag has a span that can be
             # REPLACED: one an ancestor's closer (or end of input) ended runs past every following
@@ -82,6 +94,12 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         super()._truncate_stacks(depth)
         del self.stack[depth:]
         del self._shadow_frames[depth:]
+
+    def _extent_end(self, own):
+        # Only the element's OWN end tag belongs to it; an ancestor's closer (or end of input)
+        # ends it at that point, which is still a position AFTER the element's content.
+        return (_browser_boundaries.end_tag_end(self._text, self._off())
+                if (self._end_tag_close and own) else self._off())
 
     def _finish_heading(self):
         text = re.sub(r"\s+", " ", "".join(self._heading["text_parts"])).strip()
@@ -177,6 +195,20 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
                 "shadow_host": self._current_shadow_host(),
             }
             self._heading_index = len(self.stack)
+
+        if (self._inside_root() and not self._in_template() and not self._in_shadow_tree()
+                and not self._skip_ancestor()):
+            if tag == "h1" and self._title_index is None and not own_skip:
+                # The title's top-level container is the direct child of #commentRoot at this
+                # index, whether that is the <h1> itself or a wrapper (e.g. header.cmh-lede).
+                # doc_stats.py anchors its overview strip on the same boundary.
+                self._title_index = self.root_depth + 1
+            if (opens and self._stats_index is None and STATS_ATTR in attrs_dict
+                    and len(self.stack) == self.root_depth + 1):
+                # The strip is itself cm-skip, so `own_skip` is expected here. Only the
+                # direct-child strip doc_stats.py bakes under the title moves the table of
+                # contents down; a deeper one already sits inside the title container.
+                self._stats_index = len(self.stack)
         return (own_skip, inert_template, is_shadow, start, start_text)
 
     def _push_element(self, tag, ad, ns, info):
@@ -376,6 +408,21 @@ def _toc_removal_span(html, start, end):
     return start, _leading_ws_end(html, end)
 
 
+def _nav_anchor(parser, removals):
+    """Return the offset the generated `nav.cm-toc` is inserted at.
+
+    The reader meets the document's title, and the reading-time strip under it, before its table
+    of contents, so the nav goes AFTER the top-level title container and after any direct-child
+    `doc_stats` overview strip. A document with neither (a deck, a board) keeps the nav at the top
+    of `#commentRoot`. A candidate that lands inside a `.cm-toc` region this rewrite is about to
+    delete is discarded, so the insert and the removal can never overlap.
+    """
+    candidates = [pos for pos in (parser.title_container_end, parser.stats_end)
+                  if pos is not None
+                  and not any(start <= pos <= end for start, end in removals)]
+    return max(candidates) if candidates else parser.root_start_end
+
+
 def _dominant_newline(html):
     crlf = html.count("\r\n")
     lf = html.count("\n") - crlf
@@ -404,7 +451,9 @@ def rewrite_html(html):
             edits.append((pos, pos, ' id="%s"' % item["id"]))
     for start, end in parser.toc_spans:
         edits.append((*_toc_removal_span(html, start, end), ""))
-    edits.append((parser.root_start_end, _leading_ws_end(html, parser.root_start_end), newline + nav + newline))
+    anchor = _nav_anchor(parser, [_toc_removal_span(html, start, end)
+                                  for start, end in parser.toc_spans])
+    edits.append((anchor, _leading_ws_end(html, anchor), newline + nav + newline))
 
     out = html
     for start, end, replacement in sorted(edits, key=lambda edit: (edit[0], edit[1]), reverse=True):

@@ -394,6 +394,59 @@ class GenerateTocTests(unittest.TestCase):
         self.assertIn('<h3 id="alpha-2">Alpha</h3>', out)
         self.assertLess(out.index('<nav class="cm-toc"'), out.index("<p>Intro</p>"))
 
+    def test_rewrite_places_the_nav_below_the_title(self):
+        html = doc('<h1>Title</h1>\n<p>Intro</p>\n<h2>Alpha</h2>')
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('<h1>Title</h1>\n<nav class="cm-toc"', out)
+        self.assertLess(out.index("<h1>Title</h1>"), out.index('<nav class="cm-toc"'))
+        self.assertLess(out.index('<nav class="cm-toc"'), out.index("<p>Intro</p>"))
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_places_the_nav_below_a_wrapped_title(self):
+        html = doc('<header class="cmh-lede">\n  <h1>Title</h1>\n</header>\n<h2>Alpha</h2>')
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('</header>\n<nav class="cm-toc"', out)
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_places_the_nav_below_the_doc_stats_strip(self):
+        html = doc(
+            "<h1>Title</h1>\n"
+            '<div class="cmh-doc-stats cm-skip" data-cmh-doc-stats="1" role="note">'
+            '<span class="cmh-doc-stat">~<strong>1</strong> min read</span></div>\n'
+            "<h2>Alpha</h2>"
+        )
+        out = generate_toc.rewrite_html(html)
+        self.assertLess(out.index("<h1>Title</h1>"), out.index('data-cmh-doc-stats'))
+        self.assertLess(out.index("data-cmh-doc-stats"), out.index('<nav class="cm-toc"'))
+        self.assertLess(out.index('<nav class="cm-toc"'), out.index("Alpha</h2>"))
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_moves_an_existing_nav_from_above_the_title(self):
+        html = doc(
+            '<nav class="cm-toc" aria-label="Table of contents"><ol><li>Old</li></ol></nav>\n'
+            "<h1>Title</h1>\n<h2>Alpha</h2>"
+        )
+        out = generate_toc.rewrite_html(html)
+        self.assertEqual(out.count('class="cm-toc"'), 1)
+        self.assertNotIn("Old", out)
+        self.assertLess(out.index("<h1>Title</h1>"), out.index('<nav class="cm-toc"'))
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_keeps_top_of_root_placement_without_a_title(self):
+        html = doc('<section data-cm-part="s"><h2>Alpha</h2></section>')
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('<main id="commentRoot" data-comment-key="k">\n<nav class="cm-toc"', out)
+
+    def test_rewrite_ignores_a_title_inside_the_existing_nav(self):
+        html = doc(
+            '<nav class="cm-toc" aria-label="Table of contents"><h1>Old Title</h1>'
+            "<ol><li>Old</li></ol></nav>\n<h2>Alpha</h2>"
+        )
+        out = generate_toc.rewrite_html(html)
+        self.assertEqual(out.count('class="cm-toc"'), 1)
+        self.assertNotIn("Old Title", out)
+        self.assertIn('<main id="commentRoot" data-comment-key="k">\n<nav class="cm-toc"', out)
+
     def test_rewrite_replaces_existing_nav_and_is_idempotent(self):
         html = doc(
             '<nav class="cm-toc" aria-label="Table of contents"><ol><li>Old</li></ol></nav>\n'
