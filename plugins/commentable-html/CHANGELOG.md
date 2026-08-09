@@ -4,6 +4,26 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.824.0] - 2026-08-09
+
+### Fixed
+
+- `tools/authoring/generate_toc.py` no longer corrupts a document whose existing `nav.cm-toc`
+  contains headings. Such a heading is navigation chrome, not a document section, but the parser
+  treated the TOC subtree as ordinary content: it listed the heading (a phantom entry linking to
+  an anchor the rewrite was about to delete) and, when the heading had no id, queued an
+  `id="..."` INSERTION at an offset INSIDE the `.cm-toc` span the same rewrite deletes. The edits
+  are applied highest-offset-first, so the insertion ran first, moved the deletion boundary, and
+  emitted a stray `2></nav>` fragment - in a tool that rewrites the author's file in place
+  (`--in-place`, `finalize.py --toc`, `retrofit.py`), and the damage compounded on a second run.
+  Headings under the `.cm-toc` the rewrite REPLACES are now excluded, and an id inside that nav no
+  longer reserves a slug it takes to the grave (a real `Real` heading beside `<h2 id="real">` in
+  the old TOC used to be baked as `id="real-2"`), so the rewrite is lossless and idempotent. The
+  rule is scoped to the replaced span: a `.cm-toc` the rewrite leaves in place - one an ancestor's
+  end tag or end of input closed, one wrapping or being `#commentRoot` - still has its headings
+  listed, so the tool never silently writes an empty table of contents over a document. The edit
+  applier now also refuses two overlapping spans instead of silently writing bad bytes.
+
 ## [1.823.0] - 2026-08-09
 
 ### Changed

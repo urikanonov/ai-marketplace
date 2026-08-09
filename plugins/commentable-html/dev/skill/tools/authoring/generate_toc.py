@@ -48,7 +48,7 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         self.root_closed = False
         self.root_seen = False
         self.root_start_end = None
-        self.all_ids = []
+        self.ids = []                  # (element id, element start offset), in document order
         self.headings = []
         self.toc_spans = []            # spans a rewrite may replace (own end tag closed them)
         self.toc_unclosed_spans = []   # spans an ancestor's closer or EOF ended; read-only
@@ -106,6 +106,16 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         return (_browser_boundaries.end_tag_end(self._text, self._off())
                 if (self._end_tag_close and own) else self._off())
 
+    def _record_id(self, element_id, start):
+        # One list of pairs, so the id and the offset that decides whether it survives the rewrite
+        # cannot desynchronize - two parallel lists silently truncated the zip when an append site
+        # updated only one of them.
+        self.ids.append((element_id, start))
+
+    @property
+    def all_ids(self):
+        return [element_id for element_id, _start in self.ids]
+
     def _finish_heading(self):
         text = re.sub(r"\s+", " ", "".join(self._heading["text_parts"])).strip()
         if text:
@@ -116,6 +126,7 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
                 "start": self._heading["start"],
                 "start_text": self._heading["start_text"],
                 "shadow_host": self._heading["shadow_host"],
+                "toc_start": self._heading["toc_start"],
             })
         self._heading = None
         self._heading_index = None
@@ -170,16 +181,16 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         inert_template = tag == "template" and ns == "html" and not is_shadow
         start = self._off()
         start_text = self.get_starttag_text() or ""
-        if (tag == "nav" and opens and self._toc_start is None and self._inside_root()
-                and not self._in_template() and not self._in_shadow_tree()
-                and _has_class(attrs_dict, "cm-toc")):
+        is_toc = tag == "nav" and opens and _has_class(attrs_dict, "cm-toc")
+        if (is_toc and self._toc_start is None and self._inside_root()
+                and not self._in_template() and not self._in_shadow_tree()):
             self._toc_start = start
             self._toc_index = len(self.stack)
 
         if not self._in_template() and not self._in_shadow_tree() and not is_shadow:
             element_id = attrs_dict.get("id")
             if element_id:
-                self.all_ids.append(element_id)
+                self._record_id(element_id, start)
                 if element_id == "commentRoot" and not self.root_seen:
                     self.root_seen = True
                     if opens:
@@ -198,6 +209,7 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
                 "start": start,
                 "start_text": start_text,
                 "shadow_host": self._current_shadow_host(),
+                "toc_start": self._toc_start,
             }
             self._heading_index = len(self.stack)
 
@@ -244,7 +256,7 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         if not self._in_template() and not self._in_shadow_tree():
             element_id = ad.get("id")
             if element_id:
-                self.all_ids.append(element_id)
+                self._record_id(element_id, self._off())
                 if element_id == "commentRoot" and not self.root_seen:
                     # The first matching DOM element is the runtime root even when it self-closes.
                     # It has no insertion point for a generated TOC and no heading descendants.
@@ -302,11 +314,22 @@ def _unique_slug(text, used):
 
 
 def _heading_items(parser):
-    used = set(parser.all_ids)
+    # A `nav.cm-toc` the rewrite REPLACES is navigation chrome, not document content: its headings
+    # are links to sections, and its ids die with it. Listing one invented a phantom entry pointing
+    # at an anchor the rewrite deletes, and generating an id for it queued an insertion INSIDE the
+    # deleted span, which corrupted the document. Only a REPLACED span is excluded - a `.cm-toc`
+    # this rewrite leaves in place (one an ancestor's end tag or EOF closed, one outside
+    # `#commentRoot`, one in a template or a shadow tree) still holds live headings and live ids.
+    replaced = {start for start, _end in parser.toc_spans}
+    used = {element_id for element_id, start in parser.ids
+            if not any(span_start <= start < span_end
+                       for span_start, span_end in parser.toc_spans)}
     items = []
     generated_hosts = {}
     listed_shadow_hosts = set()
     for heading in parser.headings:
+        if heading["toc_start"] in replaced:
+            continue
         heading_id = heading["id"]
         generated = False
         shadow_host = heading.get("shadow_host")
@@ -472,6 +495,24 @@ def _dominant_newline(html):
     return "\r\n" if crlf > lf else "\n"
 
 
+def _apply_edits(html, edits):
+    """Apply `(start, end, replacement)` edits highest-offset-first, refusing an overlap.
+
+    Applying in reverse document order is what keeps every span's offsets valid, but only while
+    the spans are DISJOINT: an insertion that lands inside a span the same rewrite deletes runs
+    first, moves the deletion boundary, and emits corrupt bytes with no error. Refuse instead.
+    """
+    ordered = sorted(edits, key=lambda edit: (edit[0], edit[1]))
+    for previous, current in zip(ordered, ordered[1:]):
+        if current[0] < previous[1]:
+            raise ValueError("overlapping rewrite spans %r and %r"
+                             % (previous[:2], current[:2]))
+    out = html
+    for start, end, replacement in reversed(ordered):
+        out = out[:start] + replacement + out[end:]
+    return out
+
+
 def rewrite_html(html):
     """Return HTML with generated ids injected and nav.cm-toc placed under #commentRoot."""
     parser = _parse(html)
@@ -498,10 +539,7 @@ def rewrite_html(html):
                                         for start, end in parser.toc_spans])
     edits.append((anchor, _leading_ws_end(html, anchor), newline + nav + newline))
 
-    out = html
-    for start, end, replacement in sorted(edits, key=lambda edit: (edit[0], edit[1]), reverse=True):
-        out = out[:start] + replacement + out[end:]
-    return out
+    return _apply_edits(html, edits)
 
 
 def main(argv):
