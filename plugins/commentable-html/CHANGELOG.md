@@ -53,7 +53,10 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   matched every query and nothing was filtered out. An entry is now matched on the text it OWNS -
   its heading plus the prose up to the next entry - the ancestors of a match stay listed so a
   matching subsection still shows where it lives, and a `<section>` is hidden only when every
-  entry inside it is filtered out, so a wrapper can never be hidden out from under a match.
+  entry inside it is filtered out, so a wrapper can never be hidden out from under a match. A
+  level is decided by an open-depth stack, so a document that SKIPS a heading level keeps
+  equal-depth headings as peers (`h2`, `h4`, `h4`, `h3` reads 1, 2, 2, 2), and a shallower entry
+  matching later in the list no longer cancels the ancestor chain a deeper match still needs.
 
 ## [1.824.0] - 2026-08-09
 

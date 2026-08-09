@@ -22581,7 +22581,7 @@ function showHelp(restoreEl) {
       T('Navigation',
         '<ul>' +
           '<li>On wide screens a <strong>section menu</strong> appears on the left, highlights the section you are reading, and collapses to <em>Navigation &raquo;</em>.</li>' +
-          '<li>Menu entries mirror the document: each shows the section number its heading displays (or a computed <code>1.1</code>-style number when the headings carry none) and is indented to its level, so subsections read as subsections.</li>' +
+          '<li>Menu entries mirror the document: each keeps the section number the document already shows - the one in your contents list, or the one on the heading itself - and falls back to a computed <code>1.1</code>-style number only when there is none. Each entry is indented to its level, so subsections read as subsections.</li>' +
           '<li><strong>Filter sections</strong> narrows the menu to the headings matching what you type, keeping the parent entries that place them; clearing the box restores the whole list.</li>' +
           '<li>Every section title has a caret to <strong>collapse or expand</strong> that section; <strong>Expand All</strong> / <strong>Collapse All</strong> act on every section at once.</li>' +
           '<li><strong>Scroll to Top</strong> / <strong>Scroll to Bottom</strong> jump the document, and a small bubble shows your scroll position.</li>' +
@@ -22947,17 +22947,19 @@ function _cmTocListDepth(a) {
 }
 // Turn each entry's raw depth into a 1-based menu level: heading tags win (an author TOC can list
 // h2/h3/h4, and a flat list of them must still nest), an anchor that points at a non-heading falls
-// back to the nav's own list nesting, and a level never jumps more than one step past its
-// predecessor so the numbering below can never index a counter that was never opened.
+// back to the nav's own list nesting, and an OPEN-DEPTH STACK decides the level so a document that
+// skips a heading level keeps equal-depth headings as peers (h2, h4, h4, h3 is 1, 2, 2, 2 - not
+// 1, 2, 3, 2) and a level still never jumps more than one step, which the numbering below relies on.
 function _cmAssignTocLevels(items) {
   let base = 0;
   items.forEach(function (it) { if (it.hLevel && (!base || it.hLevel < base)) base = it.hLevel; });
   if (!base) base = 1;
-  let prev = 0;
+  const stack = [];
   items.forEach(function (it) {
     const raw = it.hLevel || (base + (it.listDepth || 1) - 1);
-    it.level = Math.min(Math.max(1, raw - base + 1), prev + 1);
-    prev = it.level;
+    while (stack.length && stack[stack.length - 1] >= raw) stack.pop();
+    stack.push(raw);
+    it.level = stack.length;
   });
 }
 // A leading section number an author already wrote ("3.", "2)", "10.3"), or "" when there is none.
@@ -22968,23 +22970,36 @@ function _cmTocLeadingNumber(text) {
 }
 // Each entry's OWN text: its heading plus the prose that follows it, up to the next entry. Reading
 // the whole enclosing <section> instead makes every entry of a single-wrapper document share one
-// haystack, so the filter matches everything and narrows nothing.
+// haystack, so the filter matches everything and narrows nothing. Text nodes are joined with no
+// separator (what textContent would give) so inline markup cannot split a word in two.
 function _cmTocOwnText(root, items) {
   const index = new Map();
-  items.forEach(function (it, i) { if (it.el) index.set(it.el, i); });
+  items.forEach(function (it, i) {
+    if (!it.el) return;
+    const at = index.get(it.el);
+    if (at) at.push(i); else index.set(it.el, [i]); // two entries may point at the same element
+  });
   const bufs = items.map(function () { return []; });
-  let cur = -1;
+  let cur = index.get(root) || null;
   (function walk(node) {
     for (let n = node.firstChild; n; n = n.nextSibling) {
-      if (n.nodeType === 3) { if (cur >= 0) bufs[cur].push(n.nodeValue); continue; }
+      if (n.nodeType === 3) { if (cur) for (let k = 0; k < cur.length; k++) bufs[cur[k]].push(n.nodeValue); continue; }
       if (n.nodeType !== 1) continue;
-      if (/^(SCRIPT|STYLE|TEMPLATE)$/.test(n.tagName)) continue;
+      // Foreign-namespace elements (an inline SVG's <style>/<script>) report a lowercase name, so
+      // read localName and compare case-insensitively rather than trusting HTML's uppercase tagName.
+      if (/^(script|style|template)$/.test((n.localName || n.tagName || "").toLowerCase())) continue;
       if (n.classList && (n.classList.contains("cm-skip") || n.classList.contains("cm-toc"))) continue;
-      if (index.has(n)) cur = index.get(n);
+      const at = index.get(n);
+      if (at) cur = at;
       walk(n);
     }
   })(root);
-  return bufs.map(function (b) { return b.join(" "); });
+  return items.map(function (it, i) {
+    // An author TOC may point outside the content root, which this walk never visits; fall back to
+    // that element's own text so such an entry still filters on its body rather than its label alone.
+    if (!bufs[i].length && it.el && !root.contains(it.el)) return it.el.textContent || "";
+    return bufs[i].join("");
+  });
 }
 function setupCollapsibleSections() {
   _cmSectionToggles.length = 0;
@@ -23044,6 +23059,7 @@ function setupSideToc() {
     });
   } else {
     root.querySelectorAll("h2[id], h3[id], h4[id]").forEach(function (h) {
+      if (h.closest(".cm-skip, .cm-toc")) return; // chrome and an author's own contents list, not sections
       items.push({ id: h.id, label: cmhHeadingText(h), el: h, hLevel: _cmHeadingDepth(h), listDepth: 0 });
     });
   }
@@ -23090,7 +23106,9 @@ function setupSideToc() {
   const counters = [];
   items.forEach(function (it) {
     const li = document.createElement("li");
-    li.className = "is-level-" + it.level + (it.level > 1 ? " is-sub" : "");
+    // The indent classes stop at 6; a deeper level (reachable through a deeply nested author nav)
+    // holds the level-6 indent rather than falling back to the much smaller is-sub one.
+    li.className = "is-level-" + Math.min(it.level, 6) + (it.level > 1 ? " is-sub" : "");
     const a = document.createElement("a");
     a.href = "#" + it.id;
     if (authorNumbered) {
@@ -23164,20 +23182,28 @@ function setupSideToc() {
     const s = _cmTocSectionOf(it);
     if (s && filterSecs.indexOf(s) === -1) filterSecs.push(s);
   });
-  const filterSecItems = filterSecs.map(function (s) {
-    const idxs = [];
-    for (let i = 0; i < items.length; i++) if (s.contains(items[i].el)) idxs.push(i);
-    return idxs;
+  const filterSecIndex = new Map();
+  filterSecs.forEach(function (s, k) { filterSecIndex.set(s, k); });
+  const filterSecItems = filterSecs.map(function () { return []; });
+  items.forEach(function (it, i) {
+    // Walk the entry's own section chain upward: every section that CONTAINS it is exactly its
+    // ancestor-or-self chain, so this is the containment map without an O(sections * items) sweep.
+    for (let s = _cmTocSectionOf(it); s; s = s.parentElement ? s.parentElement.closest("section") : null) {
+      const k = filterSecIndex.get(s);
+      if (k !== undefined) filterSecItems[k].push(i);
+    }
   });
   function applyTocFilter(q) {
     const query = String(q || "").trim().toLowerCase();
     const vis = [];
     for (let i = 0; i < items.length; i++) vis[i] = !query || items[i]._cmHay.indexOf(query) !== -1;
     // Keep the ancestors of a match listed so a matching subsection still shows where it lives.
+    // `need` is SET from each visible entry's own level (never merely lowered): a later shallow
+    // match must not cancel the ancestor chain an earlier deeper match still needs.
     let need = Infinity;
     for (let i = items.length - 1; i >= 0; i--) {
       if (need < Infinity && items[i].level < need) vis[i] = true;
-      if (vis[i] && items[i].level < need) need = items[i].level;
+      if (vis[i]) need = items[i].level;
     }
     for (let i = 0; i < items.length; i++) {
       items[i]._cmFiltered = !vis[i]; // scroll-spy reads this so it skips hidden entries (sectioned or not)

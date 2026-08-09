@@ -38,11 +38,11 @@ const NESTED = `
   <h3 id="vendor">10.3 Vendor exposure</h3>
   <p>Third-party surface notes.</p>
   <h4 id="audit">10.3.1 Audit cadence</h4>
-  <p>Walkthrough every quarter.</p>
+  <p>Walkthrough every quarter before the milestone.</p>
   <h3 id="mitigation">10.4 Mitigation plan</h3>
   <p>Controls and owners.</p>
   <h2 id="rollout">11. Rollout</h2>
-  <p>Sequencing notes.</p>
+  <p>Sequencing notes for the milestone.</p>
 </section>`;
 
 async function openNested(page, content = NESTED, key = "cmh-toc-nested") {
@@ -256,5 +256,43 @@ test.describe("side-TOC search and aria-current", () => {
     for (const id of ["risk", "vendor", "audit", "mitigation", "rollout"]) {
       await expect(tocRow(toc, id)).toBeVisible();
     }
+  });
+
+  test("a deep match keeps its ancestors even when a shallower entry matches later (CMH-TOC-09)", async ({ page }) => {
+    const toc = await openNested(page, NESTED, "cmh-toc-two-matches");
+    // Two matches at different levels, the DEEPER one first in the list: the level-3 match must
+    // still be listed under its own parents, not stranded with no context by the later level-1 match.
+    await toc.locator(".cm-side-toc-search").fill("milestone");
+    await expect(tocRow(toc, "audit")).toBeVisible();
+    await expect(tocRow(toc, "vendor")).toBeVisible();
+    await expect(tocRow(toc, "risk")).toBeVisible();
+    await expect(tocRow(toc, "rollout")).toBeVisible();
+    await expect(tocRow(toc, "mitigation")).toBeHidden();
+  });
+
+  test("a match on a parent heading narrows away its non-matching subsections (CMH-TOC-09)", async ({ page }) => {
+    const toc = await openNested(page, NESTED, "cmh-toc-parent-match");
+    await toc.locator(".cm-side-toc-search").fill("Sequencing");
+    await expect(tocRow(toc, "rollout")).toBeVisible();
+    await expect(tocRow(toc, "vendor")).toBeHidden();
+    await expect(tocRow(toc, "audit")).toBeHidden();
+    await expect(tocRow(toc, "mitigation")).toBeHidden();
+  });
+
+  test("headings at the same depth stay peers when the document skips a level (CMH-TOC-11)", async ({ page }) => {
+    // h2 -> h4 -> h4 -> h3: the two h4 siblings must share a level (and be numbered as peers),
+    // and the following h3 must climb back out rather than nesting deeper still.
+    const SKIPPED = `
+      <h2 id="top">Overview</h2><p>lead</p>
+      <h4 id="deep-a">First detail</h4><p>a</p>
+      <h4 id="deep-b">Second detail</h4><p>b</p>
+      <h3 id="mid">Back out</h3><p>c</p>`;
+    const toc = await openNested(page, SKIPPED, "cmh-toc-skipped");
+    await expect(tocNum(toc, "top")).toHaveText("1");
+    await expect(tocNum(toc, "deep-a")).toHaveText("1.1");
+    await expect(tocNum(toc, "deep-b")).toHaveText("1.2");
+    await expect(tocNum(toc, "mid")).toHaveText("1.3");
+    expect(await linkLeft(toc, "deep-b")).toBeCloseTo(await linkLeft(toc, "deep-a"), 0);
+    expect(await linkLeft(toc, "mid")).toBeCloseTo(await linkLeft(toc, "deep-a"), 0);
   });
 });
