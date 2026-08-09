@@ -10,16 +10,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 - The generated table of contents now sits BELOW the document title and its reading-time strip
   instead of above them. `generate_toc.py` used to anchor `nav.cm-toc` immediately after the
-  `#commentRoot` start tag, so a reader opening a finalized or retrofitted report met the contents
-  list before they saw what the document was called or how long it takes to read. The nav is now
-  placed after the top-level title container (the `<h1>` itself or its wrapper, for example
-  `header.cmh-lede`) and after the `div[data-cmh-doc-stats]` overview strip that `doc_stats.py`
-  bakes under it, giving the order title, overview strip, contents. An existing nav above the title
-  is moved down rather than duplicated, and re-running the tool is still idempotent. The nav keeps
-  its top-of-root placement where anchoring under the title would be wrong or unsafe: a document
-  with no `<h1>`, one whose title container was never closed by its own end tag, one whose title
-  only exists inside the nav being replaced, and a slide deck or single-wrapper document whose
-  title container also holds every section the nav lists.
+  `#commentRoot` start tag, so a reader opening a finalized report met the contents list before
+  they saw what the document was called or how long it takes to read. The nav is now placed after
+  the top-level title container (the `<h1>` itself or its wrapper, for example `header.cmh-lede`)
+  and after a `div[data-cmh-doc-stats]` overview strip that immediately follows that title, giving
+  the order title, overview strip, contents. An existing nav above the title is moved down rather
+  than duplicated, and re-running the tool is still idempotent. The nav keeps its top-of-root
+  placement wherever anchoring under the title would be wrong or unsafe: a document with no `<h1>`,
+  one whose title container was never closed by its own end tag, one whose title only exists inside
+  the nav being replaced, and a slide deck or single-wrapper document whose title container also
+  holds the sections the nav lists.
 
 ## [1.822.0] - 2026-08-07
 

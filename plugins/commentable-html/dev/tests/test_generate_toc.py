@@ -506,6 +506,42 @@ class GenerateTocTests(unittest.TestCase):
         self.assertLess(out.index('<nav class="cm-toc"'), out.index("<h1>Deck</h1>"))
         self.assertEqual(out, generate_toc.rewrite_html(out))
 
+    def test_rewrite_keeps_top_of_root_when_a_section_precedes_the_title(self):
+        # Anchoring after the title would put the contents below a section it lists.
+        html = doc("<h2>Alpha</h2>\n<h1>Title</h1>\n<h2>Beta</h2>")
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('<main id="commentRoot" data-comment-key="k">\n<nav class="cm-toc"', out)
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_ignores_a_stats_strip_without_a_title(self):
+        # The title is what earns the move; a strip an author placed elsewhere must not drag the
+        # table of contents down with it.
+        html = doc('<p>Intro</p>\n'
+                   '<div class="cmh-doc-stats cm-skip" data-cmh-doc-stats="1">x</div>\n'
+                   "<h2>Alpha</h2>")
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('<main id="commentRoot" data-comment-key="k">\n<nav class="cm-toc"', out)
+        self.assertLess(out.index('<nav class="cm-toc"'), out.index("<p>Intro</p>"))
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_ignores_a_stats_strip_above_the_title(self):
+        html = doc('<div class="cmh-doc-stats cm-skip" data-cmh-doc-stats="1">x</div>\n'
+                   "<h1>Title</h1>\n<h2>Alpha</h2>")
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('<h1>Title</h1>\n<nav class="cm-toc"', out)
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
+    def test_rewrite_ignores_a_stats_strip_that_does_not_follow_the_title(self):
+        # doc_stats.py only ever bakes its strip immediately under the title; a strip an author put
+        # further down must not drag the table of contents past the content above it.
+        html = doc("<h1>Title</h1>\n<p>Intro</p>\n"
+                   '<div class="cmh-doc-stats cm-skip" data-cmh-doc-stats="1">x</div>\n'
+                   "<h2>Alpha</h2>")
+        out = generate_toc.rewrite_html(html)
+        self.assertIn('<h1>Title</h1>\n<nav class="cm-toc"', out)
+        self.assertLess(out.index('<nav class="cm-toc"'), out.index("<p>Intro</p>"))
+        self.assertEqual(out, generate_toc.rewrite_html(out))
+
     def test_rewrite_ignores_a_nested_stats_strip(self):
         # Only the DIRECT-CHILD strip doc_stats.py bakes under the title moves the nav; a nested
         # one already sits inside the title container.

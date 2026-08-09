@@ -349,6 +349,27 @@ class FinalizeTests(unittest.TestCase):
             result = fh.read()
         self.assertLess(result.index("<h1>Title</h1>"), result.index("data-cmh-doc-stats"))
         self.assertLess(result.index("data-cmh-doc-stats"), result.index('<nav class="cm-toc"'))
+        self.assertLess(result.index('<nav class="cm-toc"'), result.index("One</h2>"))
+
+    def test_toc_lands_below_a_previously_baked_overview_strip(self):
+        # CMH-TOOL-11: re-finalizing a document that already carries the strip anchors the nav on
+        # the strip rather than on the title, so the order survives a second pass.
+        directory = self._tmpdir()
+        path = os.path.join(directory, "doc.html")
+        self._write(path, self._report_doc(kind="report").replace(
+            "  <h1>Title</h1>\n",
+            '  <h1>Title</h1>\n'
+            '  <div class="cmh-doc-stats cm-skip" data-cmh-doc-stats="1">'
+            '<span class="cmh-doc-stat">~<strong>1</strong> min read</span></div>\n'))
+        with mock.patch.object(finalize.validate, "validate", return_value=([], [])):
+            code, _out, err = self._run_main(
+                ["finalize.py", path, "--toc", "--no-highlight", "--no-stats"])
+        self.assertEqual(code, 0, err)
+        with open(path, "r", encoding="utf-8") as fh:
+            result = fh.read()
+        self.assertLess(result.index("<h1>Title</h1>"), result.index("data-cmh-doc-stats"))
+        self.assertLess(result.index("data-cmh-doc-stats"), result.index('<nav class="cm-toc"'))
+        self.assertLess(result.index('<nav class="cm-toc"'), result.index("One</h2>"))
 
     def test_no_stats_flag_skips_the_overview_strip(self):
         # CMH-STATS-01: --no-stats keeps finalize from baking the overview strip.

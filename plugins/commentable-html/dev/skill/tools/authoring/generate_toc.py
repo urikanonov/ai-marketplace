@@ -60,6 +60,7 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
         self.title_container_end = None   # end of the top-level container holding the <h1>
         self.title_own_close = False
         self._stats_index = None
+        self.stats_start = None           # start of the direct-child doc-stats overview strip
         self.stats_end = None             # end of the direct-child doc-stats overview strip
         self.stats_own_close = False
 
@@ -213,6 +214,7 @@ class _TocParser(_browser_boundaries.BrowserBoundaries):
                 # direct-child strip doc_stats.py bakes under the title moves the table of
                 # contents down; a deeper one already sits inside the title container.
                 self._stats_index = len(self.stack)
+                self.stats_start = start
         return (own_skip, inert_template, is_shadow, start, start_text)
 
     def _push_element(self, tag, ad, ns, info):
@@ -412,13 +414,15 @@ def _toc_removal_span(html, start, end):
     return start, _leading_ws_end(html, end)
 
 
-def _nav_anchor(parser, removals):
+def _nav_anchor(html, parser, removals):
     """Return the offset the generated `nav.cm-toc` is inserted at.
 
-    The reader meets the document's title, and the reading-time strip under it, before its table
-    of contents, so the nav goes AFTER the top-level title container and after any direct-child
-    `doc_stats` overview strip. Three things disqualify a candidate, and when none survives the nav
-    keeps the top-of-`#commentRoot` placement:
+    The reader meets the document's title, and the reading-time strip under it, before its table of
+    contents, so the nav goes AFTER the top-level title container inside `#commentRoot` - and after
+    a direct-child `doc_stats` overview strip when that strip IMMEDIATELY follows the title, which
+    is the only shape `doc_stats.py` produces. The TITLE is what earns the move: with no usable
+    title candidate the nav keeps its top-of-`#commentRoot` placement, and a strip an author put
+    anywhere else never drags the nav down to it. Three things disqualify a candidate:
 
     - It lands INSIDE a `.cm-toc` region this rewrite is about to delete, so the insert and the
       removal would overlap. A candidate exactly AT a removal's start is kept: those spans are
@@ -427,17 +431,26 @@ def _nav_anchor(parser, removals):
     - Its element was not closed by its OWN end tag. An extent an ancestor's closer, an implicit
       close, or end of input ended is still INSIDE the open element, so the nav would land inside
       the title or the strip.
-    - Its container swallows the sections the nav lists (a slide deck, or a document written inside
-      one wrapper element): anchoring after it would put the table of contents BELOW the content it
-      indexes.
+    - It would land AFTER the first section the nav lists - because the title shares a container
+      with every section (a slide deck, or a document written inside one wrapper element), or
+      because a section precedes the title. Either way the contents would sit below content it
+      indexes. A nav that lists no sections at all has nothing to sit below, so this one does not
+      apply to it.
     """
     first_section = min((item["start"] for item in parser.headings), default=None)
-    candidates = [pos for pos, own in ((parser.title_container_end, parser.title_own_close),
-                                       (parser.stats_end, parser.stats_own_close))
-                  if pos is not None and own
-                  and (first_section is None or pos <= first_section)
-                  and not any(start < pos <= end for start, end in removals)]
-    return max(candidates) if candidates else parser.root_start_end
+
+    def usable(pos, own):
+        return (pos is not None and own
+                and (first_section is None or pos <= first_section)
+                and not any(start < pos <= end for start, end in removals))
+
+    title_end = parser.title_container_end
+    if not usable(title_end, parser.title_own_close):
+        return parser.root_start_end
+    if (usable(parser.stats_end, parser.stats_own_close)
+            and parser.stats_start == _leading_ws_end(html, title_end)):
+        return parser.stats_end
+    return title_end
 
 
 def _dominant_newline(html):
@@ -468,8 +481,8 @@ def rewrite_html(html):
             edits.append((pos, pos, ' id="%s"' % item["id"]))
     for start, end in parser.toc_spans:
         edits.append((*_toc_removal_span(html, start, end), ""))
-    anchor = _nav_anchor(parser, [_toc_removal_span(html, start, end)
-                                  for start, end in parser.toc_spans])
+    anchor = _nav_anchor(html, parser, [_toc_removal_span(html, start, end)
+                                        for start, end in parser.toc_spans])
     edits.append((anchor, _leading_ws_end(html, anchor), newline + nav + newline))
 
     out = html
