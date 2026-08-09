@@ -226,8 +226,10 @@ function cmBrandLink(inner) {
     + '" target="_blank" rel="noopener noreferrer"'
     + ' aria-label="commentable-html project site (opens in a new tab)">' + inner + '</a>';
 }
-// Icon-only brand link for chrome that has no accompanying text. The inner icon is stripped of
-// its own tooltip and accessible name so the link's - not the version bubble's - wins.
+// Icon-only brand link for chrome that has no accompanying text. Its accessible name names the
+// ACTION (the icon carries no text of its own), which is why it differs from cmBrandLink's name -
+// that helper wraps a label the reader can already see. The inner icon is stripped of its own
+// tooltip and accessible name so the link's - not the version bubble's - wins.
 function cmBrandSiteMark(extraClass) {
   const a = document.createElement("a");
   a.className = "cm-brand-link" + (extraClass ? " " + extraClass : "");

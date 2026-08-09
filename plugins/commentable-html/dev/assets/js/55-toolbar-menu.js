@@ -14,7 +14,11 @@
     ver.title = "commentable-html version that generated this file";
     ver.textContent = "v" + CMH_VERSION;
     head.appendChild(ver);
-    head.appendChild(cmBrandSiteMark("cm-toolbar-menu-brand"));
+    // Activating this link closes the menu it lives in, so hand focus to the still-visible
+    // trigger rather than letting the browser drop it on <body> (the CMH-UI-13 contract).
+    const headMark = cmBrandSiteMark("cm-toolbar-menu-brand");
+    headMark.addEventListener("click", () => { setOpen(false); btn.focus(); });
+    head.appendChild(headMark);
   }
   // The same brand link sits in the collapsed toolbar, immediately left of this menu's trigger.
   const more = btn.closest(".cm-toolbar-more");
