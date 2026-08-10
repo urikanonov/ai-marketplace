@@ -759,6 +759,46 @@ class PerLibraryPayloadTests(unittest.TestCase):
         self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"chartjs"})
         self.assertLess(len(out), len(wounded), "the orphan mermaid bytes must be gone")
 
+    def test_collapsing_duplicates_keeps_the_copy_that_can_satisfy_the_document(self):
+        # Once payloads can be partial, a stale refresh can leave a COMPLETE copy followed by a
+        # right-sized one. Blindly keeping the last would throw away the only bytes that could
+        # satisfy the document - permanently, when no template is reachable to restore from.
+        fragment = MERMAID + '<figure class="chart"><canvas class="cmh-chart"></canvas></figure>'
+        full, _ = vendored_libs.apply(_doc(fragment), self.blob)
+        span = vendored_libs.find_blob(full)
+        full_element = full[span[0]:span[1]]
+        chart_only = vendored_libs.payload_script(
+            vendored_libs.reconcile(vendored_libs.payload_object(full_element), {"chartjs"}))
+        doubled = full[:span[1]] + "\n" + chart_only + full[span[1]:]
+        self.assertEqual(doubled.count('id="cmhVendoredRichLibs"'), 2, "fixture premise")
+        out, changed = vendored_libs.apply(doubled, None)
+        self.assertTrue(changed)
+        self.assertEqual(out.count('id="cmhVendoredRichLibs"'), 1)
+        self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"mermaid", "chartjs"},
+                         "the surviving copy must still satisfy the document with no template")
+
+    def test_a_payload_we_cannot_serialize_portably_leaves_the_document_alone(self):
+        # Python's json emits bare `NaN` by default, which is not JSON and which a browser's
+        # JSON.parse REFUSES - and a browser is the payload's only consumer. Rather than write a
+        # payload the runtime cannot read, the serializer refuses and apply() leaves the file as is.
+        self.assertRaises(ValueError, vendored_libs.serialize_payload,
+                          {"encoding": "gzip+base64", "odd": float("nan")})
+        # An overflowing literal parses to inf and is refused the same way, so a document can never
+        # be handed a payload whose numbers the browser will reject.
+        overflowed = vendored_libs.payload_object(
+            '<script id="cmhVendoredRichLibs" type="application/json">'
+            '{"encoding":"gzip+base64","big":1e400}</script>')
+        self.assertRaises(ValueError, vendored_libs.serialize_payload, overflowed)
+        settled, _ = vendored_libs.apply(_doc(CHART), self.blob)
+        inner = vendored_libs._inner_span(settled)
+        obj = vendored_libs.payload_object(settled)
+        obj["mermaidGzipBase64"] = "ORPHAN"          # forces a reconciliation attempt
+        obj["odd"] = float("nan")                    # which cannot be serialized portably
+        wounded = settled[:inner[0]] + json.dumps(obj) + settled[inner[1]:]
+        out, changed = vendored_libs.apply(wounded, self.blob)
+        self.assertFalse(changed, "an unserializable payload must not be rewritten")
+        self.assertEqual(out, wounded)
+
     def test_orphan_bytes_survive_only_when_no_source_can_complete_the_document(self):
         # The LIMIT of the orphan rule, pinned so the claim in CMH-SIZE-01 stays accurate. When the
         # content NEEDS the library whose licence went missing and no template is reachable, there
@@ -782,7 +822,6 @@ class PerLibraryPayloadTests(unittest.TestCase):
         # only correct outcome is a byte-identical document (relocation of an unparseable payload
         # is a separate behaviour, pinned by its own test below).
         settled, _ = vendored_libs.apply(_doc(CHART), self.blob)
-        span = vendored_libs.find_blob(settled)
         inner = vendored_libs._inner_span(settled)
         for text in ("{not json", "null", "[]", '"a string"', "17", ""):
             with self.subTest(text=text):
@@ -790,7 +829,6 @@ class PerLibraryPayloadTests(unittest.TestCase):
                 out, changed = vendored_libs.apply(broken, self.blob)
                 self.assertFalse(changed, "an unparseable payload must not be rewritten")
                 self.assertEqual(out, broken, "an unparseable payload must survive byte-for-byte")
-        self.assertIsNotNone(span)
 
     def test_an_unparseable_payload_is_still_moved_out_of_the_head(self):
         # Structural placement needs no JSON parse, so refusing to parse must not also refuse to
@@ -825,11 +863,24 @@ class PerLibraryPayloadTests(unittest.TestCase):
 
     def test_a_licence_containing_a_script_end_tag_is_escaped(self):
         # The payload is inert JSON inside a <script>; a raw `</script>` in any value would close
-        # the element early and spill the rest of the payload into the document as markup.
-        text = vendored_libs.serialize_payload({"encoding": "gzip+base64",
-                                                "mermaidLicense": "MIT </script> tail"})
-        self.assertNotIn("</script", text)
+        # the element early and spill the rest of the payload into the document as markup. All
+        # THREE substitutions are pinned: the shipped payload happens to contain no `<`, `>` or `&`
+        # at all, so a comparison against real bytes proves nothing about the escape - only a value
+        # that actually carries them can.
+        text = vendored_libs.serialize_payload(
+            {"encoding": "gzip+base64", "mermaidLicense": "MIT </script> a > b & c"})
+        self.assertNotIn("</script", text.lower())
         self.assertIn("\\u003C", text)
+        self.assertIn("\\u003E", text)
+        self.assertIn("\\u0026", text)
+        self.assertNotIn(">", text.replace("\\u003E", ""))
+        self.assertNotIn("&", text.replace("\\u0026", ""))
+
+    def test_reconciliation_preserves_the_encoding_the_document_declares(self):
+        # `encoding` is a field this module does not own; a future producer could legitimately set
+        # something other than gzip+base64, and reconciliation must not quietly rewrite it.
+        obj = {"encoding": "brotli+base64", "chartjsGzipBase64": "AAA", "chartjsLicense": "MIT"}
+        self.assertEqual(vendored_libs.reconcile(obj, {"chartjs"})["encoding"], "brotli+base64")
 
     def test_the_serializer_produces_the_bytes_the_build_actually_shipped(self):
         # Compare against the REAL built template's payload text, not against a re-implementation of
@@ -854,11 +905,30 @@ class PerLibraryPayloadTests(unittest.TestCase):
     def test_reconciliation_preserves_keys_it_does_not_recognise(self):
         # Rebuilding from a fixed key list alone would silently discard whatever a future or older
         # producer had put in the payload. Dropping data we merely do not recognise is exactly the
-        # loss this module exists to prevent.
+        # loss this module exists to prevent. The ORDER is pinned too: canonical keys first, then
+        # the unrecognised ones in their original order.
         obj = {"encoding": "gzip+base64", "chartjsGzipBase64": "AAA", "chartjsLicense": "MIT",
-               "futureField": {"k": 1}}
+               "futureField": {"k": 1}, "anotherOne": "x"}
         out = vendored_libs.reconcile(obj, {"chartjs"})
         self.assertEqual(out.get("futureField"), {"k": 1})
+        self.assertEqual(list(out.keys()),
+                         ["encoding", "chartjsGzipBase64", "chartjsLicense",
+                          "futureField", "anotherOne"])
+
+    def test_the_insert_path_preserves_the_templates_unrecognised_keys_too(self):
+        # The same rule in the other direction: restoring a payload from the template must not drop
+        # keys the template carried, or the loss just moves rather than being prevented.
+        span = vendored_libs._inner_span(self.blob)
+        obj = vendored_libs.payload_object(self.blob)
+        obj["futureField"] = "keep me"
+        rich = (self.blob[:span[0]] + vendored_libs.serialize_payload(obj)
+                + self.blob[span[1]:])
+        stripped, _ = vendored_libs.apply(_doc(PROSE), rich)
+        grew = stripped.replace(
+            "</h1>", '</h1>\n<pre class="mermaid cm-skip">graph TD; A--&gt;B;</pre>', 1)
+        out, changed = vendored_libs.apply(grew, rich)
+        self.assertTrue(changed)
+        self.assertEqual(self._payload(out).get("futureField"), "keep me")
 
     def test_a_diagram_only_partial_payload_gains_the_chart_half(self):
         # The symmetric case of the completion test above, so neither direction can regress alone.

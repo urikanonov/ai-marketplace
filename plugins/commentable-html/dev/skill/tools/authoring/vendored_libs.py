@@ -43,8 +43,9 @@ BLOB_ID = "cmhVendoredRichLibs"
 MERMAID_SELECTORS = ("pre.mermaid", "div.mermaid")
 CHART_SELECTORS = ("figure.chart canvas", "canvas.cmh-chart",
                    "canvas[data-cmh-chart-points]", "canvas[data-cmh-chart-source]")
-# The UNION stays the authority pinned against the runtime's CMH_RICH_CONTENT_SEL; the two families
-# above only record which library each shape belongs to, which is what the per-library payload needs.
+# Each family is pinned to the runtime's OWN constant (CMH_MERMAID_SEL / CMH_CHART_CANVAS_SEL) by
+# the parity tests, and their union is what CMH_RICH_CONTENT_SEL declares. Splitting them is what
+# lets the payload be right-sized per library rather than kept or dropped as a unit.
 RUNTIME_SELECTORS = MERMAID_SELECTORS + CHART_SELECTORS
 
 USES = "uses"
@@ -296,6 +297,12 @@ def _needed_libs(scan):
                                   ("chartjs", scan.uses_charts)) if used}
 
 
+def _carried_at(html, scan, index):
+    """The libraries the payload copy at `index` carries, for choosing between duplicates."""
+    start, end = scan.blob_inner_spans[index]
+    return vendored_payload.carried_libs(vendored_payload.parse_payload(html[start:end]))
+
+
 def _sourced_script(source_blob, needed):
     """A payload element built from `source_blob` carrying exactly `needed`, or None."""
     if not source_blob:
@@ -308,7 +315,10 @@ def _sourced_script(source_blob, needed):
     source_obj = vendored_payload.parse_payload(source_blob[span[0]:span[1]])
     if source_obj is None:
         return None
-    inner = _rebuilt_inner({}, needed, source_obj)
+    # Reconcile the SOURCE against itself so its own unknown keys are preserved too. Passing an
+    # empty object here would take the library pairs but silently drop anything else the template
+    # carried - the same loss the preservation rule exists to prevent, just in the other direction.
+    inner = _rebuilt_inner(source_obj, needed, source_obj)
     if inner is None:
         return None
     return (source_blob[:span[0]] + inner + source_blob[span[1]:]).strip("\r\n \t") + "\n"
@@ -383,21 +393,28 @@ def apply(html, source_blob=None):
         for start, end in sorted(scan.blob_spans, reverse=True):
             out = out[:start] + out[end:]
         return out, True
+    needed = _needed_libs(scan)
     if len(scan.blob_spans) > 1:
         # A rich document keeps exactly ONE payload. The runtime resolves the payload as
         # infrastructure and refuses to guess between two candidates (it fails the Offline export
         # loudly rather than inflate the wrong one), so leaving a stale second copy here - which the
         # UNUSED branch above already collapses - would hand back a finalized document that cannot
-        # be exported. Keep the LAST copy (the canonical after-content position when one is already
-        # there) and drop the rest, back to front so earlier offsets stay valid, then let the
-        # single-copy path below place it. `changed` is unconditionally True: bytes were removed
-        # here even when the recursive call finds nothing further to do.
+        # be exported.
+        #
+        # Keep the RICHEST copy, not simply the last one. Once payloads can be partial, a stale
+        # refresh can leave a COMPLETE copy followed by a right-sized one, and blindly keeping the
+        # last would throw away the only bytes that could satisfy the document - permanently, when
+        # no template is reachable to restore from. Position is not lost by choosing on content:
+        # the single-copy path below relocates whichever copy survives. Ties go to the LAST, which
+        # is the canonical after-content position when one is already there.
+        best = max(range(len(scan.blob_spans)),
+                   key=lambda i: (len(_carried_at(html, scan, i) & needed), i))
         out = html
-        for start, end in sorted(scan.blob_spans[:-1], reverse=True):
-            out = out[:start] + out[end:]
+        for index, (start, end) in reversed(list(enumerate(scan.blob_spans))):
+            if index != best:
+                out = out[:start] + out[end:]
         return apply(out, source_blob)[0], True
 
-    needed = _needed_libs(scan)
     if not scan.blob_spans:
         script = _sourced_script(source_blob, needed)
         if script is None:

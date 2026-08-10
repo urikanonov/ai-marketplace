@@ -51,8 +51,13 @@ def serialize_payload(obj):
     ValueError, never SystemExit: `apply()` runs from `finalize` before validation, and a
     BaseException would escape every caller's guard and abort an agent's write-back. The build
     translates this to SystemExit at its own level, where aborting is the right answer.
+
+    `allow_nan=False` because Python's default emits bare `NaN` / `Infinity`, which are not JSON and
+    which a browser's `JSON.parse` REFUSES - the payload's only consumer parses it in a browser. A
+    value we cannot represent portably therefore raises, the caller leaves the document alone, and
+    we never write a payload the runtime cannot read.
     """
-    text = (json.dumps(obj, separators=(",", ":"))
+    text = (json.dumps(obj, separators=(",", ":"), allow_nan=False)
             .replace("<", "\\u003C").replace(">", "\\u003E").replace("&", "\\u0026"))
     if "</script" in text.lower():
         # Belt and braces, and deliberately unreachable today: the replace above removes every `<`,
@@ -120,6 +125,15 @@ def reconcile(obj, needed, source_obj=None):
     canonical ones. Rebuilding from a fixed key list alone would silently discard whatever a future
     (or older) producer had put there, and quietly dropping data we merely do not recognise is the
     kind of loss this module exists to prevent.
+
+    THE POLICY WHEN THOSE TWO GOALS COLLIDE, stated explicitly because it is a real trade: an
+    unknown value that cannot be serialized portably (`NaN`, `Infinity`, or an overflowing literal
+    such as `1e400`, none of which are JSON and all of which a browser's `JSON.parse` refuses) makes
+    `serialize_payload` raise, the caller decline, and the document stay byte-identical - so such a
+    document is never right-sized. That is deliberate. The alternative is to drop the offending key,
+    which is the data loss this preservation exists to prevent, and the affected document is one a
+    hand edit already made unreadable to the payload's only consumer, so its export is broken either
+    way. Declining changes nothing and reports honestly; dropping would destroy evidence.
     """
     obj = obj if isinstance(obj, dict) else {}
     source_obj = source_obj if isinstance(source_obj, dict) else {}
