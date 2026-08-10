@@ -20,6 +20,7 @@ import {
   compareImages, imagesMatch, MAX_DIFF_PIXELS, PIXEL_CHANNEL_TOLERANCE, writeDiffImage,
 } from "./shot_compare.mjs";
 import { freezeBuildStamps, STAMP_DATE, STAMP_VERSION } from "./shot_stamps.mjs";
+import { pinnedVersion, lockedVersion, pinMismatchMessage, NOT_INSTALLED_MESSAGE } from "./mermaid_pin.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The in-browser layout/scroll settle loops throw on a wall-clock deadline that was sized for a
@@ -233,9 +234,35 @@ async function waitForMermaid(page) {
   }, null, { timeout: 15000 });
 }
 
+// The mermaid the capture RENDERS with must be the one the plugin SHIPS. package.json is the single
+// source for that pin; node_modules is what the route below actually serves. The DECISION lives in
+// tools/mermaid_pin.mjs so it can be tested directly (CMH-BUILD-24); this only reads the files.
+function assertInstalledMermaidIsPinned() {
+  const read = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
+  const pinned = pinnedVersion(read(path.resolve(HERE, "..", "package.json")));
+  const installedPkg = path.resolve(HERE, "..", "node_modules", "mermaid", "package.json");
+  if (!fs.existsSync(installedPkg)) throw new Error(NOT_INSTALLED_MESSAGE);
+  let locked = null;
+  try {
+    locked = lockedVersion(read(path.resolve(HERE, "..", "package-lock.json")));
+  } catch { /* an unreadable lockfile is itself an install problem; the generic advice covers it */ }
+  const message = pinMismatchMessage({ pinned, installed: read(installedPkg).version, locked });
+  if (message) throw new Error(message);
+}
+
 async function routeVendoredMermaid(context) {
   const dist = path.resolve(HERE, "..", "node_modules", "mermaid", "dist");
-  await context.route("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/**", async (route) => {
+  // Version-AGNOSTIC on purpose (CMH-BUILD-24): the pinned mermaid version is single-sourced from
+  // package.json and restamped into the shell on every build, so a literal version here would stop
+  // matching on the next bump and the catch-all abort below would silently starve mermaid.
+  //
+  // Being version-agnostic about the URL means being STRICT about the bytes: the route serves
+  // whatever mermaid happens to be installed, so an installed copy that is not the pinned one would
+  // render the committed PNGs from a version that never ships. That is invisible here and surfaces
+  // much later as an unexplained pixel-drift failure in CI (which installs the pinned version), so
+  // refuse it up front with a diagnostic that names the real problem.
+  assertInstalledMermaidIsPinned();
+  await context.route(/^https:\/\/cdn\.jsdelivr\.net\/npm\/mermaid@[^/]+\/dist\//, async (route) => {
     const requestPath = new URL(route.request().url()).pathname;
     const relative = decodeURIComponent(requestPath.replace(/^.*\/dist\//, "")).replace(/\//g, path.sep);
     const fileName = path.resolve(dist, relative);

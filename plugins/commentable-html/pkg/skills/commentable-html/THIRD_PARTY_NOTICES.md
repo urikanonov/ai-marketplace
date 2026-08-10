@@ -9,7 +9,7 @@ MIT License requires. The skill's validator also adapts a small amount of code f
 standard library, so the PSF License, its copyright notice and a summary of the changes are
 reproduced below too, as that license requires.
 
-## mermaid 11.16.0
+## mermaid 11.16.1
 
 ```text
 The MIT License (MIT)
