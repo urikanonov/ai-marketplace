@@ -136,8 +136,11 @@ class ForwardCompatibleLayoutTests(unittest.TestCase):
         self.assertEqual(runtime_modes, to_shareable.NONSHAREABLE_MODES)
         # The BUILT runtime carries the same vocabulary, so a stale dist cannot ship a different
         # one than the source this test pins. Compared as parsed values, not as raw text, so a
-        # change in how the bundle is written is not mistaken for a drift.
-        built = modes_re.search(_read(os.path.join(_paths.DIST, "commentable-html.js")))
+        # change in how the bundle is written is not mistaken for a drift - which is why the built
+        # copy is matched with a whitespace-tolerant pattern: the shipped bytes are stripped of
+        # comments and layout whitespace (CMH-BUILD-26).
+        built_re = re.compile(r"const\s+CMH_NONSHAREABLE_MODES\s*=\s*\[([^\]]*)\]\s*;")
+        built = built_re.search(_read(os.path.join(_paths.DIST, "commentable-html.js")))
         self.assertIsNotNone(built, "the built runtime no longer declares CMH_NONSHAREABLE_MODES")
         self.assertEqual(tuple(re.findall(r'"([^"]+)"', built.group(1))), runtime_modes)
 

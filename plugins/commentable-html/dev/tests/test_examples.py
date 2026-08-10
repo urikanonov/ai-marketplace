@@ -152,7 +152,7 @@ class ExampleTests(unittest.TestCase):
         for path in EXAMPLES:
             html = _read(path)
             meta = re.search(r'<meta name="commentable-html-version" content="([0-9.]+)"', html)
-            const = re.search(r'const CMH_VERSION = "([0-9.]+)"', html)
+            const = _paths.CMH_VERSION_CONST_RE.search(html)
             self.assertIsNotNone(meta, "no version <meta> in " + os.path.basename(path))
             self.assertIsNotNone(const, "no CMH_VERSION const in " + os.path.basename(path))
             self.assertEqual(meta.group(1), version,
@@ -194,7 +194,8 @@ class ExampleTests(unittest.TestCase):
                              "freshly copied tree should be in sync")
             taxi = os.path.join(out_dir, "examples", "report-taxi.html")
             html = _read(taxi)
-            poisoned = html.replace('const CMH_VERSION = "', 'const CMH_VERSION = "0.0.0"; //', 1)
+            poisoned = _paths.CMH_VERSION_CONST_RE.sub(
+                'const CMH_VERSION="0.0.0";//', html, count=1)
             self.assertNotEqual(poisoned, html, "could not poison the example CMH_VERSION")
             with open(taxi, "w", encoding="utf-8", newline="") as fh:
                 fh.write(poisoned)
@@ -336,7 +337,9 @@ class ChecklistExampleTests(unittest.TestCase):
         self.assertIsNotNone(key, "checklist example is missing data-comment-key")
         others = [_active_root_attr(_read(p), "data-comment-key") for p in EXAMPLES]
         self.assertNotIn(key, others, "checklist example reuses another example's comment key")
-        self.assertIn('const CMH_VERSION = "%s"' % _read_version(), html)
+        stamped = _paths.CMH_VERSION_CONST_RE.search(html)
+        self.assertIsNotNone(stamped, "checklist example carries no CMH_VERSION const")
+        self.assertEqual(stamped.group(1), _read_version())
 
 
 class NotesExampleTests(unittest.TestCase):
@@ -367,7 +370,9 @@ class NotesExampleTests(unittest.TestCase):
         checklist = os.path.join(_paths.EXAMPLES, "report-checklist.html")
         others = [_active_root_attr(_read(p), "data-comment-key") for p in list(EXAMPLES) + [checklist]]
         self.assertNotIn(key, others, "notes example reuses another example's comment key")
-        self.assertIn('const CMH_VERSION = "%s"' % _read_version(), html)
+        stamped = _paths.CMH_VERSION_CONST_RE.search(html)
+        self.assertIsNotNone(stamped, "notes example carries no CMH_VERSION const")
+        self.assertEqual(stamped.group(1), _read_version())
 
 
 # The mermaid loader lives in <head>, OUTSIDE the swappable CSS/COMMENT UI/JS regions, so a bare

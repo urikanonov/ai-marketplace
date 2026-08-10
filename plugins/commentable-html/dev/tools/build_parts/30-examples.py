@@ -369,6 +369,13 @@ def build_all(assets_dir=None, out_dir=None, examples_dir=None):
     generated_date = read_release_date(version)
     vendored_rich_libs_json = build_vendored_rich_libs_json(assets_dir or ASSETS)
     js = _stamp_const(js, version, "commentable-html.js")
+    # Strip the developer commentary and layout whitespace from the bytes that SHIP (see
+    # tools/build_parts/05-minify.py). It happens here, after the version stamp, so the stamp still
+    # matches its `^const CMH_VERSION = "..."` source shape, and before every consumer below, so
+    # the external companions, the asset registry, the inline template and every built example all
+    # carry one identical copy of the stripped layer.
+    js = minify_js(js)
+    css = minify_css(css)
     css_name, js_name, assets_name = _names()
     assets_js = build_assets_js(css, js, version)
     css_file, js_file = css + "\n", js + "\n"

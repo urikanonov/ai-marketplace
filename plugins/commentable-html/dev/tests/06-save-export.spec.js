@@ -1045,8 +1045,10 @@ test.describe("Save comments / Export plain", () => {
     expect(html).toContain("Commentable HTML demo"); // host content survives
     expect(html).toContain("--cp-bg"); // theme variables kept so it is not unstyled
     // The content styling the skill ships (tables, sections, code, diff, KQL) must
-    // survive - "plain" removes the commenting ability, not the styling.
-    expect(html).toContain("Default content styling");
+    // survive - "plain" removes the commenting ability, not the styling. Asserted on the RULES,
+    // never on the section banner comment that documents them: the build strips comments from the
+    // stylesheet it ships (CMH-BUILD-26), and a comment proves nothing about the cascade anyway.
+    expect(html).toMatch(/#commentRoot\s*>\s*section\s*\{/); // the section surface
     expect(html).toMatch(/#commentRoot\s+table\s*\{/); // an actual content rule, not just the banner comment
   });
 });

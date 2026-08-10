@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.831.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.832.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,17 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.832.0] - 2026-08-10</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The layer that SHIPS no longer carries its developer commentary. <code>build.py</code> now strips comments and layout whitespace from the runtime and the stylesheet after the version stamp and before every consumer, so <code>dist/commentable-html.js</code>, <code>dist/commentable-html.css</code>, the asset registry, both templates and every built example embed one identical stripped copy. <code>assets/js/**</code> and <code>assets/css/**</code> stay fully commented and remain the single source of truth. The runtime drops from 1,219,713 to 615,676 bytes and the stylesheet from 215,138 to 138,539, so a prose report goes from 1,474,743 to 794,105 bytes (-46%) and a diagram-and-chart report from 3,102,790 to 2,422,152 (-22%, the remainder being the vendored diagram payload that workstream A of #1250 still owns). Nothing about the runtime&#x27;s behavior changes: the transform is not a general minifier (no identifier mangling, no statement joining), it only deletes comments and whitespace, it never touches a byte inside a string, template literal or regex literal, it preserves every line terminator that automatic semicolon insertion depends on, it decides regex-versus-division from parse context rather than guessing, it refuses a source that leaves a construct unterminated, and it hands the result to <code>node --check</code> as an independent parser (<code>CMH-BUILD-26</code>). The vendored lz-string MIT notice - copyright and permission text in full - now travels as a <code>/*! @license */</code> comment so it keeps accompanying the redistributed copy inside every generated document and offline export.</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>A per-component size budget (<code>dev/tools/size-budget.json</code>) that <code>build.py</code> enforces on every build and every <code>--check</code>, refusing to write when a shipped component grows past its ceiling, so the required <code>dist-in-sync</code> job fails a pull request that blows a budget. The runtime grew 3.5x across earlier versions with nothing to notice it; raising a ceiling is now a deliberate, reviewed edit (<code>CMH-BUILD-27</code>).</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.831.0] - 2026-08-10</h3></div>
             <div class="group-label">Security</div>
             <ul>
@@ -508,6 +519,8 @@
               <li>The tutorial-screenshot capture no longer breaks on a mermaid bump (<code>CMH-BUILD-24</code>). The capture aborts every remote fetch to stay hermetic and lets exactly one route serve mermaid from the local <code>node_modules</code>, but that route pinned a LITERAL <code>mermaid@11.16.0</code> while the URL it has to match is single-sourced from <code>package.json</code>. The two parted company the moment the dependency moved: mermaid never loaded, and <code>npm run shots</code> failed on a <code>waitForMermaid</code> timeout that named nothing. The route is now version-agnostic (and still narrow - a different package, or the same path on a different host, is aborted as before), matching what the Playwright helper already did. Being version-agnostic about the URL would on its own trade that loud failure for a silent one, since the render is internally consistent at whatever mermaid is on disk, so the capture now refuses outright when the installed mermaid disagrees with the pin rather than rendering the committed screenshots from a version that never ships.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.830.0] - 2026-08-09</h3></div>
             <div class="group-label">Fixed</div>
@@ -515,8 +528,6 @@
               <li>The in-document <code>Contents</code> table of contents and the side navigation menu now show the SAME number for the same heading. <code>generate_toc.py</code> used to emit one flat <code>&lt;ol&gt;</code>, so the browser&#x27;s list marker numbered a subsection as if it were a top-level section (<code>4</code>) while the side menu called the same heading <code>3.1</code>, and a reader could not cross-reference the two. The generated Contents list now carries the number itself - the number the heading displays when the document numbers its own sections, else a hierarchical <code>1</code>, <code>1.1</code>, <code>1.2</code>, <code>2</code> computed from the heading depth - and the side menu reads that number instead of computing a second one, so both surfaces are driven by one source. The number is a <code>cm-skip</code> span carrying its own separator, so re-baking a document&#x27;s Contents list adds no counted text and never moves an existing comment&#x27;s anchor, and the generated list suppresses its own ordered-list marker inline so a document whose embedded layer predates this release is not double-numbered. A hand-authored <code>.cm-toc</code> is untouched and keeps its browser marker, and the author-numbered de-dup (CMH-TOC-10) still holds. Two notes for an existing document: a Contents list an OLDER version generated keeps its flat marker until <code>generate_toc.py</code> (or <code>finalize.py --toc</code>) is re-run, because an upgrade never rewrites <code>#commentRoot</code>; and on that re-bake a document that numbers only SOME of its headings now leaves the unnumbered entries bare, matching the side menu, where the list marker used to number them.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.829.0] - 2026-08-09</h3></div>
             <div class="group-label">Changed</div>
@@ -553,16 +564,7 @@
               <li>Saving an in-place dialog edit with the comments panel collapsed no longer drops focus on <code>&lt;body&gt;</code>. A mid-edit outside click is deliberately let through, so the reviewer can collapse the panel while editing, and a collapsed panel is <code>inert</code> - which made focusing the comments list a silent no-op. Focus now falls back to the toggle that brings the panel back, and then to a deck&#x27;s own corner control (a deck hides the panel AND the toolbar wholesale), each landing verified to have taken focus before the next is tried.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.826.0] - 2026-08-09</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The runtime section menu now reflects the document&#x27;s own hierarchy instead of flattening it. When a document carries an author <code>nav.cm-toc</code>, every entry was given level 1, so a <code>10.3</code> subsection was renumbered as a flat sequential <code>25</code> and sat at the same indentation as a top-level section. Entry level now comes from the target heading&#x27;s tag (falling back to the nav&#x27;s own list nesting for an anchor that points at something other than a heading), the computed numbering is hierarchical to any depth (<code>1</code>, <code>1.1</code>, <code>1.1.1</code>), and the number the HEADING displays wins over a computed one - <code>generate_toc.py</code> strips that number from the TOC label (CMH-TOC-10), which is exactly why it has to be read back off the heading. Each level is indented one step further than its parent, and the no-author-TOC fallback now lists <code>h4</code> ids too.</li>
-              <li>The section filter box now narrows the menu. Each entry was matched against the whole text of its enclosing <code>&lt;section&gt;</code>, so in a document whose headings share ONE wrapper section every entry matched every query and nothing was filtered out. An entry is now matched on the text it OWNS - its heading plus the prose up to the next entry - the ancestors of a match stay listed so a matching subsection still shows where it lives, and a <code>&lt;section&gt;</code> is hidden only when every entry inside it is filtered out, so a wrapper can never be hidden out from under a match. A level is decided by an open-depth stack, so a document that SKIPS a heading level keeps equal-depth headings as peers (<code>h2</code>, <code>h4</code>, <code>h4</code>, <code>h3</code> reads 1, 2, 2, 2), and a shallower entry matching later in the list no longer cancels the ancestor chain a deeper match still needs.</li>
-              <li>Printing (and Save as PDF) now ignores an active section filter. The filter hides a non-matching <code>&lt;section&gt;</code> with <code>display:none</code>, which print honored, so a reader who printed while a query was in the Filter sections box silently got a PDF missing the sections they had filtered out - the same class of runtime state print already forces open for a collapsed section. A query that matches NOTHING now narrows the menu only, rather than hiding every section and blanking the document over what is usually a typo, and a deep link to a filtered-out entry reveals it even when its wrapper section stayed visible.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">393 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">394 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

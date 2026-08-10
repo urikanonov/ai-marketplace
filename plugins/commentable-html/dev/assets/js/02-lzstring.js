@@ -1,6 +1,32 @@
-/* ---------- Vendored: lz-string (UTF-16 codec, trimmed) ----------
- * lz-string 1.4.4 by pieroxy <pieroxy@pieroxy.net> - MIT license.
- * https://github.com/pieroxy/lz-string
+/*! ---------- Vendored: lz-string (UTF-16 codec, trimmed) ----------
+ * @license lz-string 1.4.4 - https://github.com/pieroxy/lz-string
+ *
+ * MIT License
+ *
+ * Copyright (c) 2013 pieroxy
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
+ * This notice is spelled `/*!` + `@license` deliberately: the build strips ordinary comments from
+ * the bytes it ships (CMH-BUILD-26), and unlike mermaid and Chart.js - which the offline exporter
+ * inlines beside their own notices - this library is baked into the runtime, so this comment is
+ * the only notice that travels with the redistributed copy inside a generated document.
  * Trimmed to compressToUTF16 / decompressFromUTF16 (the two entry points the
  * comment store uses to pack JSON into valid BMP UTF-16 for localStorage), with a
  * bounded decoder (maxLen) so a hostile pre-seeded value cannot expand without limit.

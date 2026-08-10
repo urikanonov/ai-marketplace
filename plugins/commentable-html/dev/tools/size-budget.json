@@ -1,0 +1,18 @@
+{
+  "_comment": [
+    "Byte ceilings for the generated components that ship inside every document (#1250).",
+    "tools/build.py enforces these on every build and every --check, so the required",
+    "dist-in-sync job fails a pull request that blows one. Raising a ceiling is a deliberate,",
+    "reviewed edit here plus a changelog line - that is the whole point of the gate: growth",
+    "becomes a decision instead of the 3.5x drift that went unnoticed across earlier versions.",
+    "Headroom is about 5 percent over the current build, so ordinary feature work fits and a",
+    "step change does not."
+  ],
+  "components": {
+    "dist/commentable-html.js": 645000,
+    "dist/commentable-html.css": 146000,
+    "dist/commentable-html.assets.js": 830000,
+    "dist/SHAREABLE.html": 2320000,
+    "dist/NONSHAREABLE.html": 1500000
+  }
+}

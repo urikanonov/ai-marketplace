@@ -127,13 +127,16 @@ class AssemblyIntegrityTests(unittest.TestCase):
         shutil.copytree(os.path.join(ASSETS, "vendor"), os.path.join(assets, "vendor"))
         shutil.copy2(os.path.join(ASSETS, "template.shell.html"),
                      os.path.join(assets, "template.shell.html"))
-        marker = "/* SENTINEL-MARKER-xyz */"
+        # A CSS declaration, not a comment: the build strips comments from the bytes that ship
+        # (CMH-BUILD-26), so a comment sentinel would prove nothing about which assets dir was read.
+        marker = ".sentinel-marker-xyz {\n  color: rgb(1, 2, 3);\n}"
         base_css = os.path.join(assets, "css", "00-base.css")
         with open(base_css, "a", encoding="utf-8") as fh:
             fh.write("\n" + marker + "\n")
         outputs, _v = build.build_all(assets, out_dir)
         shareable = outputs[os.path.join(out_dir, "dist", "SHAREABLE.html")]
-        self.assertIn(marker, shareable, "build_all did not read the passed --assets-dir")
+        self.assertIn(".sentinel-marker-xyz", shareable,
+                      "build_all did not read the passed --assets-dir")
 
     def test_the_monolith_sources_do_not_exist(self):
         # Cement "work in split mode": the old single-file sources must never return (a stale rebase

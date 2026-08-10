@@ -128,8 +128,11 @@ class BuildTests(unittest.TestCase):
 
     def test_inline_template_round_trips_from_shell_and_assets(self):
         css, js, shell, version = build.load_sources()
-        js = build._stamp_const(js, version, "commentable-html.js")
-        rebuilt = build.build_inline(css, js, shell, version, build.read_mermaid_version())
+        # The shipped bytes are the STRIPPED layer (CMH-BUILD-26), stripped after the version
+        # stamp, so a round trip has to run the same two steps build_all does.
+        js = build.minify_js(build._stamp_const(js, version, "commentable-html.js"))
+        rebuilt = build.build_inline(build.minify_css(css), js, shell, version,
+                                     build.read_mermaid_version())
         self.assertEqual(rebuilt, _read(os.path.join(ROOT, "dist", "SHAREABLE.html")))
 
     # -- versioning / manifest --------------------------------------------- #
@@ -144,7 +147,9 @@ class BuildTests(unittest.TestCase):
             "commentable-html.assets.js",
         })
         companion_js = _read(os.path.join(DIST, "commentable-html.js"))
-        self.assertIn('const CMH_VERSION = "%s";' % v, companion_js)
+        stamped = _paths.CMH_VERSION_CONST_RE.search(companion_js)
+        self.assertIsNotNone(stamped, "the built layer no longer declares CMH_VERSION")
+        self.assertEqual(stamped.group(1), v)
         for name in ("SHAREABLE.html", "NONSHAREABLE.html"):
             html = _read(os.path.join(DIST, name))
             self.assertIn('<meta name="commentable-html-version" content="%s"' % v, html)
@@ -508,6 +513,9 @@ class BuildTests(unittest.TestCase):
             out = io.StringIO()
             with mock.patch.object(build, "HERE", d), mock.patch.object(build, "DIST", dist), \
                     mock.patch.object(build, "build_all", return_value=(outputs, "1.2.3")), \
+                    mock.patch.object(build, "read_size_budget",
+                                      return_value={os.path.join("dist", "SHAREABLE.html"): 1000,
+                                                    os.path.join("dist", "NONSHAREABLE.html"): 1000}), \
                     mock.patch.object(build, "source_stamps", return_value={}), \
                     contextlib.redirect_stdout(out):
                 code = build.main(["build.py", "--check"])
@@ -528,6 +536,10 @@ class BuildTests(unittest.TestCase):
             out = io.StringIO()
             with mock.patch.object(build, "HERE", d), mock.patch.object(build, "DIST", dist), \
                     mock.patch.object(build, "build_all", return_value=(outputs, "1.2.3")), \
+                    mock.patch.object(build, "read_size_budget",
+                                      return_value={os.path.join("dist", "SHAREABLE.html"): 1000,
+                                                    os.path.join("dist", "commentable-html.css"): 1000,
+                                                    os.path.join("dist", "NONSHAREABLE.html"): 1000}), \
                     mock.patch.object(build, "source_stamps", return_value={}), \
                     contextlib.redirect_stdout(out):
                 code = build.main(["build.py"])

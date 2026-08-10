@@ -12,6 +12,7 @@ Build inputs (assets) and the maintainer-only build tool live under dev/.
 Set CMH_PKG_DIR to override the STAGE skill location (e.g. to test a staged copy).
 """
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))              # dev/tests
@@ -30,6 +31,12 @@ ASSETS = os.path.join(DEV, "assets")                           # build inputs (d
 DEV_TOOLS = os.path.join(DEV, "tools")                         # maintainer-only tools (build.py)
 PKG_SHIPPED = os.path.join(PLUGIN_ROOT, "pkg", "skills", "commentable-html")  # minimal shipped dir
 HOOKS = os.path.join(PLUGIN_ROOT, "pkg", "hooks")             # shipped SessionStart hook + extractor
+
+# The runtime version constant AS IT SHIPS. build.py strips comments and layout whitespace from
+# the bytes that ship (CMH-BUILD-26), so the built layer spells the source's
+# `const CMH_VERSION = "1.2.3";` as `const CMH_VERSION="1.2.3";`. Match the DECLARATION, never its
+# formatting, in anything read out of dist/ or out of a generated document.
+CMH_VERSION_CONST_RE = re.compile(r'const\s+CMH_VERSION\s*=\s*"([0-9.]+)"\s*;')
 
 # Put the tools/ root and every topic subdirectory on sys.path via the shipped bootstrap, so a bare
 # `import <tool>` in a test resolves the same way it does for the shipped tools themselves.

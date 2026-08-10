@@ -233,12 +233,19 @@ test("Save preserves a serializable closed declarative shadow root (CMH-VAL-23)"
 });
 
 test("Save preserves an open shadow root on a post-layer tail element (CMH-VAL-23)", async ({ page }) => {
+  // Append at the document's LAST `</body>`, not its first: the layer's own source spells that
+  // string (`SNAPSHOT_HTML.lastIndexOf("</body>")`), so a plain first-occurrence replace inserts
+  // the fixture into a JS string literal - which either breaks the runtime or, worse, passes
+  // vacuously because the injected markup is still present as script text.
   const staged = stageInline({
-    mutate: (html) => html.replace(
-      "</body>",
-      '<div id="tailShadowHost"><template shadowrootmode="open">'
-      + "<p>Durable tail shadow prose</p></template></div></body>",
-    ),
+    mutate: (html) => {
+      const at = html.lastIndexOf("</body>");
+      expect(at).toBeGreaterThan(-1);
+      return html.slice(0, at)
+        + '<div id="tailShadowHost"><template shadowrootmode="open">'
+        + "<p>Durable tail shadow prose</p></template></div>"
+        + html.slice(at);
+    },
   });
   await page.goto(fileUrl(staged.html));
   await ready(page);
