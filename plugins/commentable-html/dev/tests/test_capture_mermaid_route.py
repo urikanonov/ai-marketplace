@@ -78,19 +78,23 @@ def _as_python_pattern(arg):
         for flag in flags:
             if flag == "i":
                 py_flags |= re.IGNORECASE
-            elif flag in "su":
-                continue
+            elif flag == "s":
+                py_flags |= re.DOTALL
+            elif flag == "u":
+                continue  # Python 3 patterns are already Unicode; JS `u` has no separate effect here.
             else:
                 raise AssertionError(
                     "unsupported JS regex flag %r in the route pattern; teach _as_python_pattern "
                     "how it maps to Python re before relying on this test" % flag)
         return re.compile(body, py_flags), False
     literal = arg[1:-1]
-    if "/**/" in literal:
-        raise AssertionError(
-            "the route is a glob containing '/**/', whose Playwright semantics (a group that may "
-            "match zero segments, slashes included) this translator does not reproduce; express the "
-            "route as a regex literal or extend _as_python_pattern")
+    for meta in ("/**/", "{", "}", "["):
+        if meta in literal:
+            raise AssertionError(
+                "the route is a glob containing %r, whose Playwright semantics this translator does "
+                "not reproduce (brace alternation, character classes, and a `/**/` that may match "
+                "zero segments including its slashes); express the route as a regex literal or "
+                "extend _as_python_pattern" % meta)
     out = []
     i = 0
     while i < len(literal):
@@ -154,10 +158,15 @@ class CaptureMermaidRouteTests(unittest.TestCase):
         installs the pinned version.
         """
         source = _read(CAPTURE)
+        m = _ROUTE_CALL.search(source)
+        self.assertIsNotNone(m, "could not find the context.route(...) call in routeVendoredMermaid")
+        # Scope this to the CALLER, not the file: `assertInstalledMermaidIsPinned()` also appears in
+        # the function's own declaration, so searching the whole source would stay green with the
+        # guard defined and never invoked - exactly the regression it exists to prevent.
         self.assertIn(
-            "assertInstalledMermaidIsPinned()", source,
-            "routeVendoredMermaid must assert the installed mermaid is the pinned one before "
-            "serving it, or a stale node_modules silently renders the tutorial screenshots")
+            "assertInstalledMermaidIsPinned()", m.group("body"),
+            "routeVendoredMermaid must CALL assertInstalledMermaidIsPinned() before registering the "
+            "route, or a stale node_modules silently renders the tutorial screenshots")
         guard = re.search(r"function assertInstalledMermaidIsPinned\(\)\s*\{(.*?)\n\}", source, re.S)
         self.assertIsNotNone(guard, "assertInstalledMermaidIsPinned is not defined")
         body = guard.group(1)

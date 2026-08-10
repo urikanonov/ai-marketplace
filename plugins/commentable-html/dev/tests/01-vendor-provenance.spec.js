@@ -27,6 +27,11 @@ const VENDOR = path.join(DEV, "assets", "vendor");
 test("the vendored mermaid bundle is the npm tarball the lockfile pins (CMH-BUILD-25)", () => {
   const installedDir = path.join(DEV, "node_modules", "mermaid");
   const installedPkg = path.join(installedDir, "package.json");
+  if (!fs.existsSync(installedPkg)) {
+    // Announce every skip: a skipped guard reads as a green tick in a CI summary, and this is the
+    // one place the byte-level check exists, so its absence must be visible in the log.
+    console.warn("CMH-BUILD-25: SKIPPED - mermaid is not installed (run npm ci). The vendored bytes were NOT verified against the npm tarball.");
+  }
   test.skip(!fs.existsSync(installedPkg), "mermaid is not installed (run npm ci)");
 
   const declared = JSON.parse(fs.readFileSync(path.join(DEV, "package.json"), "utf8"));
@@ -34,11 +39,19 @@ test("the vendored mermaid bundle is the npm tarball the lockfile pins (CMH-BUIL
   const pinned = String(spec).replace(/^[\^~]/, "");
   const installed = JSON.parse(fs.readFileSync(installedPkg, "utf8")).version;
 
-  // A caret range legitimately resolves ABOVE the pin, and then the vendored copy is expected to
-  // differ. Only the exact-match case can be compared byte for byte, so say plainly why it skipped
-  // rather than passing silently on a comparison that never happened.
-  test.skip(installed !== pinned,
-    `installed mermaid ${installed} != pinned ${pinned}; byte comparison only meaningful on an exact match`);
+  // Deliberately a FAILURE, not a skip. `npm ci` installs the LOCKFILE version, and npm is happy
+  // whenever that merely SATISFIES the caret range - so a lockfile-only bump (package.json
+  // `^11.16.1`, lockfile `11.17.0`: exactly the shape of the Dependabot PR that started this) would
+  // otherwise skip the byte comparison and ship the old vendored bytes under a green tick. That is
+  // the one case this guard exists for, so a disagreement between the pin and what is installed is
+  // itself the defect: the pin must be bumped and the library re-vendored.
+  expect(
+    installed,
+    `package.json pins mermaid ${pinned} but ${installed} is installed (npm ci installs the ` +
+    `package-lock.json version). Bump the pin and re-vendor assets/vendor/mermaid.min.js per ` +
+    `assets/vendor/UPSTREAM.md - otherwise the offline export ships a different mermaid than the ` +
+    `dependency tree resolves.`
+  ).toBe(pinned);
 
   const vendored = fs.readFileSync(path.join(VENDOR, "mermaid.min.js"));
   const fromTarball = fs.readFileSync(path.join(installedDir, "dist", "mermaid.min.js"));

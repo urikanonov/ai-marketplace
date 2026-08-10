@@ -248,12 +248,24 @@ function assertInstalledMermaidIsPinned() {
   }
   const installed = read(installedPkg).version;
   if (installed !== pinned) {
+    // Distinguish the two causes: a stale install (npm ci fixes it) from a lockfile that has moved
+    // ABOVE the pin (npm ci REPRODUCES it, so telling the reader to run npm ci would loop).
+    const lockPath = path.resolve(HERE, "..", "package-lock.json");
+    let locked = null;
+    try {
+      const lock = read(lockPath);
+      locked = ((lock.packages || {})["node_modules/mermaid"] || {}).version || null;
+    } catch { /* no lockfile is itself an install problem, handled by the generic advice below */ }
+    const remedy = locked && locked === installed
+      ? `package.json pins ${pinned} but package-lock.json resolves ${locked}, so \`npm ci\` will ` +
+        "keep reproducing this. Bump the package.json pin to match and re-vendor " +
+        "assets/vendor/mermaid.min.js per assets/vendor/UPSTREAM.md."
+      : "Run `npm ci` in plugins/commentable-html/dev and re-run the capture.";
     throw new Error(
       `capture_tutorial: installed mermaid ${installed} does not match the pinned ${pinned}. ` +
       "The capture serves mermaid from node_modules, so it would render the committed tutorial " +
       "screenshots with a version that never ships, and CI (which installs the pinned version) " +
-      "would then fail the exact-pixel drift gate for no visible reason. Run `npm ci` in " +
-      "plugins/commentable-html/dev and re-run the capture.");
+      "would then fail the exact-pixel drift gate for no visible reason. " + remedy);
   }
 }
 

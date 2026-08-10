@@ -14,13 +14,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   configuration APIs, and a CSS injection that applied to elements SIBLING to the diagram. The
   same bump moves the version-pinned jsDelivr import the ONLINE render path uses, so both render
   paths land on the fixed release.
-
   Nothing about the plugin's own behavior changes: `dev/package.json` is the single source for
   the mermaid version, so `build.py` re-stamped the pin into `dist/SHAREABLE.html`,
   `dist/NONSHAREABLE.html`, every `examples/report-*.html` and `THIRD_PARTY_NOTICES.md`, and the
   hand-vendored `dev/assets/vendor/mermaid.min.js` (the bytes an offline artifact carries) was
-  re-copied from the fixed release so an offline export no longer ships the vulnerable code.
-
+  re-fetched from the fixed release and cross-verified against two independent npm CDN origins and
+  against unpkg's published per-file SRI, so an offline export no longer ships the vulnerable code.
+  (`UPSTREAM.md` now documents that fallback, because the usual `npm ci` route could not resolve the
+  new version on the network this was built on; `CMH-BUILD-25` re-verifies the result in CI against
+  the tarball `npm ci` installs.)
 - The transitive `dompurify` bump that rides along in the lockfile (`3.4.11` to `3.4.13`) is
   stated precisely here, because the obvious reading of it is wrong. It clears the two advisories
   Dependabot raises against the DEPENDENCY TREE (an `IN_PLACE` hook removal that left a detached
@@ -29,7 +31,6 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   `mermaid@11.16.1` inlines DOMPurify `3.4.0` - exactly as `11.16.0` did. So the vendored copy is
   unchanged in that respect, and this release is not a fix for those two advisories in the
   product. It is not a regression either.
-
   That residual is acceptable rather than ignored: mermaid runs DOMPurify over markup it derives
   from the document's own diagram source, and `CMH-SEC-01` declares authored content trusted and
   unsanitized by design, so the party who would have to exploit a sanitizer bypass there is the
@@ -39,13 +40,26 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 ### Fixed
 
+- The vendored rich-library bytes are now pinned to the version the repo declares, and to the
+  tarball npm verified (`CMH-BUILD-25`). `assets/vendor/mermaid.min.js` is hand-copied and is the
+  only mermaid a reader of an offline document ever runs, yet nothing read its CONTENT: a file left
+  at the old version, or fetched from somewhere other than the locked tarball, passed every gate.
+  The bundle must now self-report the pinned version and `UPSTREAM.md` must name it (no install, no
+  network), and where `npm ci` has run the vendored file must be byte-identical to
+  `node_modules/mermaid/dist/mermaid.min.js` - extending npm's integrity check of the tarball to the
+  shipped bytes. The DOMPurify version the bundle inlines is recorded too, so the distinction in the
+  Security note above is a checked fact rather than folklore.
 - The tutorial-screenshot capture no longer breaks on a mermaid bump (`CMH-BUILD-24`). The capture
   aborts every remote fetch to stay hermetic and lets exactly one route serve mermaid from the local
   `node_modules`, but that route pinned a LITERAL `mermaid@11.16.0` while the URL it has to match is
   single-sourced from `package.json`. The two parted company the moment the dependency moved:
   mermaid never loaded, and `npm run shots` failed on a `waitForMermaid` timeout that named nothing.
   The route is now version-agnostic (and still narrow - a different package, or the same path on a
-  different host, is aborted as before), matching what the Playwright helper already did.
+  different host, is aborted as before), matching what the Playwright helper already did. Being
+  version-agnostic about the URL would on its own trade that loud failure for a silent one, since
+  the render is internally consistent at whatever mermaid is on disk, so the capture now refuses
+  outright when the installed mermaid disagrees with the pin rather than rendering the committed
+  screenshots from a version that never ships.
 
 ## [1.830.0] - 2026-08-09
 

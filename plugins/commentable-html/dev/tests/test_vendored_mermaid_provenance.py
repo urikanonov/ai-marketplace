@@ -24,9 +24,9 @@ Two further things are pinned here because the 11.16.1 bump proved a reader cann
 
 The strongest link - that these bytes are the npm tarball `package-lock.json` pins, not merely
 something claiming that version - needs `node_modules`, so it lives in the Playwright guard spec
-`tests/00-projects.spec.js` (the `fast` CI job runs after `npm ci`, which verifies the tarball
-against the lockfile's integrity hash). This module is the part that holds everywhere, with no
-install and no network.
+`tests/01-vendor-provenance.spec.js` (the `fast` CI job runs after `npm ci`, which verifies the
+tarball against the lockfile's integrity hash). This module is the part that holds everywhere, with
+no install and no network.
 """
 import os
 import re
@@ -83,9 +83,20 @@ class VendoredMermaidProvenanceTests(unittest.TestCase):
 
     def test_upstream_md_records_the_dompurify_version_the_bundle_really_inlines(self):
         found = _BUNDLED_DOMPURIFY.findall(self.bundle)
-        self.assertTrue(
-            found, "the vendored mermaid bundle no longer carries a DOMPurify licence banner - if "
-                   "upstream stopped bundling DOMPurify, update UPSTREAM.md and this check together")
+        if not found:
+            # Absence of the legal banner proves only that the COMMENT is gone (an upstream
+            # `legalComments` setting does that), never that DOMPurify stopped being bundled. Demand
+            # positive evidence before anyone concludes the record can be dropped, because that
+            # record is what stops the next lockfile bump being misread as a product fix.
+            still_bundled = re.search(r"[\"']DOMPurify[\"']", self.bundle) or \
+                re.search(r"removed\s*=\s*\[\]", self.bundle)
+            self.fail(
+                "the vendored mermaid bundle no longer carries an `@license DOMPurify` banner. "
+                + ("DOMPurify still appears to be bundled (its runtime markers are present), so the "
+                   "banner regex needs re-deriving - do NOT delete the UPSTREAM.md record."
+                   if still_bundled else
+                   "No DOMPurify runtime markers were found either; if upstream genuinely stopped "
+                   "bundling it, update UPSTREAM.md and this check together."))
         bundled = sorted(set(found))
         self.assertEqual(len(bundled), 1, "more than one DOMPurify version bundled: %r" % (bundled,))
         self.assertIn(
