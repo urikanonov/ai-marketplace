@@ -1312,6 +1312,11 @@ for (let cur = CMH_LAYER_SCRIPT; cur && cur.parentNode; cur = cur.parentNode) {
   if (cur.parentNode === document.body) break;
 }
 renderComments();
+// A cold tier that could not be expanded is NON-BLOCKING: the plain tier already rendered, the
+// placeholder row now shows its own explanation, and this names it once in the startup toast.
+if (CMH_COLD_TIER && CMH_COLD_TIER.present && !CMH_COLD_TIER.ok) {
+  showStartupDiagnostic(`Some compressed table rows could not be expanded (${CMH_COLD_TIER.reason}). The rest of the document is complete.`, { alert: true });
+}
 if (prunedCount > 0) {
   showStartupDiagnostic(`${prunedCount} previously-handled comment${prunedCount === 1 ? "" : "s"} cleared by the agent.`);
 }

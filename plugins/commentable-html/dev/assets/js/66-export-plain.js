@@ -229,6 +229,16 @@ function _suggestedPlainFilename() {
   return m[1].replace(/-comments$/i, "") + ".plain" + m[2];
 }
 async function saveAsPlain() {
+  // A plain export STRIPS the layer, which is the only thing that can expand a cold tier. If
+  // hydration failed, the rows are still compressed and the exported file would carry placeholder
+  // rows and an inert payload with nothing left to restore them - strictly worse than the source.
+  // Refuse rather than hand over a lossy file.
+  if (typeof CMH_COLD_TIER === "object" && CMH_COLD_TIER && CMH_COLD_TIER.present
+      && !CMH_COLD_TIER.ok) {
+    _reportExportFailure(new Error(CMH_COLD_TIER.reason || "the compressed rows are not expanded"),
+      _EXPORT_FAILURE_PREPARE);
+    return;
+  }
   let baseHtml;
   try { baseHtml = await _getBaseHtml(); }
   catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_LOAD); return; }

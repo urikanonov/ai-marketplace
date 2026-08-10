@@ -34,6 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
 import _atomic_io  # noqa: E402
 import _browser_attrs  # noqa: E402
+import cold_tier  # noqa: E402
 import section_hash  # noqa: E402
 
 SAFE_ID_RE = re.compile(r"^[A-Za-z][\w.:-]{0,199}$")
@@ -202,6 +203,8 @@ def mark_reviewed(path, mark_ids, clear_ids, at=None):
     markers, span = _load_markers(html)
     if markers is None:
         markers, span = {}, None
+    # Section hashing expands a compressed tier itself (`section_hash._hashable`), so the markers
+    # written here reproduce what the runtime computes after hydration for every document.
     sections = {s["id"]: s for s in section_hash.extract_sections(html)}
     reviewed_at = at or datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     marked, missing = [], []

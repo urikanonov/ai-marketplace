@@ -1,4 +1,10 @@
 (() => {
+// Restore the compressed cold tier FIRST - before the snapshot below, and so before anything else
+// in the layer touches the DOM. `cmhHydrateColdTier` is a hoisted declaration in `01-cold-tier.js`
+// and is written to use only function-locals, so it is safe to call from here, above every
+// module-level `const`. It never throws; `var` (not `const`) because this statement runs before
+// this file's own `const`s are initialized. `95-startup.js` turns a failure into a toast.
+var CMH_COLD_TIER = cmhHydrateColdTier();
 // Pristine snapshot of the document, captured before any DOM mutation
 // (mermaid render, restored highlights, dynamic composers, etc). Used as a
 // fallback by "Export as Shareable" when fetch() of the page URL is unavailable

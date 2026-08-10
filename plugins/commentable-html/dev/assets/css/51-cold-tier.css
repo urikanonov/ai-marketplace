@@ -1,0 +1,14 @@
+/* Cold tier: the placeholder row a compressed table body leaves behind (CMH-COLD).
+   With scripting on, the loader in `01-cold-tier.js` replaces this row before first paint, so the
+   note is never seen. It is hidden HERE rather than by a `hidden` attribute on purpose: an older
+   runtime, whose stylesheet predates this feature and which has no loader either, does not carry
+   this rule - so instead of an unexplained empty row it shows the note saying where the rows are
+   and how to read them. `_cmhColdFail` reveals it with an inline style, which beats this rule.
+   With scripting off the row is never touched and the `<noscript>` copy inside it is what the
+   reader sees instead. */
+#commentRoot tr.cmh-cold-slot > td {
+  color: var(--cp-text-muted);
+  font-style: italic;
+  text-align: center;
+}
+#commentRoot .cmh-cold-note { display: none; }

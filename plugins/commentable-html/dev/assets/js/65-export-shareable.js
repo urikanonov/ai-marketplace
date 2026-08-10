@@ -354,6 +354,16 @@ async function _getBaseHtml() {
   // taken at IIFE start if fetch fails (file://, network unavailable, blocked).
   // Either base may carry transient body state (a stale/open-sidebar source), so
   // normalize it here once for every export path (Save, Shareable, Offline, Plain).
+  //
+  // ONE exception: a document that carried a COLD TIER must export from the snapshot. The bytes on
+  // disk still hold the compressed payload and the placeholder rows, and every export transform
+  // downstream (the layer strip, the offline resource strips) reads that source as text - so a
+  // fetched base would ship a Plain export whose rows are gone with no loader left to restore them,
+  // and would run the offline strips over rows they cannot see. The snapshot is captured AFTER
+  // hydration (00-preamble.js) and so is already the fully-plain document.
+  if (typeof CMH_COLD_TIER === "object" && CMH_COLD_TIER && CMH_COLD_TIER.present) {
+    return _normalizeDocSourceInHtml(_stripTransientBodyClasses(_snapshotWithTail()));
+  }
   try {
     const r = await fetch(location.href, { cache: "no-store" });
     if (r.ok) {

@@ -28,6 +28,7 @@ _toolpath.ensure()
 
 import _atomic_io  # noqa: E402
 import dom_slim  # noqa: E402
+import cold_tier  # noqa: E402
 import fix_skip  # noqa: E402
 import generate_toc  # noqa: E402
 import doc_stats  # noqa: E402
@@ -139,7 +140,7 @@ def _apply_vendored_libs(html):
 
 def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_base=None,
              run_highlight=True, run_wrap_sections=True, run_stats=True, run_normalize=True,
-             run_slim=True, stamp_when_clean=False):
+             run_slim=True, stamp_when_clean=False, cold_tier_enabled=False):
     # Read ONCE, thread the document through the pure phase transforms in memory, write ONCE.
     # Each phase used to re-read and re-write the whole file, so a 1.4 - 2.5 MB document paid
     # about 8 reads, 8 writes and 8 independent full-document parses per finalize - and
@@ -149,6 +150,14 @@ def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_b
     source = _read(path)
     html = source
     steps = []
+    # Put a compressed document back to its fully-plain form BEFORE anything else, so every phase
+    # below - and the validator and the content stamp - always read the whole content. Compressing
+    # again (when asked) is the very last step, so the tier is a pure packaging concern no other
+    # transform has to know about. A payload that cannot be put back raises rather than reading as
+    # "already plain": continuing would validate and stamp a document whose rows are unrecoverable.
+    html, changed = cold_tier.expand(html)
+    if changed:
+        steps.append(("cold-tier", "expanded"))
     if run_normalize:
         html, changed, count = _apply_normalize(html)
         status = "normalized %d AI char(s)" % count if changed else "unchanged"
@@ -194,9 +203,12 @@ def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_b
     html, changed = _apply_vendored_libs(html)
     if changed:
         steps.append(("vendored-libs", "adjusted"))
-    # Validate and stamp the IN-MEMORY document, then write once. Writing first and letting
-    # validate re-read (and the stamp re-read and re-write) would leave a third read and a
-    # second write on a multi-megabyte file - the amplification this whole change removes.
+    # Validate and stamp the FULLY-PLAIN document, THEN compress. Validating the compressed form
+    # would hand the validator base64 where the tail rows should be: its resource, link and
+    # reserved-id scans would see none of them (a `<link rel="preconnect">` hidden in a compressed
+    # row stopped being reported), and `stamp_validated_text` would bind the content hash to the
+    # placeholder while the browser hashes the restored rows - so every compressed document would
+    # open with the "not validated" banner. Compressing last keeps the tier a pure packaging step.
     errors, warnings = validate.validate(path, html=html)
     stamped = False
     # An advisory warning names something the author cannot clear, so it must not withhold the
@@ -206,6 +218,13 @@ def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_b
         after = validate.stamp_validated_text(html)
         stamped = after != html
         html = after
+    # Compress the cold bulk LAST of all. Opt-in: with the flag off (the default) the document
+    # keeps today's fully-plain structure, which is also the escape hatch for a consumer that
+    # requires it.
+    if cold_tier_enabled:
+        html, changed = cold_tier.compress(html)
+        if changed:
+            steps.append(("cold-tier", "compressed"))
     if html != source:
         _write(path, html)
     return {"steps": steps, "errors": errors, "warnings": warnings, "stamped": stamped}
@@ -236,6 +255,13 @@ def main(argv):
     parser.add_argument("--no-slim", action="store_true",
                         help="skip trimming the duplicated generated-DOM checklist identity "
                              "(on by default)")
+    parser.add_argument("--cold-tier", action="store_true",
+                        help="store the cold bulk (the tail rows of large tables) compressed in an "
+                             "inert payload the runtime expands on load; headings, the TOC, prose, "
+                             "table headers and each table's first rows always stay plain")
+    parser.add_argument("--no-cold-tier", action="store_true",
+                        help="emit the fully-plain structure, expanding any compressed tier the "
+                             "document already carries (the default)")
     parser.add_argument("--strict", action="store_true",
                         help="treat BLOCKING validator warnings as failures (errors already fail; "
                              "an advisory, which the author cannot clear, never fails strict)")
@@ -264,9 +290,17 @@ def main(argv):
             # cannot clear, must not withhold the stamp - CMH-VAL-18), and --no-stamp keeps a
             # read-only run from writing.
             stamp_when_clean=not args.no_stamp,
+            # --no-cold-tier is the DEFAULT and wins over --cold-tier, so the plain structure is
+            # always reachable with one unambiguous flag.
+            cold_tier_enabled=args.cold_tier and not args.no_cold_tier,
         )
     except (OSError, ValueError) as exc:
         sys.stderr.write("finalize: %s\n" % exc)
+        return 1
+    except cold_tier.ColdTierError as exc:
+        sys.stderr.write("finalize: this document's compressed block cannot be expanded (%s). "
+                         "Its hidden rows are unrecoverable from this file; restore it from a "
+                         "backup rather than writing over it.\n" % exc)
         return 1
 
     ran = [name for name, _status in result["steps"]]

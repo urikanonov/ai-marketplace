@@ -4,6 +4,64 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.836.0] - 2026-08-11
+
+### Added
+
+- A document can now store its COLD BULK compressed while every part a reader or a machine reads
+  first stays literal text in the file (`CMH-COLD`). The only thing eligible is the TAIL ROWS of a
+  large table body inside the content root - rows after the first 20 of a body holding more than 40
+  - so the title, every heading, the table of contents, prose, summary blocks, chart and diagram
+  sources, and each table's `<caption>`, `<thead>` and first rows are plain BY CONSTRUCTION: the
+  compressor never sees them and so can never take them. `Ctrl+F` finds any of that the instant the
+  file opens, with no hydration and no scripting. Measured on the survey in issue #1250, a generated
+  body compresses about 18.7x, and this takes that win without the experience downgrade a wholesale
+  body compression would be.
+- The payload is one inert `<script type="application/json" id="cmhColdTier">` placed immediately
+  after the content root's `</main>`, behind explicit BEGIN/END fence comments that say it is
+  generated machinery and can be skipped. It holds gzip+base64 of the exact source substring the
+  rows were cut from, needs no network, and adds no sidecar file - the document stays a single
+  self-contained `.html`, and the text is recoverable offline from the file alone with nothing but
+  a base64 decoder and gunzip. It goes there rather than at the end of the body because the layer
+  is an inline script a browser runs during parse: a payload after it does not exist yet when the
+  loader looks for it.
+- The runtime restores the rows SYNCHRONOUSLY as the layer's very first statement, before it
+  captures its export snapshot, so anchors, section content hashing, comment search, print and
+  every export read exactly the DOM the uncompressed document would have produced. Existing comment
+  threads, handled-comment ids and reviewed-section state are untouched, and a browser test pins the
+  hydrated table against the uncompressed document node for node.
+- Inflation is a small inlined pure-JS gzip decoder (RFC 1951 stored / fixed / dynamic blocks, plus
+  the gzip header, CRC32 and ISIZE checks), NOT `DecompressionStream`. The native API is async-only
+  and cannot complete before a synchronous layer boot, and the pure-JS decoder has to ship anyway as
+  the backwards-compatibility fallback, so the native path would save no bytes. Every browser
+  therefore takes the fallback path, which a spec pins by deleting the global before load.
+- Failure is non-blocking and never a blank page: the loader's entry point is wrapped whole (it is
+  the layer's first statement, so an escaping exception would take down the entire review layer),
+  it never builds a CSS selector out of a payload id, and every part is decoded and every
+  placeholder accounted for BEFORE any DOM mutation, so a payload that fails halfway cannot
+  half-expand the document. Output is bounded, so a corrupted block cannot allocate until the tab
+  dies. On failure the plain tier renders exactly as the parser produced it, the placeholder row
+  reveals its own plain-language explanation, and the startup toast names it once; a Plain export -
+  which strips the very loader that could expand the rows - is refused rather than handing back a
+  lossy file. With scripting off, a `<noscript>` line in the same row says where the remaining rows
+  are and that no network access is needed either way, and a runtime that predates this feature (so
+  carries neither the loader nor the rule that hides the note) shows the note instead of an
+  unexplained empty row.
+- The tier is OPT-IN and is a pure packaging step: `finalize.py --cold-tier` compresses, and the
+  default (or the explicit `--no-cold-tier`, which wins) emits today's fully-plain structure and
+  EXPANDS any tier a document already carries. `compress` and `expand` are exact inverses -
+  expanding reproduces the original bytes - so the escape hatch is real rather than a promise.
+  finalize expands FIRST, before every other phase, and validates and stamps the fully-plain
+  document before compressing last of all, so the validator sees every hidden row. `validate.py`
+  scans the expanded view and fails closed on a tier it cannot expand; `section_hash.py` expands at
+  its single hashing entry point, so the validated stamp and every review marker reproduce what the
+  runtime computes after hydration; and the agent edit loop (`content_extract.py` /
+  `content_replace.py`) expands before it hands out a fragment or splices one back, then restores
+  the tier the document arrived in. A tier that cannot be put back - in either direction, an
+  orphaned payload or an orphaned placeholder - RAISES instead of reading as "already plain", while
+  a document carrying no cold-tier marker at all short-circuits before parsing, so this never
+  becomes a second gate in front of the validator. New tool: `tools/authoring/cold_tier.py`.
+
 ## [1.835.0] - 2026-08-10
 
 ### Changed

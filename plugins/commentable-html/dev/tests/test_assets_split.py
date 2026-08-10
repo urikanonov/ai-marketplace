@@ -52,8 +52,27 @@ class AssemblyIntegrityTests(unittest.TestCase):
         self.assertIsNotNone(decl, "the preamble must DECLARE SNAPSHOT_HTML")
         between = text[text.index(opener) + len(opener):decl.start()]
         stripped = "\n".join(ln for ln in between.splitlines() if not ln.strip().startswith("//")).strip()
+        # Exactly ONE statement is allowed to precede the capture: restoring the compressed cold
+        # tier (CMH-COLD-04). It is not a runtime CHANGE - it materializes the rows the file already
+        # describes, so it makes the DOM equal to the plain document rather than different from it,
+        # and the snapshot has to be taken after it or an export would lose those rows. Anything
+        # else here is the regression this guard exists for.
+        allowed = "var CMH_COLD_TIER = cmhHydrateColdTier();"
+        if stripped == allowed:
+            stripped = ""
         self.assertEqual(stripped, "",
                          "no executable statement may run before SNAPSHOT_HTML is captured, found: %r" % stripped)
+
+    def test_the_cold_tier_is_restored_before_the_snapshot(self):
+        # The other half of the exemption above: the allowance is only sound while the statement is
+        # actually THERE. If the call is dropped or moved below the capture, an export made from the
+        # snapshot silently loses every compressed row.
+        parts = build.ordered_parts(ASSETS, "js")
+        text = build.read(parts[0])
+        decl = re.search(r"(?m)^\s*(?:const|let|var)\s+SNAPSHOT_HTML\s*=", text)
+        call = text.find("cmhHydrateColdTier()")
+        self.assertNotEqual(call, -1, "the preamble must restore the cold tier")
+        self.assertLess(call, decl.start(), "the cold tier must be restored BEFORE the snapshot")
 
     def test_ordered_parts_rejects_a_mis_cased_extension(self):
         # A mis-cased extension (95-startup.JS) must FAIL the build (case-insensitively collected,

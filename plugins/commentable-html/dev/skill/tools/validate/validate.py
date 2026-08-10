@@ -63,6 +63,7 @@ if _TOOLS_ROOT not in sys.path:
 # never silently - which is the whole point.
 import _toolpath  # noqa: E402
 _toolpath.ensure()
+import cold_tier  # noqa: E402
 
 try:
     from cmhval.mermaid import check_mermaid_syntax, check_mermaid_source  # noqa: E402
@@ -346,6 +347,15 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
             return [f"cannot read file: {exc}"], []
     else:
         raw_html = html
+    # Scan the document as the READER's browser will have it. A compressed cold tier hides its
+    # tail rows behind a base64 payload, so a validator reading the raw file would see none of
+    # them - a `<link rel="preconnect">` or a duplicate reserved id in a compressed row would pass
+    # unreported. `expanded_view` returns a plain document unchanged, and RAISES on a tier that
+    # cannot be put back, which is an error in its own right (CMH-COLD-08).
+    try:
+        raw_html = cold_tier.expanded_view(raw_html)
+    except cold_tier.ColdTierError as exc:
+        return [f"the compressed cold-tier block cannot be expanded: {exc}"], []
     html = _browser_newlines(raw_html)
     parser, ok = _parse(html)
     if not ok:
@@ -492,6 +502,12 @@ def _stamp_validated_file(path):
     try:
         with open(path, "r", encoding="utf-8", newline="") as fh:
             html = fh.read()
+        # The stamp is written into the document AS STORED, tier and all: `section_hash` expands a
+        # compressed tier before hashing (`section_hash._hashable`), so the content hash already
+        # matches what the runtime computes after hydration. Expanding and re-compressing HERE
+        # instead would rewrite the tier with this build's default thresholds - losing a document
+        # tiered with custom ones - and, when stamping is a no-op, would write the expanded form
+        # over the compressed file outright.
         stamped = doc_stamp.stamp_validated_html(html)
         if stamped != html:
             _atomic_io.atomic_write(path, stamped)
