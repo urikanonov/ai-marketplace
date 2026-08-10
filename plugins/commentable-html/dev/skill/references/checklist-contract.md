@@ -7,7 +7,8 @@ travel back to the agent through the Copy-all bundle so the states can be cement
 ## Author markup
 
 A checklist is any element marked `data-cmh-checklist="<id>"`. An **item** is any descendant carrying
-`data-cmh-state` or `data-cmh-item`; the attribute is the opt-in, so an item can be a `<li>`, a table
+`data-cmh-state`, `data-cmh-item`, or the attribute the container names in `data-cmh-item-attr` (see
+below); the attribute is the opt-in, so an item can be a `<li>`, a table
 `<tr>`, or a `<div>`. A **branch** is an item that has child items; a **leaf** has none. The runtime
 injects a `cm-skip` state control into each item (before a list item's label, or into a table row's
 first cell or its `[data-cmh-state-cell]`); the item's label text stays ordinary commentable content.
@@ -92,7 +93,8 @@ python tools/checklist/checklist_apply.py source.html --from-bundle bundle.txt  
 python tools/checklist/checklist_apply.py source.html --state-json '{"audit":{"fw":"cross"}}'
 ```
 
-It rewrites `data-cmh-state` on each named item (by `data-cmh-item` id, else positional key), leaves
+It rewrites `data-cmh-state` on each named item (by `data-cmh-item` id, else the id held by the
+attribute the container names in `data-cmh-item-attr`, else positional key), leaves
 branches untouched, is idempotent, and skips invalid tokens. Run `python tools/validate/validate.py --strict`
 afterward.
 

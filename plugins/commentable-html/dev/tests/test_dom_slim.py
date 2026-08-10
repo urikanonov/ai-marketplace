@@ -15,6 +15,16 @@ import dom_slim  # noqa: E402
 import finalize  # noqa: E402
 import validate  # noqa: E402
 
+
+def _checklist_instances(html):
+    """The validator's own view of the checklists in `html`, for the parity assertions."""
+    sys.path.insert(0, os.path.join(_paths.TOOLS, "validate"))
+    from checks import checklist as check_mod  # noqa: E402
+    p = check_mod._ChecklistParser()
+    p.feed(html)
+    p.close()
+    return p.instances
+
 # The gate the dedupe runs behind: an EXECUTABLE script, OUTSIDE the content root, that mentions
 # the pointer - which is what a real embedded runtime looks like.
 LAYER = '<script>/* layer */ var alias = "%s";</script>' % dom_slim.ITEM_ALIAS_ATTR
@@ -126,6 +136,27 @@ class IdentityDedupeTests(unittest.TestCase):
         self.assertIn('data-cmh-item-attr="data-rdc-id"', out)
         self.assertNotIn('data-cmh-parent-attr="', out)
         self.assertIn('data-cmh-parent="net"', out)
+
+    def test_a_self_closing_container_still_owns_the_rows_after_it(self):
+        # A browser IGNORES `/>` on a non-void HTML element, so a `<div data-cmh-checklist/>`
+        # stays OPEN and the rows after it belong to THAT checklist. Treating it as closed handed
+        # them to the enclosing list, so this reader would strip them under the outer pointer
+        # while the runtime keyed them under the inner one.
+        inner = ('<div class="cmh-checklist" data-cmh-checklist="outer">'
+                 '<div data-cmh-checklist="inner"/><ul>'
+                 '<li data-rdc-id="a" data-cmh-item="a" data-cmh-state="blank">A</li>'
+                 '<li data-rdc-id="b" data-cmh-item="b" data-cmh-state="blank">B</li>'
+                 '</ul></div>')
+        scan = dom_slim._scan(doc(inner))
+        owners = [dom_slim._checklist_container(n).attrs.get("data-cmh-checklist")
+                  for n in scan.nodes if "data-cmh-item" in n.attrs]
+        self.assertEqual(owners, ["inner", "inner"])
+        # The two Python readers must agree with that, or a cemented state lands on the wrong row.
+        items = checklist_apply._scan_items(doc(inner))
+        self.assertEqual([i["container_id"] for i in items], ["inner", "inner"])
+        instances = {i["id"]: len(i["items"]) for i in _checklist_instances(doc(inner))}
+        self.assertEqual(instances.get("inner"), 2)
+        self.assertEqual(instances.get("outer"), 0)
 
     def test_a_cmh_attribute_is_never_treated_as_the_alias(self):
         out = self._refuse(

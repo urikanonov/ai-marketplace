@@ -105,8 +105,15 @@ class _ChecklistScanner(_browser_attrs.BrowserTagNames):
             self._elems.append((tag, is_container))
 
     def handle_startendtag(self, tag, attrs):
-        # A self-closing item opens and closes at once: record it, push no context.
-        self._record_item(self._attrs(self._browser_tag(tag), attrs))
+        # A trailing `/>` only closes a VOID element. On an ordinary HTML element a browser
+        # IGNORES it and the element stays open, so a self-closing checklist container still
+        # OWNS the rows that follow it; treating it as closed handed them to the enclosing
+        # checklist and keyed them differently from the runtime.
+        name = self._browser_tag(tag)
+        if name in _VOID:
+            self._record_item(self._attrs(name, attrs))
+            return
+        self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)

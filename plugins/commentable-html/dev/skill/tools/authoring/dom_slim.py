@@ -159,8 +159,16 @@ class _SlimScan(_browser_attrs.BrowserTagNames):
         if self._raw_open == tag:
             self._raw_open = None
             self._script_node = None
-        if tag not in _VOID and self._stack and self._stack[-1].tag == tag:
-            self._stack.pop()
+        # A trailing `/>` only closes a VOID element or one in FOREIGN content. On an ordinary
+        # HTML element a browser IGNORES it and the element stays open, so popping here would
+        # hand the rows that follow to the wrong checklist - and this reader would then strip
+        # them under the outer pointer while the runtime keys them under the inner one.
+        if tag in _VOID or self._foreign_open():
+            if self._stack and self._stack[-1].tag == tag:
+                self._stack.pop()
+
+    def _foreign_open(self):
+        return bool(self._stack) and self._stack[-1].foreign
 
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)

@@ -71,7 +71,14 @@ class _ChecklistParser(_BrowserStartTag):
             self._stack.append((tag, opened))
 
     def handle_startendtag(self, tag, attrs):
-        self._record_item(self._attrs(self._browser_tag(tag), attrs))
+        # A trailing `/>` only closes a VOID element; on an ordinary HTML element a browser
+        # ignores it and the element stays open, so a self-closing container still owns the
+        # rows that follow it.
+        name = self._browser_tag(tag)
+        if name in _CL_VOID:
+            self._record_item(self._attrs(name, attrs))
+            return
+        self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
