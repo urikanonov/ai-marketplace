@@ -759,19 +759,38 @@ class PerLibraryPayloadTests(unittest.TestCase):
         self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"chartjs"})
         self.assertLess(len(out), len(wounded), "the orphan mermaid bytes must be gone")
 
+    def test_orphan_bytes_survive_only_when_no_source_can_complete_the_document(self):
+        # The LIMIT of the orphan rule, pinned so the claim in CMH-SIZE-01 stays accurate. When the
+        # content NEEDS the library whose licence went missing and no template is reachable, there
+        # is nothing to rebuild from, so the document is left byte-identical - orphans included -
+        # and the export fails loudly. Half-writing a payload would be worse: it would look healthy.
+        fragment = MERMAID + '<figure class="chart"><canvas class="cmh-chart"></canvas></figure>'
+        settled, _ = vendored_libs.apply(_doc(fragment), self.blob)
+        inner = vendored_libs._inner_span(settled)
+        obj = vendored_libs.payload_object(settled)
+        self.assertEqual(vendored_libs.carried_libs(obj), {"mermaid", "chartjs"})
+        del obj["mermaidLicense"]
+        wounded = settled[:inner[0]] + vendored_libs.serialize_payload(obj) + settled[inner[1]:]
+        out, changed = vendored_libs.apply(wounded, None)
+        self.assertFalse(changed, "with no reachable source the document must be left alone")
+        self.assertEqual(out, wounded)
+
     def test_a_payload_that_is_not_json_is_left_exactly_as_it_is(self):
         # apply() runs from finalize BEFORE validation, so it must never raise on a hand-edited
-        # document - and it must not silently replace bytes it cannot understand either.
+        # document - and it must not silently replace bytes it cannot understand either. The
+        # payload is placed AFTER the content root first, so nothing is due structurally and the
+        # only correct outcome is a byte-identical document (relocation of an unparseable payload
+        # is a separate behaviour, pinned by its own test below).
+        settled, _ = vendored_libs.apply(_doc(CHART), self.blob)
+        span = vendored_libs.find_blob(settled)
+        inner = vendored_libs._inner_span(settled)
         for text in ("{not json", "null", "[]", '"a string"', "17", ""):
             with self.subTest(text=text):
-                html = _doc(CHART)
-                span = vendored_libs.find_blob(html)
-                broken = (html[:span[0]]
-                          + '<script id="cmhVendoredRichLibs" type="application/json">'
-                          + text + "</script>" + html[span[1]:])
-                out, _changed = vendored_libs.apply(broken, self.blob)
-                self.assertIn(text + "</script>", out,
-                              "an unparseable payload must survive byte-for-byte")
+                broken = settled[:inner[0]] + text + settled[inner[1]:]
+                out, changed = vendored_libs.apply(broken, self.blob)
+                self.assertFalse(changed, "an unparseable payload must not be rewritten")
+                self.assertEqual(out, broken, "an unparseable payload must survive byte-for-byte")
+        self.assertIsNotNone(span)
 
     def test_an_unparseable_payload_is_still_moved_out_of_the_head(self):
         # Structural placement needs no JSON parse, so refusing to parse must not also refuse to
@@ -812,14 +831,56 @@ class PerLibraryPayloadTests(unittest.TestCase):
         self.assertNotIn("</script", text)
         self.assertIn("\\u003C", text)
 
-    def test_the_serializer_matches_the_builds_own_payload_bytes(self):
-        # The build and the shipped authoring tool must not drift: the build's emitter and this
-        # serializer have to produce identical bytes for identical input, or a reconciled payload
-        # would differ from a freshly built one.
+    def test_the_serializer_produces_the_bytes_the_build_actually_shipped(self):
+        # Compare against the REAL built template's payload text, not against a re-implementation of
+        # the escape formula - asserting `f(x) == <copy of f's body>(x)` is `X == X` and could not
+        # catch the escape being dropped, because the build now imports this same function.
+        span = vendored_libs._inner_span(self.blob)
+        shipped = self.blob[span[0]:span[1]]
         obj = vendored_libs.payload_object(self.blob)
-        self.assertEqual(vendored_libs.serialize_payload(obj),
-                         json.dumps(obj, separators=(",", ":"))
-                         .replace("<", "\\u003C").replace(">", "\\u003E").replace("&", "\\u0026"))
+        self.assertEqual(vendored_libs.serialize_payload(obj), shipped,
+                         "the shared serializer no longer reproduces the shipped payload bytes")
+
+    def test_reconciliation_keeps_the_documents_own_bytes_rather_than_the_templates(self):
+        # Idempotence depends on this: preferring the template would rewrite every document
+        # whenever the template was rebuilt, churning multi-megabyte files on every finalize.
+        doc_obj = {"encoding": "gzip+base64", "chartjsGzipBase64": "DOC", "chartjsLicense": "DOCMIT"}
+        src_obj = {"encoding": "gzip+base64", "chartjsGzipBase64": "SRC", "chartjsLicense": "SRCMIT",
+                   "mermaidGzipBase64": "SRCM", "mermaidLicense": "SRCMMIT"}
+        out = vendored_libs.reconcile(doc_obj, {"chartjs", "mermaid"}, src_obj)
+        self.assertEqual(out["chartjsGzipBase64"], "DOC", "the document's own pair must win")
+        self.assertEqual(out["mermaidGzipBase64"], "SRCM", "the missing half comes from the source")
+
+    def test_reconciliation_preserves_keys_it_does_not_recognise(self):
+        # Rebuilding from a fixed key list alone would silently discard whatever a future or older
+        # producer had put in the payload. Dropping data we merely do not recognise is exactly the
+        # loss this module exists to prevent.
+        obj = {"encoding": "gzip+base64", "chartjsGzipBase64": "AAA", "chartjsLicense": "MIT",
+               "futureField": {"k": 1}}
+        out = vendored_libs.reconcile(obj, {"chartjs"})
+        self.assertEqual(out.get("futureField"), {"k": 1})
+
+    def test_a_diagram_only_partial_payload_gains_the_chart_half(self):
+        # The symmetric case of the completion test above, so neither direction can regress alone.
+        diagram_only, _ = vendored_libs.apply(_doc(MERMAID), self.blob)
+        self.assertEqual(vendored_libs.carried_libs(self._payload(diagram_only)), {"mermaid"})
+        grew = diagram_only.replace(
+            "</h1>", '</h1>\n<figure class="chart"><canvas class="cmh-chart"></canvas></figure>', 1)
+        out, changed = vendored_libs.apply(grew, self.blob)
+        self.assertTrue(changed)
+        self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"mermaid", "chartjs"})
+
+    def test_a_document_with_no_payload_that_needs_both_gets_both(self):
+        # The insert path with a two-library need, which the completion tests never exercise.
+        stripped, _ = vendored_libs.apply(_doc(PROSE), self.blob)
+        self.assertIsNone(vendored_libs.find_blob(stripped))
+        grew = stripped.replace(
+            "</h1>",
+            '</h1>\n<pre class="mermaid cm-skip">graph TD; A--&gt;B;</pre>'
+            '<figure class="chart"><canvas class="cmh-chart"></canvas></figure>', 1)
+        out, changed = vendored_libs.apply(grew, self.blob)
+        self.assertTrue(changed)
+        self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"mermaid", "chartjs"})
 
     def test_reconciliation_is_idempotent(self):
         once, changed = vendored_libs.apply(_doc(CHART), self.blob)
@@ -1377,15 +1438,24 @@ class RuntimeParityTests(unittest.TestCase):
                 for name, value in values.items()}
 
     def test_the_per_library_families_match_the_runtimes_own_two_constants(self):
-        # The union parity test above proves the detector and the runtime agree about what rich
+        # The union parity test below proves the detector and the runtime agree about what rich
         # content IS. It says nothing about WHICH library each shape belongs to - and once the
         # payload is per-library, mis-attributing a selector drops the wrong half. The runtime keeps
         # the two questions in separate constants (`_offlineDocUsesMermaid` queries CMH_MERMAID_SEL,
-        # `_offlineDocUsesCharts` queries CMH_CHART_CANVAS_SEL), so pin each family to its own.
-        mermaid_only = _doc(MERMAID)
-        chart_only = _doc(CHART)
-        mermaid_scan = vendored_libs._scan(mermaid_only)
-        chart_scan = vendored_libs._scan(chart_only)
+        # `_offlineDocUsesCharts` queries CMH_CHART_CANVAS_SEL), so pin each family to ITS OWN
+        # constant, read from the JS source - not merely against the Python union.
+        constants = self._selector_constants()
+        self.assertEqual(set(vendored_libs.MERMAID_SELECTORS), set(constants["CMH_MERMAID_SEL"]),
+                         "the diagram family drifted from the runtime's CMH_MERMAID_SEL")
+        self.assertEqual(set(vendored_libs.CHART_SELECTORS),
+                         set(constants["CMH_CHART_CANVAS_SEL"]),
+                         "the chart family drifted from the runtime's CMH_CHART_CANVAS_SEL")
+
+    def test_the_detector_attributes_each_library_the_way_the_runtime_does(self):
+        # The behavioural half of the parity above: the flags the author-time scan sets must match
+        # what the runtime's two predicates would answer for the same document.
+        mermaid_scan = vendored_libs._scan(_doc(MERMAID))
+        chart_scan = vendored_libs._scan(_doc(CHART))
         self.assertTrue(mermaid_scan.uses_mermaid)
         self.assertFalse(mermaid_scan.uses_charts,
                          "a diagram must not be attributed to the chart library")
@@ -1416,11 +1486,10 @@ class RuntimeParityTests(unittest.TestCase):
                 self.assertTrue(scan.uses_mermaid, "not recognised as diagram usage")
                 self.assertFalse(scan.uses_charts, "wrongly attributed to the chart library")
 
-    def test_the_two_families_partition_the_shared_selector_set(self):
-        # The union stays the authority: neither family may grow a selector the runtime does not
-        # declare, and between them they must cover every one it does.
-        self.assertEqual(set(vendored_libs.MERMAID_SELECTORS) | set(vendored_libs.CHART_SELECTORS),
-                         set(vendored_libs.RUNTIME_SELECTORS))
+    def test_the_two_families_are_disjoint(self):
+        # Their UNION is `RUNTIME_SELECTORS` by construction, so asserting that proves nothing.
+        # Disjointness does not follow from the definition and is what keeps a selector from being
+        # counted for both libraries.
         self.assertEqual(set(vendored_libs.MERMAID_SELECTORS) & set(vendored_libs.CHART_SELECTORS),
                          set())
 

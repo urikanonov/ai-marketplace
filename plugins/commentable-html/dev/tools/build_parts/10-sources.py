@@ -79,7 +79,7 @@ def _names():
 # Output builders
 # --------------------------------------------------------------------------- #
 def _shipped_payload_module():
-    """The SHIPPED payload helper (`dev/skill/tools/authoring/vendored_payload.py`).
+    """The SHIPPED payload helper (`dev/skill/tools/authoring/_vendored_payload.py`).
 
     The build and the shipped authoring tool must emit byte-identical payloads, so the
     serialize-and-escape rule has exactly ONE definition and both callers import it. That module is

@@ -18,8 +18,10 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   Measured on the shipped example fixtures, a chart-only report sheds more than 1,000 KB
   (`CMH-SIZE-01`).
 - A library counts as carried only when its BYTES and its MIT NOTICE are both present and non-blank,
-  and a payload holding one without the other is reconciled rather than retained - so orphan bytes
-  can no longer sit unlicensed in a document, and "bytes without a notice" is unrepresentable.
+  and a payload holding one without the other is reconciled rather than retained, so orphan bytes
+  are dropped whenever a source pair is reachable. When the content needs a library neither the
+  document nor a reachable template can supply, the document is left byte-identical instead, so the
+  export fails loudly rather than a half-written payload looking healthy.
 - The serialize-and-escape rule for that payload now has ONE definition
   (`skill/tools/authoring/_vendored_payload.py`, standard library only) that both `build.py` and the
   shipped authoring tool import, so the build-time and author-time bytes cannot drift. It refuses a

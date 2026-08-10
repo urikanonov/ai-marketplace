@@ -301,8 +301,12 @@ def _sourced_script(source_blob, needed):
     if not source_blob:
         return None
     span = _inner_span(source_blob)
-    source_obj = payload_object(source_blob)
-    if span is None or source_obj is None:
+    if span is None:
+        return None
+    # Parse the inner text directly rather than calling payload_object(), which would re-run the
+    # HTML scan over the same multi-megabyte string a second time.
+    source_obj = vendored_payload.parse_payload(source_blob[span[0]:span[1]])
+    if source_obj is None:
         return None
     inner = _rebuilt_inner({}, needed, source_obj)
     if inner is None:

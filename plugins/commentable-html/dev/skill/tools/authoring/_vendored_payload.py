@@ -19,7 +19,12 @@ Two invariants live here.
    and the offline exporter refuses to inline a library whose notice is missing. So `carried_libs`
    counts a library only when BOTH fields are present, are strings, and are non-blank. Key presence
    alone is not enough: a payload holding orphan bytes reads as NOT carrying that library, which is
-   what makes the reconciler drop them instead of silently shipping unlicensed bytes.
+   what makes the reconciler drop them rather than silently ship unlicensed bytes. Note the LIMIT of
+   that guarantee: reconciliation drops orphans whenever it can rebuild the payload at all, but a
+   needed pair that neither the document nor a reachable template can supply makes `reconcile`
+   return None, and the document is then left byte-identical - orphans included. That is the
+   deliberate fail-safe: leaving the file alone lets the export fail loudly, where half-writing a
+   payload would hand back a document that looks healthy and is not.
 """
 
 import json
@@ -50,6 +55,11 @@ def serialize_payload(obj):
     text = (json.dumps(obj, separators=(",", ":"))
             .replace("<", "\\u003C").replace(">", "\\u003E").replace("&", "\\u0026"))
     if "</script" in text.lower():
+        # Belt and braces, and deliberately unreachable today: the replace above removes every `<`,
+        # so nothing can spell a closing tag. It is kept because it guards the PROPERTY that
+        # matters (the payload can never close its own element) rather than the mechanism that
+        # currently provides it - a future change to the escape set would be caught here instead of
+        # in a reader's browser.
         raise ValueError("vendored payload still contains a raw </script after escaping")
     return text
 
@@ -105,12 +115,18 @@ def reconcile(obj, needed, source_obj=None):
     from `source_obj` (the full built template). Returning None means "leave the document alone":
     fail-safe here is never to invent bytes, and never to write a payload that is missing a pair the
     content needs.
+
+    Any key that is not part of the library schema is PRESERVED, in its original order, after the
+    canonical ones. Rebuilding from a fixed key list alone would silently discard whatever a future
+    (or older) producer had put there, and quietly dropping data we merely do not recognise is the
+    kind of loss this module exists to prevent.
     """
     obj = obj if isinstance(obj, dict) else {}
+    source_obj = source_obj if isinstance(source_obj, dict) else {}
     have = carried_libs(obj)
     source_has = carried_libs(source_obj)
     out = {}
-    encoding = _field(obj, "encoding") or _field(source_obj or {}, "encoding") or DEFAULT_ENCODING
+    encoding = _field(obj, "encoding") or _field(source_obj, "encoding") or DEFAULT_ENCODING
     out["encoding"] = encoding
     for lib in LIBRARIES:
         if lib not in needed:
@@ -123,4 +139,9 @@ def reconcile(obj, needed, source_obj=None):
             return None
         for key in LIB_FIELDS[lib]:
             out[key] = source[key]
-    return {key: out[key] for key in CANONICAL_KEYS if key in out}
+    rebuilt = {key: out[key] for key in CANONICAL_KEYS if key in out}
+    schema = set(CANONICAL_KEYS)
+    for key, value in obj.items():
+        if key not in schema:
+            rebuilt[key] = value
+    return rebuilt
