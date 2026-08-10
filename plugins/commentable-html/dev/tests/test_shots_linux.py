@@ -33,8 +33,10 @@ def _dev_tree(tmp, version="1.61.1", with_deps=True):
 
 class PinnedVersionTests(unittest.TestCase):
     def test_version_comes_from_the_lockfile_not_a_semver_range(self):
-        # package.json carries "^1.61.1"; the RESOLVED lockfile version is what the suite actually
-        # runs, so it is the only value that keeps the image and the renderer in lockstep.
+        # package.json carries a semver RANGE; the RESOLVED lockfile version is what the suite
+        # actually runs, so it is the only value that keeps the image and the renderer in lockstep.
+        # The fixture below uses an arbitrary version deliberately unrelated to the real pin, so the
+        # assertion cannot pass by accidentally agreeing with it (and needs no edit on a bump).
         with tempfile.TemporaryDirectory() as tmp:
             _dev_tree(tmp, version="1.61.1")
             self.assertEqual(S.pinned_playwright_version(tmp), "1.61.1")

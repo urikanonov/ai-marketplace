@@ -88,7 +88,7 @@ def _in_ci():
 def pinned_playwright_version(dev_dir):
     """The EXACT @playwright/test version from package-lock.json.
 
-    package.json carries a semver range (``^1.61.1``); the lockfile carries what is actually
+    package.json carries a semver RANGE; the lockfile carries what is actually
     installed and therefore what the suite runs, so it is the only value that keeps the container's
     browser in lockstep with the tests.
     """
