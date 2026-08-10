@@ -4,6 +4,15 @@ A layered checklist turns a nested list (or a table) into interactive, four-stat
 parent state aggregates from its children, whose state persists in `localStorage`, and whose changes
 travel back to the agent through the Copy-all bundle so the states can be cemented into the source HTML.
 
+## Contents
+
+- [Author markup](#author-markup)
+  - [Shape A - nested list (hierarchy by DOM nesting)](#shape-a---nested-list-hierarchy-by-dom-nesting)
+  - [Shape B - table (hierarchy by explicit parent, sortable-safe)](#shape-b---table-hierarchy-by-explicit-parent-sortable-safe)
+- [Runtime behavior](#runtime-behavior)
+- [Cementing states into the source (the agent step)](#cementing-states-into-the-source-the-agent-step)
+- [Validation](#validation)
+
 ## Author markup
 
 A checklist is any element marked `data-cmh-checklist="<id>"`. An **item** is any descendant carrying
