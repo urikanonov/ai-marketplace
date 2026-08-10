@@ -44,8 +44,10 @@ def read_size_budget(path=None):
 def size_budget_check(outputs, out_dir, budget=None):
     """Measure every budgeted component against its ceiling.
 
-    Returns (report_lines, failures). A budgeted component that the build does not produce is a
-    FAILURE, not a pass: a renamed or dropped output would otherwise retire its own budget.
+    Returns (report_lines, failures). Two ways to fail besides being over: a budgeted component the
+    build does not produce (a renamed or dropped output would otherwise retire its own budget), and
+    a PAYLOAD component the build produces that has no budget (a new `dist/` script or stylesheet
+    would otherwise become an unlimited place for the payload to grow).
     """
     budget = read_size_budget() if budget is None else budget
     sizes = {os.path.relpath(path, out_dir): len(text.encode("utf-8"))
@@ -65,4 +67,25 @@ def size_budget_check(outputs, out_dir, budget=None):
                 "%s is %d bytes, over its %d byte budget by %d. Shrink it, or raise the ceiling "
                 "in tools/size-budget.json deliberately and say why in the changelog."
                 % (name.replace(os.sep, "/"), actual, limit, actual - limit))
+    for name in sorted(unbudgeted_payload(sizes, budget)):
+        failures.append("%s is a generated payload component with no ceiling. Give it one in "
+                        "tools/size-budget.json (or say why it is not payload)."
+                        % name.replace(os.sep, "/"))
     return lines, failures
+
+
+def unbudgeted_payload(sizes, budget):
+    """Generated `dist/` components a document embeds verbatim, that no budget covers.
+
+    Metadata that is not payload (`manifest.json`, the dist README) is exempt by name; everything
+    a browser would actually execute or render is not.
+    """
+    exempt = {"manifest.json", "README.md"}
+    out = []
+    for name in sizes:
+        head, _sep, tail = name.partition(os.sep)
+        if head != "dist" or os.sep in tail or tail in exempt:
+            continue
+        if tail.lower().endswith((".js", ".css", ".html")) and name not in budget:
+            out.append(name)
+    return out

@@ -142,6 +142,8 @@ def _minify_js_scan(src):
     pstack = []            # per open `(`: True when it opened a statement header
     bstack = []            # per open `{`: True when it opened a block
     closed_regex_ok = False  # whether the `)` or `}` just consumed allows a regex after it
+    func_kw_seen = False     # a `function`/`class` keyword is waiting for its body brace
+    func_kw_decl = False     # ... and it stood in statement position, so the body is a block
     in_tmpl = False
 
     def flush(to):
@@ -159,6 +161,8 @@ def _minify_js_scan(src):
             return closed_regex_ok
         if prev in "]\"'`":
             return False        # a subscript, a string or a template literal ENDS a value
+        if prev == ".":
+            return False        # `const ratio = 1. / 2;` - a numeric literal may end in a dot
         if prev in _MINIFY_ID_CH:
             return bool(word) and word in _MINIFY_REGEX_WORDS and word_prev != "."
         if prev in "+-" and prev2 == prev:
@@ -249,7 +253,11 @@ def _minify_js_scan(src):
                 j = _minify_regex_end(src, i)
                 if j > 0:
                     flush(i)
-                    segs.append(("rx", src[i:j]))
+                    # `rxc` records that this regex was entered from a `)` or `}` - the only two
+                    # positions the decision depends on parse context rather than on the token
+                    # itself. It assembles identically to `rx`; the distinction exists so a test
+                    # can assert the shipped runtime never relies on that reasoning.
+                    segs.append(("rxc" if prev in ")}" else "rx", src[i:j]))
                     i = last = j
                     prev, prev2 = "/", ""
                     word, word_open, word_prev = "", False, ""
@@ -260,9 +268,14 @@ def _minify_js_scan(src):
             closed_regex_ok = pstack.pop() if pstack else False
         elif c == "{":
             # A block, or an object literal / arrow body? What precedes the brace decides, and only
-            # a BLOCK can be followed by a regex.
+            # a BLOCK can be followed by a regex. A `function` or `class` body counts as a block
+            # exactly when the keyword stood in STATEMENT position: `function f(){}` is a
+            # declaration and a regex may follow its `}`, while `const f = function(){} / 2` is a
+            # value and the `/` divides.
             bstack.append(not prev or prev in _MINIFY_BLOCK_BEFORE
-                          or (bool(word) and word in _MINIFY_BLOCK_WORDS and word_prev != "."))
+                          or (bool(word) and word in _MINIFY_BLOCK_WORDS and word_prev != ".")
+                          or (func_kw_seen and func_kw_decl))
+            func_kw_seen = False
         elif c == "}":
             if not bstack and tstack:
                 bstack, pstack = tstack.pop()
@@ -278,11 +291,16 @@ def _minify_js_scan(src):
             else:
                 word, word_prev = c, prev
             word_open = True
+            if word in ("function", "class"):
+                func_kw_seen = True
+                func_kw_decl = not word_prev or word_prev in _MINIFY_BLOCK_BEFORE
         else:
             word, word_open, word_prev = "", False, ""
         prev2, prev = prev, c
         i += 1
     flush(n)
+    if in_tmpl or tstack:
+        problems.append("unterminated template literal substitution at end of input")
     return segs, problems
 
 
@@ -303,7 +321,7 @@ def _minify_signature(segs):
     """
     lits, code = [], []
     for kind, text in segs:
-        if kind in ("lit", "rx"):
+        if kind in ("lit", "rx", "rxc"):
             lits.append(text)
         elif kind == "code":
             code.append(text)
@@ -387,7 +405,7 @@ def _minify_assemble(segs, keep_comment, needs_space=None, comment_is_space=True
             else:
                 items.append(("s", newline))
         else:
-            items.append(("r" if kind == "rx" else "t", text))
+            items.append(("r" if kind in ("rx", "rxc") else "t", text))
     out = []
     for pos, (tag, value) in enumerate(items):
         if tag == "t" or tag == "r":

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The build-time comment strip and the per-component size budget (#1250, CMH-BUILD-26/25).
+"""The build-time comment strip and the per-component size budget (#1250, CMH-BUILD-26/27).
 
 The strip is the one build step that rewrites every byte of the shipped runtime, so these tests
 pin the two properties that make it safe to run unattended:
@@ -218,13 +218,38 @@ class AmbiguousSlashTests(unittest.TestCase):
         out = build.minify_js("var t = /re/ instanceof RegExp;\n")
         self.assertIn("/re/ instanceof", out)
 
+    def test_a_numeric_literal_ending_in_a_dot_divides(self):
+        # `const ratio = 1. / 2;` is legal: the value ends at the dot, so the `/` divides. Reading
+        # it as a regex lets a later `/` or comment be segmented into the phantom literal.
+        out = build.minify_js("const ratio = 1. / 2; // note\nconst r = 3;\n")
+        self.assertNotIn("note", out)
+        self.assertIn("const r=3;", out)
+
+    def test_a_function_or_class_expression_body_divides(self):
+        # `const f = function(){} / 2` is a value divided; `function f(){}` then a regex is a
+        # declaration followed by a statement. The brace looks identical - the keyword's position
+        # is what differs.
+        for src in ("const f = function(){} / 2 / 3; // note\nconst r = 1;\n",
+                    "const C = class X {} / 2 / 3; // note\nconst r = 1;\n"):
+            out = build.minify_js(src)
+            self.assertNotIn("note", out, src)
+            self.assertIn("const r=1;", out, src)
+        out = build.minify_js("function f(){}\n/a  b/.test(s);\n")
+        self.assertIn("/a  b/", out)
+        out = build.minify_js("class X {}\n/a  b/.test(s);\n")
+        self.assertIn("/a  b/", out)
+
     def test_the_shipped_source_needs_no_grammar_guess(self):
-        # The `)` / `}` rules are the only place the scanner reasons about parse context. Pin that
-        # the real runtime never puts a regex there, so the riskiest path is not load-bearing
-        # today and a partial that starts using it is a deliberate, reviewable change.
+        # `)` and `}` are the only two positions where the reading depends on parse context rather
+        # than on the token itself. Pin that the real runtime never puts a regex there, so the
+        # riskiest path is not load-bearing today and a partial that starts using it is a
+        # deliberate, reviewable change rather than a silent one.
         segs, problems = build._minify_js_scan(_concat("js"))
         self.assertEqual(problems, [])
         self.assertTrue(any(kind == "rx" for kind, _t in segs), "no regex literals found at all")
+        from_close = [t for kind, t in segs if kind == "rxc"]
+        self.assertEqual(from_close, [],
+                         "a shipped regex is now read out of a `)`/`}` context: %r" % from_close[:3])
 
 
 class UnterminatedSourceTests(unittest.TestCase):
@@ -243,6 +268,15 @@ class UnterminatedSourceTests(unittest.TestCase):
     def test_an_unterminated_template_literal_fails_the_build(self):
         with self.assertRaises(SystemExit):
             build.minify_js("const t = `never closed;\n")
+
+    def test_an_unterminated_substitution_fails_the_build(self):
+        # The scan ends in CODE mode here, not in template mode, so the open `${` is only visible
+        # in the template stack. Without this the strip returned invalid output whenever node was
+        # unavailable to catch it.
+        with self.assertRaises(SystemExit):
+            build.minify_js("const t = `a${b\n")
+        with self.assertRaises(SystemExit):
+            build.minify_js("const t = `a${ `b${ c\n")
 
 
 class LineTerminatorTests(unittest.TestCase):
@@ -331,8 +365,9 @@ class RoundTripGuardTests(unittest.TestCase):
 
     This checks the ASSEMBLY, not the scan: the scan's decisions depend only on code characters,
     which the strip preserves, so re-scanning reaches the same decisions - right or wrong. What
-    makes a misread harmless is `AmbiguousSlashTests` (the span is copied verbatim); what catches
-    an invalid result is `verify_js_syntax`, an independent parser.
+    keeps a `/` from being misread in the first place is `AmbiguousSlashTests` (the reading is
+    decided by the grammar); what catches an invalid result is `verify_js_syntax`, an independent
+    parser.
     """
 
     def test_a_corrupted_result_fails_the_build(self):
@@ -526,6 +561,47 @@ class SizeBudgetTests(unittest.TestCase):
         with open(build.BUDGET_FILE, "r", encoding="utf-8") as fh:
             data = json.load(fh)
         self.assertTrue(data.get("_comment"), "the budget file must say what raising it means")
+
+    def test_a_new_payload_component_with_no_ceiling_fails(self):
+        # Otherwise the payload just moves into a new dist file that nothing budgets.
+        outputs = {os.path.join("out", "dist", "x.js"): "x" * 8,
+                   os.path.join("out", "dist", "new-thing.js"): "y" * 8}
+        _lines, failures = build.size_budget_check(
+            outputs, "out", {os.path.join("dist", "x.js"): 10})
+        self.assertTrue(any("no ceiling" in f for f in failures), failures)
+
+    def test_dist_metadata_needs_no_ceiling(self):
+        outputs = {os.path.join("out", "dist", "manifest.json"): "{}",
+                   os.path.join("out", "dist", "README.md"): "hi",
+                   os.path.join("out", "dist", "x.js"): "x" * 8}
+        _lines, failures = build.size_budget_check(
+            outputs, "out", {os.path.join("dist", "x.js"): 10})
+        self.assertEqual(failures, [])
+
+    def test_an_over_budget_check_run_fails_too(self):
+        # CMH-BUILD-27 promises `--check` fails on an over-budget component, not only a build.
+        import contextlib
+        import io
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as d:
+            dist = os.path.join(d, "dist")
+            os.makedirs(dist)
+            out_path = os.path.join(dist, "SHAREABLE.html")
+            with open(out_path, "w", encoding="utf-8", newline="") as fh:
+                fh.write("x" * 100)
+            err = io.StringIO()
+            with mock.patch.object(build, "HERE", d), mock.patch.object(build, "DIST", dist), \
+                    mock.patch.object(build, "build_all",
+                                      return_value=({out_path: "x" * 100}, "1.2.3")), \
+                    mock.patch.object(build, "read_size_budget",
+                                      return_value={os.path.join("dist", "SHAREABLE.html"): 10}), \
+                    mock.patch.object(build, "source_stamps", return_value={}), \
+                    contextlib.redirect_stderr(err), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                code = build.main(["build.py", "--check"])
+            self.assertEqual(code, 1)
+            self.assertIn("size budget exceeded", err.getvalue())
 
     def test_an_over_budget_build_writes_nothing(self):
         # The gate must REFUSE, not report: leaving oversize artifacts in the tree is how the next
