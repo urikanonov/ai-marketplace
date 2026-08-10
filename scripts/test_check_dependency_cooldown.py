@@ -739,7 +739,7 @@ class TestAdvisoryFetchFailOpen(unittest.TestCase):
             self.assertEqual(warnings, [], link)
             self.assertEqual(len(calls), 1, link)
 
-    def test_a_failure_after_the_first_page_keeps_what_was_already_read(self):
+    def test_a_failure_after_the_first_page_discards_the_partial_list(self):
         second = cdc.ADVISORY_API_URL + "?page=2"
 
         class Response:
@@ -764,7 +764,7 @@ class TestAdvisoryFetchFailOpen(unittest.TestCase):
         with mock.patch.object(cdc.urllib.request, "urlopen", side_effect=fake_urlopen):
             advisories, warnings = cdc.fetch_advisories("dompurify")
 
-        self.assertEqual([a["ghsa_id"] for a in advisories], ["GHSA-page-one"])
+        self.assertEqual(advisories, [])
         self.assertEqual(len(warnings), 1)
 
     def test_hitting_the_page_cap_warns_that_the_list_is_truncated(self):
@@ -925,6 +925,63 @@ class TestLockfileDiffBaseVersions(unittest.TestCase):
             result.base_versions,
             {dep("pkg", "1.0.1"): {"1.0.0"}, dep("pkg", "1.6.0"): {"1.5.0"}},
         )
+
+    def test_lineage_follows_the_lockfile_slot_not_the_version_order(self):
+        # The slot that held the vulnerable 1.0.0 becomes 1.7.0; the ordinary bump is 1.5.0 -> 1.6.0.
+        base = {
+            "packages": {
+                "": {},
+                "node_modules/pkg": registry_entry("pkg", "1.0.0"),
+                "node_modules/x/node_modules/pkg": registry_entry("pkg", "1.5.0"),
+            }
+        }
+        head = {
+            "packages": {
+                "": {},
+                "node_modules/pkg": registry_entry("pkg", "1.7.0"),
+                "node_modules/x/node_modules/pkg": registry_entry("pkg", "1.6.0"),
+            }
+        }
+
+        result = cdc.lockfile_diff(head, base)
+
+        self.assertEqual(
+            result.base_versions,
+            {dep("pkg", "1.7.0"): {"1.0.0"}, dep("pkg", "1.6.0"): {"1.5.0"}},
+        )
+
+    def test_a_rehoisted_entry_has_no_lineage_and_earns_no_exemption(self):
+        base = {"packages": {"": {}, "node_modules/x/node_modules/pkg": registry_entry("pkg", "1.0.0")}}
+        head = {"packages": {"": {}, "node_modules/pkg": registry_entry("pkg", "1.0.1")}}
+
+        result = cdc.lockfile_diff(head, base)
+
+        self.assertEqual(result.changed, {dep("pkg", "1.0.1")})
+        self.assertEqual(result.base_versions, {})
+
+    def test_one_unattested_occurrence_rejects_the_whole_identity(self):
+        head = {
+            "packages": {
+                "": {},
+                "node_modules/pkg": registry_entry("pkg", "1.0.1"),
+                "node_modules/x/node_modules/pkg": {
+                    "name": "pkg",
+                    "version": "1.0.1",
+                    "resolved": "https://registry.npmjs.org/@evil/pkg/-/pkg-1.0.1.tgz",
+                },
+            }
+        }
+
+        result = cdc.lockfile_diff(head, {"packages": {"": {}}})
+
+        self.assertEqual(result.attested_versions(), set())
+
+    def test_a_rejection_in_one_lockfile_survives_the_merge(self):
+        good = cdc.LockfileDiff(attested={dep("pkg", "1.0.1")})
+        bad = cdc.LockfileDiff(rejected={dep("pkg", "1.0.1")})
+
+        self.assertEqual(cdc.LockfileDiff().merge(good).merge(bad).attested_versions(), set())
+        self.assertEqual(cdc.LockfileDiff().merge(bad).merge(good).attested_versions(), set())
 
     def test_a_scoped_package_is_attested(self):
         head = {

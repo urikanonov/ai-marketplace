@@ -90,6 +90,7 @@ class LockfileDependency:
     version: str
     resolved: str
     registry: bool
+    key: str = ""
 
 
 @dataclass(frozen=True)
@@ -117,14 +118,20 @@ class LockfileDiff:
     warnings: list = field(default_factory=list)
     base_versions: dict = field(default_factory=dict)
     attested: set = field(default_factory=set)
+    rejected: set = field(default_factory=set)
 
     def merge(self, other):
         self.changed.update(other.changed)
         self.warnings.extend(other.warnings)
         self.attested.update(other.attested)
+        self.rejected.update(other.rejected)
         for identity, versions in other.base_versions.items():
             self.base_versions.setdefault(identity, set()).update(versions)
         return self
+
+    def attested_versions(self):
+        """Identities every occurrence of which corroborates itself. One bad entry rejects all."""
+        return self.attested - self.rejected
 
 
 def _git(*args):
@@ -218,7 +225,11 @@ def parse_lockfile_dependencies(lockfile):
         name = _package_name_from_entry(key, entry)
         if name:
             resolved = str(entry.get("resolved") or "")
-            deps.add(LockfileDependency(name, str(version), resolved, _is_registry_npm(resolved)))
+            deps.add(
+                LockfileDependency(
+                    name, str(version), resolved, _is_registry_npm(resolved), str(key)
+                )
+            )
     return deps
 
 
@@ -264,42 +275,18 @@ def resolved_attests_identity(dep):
     return urllib.parse.unquote(parsed.path) == expected
 
 
-def _pair_replacements(removed, added):
-    """Match each added version to the newest removed version at or below it.
-
-    npm records no lineage, so when a package is pinned several times a bump has to be paired by
-    order. Matching monotonically keeps a routine `1.5.0 -> 1.6.0` bump from borrowing the
-    vulnerable `1.0.0` that a sibling `1.0.0 -> 1.0.1` security bump replaced.
-    """
-    available = sorted(removed, key=version_sort_key)
-    pairs = {}
-    for version in sorted(added, key=version_sort_key):
-        candidate = None
-        for index in range(len(available) - 1, -1, -1):
-            if compare_versions(available[index], version) <= 0:
-                candidate = available.pop(index)
-                break
-        if candidate is not None:
-            pairs[version] = candidate
-    return pairs
-
-
 def lockfile_diff(head_lockfile, base_lockfile):
     head_deps = parse_lockfile_dependencies(head_lockfile)
     base_deps = parse_lockfile_dependencies(base_lockfile)
     head_versions = {}
     for head_dep in head_deps:
         head_versions.setdefault(head_dep.name, set()).add(head_dep.version)
-    removed_versions = {}
-    for base_dep in base_deps:
-        if base_dep.version in head_versions.get(base_dep.name, ()):
-            continue
-        removed_versions.setdefault(base_dep.name, set()).add(base_dep.version)
+    # Lineage comes from the lockfile entry key: the same slot before and after the change is the
+    # same dependency. Version order cannot tell a security bump from an unrelated sibling bump.
+    base_by_slot = {(d.name, d.key): d.version for d in base_deps}
     base_identities = {DependencyVersion(d.name, d.version) for d in base_deps}
     result = LockfileDiff()
-    added_versions = {}
-    attesting = {}
-    for head_dep in sorted(head_deps, key=lambda d: (d.name, d.version, d.resolved)):
+    for head_dep in sorted(head_deps, key=lambda d: (d.name, d.version, d.key, d.resolved)):
         identity = DependencyVersion(head_dep.name, head_dep.version)
         if identity in base_identities:
             continue
@@ -307,12 +294,11 @@ def lockfile_diff(head_lockfile, base_lockfile):
             result.warnings.append(_non_registry_warning(head_dep))
             continue
         result.changed.add(identity)
-        added_versions.setdefault(head_dep.name, set()).add(head_dep.version)
-        attesting[identity] = attesting.get(identity, False) or resolved_attests_identity(head_dep)
-    for name, added in added_versions.items():
-        for version, replaced in _pair_replacements(removed_versions.get(name, set()), added).items():
-            result.base_versions.setdefault(DependencyVersion(name, version), set()).add(replaced)
-    result.attested.update(identity for identity, ok in attesting.items() if ok)
+        (result.attested if resolved_attests_identity(head_dep) else result.rejected).add(identity)
+        replaced = base_by_slot.get((head_dep.name, head_dep.key))
+        # A version head still pins somewhere was not removed, so it closes no alert.
+        if replaced and replaced not in head_versions.get(head_dep.name, ()):
+            result.base_versions.setdefault(identity, set()).add(replaced)
     result.warnings.sort()
     return result
 
@@ -732,9 +718,9 @@ def _fetch_advisory_page(url, deadline_at):
 def fetch_advisories(name, deadline_at=None):
     """Fetch reviewed, non-withdrawn npm advisories affecting `name`.
 
-    Whatever pages were read are returned even when a later page fails, since a partial list can
-    only ever miss an exemption, never invent one. A failure or a truncated list is reported as a
-    warning so the log explains a denial.
+    An incomplete read - a failed page, or a list still paginating at the page cap - yields NO
+    advisories and a warning. Partial advisory data is "cannot tell", and cannot tell never grants
+    an exemption.
     """
     if deadline_at is None:
         deadline_at = time.monotonic() + ADVISORY_DEADLINE_SECONDS
@@ -752,13 +738,13 @@ def fetch_advisories(name, deadline_at=None):
     for _ in range(ADVISORY_MAX_PAGES):
         page, error = _fetch_advisory_page(url, deadline_at)
         if error is not None:
-            return advisories, [_advisory_warning(name, error)]
+            return [], [_advisory_warning(name, error)]
         payload, next_url = page
         advisories.extend(payload)
         if not next_url:
             return advisories, []
         url = next_url
-    return advisories, [
+    return [], [
         _advisory_warning(name, "advisory list truncated at %d pages" % ADVISORY_MAX_PAGES)
     ]
 
@@ -842,7 +828,7 @@ def main(argv=None):
         # makes no network call here at all.
         candidates = {DependencyVersion(v.name, v.version) for v in violations}
         exemptions, exemption_warnings = security_exemptions(
-            candidates, diff.base_versions, diff.attested
+            candidates, diff.base_versions, diff.attested_versions()
         )
         for warning in exemption_warnings:
             sys.stderr.write(warning + "\n")
