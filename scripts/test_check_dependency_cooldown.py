@@ -288,8 +288,8 @@ class TestRegistryFetchFailOpen(unittest.TestCase):
         self.assertEqual(set(publish_times), changed)
 
 
-def advisory(ghsa_id, name, vulnerable_range, first_patched):
-    return {
+def advisory(ghsa_id, name, vulnerable_range, first_patched, **extra):
+    entry = {
         "ghsa_id": ghsa_id,
         "vulnerabilities": [
             {
@@ -299,6 +299,15 @@ def advisory(ghsa_id, name, vulnerable_range, first_patched):
             }
         ],
     }
+    entry.update(extra)
+    return entry
+
+
+def registry_entry(name, version, resolved=None):
+    if resolved is None:
+        basename = name.rsplit("/", 1)[-1]
+        resolved = "https://registry.npmjs.org/%s/-/%s-%s.tgz" % (name, basename, version)
+    return {"version": version, "resolved": resolved}
 
 
 # The two advisories that fixed dompurify while #1233 was open (GHSA ids and ranges as published).
@@ -366,6 +375,68 @@ class TestAdvisoryExemption(unittest.TestCase):
 
         self.assertIsNone(cdc.advisory_exemption("dompurify", "3.4.13", {"3.4.11"}, advisories))
 
+    def test_withdrawn_advisory_never_grants_an_exemption(self):
+        advisories = [
+            advisory(
+                "GHSA-55q2-fjhq-7xh7",
+                "dompurify",
+                "<= 3.4.12",
+                "3.4.13",
+                withdrawn_at="2026-01-01T00:00:00Z",
+            )
+        ]
+
+        self.assertIsNone(cdc.advisory_exemption("dompurify", "3.4.13", {"3.4.11"}, advisories))
+
+    def test_version_still_vulnerable_under_a_sibling_entry_is_not_exempt(self):
+        multi_line = {
+            "ghsa_id": "GHSA-multi-line-0001",
+            "vulnerabilities": [
+                {
+                    "package": {"ecosystem": "npm", "name": "pkg"},
+                    "vulnerable_version_range": "< 2.5.4",
+                    "first_patched_version": "2.5.4",
+                },
+                {
+                    "package": {"ecosystem": "npm", "name": "pkg"},
+                    "vulnerable_version_range": ">= 3.0.0, < 3.1.3",
+                    "first_patched_version": "3.1.3",
+                },
+            ],
+        }
+
+        self.assertIsNone(cdc.advisory_exemption("pkg", "3.0.0", {"2.0.0"}, [multi_line]))
+
+    def test_leap_past_the_patched_release_line_is_not_exempt(self):
+        advisories = [advisory("GHSA-line-0001", "pkg", "< 1.0.1", "1.0.1")]
+
+        self.assertIsNotNone(cdc.advisory_exemption("pkg", "1.4.0", {"1.0.0"}, advisories))
+        self.assertIsNone(cdc.advisory_exemption("pkg", "99.0.0", {"1.0.0"}, advisories))
+
+    def test_advisory_without_a_patched_version_grants_nothing(self):
+        advisories = [advisory("GHSA-nofix-0001", "pkg", "< 2.0.0", None)]
+
+        self.assertIsNone(cdc.advisory_exemption("pkg", "2.0.0", {"1.0.0"}, advisories))
+
+    def test_malformed_advisory_entries_are_skipped_without_crashing(self):
+        advisories = [
+            "not-a-dict",
+            {"ghsa_id": "GHSA-bad-0001", "vulnerabilities": "not-a-list"},
+            {"ghsa_id": "GHSA-bad-0002", "vulnerabilities": [{"package": "not-a-dict"}]},
+            {"ghsa_id": "GHSA-bad-0003", "vulnerabilities": [None]},
+        ] + DOMPURIFY_ADVISORIES
+
+        exemption = cdc.advisory_exemption("dompurify", "3.4.13", {"3.4.11"}, advisories)
+
+        self.assertEqual(exemption.ghsa_id, "GHSA-55q2-fjhq-7xh7")
+
+    def test_every_range_shape_the_advisory_api_publishes_is_understood(self):
+        # The four shapes observed across a 200-entry sample of reviewed npm advisories.
+        self.assertTrue(cdc.version_matches_range("< 4.0.0", "3.9.9"))
+        self.assertTrue(cdc.version_matches_range("<= 2.70.1", "2.70.1"))
+        self.assertTrue(cdc.version_matches_range(">= 3.8.0, < 4.12.34", "4.0.0"))
+        self.assertTrue(cdc.version_matches_range(">= 4.4.0, <= 4.5.0", "4.5.0"))
+
     def test_exemption_is_deterministic_when_several_advisories_match(self):
         first = cdc.advisory_exemption("dompurify", "3.4.13", {"3.4.10"}, DOMPURIFY_ADVISORIES)
         second = cdc.advisory_exemption(
@@ -409,14 +480,15 @@ class TestSecurityExemptCooldown(unittest.TestCase):
 
     def test_security_exemptions_query_each_package_name_once(self):
         changed = {dep("dompurify", "3.4.13"), dep("dompurify", "3.4.12")}
+        base = {dep("dompurify", "3.4.13"): {"3.4.11"}, dep("dompurify", "3.4.12"): {"3.4.11"}}
         calls = []
 
-        def fake_fetch(name, deadline_at):
+        def fake_fetch(name, deadline_at=None):
             calls.append(name)
             return DOMPURIFY_ADVISORIES, []
 
         with mock.patch.object(cdc, "fetch_advisories", side_effect=fake_fetch):
-            exempt, warnings = cdc.security_exemptions(changed, {"dompurify": {"3.4.11"}})
+            exempt, warnings = cdc.security_exemptions(changed, base, changed)
 
         self.assertEqual(calls, ["dompurify"])
         self.assertEqual(warnings, [])
@@ -426,7 +498,17 @@ class TestSecurityExemptCooldown(unittest.TestCase):
         changed = {dep("brand-new", "1.0.0")}
 
         with mock.patch.object(cdc, "fetch_advisories", side_effect=AssertionError("queried")):
-            exempt, warnings = cdc.security_exemptions(changed, {})
+            exempt, warnings = cdc.security_exemptions(changed, {}, changed)
+
+        self.assertEqual(exempt, {})
+        self.assertEqual(warnings, [])
+
+    def test_entry_whose_resolved_url_disagrees_is_never_queried(self):
+        changed = {dep("dompurify", "3.4.13")}
+        base = {dep("dompurify", "3.4.13"): {"3.4.11"}}
+
+        with mock.patch.object(cdc, "fetch_advisories", side_effect=AssertionError("queried")):
+            exempt, warnings = cdc.security_exemptions(changed, base, set())
 
         self.assertEqual(exempt, {})
         self.assertEqual(warnings, [])
@@ -435,11 +517,12 @@ class TestSecurityExemptCooldown(unittest.TestCase):
 class TestAdvisoryFetchFailOpen(unittest.TestCase):
     def test_unreachable_advisory_api_leaves_the_bump_unexempted(self):
         changed = {dep("dompurify", "3.4.13")}
+        base = {dep("dompurify", "3.4.13"): {"3.4.11"}}
 
         with mock.patch.object(
             cdc.urllib.request, "urlopen", side_effect=cdc.urllib.error.URLError("offline")
         ), mock.patch.object(cdc, "REQUEST_RETRIES", 1):
-            exempt, warnings = cdc.security_exemptions(changed, {"dompurify": {"3.4.11"}})
+            exempt, warnings = cdc.security_exemptions(changed, base, changed)
 
         self.assertEqual(exempt, {})
         self.assertEqual(len(warnings), 1)
@@ -451,16 +534,53 @@ class TestAdvisoryFetchFailOpen(unittest.TestCase):
             cdc.ADVISORY_API_URL, 403, "Forbidden", {}, None
         )
 
-        with mock.patch.object(cdc.urllib.request, "urlopen", side_effect=error), \
-                mock.patch.object(cdc, "REQUEST_RETRIES", 1):
-            advisories, warnings = cdc.fetch_advisories("dompurify", cdc.time.monotonic() + 5)
+        with mock.patch.object(cdc.urllib.request, "urlopen", side_effect=error) as urlopen, \
+                mock.patch.object(cdc, "REQUEST_RETRIES", 3):
+            advisories, warnings = cdc.fetch_advisories("dompurify")
 
         self.assertEqual(advisories, [])
         self.assertEqual(len(warnings), 1)
         self.assertIn("403", warnings[0])
+        self.assertEqual(urlopen.call_count, 1)
+
+    def test_rate_limited_advisory_api_is_retried_then_fails_open(self):
+        error = cdc.urllib.error.HTTPError(cdc.ADVISORY_API_URL, 429, "Too Many", {}, None)
+
+        with mock.patch.object(cdc.urllib.request, "urlopen", side_effect=error) as urlopen, \
+                mock.patch.object(cdc, "REQUEST_RETRIES", 2), \
+                mock.patch.object(cdc.time, "sleep", lambda _s: None):
+            advisories, warnings = cdc.fetch_advisories("dompurify")
+
+        self.assertEqual(advisories, [])
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(urlopen.call_count, 2)
+
+    def test_truncated_response_body_fails_open_instead_of_crashing(self):
+        import http.client
+
+        class Response:
+            headers = {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                raise http.client.IncompleteRead(b"partial")
+
+        with mock.patch.object(cdc.urllib.request, "urlopen", return_value=Response()), \
+                mock.patch.object(cdc, "REQUEST_RETRIES", 1):
+            advisories, warnings = cdc.fetch_advisories("dompurify")
+
+        self.assertEqual(advisories, [])
+        self.assertEqual(len(warnings), 1)
 
     def test_malformed_advisory_payload_fails_open(self):
         class Response:
+            headers = {}
+
             def __enter__(self):
                 return self
 
@@ -472,38 +592,173 @@ class TestAdvisoryFetchFailOpen(unittest.TestCase):
 
         with mock.patch.object(cdc.urllib.request, "urlopen", return_value=Response()), \
                 mock.patch.object(cdc, "REQUEST_RETRIES", 1):
-            advisories, warnings = cdc.fetch_advisories("dompurify", cdc.time.monotonic() + 5)
+            advisories, warnings = cdc.fetch_advisories("dompurify")
 
         self.assertEqual(advisories, [])
         self.assertEqual(len(warnings), 1)
 
+    def test_no_authorization_header_is_ever_sent(self):
+        captured = {}
+
+        class Response:
+            headers = {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b"[]"
+
+        def fake_urlopen(request, timeout=None):
+            captured["headers"] = dict(request.headers)
+            captured["url"] = request.full_url
+            return Response()
+
+        with mock.patch.dict(cdc.os.environ, {"GITHUB_TOKEN": "should-not-be-used"}), \
+                mock.patch.object(cdc.urllib.request, "urlopen", side_effect=fake_urlopen):
+            cdc.fetch_advisories("dompurify")
+
+        self.assertNotIn("Authorization", captured["headers"])
+        self.assertTrue(captured["url"].startswith(cdc.ADVISORY_API_URL))
+        self.assertIn("is_withdrawn=false", captured["url"])
+
+    def test_advisories_beyond_the_first_page_are_followed(self):
+        pages = {}
+
+        class Response:
+            def __init__(self, body, link):
+                self._body = body
+                self.headers = {"Link": link} if link else {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return self._body
+
+        second = cdc.ADVISORY_API_URL + "?page=2"
+
+        def fake_urlopen(request, timeout=None):
+            pages.setdefault("urls", []).append(request.full_url)
+            if request.full_url == second:
+                return Response(b'[{"ghsa_id": "GHSA-page-two"}]', None)
+            return Response(b"[]", '<%s>; rel="next"' % second)
+
+        with mock.patch.object(cdc.urllib.request, "urlopen", side_effect=fake_urlopen):
+            advisories, warnings = cdc.fetch_advisories("dompurify")
+
+        self.assertEqual(warnings, [])
+        self.assertEqual([a["ghsa_id"] for a in advisories], ["GHSA-page-two"])
+        self.assertEqual(len(pages["urls"]), 2)
+
+    def test_a_next_link_to_another_host_is_not_followed(self):
+        class Response:
+            def __init__(self, body, link):
+                self._body = body
+                self.headers = {"Link": link} if link else {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return self._body
+
+        calls = []
+
+        def fake_urlopen(request, timeout=None):
+            calls.append(request.full_url)
+            return Response(b"[]", '<https://evil.example/advisories>; rel="next"')
+
+        with mock.patch.object(cdc.urllib.request, "urlopen", side_effect=fake_urlopen):
+            advisories, warnings = cdc.fetch_advisories("dompurify")
+
+        self.assertEqual(advisories, [])
+        self.assertEqual(warnings, [])
+        self.assertEqual(len(calls), 1)
+
 
 class TestLockfileDiffBaseVersions(unittest.TestCase):
     def test_diff_reports_the_base_version_each_bump_replaces(self):
+        base = {"packages": {"": {}, "node_modules/dompurify": registry_entry("dompurify", "3.4.11")}}
+        head = {"packages": {"": {}, "node_modules/dompurify": registry_entry("dompurify", "3.4.13")}}
+
+        result = cdc.lockfile_diff(head, base)
+
+        self.assertEqual(result.changed, {dep("dompurify", "3.4.13")})
+        self.assertEqual(result.base_versions, {dep("dompurify", "3.4.13"): {"3.4.11"}})
+        self.assertEqual(result.attested, {dep("dompurify", "3.4.13")})
+        self.assertEqual(result.warnings, [])
+
+    def test_a_base_version_head_still_pins_is_not_reported_as_replaced(self):
         base = {
             "packages": {
                 "": {},
-                "node_modules/dompurify": {
-                    "version": "3.4.11",
-                    "resolved": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.11.tgz",
-                },
+                "node_modules/d3-shape": registry_entry("d3-shape", "1.3.7"),
+                "node_modules/x/node_modules/d3-shape": registry_entry("d3-shape", "3.2.0"),
             }
         }
         head = {
             "packages": {
                 "": {},
-                "node_modules/dompurify": {
-                    "version": "3.4.13",
-                    "resolved": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.13.tgz",
+                "node_modules/d3-shape": registry_entry("d3-shape", "1.3.7"),
+                "node_modules/x/node_modules/d3-shape": registry_entry("d3-shape", "3.3.0"),
+            }
+        }
+
+        result = cdc.lockfile_diff(head, base)
+
+        self.assertEqual(result.changed, {dep("d3-shape", "3.3.0")})
+        self.assertEqual(result.base_versions, {dep("d3-shape", "3.3.0"): {"3.2.0"}})
+
+    def test_base_versions_do_not_leak_across_lockfiles(self):
+        vulnerable = {"packages": {"": {}, "node_modules/pkg": registry_entry("pkg", "1.0.0")}}
+        other = {"packages": {"": {}, "node_modules/pkg": registry_entry("pkg", "9.9.9")}}
+
+        merged = cdc.LockfileDiff()
+        merged.merge(cdc.lockfile_diff(vulnerable, vulnerable))
+        merged.merge(cdc.lockfile_diff(other, {"packages": {"": {}}}))
+
+        self.assertEqual(merged.changed, {dep("pkg", "9.9.9")})
+        self.assertEqual(merged.base_versions, {})
+
+    def test_an_entry_whose_resolved_url_names_another_package_is_not_attested(self):
+        base = {"packages": {"": {}, "node_modules/mermaid": registry_entry("mermaid", "11.16.0")}}
+        head = {
+            "packages": {
+                "": {},
+                "node_modules/mermaid": {
+                    "name": "mermaid",
+                    "version": "11.16.1",
+                    "resolved": "https://registry.npmjs.org/evil-pkg/-/evil-pkg-1.0.0.tgz",
                 },
             }
         }
 
         result = cdc.lockfile_diff(head, base)
 
-        self.assertEqual(result.changed, {dep("dompurify", "3.4.13")})
-        self.assertEqual(result.base_versions, {"dompurify": {"3.4.11"}})
-        self.assertEqual(result.warnings, [])
+        self.assertEqual(result.changed, {dep("mermaid", "11.16.1")})
+        self.assertEqual(result.attested, set())
+
+    def test_a_scoped_package_is_attested(self):
+        head = {
+            "packages": {
+                "": {},
+                "node_modules/@scope/pkg": registry_entry("@scope/pkg", "1.2.3"),
+            }
+        }
+
+        result = cdc.lockfile_diff(head, {"packages": {"": {}}})
+
+        self.assertEqual(result.attested, {dep("@scope/pkg", "1.2.3")})
 
 
 if __name__ == "__main__":

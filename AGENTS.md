@@ -745,14 +745,22 @@ survival check above is still the gate for that. The `pre-commit` hook runs it i
   exemption the gate reddened exactly the PRs that had to land fastest (#1233 and #1222 together
   carried seven open alerts), and a guard that must be ignored to do the right thing trains everyone
   to ignore it. The gate therefore resolves the exemption from the PUBLIC GitHub Advisory Database
-  (`GET /advisories`): a bump is exempt when the version the lockfile currently pins sits inside an
-  advisory's vulnerable range and the new version leaves that range at or above
-  `first_patched_version`. It does NOT read this repository's `dependabot/alerts` endpoint - that
-  needs a `security_events`/`repo`-scoped token, no `GITHUB_TOKEN` workflow permission grants it
+  (`GET /advisories`). It does NOT read this repository's `dependabot/alerts` endpoint - that needs
+  a `security_events`/`repo`-scoped token, no `GITHUB_TOKEN` workflow permission grants it
   (`security-events` covers code scanning alerts only), and a PAT would mean a `secrets.*` reference
   in a `pull_request` workflow that runs PR code, which RULE B of `check_workflow_policy.py` forbids.
-  Every advisory lookup fails OPEN (an unreachable, rate-limited, unauthorized, or malformed
-  response exempts nothing and warns), so the gate never blocks a PR on a flaky API.
+  The lookups are therefore unauthenticated by design, and the gate only makes one for a version
+  that would otherwise FAIL, so a clean run issues no advisory request at all.
+- The exemption is deliberately NARROW, because it opts a fresh release out of a supply-chain
+  hygiene control - do not widen it without the same care. All of these must hold: the base
+  (currently pinned) version matched a non-withdrawn advisory's vulnerable range; the head lockfile
+  no longer pins that vulnerable version (a bump that leaves a vulnerable copy behind closes no
+  alert); the new version sits outside EVERY vulnerable range that advisory records for the package
+  and at or above `first_patched_version`, in that patched version's release line (a leap to a
+  brand-new major is an upgrade, and cooldown still applies); and the lockfile entry's `resolved`
+  tarball URL names the same package and version the entry claims, so an entry cannot borrow another
+  package's advisory. Every advisory lookup fails OPEN (an unreachable, rate-limited, unauthorized,
+  or malformed response exempts nothing and warns), so the gate never blocks a PR on a flaky API.
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.
 - Spec-and-test gate (see "Spec-and-test discipline"): a pull request that adds or changes a feature
