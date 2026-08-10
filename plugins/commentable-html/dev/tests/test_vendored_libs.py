@@ -654,6 +654,198 @@ class StripAndRestoreTests(unittest.TestCase):
         self.assertEqual(out, grew)
 
 
+class PerLibraryPayloadTests(unittest.TestCase):
+    """CMH-SIZE-01: the payload carries each vendored library only when the CONTENT uses THAT one.
+
+    The payload used to be all-or-nothing: one JSON object holding mermaid (~1,265 KB base64) AND
+    Chart.js (~92 KB base64), kept or dropped as a unit. So a chart-only document paid 1,265 KB for
+    a renderer it could never call, and a diagram-only document paid 92 KB for the other.
+
+    The dangerous direction is dropping a half the document DOES need, which breaks its offline
+    export, so every test here that trims is paired with one that proves the fail-safe still holds.
+    """
+
+    def setUp(self):
+        with open(os.path.join(_paths.DIST, "SHAREABLE.html"), "r", encoding="utf-8",
+                  newline="") as fh:
+            self.shareable = fh.read()
+        self.blob = vendored_libs.blob_script(self.shareable)
+        self.assertTrue(self.blob, "the built SHAREABLE template must carry the blob")
+
+    def _payload(self, html):
+        span = vendored_libs.find_blob(html)
+        self.assertIsNotNone(span, "expected the document to carry a payload")
+        return vendored_libs.payload_object(html[span[0]:span[1]])
+
+    def test_the_restore_source_template_carries_both_libraries(self):
+        # The whole restore path reads this one artifact. It carries both halves only because the
+        # shell's demo content happens to use both, so pin it: if the demo ever loses its chart,
+        # every chart document restored from this source would ship under-provisioned.
+        obj = vendored_libs.payload_object(self.blob)
+        self.assertIsNotNone(obj, "the template payload must parse")
+        self.assertEqual(vendored_libs.carried_libs(obj), {"mermaid", "chartjs"})
+
+    def test_a_chart_only_document_drops_the_mermaid_half_of_the_payload(self):
+        out, changed = vendored_libs.apply(_doc(CHART), self.blob)
+        self.assertTrue(changed)
+        self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"chartjs"})
+
+    def test_a_diagram_only_document_drops_the_chart_half_of_the_payload(self):
+        out, changed = vendored_libs.apply(_doc(MERMAID), self.blob)
+        self.assertTrue(changed)
+        self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"mermaid"})
+
+    def test_a_chart_only_document_sheds_the_real_mermaid_bytes(self):
+        # Prove the SAVING, not just the key set: the mermaid half is ~1,265 KB base64.
+        html = _doc(CHART)
+        out, _ = vendored_libs.apply(html, self.blob)
+        self.assertLess(len(out), len(html) - 1000 * 1024)
+
+    def test_a_partial_payload_is_completed_when_the_document_gains_the_other_library(self):
+        # THE regression guard. Once a payload can be partial, "restore when the content GAINS a
+        # library" (CMH-SIZE-01) has to work for a HALF as well as for a whole - and the old
+        # apply() returned early for any already-placed payload without ever reading its contents.
+        chart_only, _ = vendored_libs.apply(_doc(CHART), self.blob)
+        self.assertEqual(vendored_libs.carried_libs(self._payload(chart_only)), {"chartjs"})
+        grew = chart_only.replace(
+            "</h1>", '</h1>\n<pre class="mermaid cm-skip">graph TD; A--&gt;B;</pre>', 1)
+        out, changed = vendored_libs.apply(grew, self.blob)
+        self.assertTrue(changed, "a partial payload must be completed, not left as it is")
+        self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"mermaid", "chartjs"})
+
+    def test_an_unclassifiable_document_keeps_a_full_payload_untouched(self):
+        # The fail-safe INVERSION this design could have caused: an UNKNOWN document has neither
+        # usage flag set, so a naive "needed" set is EMPTY and would strip it bare. The existing
+        # cannot-be-classified test pins only the INSERT direction; this pins the TRIM direction.
+        foreign = "<html><body><p>not one of ours</p>\n" + self.blob + "</body></html>\n"
+        self.assertEqual(vendored_libs.content_state(foreign), vendored_libs.UNKNOWN)
+        out, changed = vendored_libs.apply(foreign, self.blob)
+        self.assertFalse(changed)
+        self.assertEqual(out, foreign)
+
+    def test_mermaid_plus_misnested_chart_markup_keeps_the_chart_half(self):
+        # A browser REPAIRS `<p><figure class="chart"></p>...<canvas>` and puts the canvas back
+        # inside the figure, so the exporter will demand Chart.js. The nesting-tolerant repair used
+        # to be gated on the COMBINED flag, which a mermaid diagram already satisfied - so gating it
+        # on the union would leave uses_charts False and drop a half the document needs.
+        fragment = (MERMAID + '<p><figure class="chart"></p><canvas id="q"></canvas>')
+        out, _ = vendored_libs.apply(_doc(fragment), self.blob)
+        self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"mermaid", "chartjs"})
+
+    def test_a_library_whose_licence_is_missing_is_not_counted_as_carried(self):
+        # Bytes and notice travel as ONE unit: MIT requires the notice to accompany the copy, and
+        # the exporter refuses to inline a library whose notice is absent. A payload holding orphan
+        # bytes must therefore read as NOT carrying that library, so it gets reconciled rather than
+        # silently retained (which is how ~1,265 KB of unlicensed bytes could have survived).
+        self.assertEqual(
+            vendored_libs.carried_libs({"mermaidGzipBase64": "AAA", "chartjsGzipBase64": "BBB",
+                                        "chartjsLicense": "MIT"}),
+            {"chartjs"})
+
+    def test_a_library_whose_bytes_are_blank_is_not_counted_as_carried(self):
+        self.assertEqual(
+            vendored_libs.carried_libs({"mermaidGzipBase64": "   ", "mermaidLicense": "MIT"}),
+            set())
+
+    def test_orphan_bytes_are_removed_rather_than_retained(self):
+        # The end-to-end form of the two predicates above.
+        html = _doc(CHART)
+        span = vendored_libs.find_blob(html)
+        obj = vendored_libs.payload_object(html[span[0]:span[1]])
+        del obj["mermaidLicense"]
+        wounded = (html[:span[0]] + vendored_libs.payload_script(obj) + html[span[1]:])
+        out, changed = vendored_libs.apply(wounded, self.blob)
+        self.assertTrue(changed)
+        self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"chartjs"})
+        self.assertLess(len(out), len(wounded), "the orphan mermaid bytes must be gone")
+
+    def test_a_payload_that_is_not_json_is_left_exactly_as_it_is(self):
+        # apply() runs from finalize BEFORE validation, so it must never raise on a hand-edited
+        # document - and it must not silently replace bytes it cannot understand either.
+        for text in ("{not json", "null", "[]", '"a string"', "17", ""):
+            with self.subTest(text=text):
+                html = _doc(CHART)
+                span = vendored_libs.find_blob(html)
+                broken = (html[:span[0]]
+                          + '<script id="cmhVendoredRichLibs" type="application/json">'
+                          + text + "</script>" + html[span[1]:])
+                out, _changed = vendored_libs.apply(broken, self.blob)
+                self.assertIn(text + "</script>", out,
+                              "an unparseable payload must survive byte-for-byte")
+
+    def test_an_unparseable_payload_is_still_moved_out_of_the_head(self):
+        # Structural placement needs no JSON parse, so refusing to parse must not also refuse to
+        # relocate - that would leave a payload on line 7 forever.
+        html = _doc(CHART)
+        span = vendored_libs.find_blob(html)
+        broken = (html[:span[0]]
+                  + '<script id="cmhVendoredRichLibs" type="application/json">{oops</script>'
+                  + html[span[1]:])
+        self.assertLess(vendored_libs.find_blob(broken)[0], broken.lower().find("</head>"))
+        out, changed = vendored_libs.apply(broken, self.blob)
+        self.assertTrue(changed)
+        self.assertGreater(vendored_libs.find_blob(out)[0], out.lower().find("</head>"))
+        self.assertIn("{oops</script>", out)
+
+    def test_a_payload_element_with_an_awkward_tag_is_rewritten_without_corruption(self):
+        # The inner text span must come from the PARSER: a `>` inside a quoted attribute and a
+        # padded closing tag both defeat a find(">")/rfind("<") reconstruction, which is the exact
+        # class of bug that made the original regex detector delete authored content.
+        html = _doc(CHART)
+        span = vendored_libs.find_blob(html)
+        obj = vendored_libs.payload_object(html[span[0]:span[1]])
+        awkward = ('<script id="cmhVendoredRichLibs" type="application/json" title="a > b">'
+                   + vendored_libs.serialize_payload(obj) + "</script   >")
+        doc = html[:span[0]] + awkward + html[span[1]:]
+        out, _changed = vendored_libs.apply(doc, self.blob)
+        self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"chartjs"})
+        # The whole element moved as one unit: no orphaned fragment of the awkward tag is left
+        # behind anywhere in the document.
+        self.assertNotIn('title="a > b"', out.replace(
+            out[slice(*vendored_libs.find_blob(out))], ""))
+
+    def test_a_licence_containing_a_script_end_tag_is_escaped(self):
+        # The payload is inert JSON inside a <script>; a raw `</script>` in any value would close
+        # the element early and spill the rest of the payload into the document as markup.
+        text = vendored_libs.serialize_payload({"encoding": "gzip+base64",
+                                                "mermaidLicense": "MIT </script> tail"})
+        self.assertNotIn("</script", text)
+        self.assertIn("\\u003C", text)
+
+    def test_the_serializer_matches_the_builds_own_payload_bytes(self):
+        # The build and the shipped authoring tool must not drift: the build's emitter and this
+        # serializer have to produce identical bytes for identical input, or a reconciled payload
+        # would differ from a freshly built one.
+        obj = vendored_libs.payload_object(self.blob)
+        self.assertEqual(vendored_libs.serialize_payload(obj),
+                         json.dumps(obj, separators=(",", ":"))
+                         .replace("<", "\\u003C").replace(">", "\\u003E").replace("&", "\\u0026"))
+
+    def test_reconciliation_is_idempotent(self):
+        once, changed = vendored_libs.apply(_doc(CHART), self.blob)
+        self.assertTrue(changed)
+        twice, changed_again = vendored_libs.apply(once, self.blob)
+        self.assertFalse(changed_again, "a settled document must not be rewritten again")
+        self.assertEqual(twice, once)
+
+    def test_the_reconciled_payload_uses_the_builds_canonical_key_order(self):
+        # Without a fixed order the payload becomes a function of the document's finalize HISTORY
+        # rather than of its content, so two identical documents could differ byte for byte.
+        out, _ = vendored_libs.apply(_doc(MERMAID), self.blob)
+        keys = list(self._payload(out).keys())
+        self.assertEqual(keys, [k for k in vendored_libs.CANONICAL_KEYS if k in keys])
+
+    def test_a_partial_payload_is_left_alone_when_no_source_is_reachable(self):
+        # finalize tolerates an unreachable template; completing a half is impossible then, and
+        # guessing is worse than doing nothing.
+        chart_only, _ = vendored_libs.apply(_doc(CHART), self.blob)
+        grew = chart_only.replace(
+            "</h1>", '</h1>\n<pre class="mermaid cm-skip">graph TD; A--&gt;B;</pre>', 1)
+        out, changed = vendored_libs.apply(grew, None)
+        self.assertFalse(changed)
+        self.assertEqual(out, grew)
+
+
 class RuntimeDifferentialTests(unittest.TestCase):
     """CMH-SIZE-01: the regex detector agrees with the runtime's selectors on every real document.
 
@@ -1183,6 +1375,54 @@ class RuntimeParityTests(unittest.TestCase):
             "rather than leaving it unpinned")
         return {name: [p.strip() for p in value.split(",") if p.strip()]
                 for name, value in values.items()}
+
+    def test_the_per_library_families_match_the_runtimes_own_two_constants(self):
+        # The union parity test above proves the detector and the runtime agree about what rich
+        # content IS. It says nothing about WHICH library each shape belongs to - and once the
+        # payload is per-library, mis-attributing a selector drops the wrong half. The runtime keeps
+        # the two questions in separate constants (`_offlineDocUsesMermaid` queries CMH_MERMAID_SEL,
+        # `_offlineDocUsesCharts` queries CMH_CHART_CANVAS_SEL), so pin each family to its own.
+        mermaid_only = _doc(MERMAID)
+        chart_only = _doc(CHART)
+        mermaid_scan = vendored_libs._scan(mermaid_only)
+        chart_scan = vendored_libs._scan(chart_only)
+        self.assertTrue(mermaid_scan.uses_mermaid)
+        self.assertFalse(mermaid_scan.uses_charts,
+                         "a diagram must not be attributed to the chart library")
+        self.assertTrue(chart_scan.uses_charts)
+        self.assertFalse(chart_scan.uses_mermaid,
+                         "a chart must not be attributed to the diagram library")
+
+    def test_every_chart_shape_the_runtime_draws_is_attributed_to_the_chart_family(self):
+        # Each spelling in CMH_CHART_CANVAS_SEL, asserted INDEPENDENTLY so a family that quietly
+        # stops recognising one of them fails here rather than by dropping a needed payload half.
+        shapes = (
+            '<figure class="chart"><canvas id="a"></canvas></figure>',
+            '<canvas id="b" class="cmh-chart"></canvas>',
+            '<canvas id="c" data-cmh-chart-points="[1,2]"></canvas>',
+            '<canvas id="d" data-cmh-chart-source="s"></canvas>',
+        )
+        for shape in shapes:
+            with self.subTest(shape=shape):
+                scan = vendored_libs._scan(_doc("<h1>c</h1>" + shape))
+                self.assertTrue(scan.uses_charts, "not recognised as chart usage")
+                self.assertFalse(scan.uses_mermaid, "wrongly attributed to the diagram library")
+
+    def test_every_diagram_shape_the_runtime_renders_is_attributed_to_the_diagram_family(self):
+        for shape in ('<pre class="mermaid cm-skip">graph TD; A--&gt;B;</pre>',
+                      '<div class="mermaid cm-skip">graph TD; A--&gt;B;</div>'):
+            with self.subTest(shape=shape):
+                scan = vendored_libs._scan(_doc("<h1>d</h1>" + shape))
+                self.assertTrue(scan.uses_mermaid, "not recognised as diagram usage")
+                self.assertFalse(scan.uses_charts, "wrongly attributed to the chart library")
+
+    def test_the_two_families_partition_the_shared_selector_set(self):
+        # The union stays the authority: neither family may grow a selector the runtime does not
+        # declare, and between them they must cover every one it does.
+        self.assertEqual(set(vendored_libs.MERMAID_SELECTORS) | set(vendored_libs.CHART_SELECTORS),
+                         set(vendored_libs.RUNTIME_SELECTORS))
+        self.assertEqual(set(vendored_libs.MERMAID_SELECTORS) & set(vendored_libs.CHART_SELECTORS),
+                         set())
 
     def test_the_selector_set_matches_the_runtimes_exactly(self):
         """Two-directional: catches the runtime ADDING a selector, not just removing one.

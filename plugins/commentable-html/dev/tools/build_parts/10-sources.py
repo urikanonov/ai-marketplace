@@ -78,6 +78,23 @@ def _names():
 # --------------------------------------------------------------------------- #
 # Output builders
 # --------------------------------------------------------------------------- #
+def _shipped_payload_module():
+    """The SHIPPED payload helper (`dev/skill/tools/authoring/vendored_payload.py`).
+
+    The build and the shipped authoring tool must emit byte-identical payloads, so the
+    serialize-and-escape rule has exactly ONE definition and both callers import it. That module is
+    repo source (not a build output) and imports nothing but the standard library, so importing it
+    here creates no ordering dependency on the stage this build writes.
+    """
+    import importlib
+    import sys as _sys
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "skill", "tools", "authoring")
+    if path not in _sys.path:
+        _sys.path.insert(0, path)
+    return importlib.import_module("_vendored_payload")
+
+
 def build_vendored_rich_libs_json(assets_dir):
     vendor_dir = os.path.join(assets_dir, "vendor")
     payload = {
@@ -89,10 +106,12 @@ def build_vendored_rich_libs_json(assets_dir):
         "mermaidLicense": read_vendored_license(vendor_dir, "mermaid.LICENSE"),
         "chartjsLicense": read_vendored_license(vendor_dir, "chart.umd.LICENSE"),
     }
-    return (json.dumps(payload, separators=(",", ":"))
-            .replace("<", "\\u003C")
-            .replace(">", "\\u003E")
-            .replace("&", "\\u0026"))
+    try:
+        return _shipped_payload_module().serialize_payload(payload)
+    except ValueError as exc:
+        # The shared serializer signals with ValueError so it can never abort an agent's
+        # write-back from the authoring path; at BUILD time refusing outright is the right answer.
+        raise SystemExit("build: %s" % exc)
 
 
 def build_inline(css, js, shell, version, mermaid_version, vendored_rich_libs_json=None):
