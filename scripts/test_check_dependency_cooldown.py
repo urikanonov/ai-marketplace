@@ -95,7 +95,7 @@ class TestLockfileDiff(unittest.TestCase):
             }
         }
 
-        changed = cdc.changed_dependency_versions(head, base)
+        changed = cdc.lockfile_diff(head, base).changed
 
         self.assertEqual(changed, {dep("old", "2.0.0"), dep("@scope/new", "1.0.0")})
 
@@ -117,7 +117,7 @@ class TestLockfileDiff(unittest.TestCase):
             }
         }
 
-        self.assertEqual(cdc.changed_dependency_versions(head, base), set())
+        self.assertEqual(cdc.lockfile_diff(head, base).changed, set())
 
     def test_missing_base_lockfile_treats_all_head_entries_as_added(self):
         head = {
@@ -129,7 +129,7 @@ class TestLockfileDiff(unittest.TestCase):
             }
         }
 
-        self.assertEqual(cdc.changed_dependency_versions(head, None), {dep("leaf", "3.0.0")})
+        self.assertEqual(cdc.lockfile_diff(head, None).changed, {dep("leaf", "3.0.0")})
 
     def test_rehoist_same_name_and_version_is_not_reported(self):
         base = {
@@ -149,7 +149,7 @@ class TestLockfileDiff(unittest.TestCase):
             }
         }
 
-        self.assertEqual(cdc.changed_dependency_versions(head, base), set())
+        self.assertEqual(cdc.lockfile_diff(head, base).changed, set())
 
     def test_alias_uses_lockfile_entry_name_instead_of_path_segment(self):
         head = {
@@ -162,7 +162,7 @@ class TestLockfileDiff(unittest.TestCase):
             }
         }
 
-        self.assertEqual(cdc.changed_dependency_versions(head, None), {dep("real-package", "2.0.0")})
+        self.assertEqual(cdc.lockfile_diff(head, None).changed, {dep("real-package", "2.0.0")})
 
     def test_changed_non_registry_dependency_emits_warning_not_cooldown_pair(self):
         head = {
@@ -174,7 +174,8 @@ class TestLockfileDiff(unittest.TestCase):
             }
         }
 
-        changed, warnings = cdc.changed_dependency_versions(head, None, include_warnings=True)
+        result = cdc.lockfile_diff(head, None)
+        changed, warnings = result.changed, result.warnings
 
         self.assertEqual(changed, set())
         self.assertEqual(len(warnings), 1)
@@ -220,13 +221,14 @@ class TestLockfileDiff(unittest.TestCase):
             self.assertEqual(result, expected)
             self.assertEqual(list(result), sorted(result))
 
-    def test_same_commit_returns_empty_tuple_when_warnings_requested(self):
+    def test_same_commit_yields_an_empty_diff(self):
         with mock.patch.object(cdc, "ref_exists", return_value=True), \
                 mock.patch.object(cdc, "rev_parse", return_value="abc"):
-            self.assertEqual(
-                cdc.changed_pairs_from_git("base", "head", "pull_request", include_warnings=True),
-                (set(), []),
-            )
+            result = cdc.diff_from_git("base", "head", "pull_request")
+
+        self.assertEqual(result.changed, set())
+        self.assertEqual(result.warnings, [])
+        self.assertEqual(result.base_versions, {})
 
 
 class TestRegistryFetchFailOpen(unittest.TestCase):
@@ -340,6 +342,15 @@ class TestVersionComparison(unittest.TestCase):
     def test_unparseable_range_matches_nothing(self):
         self.assertFalse(cdc.version_matches_range("", "1.0.0"))
         self.assertFalse(cdc.version_matches_range("~1.2.3", "1.2.3"))
+        self.assertIsNone(cdc.range_covers("~1.2.3", "1.2.3"))
+        self.assertIsNone(cdc.range_covers("", "1.0.0"))
+
+    def test_a_trailing_comma_does_not_void_the_range(self):
+        self.assertTrue(cdc.version_matches_range(">= 1.0.0, ", "1.2.0"))
+
+    def test_a_prerelease_is_outside_a_release_only_range(self):
+        self.assertFalse(cdc.version_matches_range("< 1.0.0", "1.0.0-rc.1"))
+        self.assertTrue(cdc.version_matches_range(">= 1.0.0-alpha, < 1.0.0", "1.0.0-rc.1"))
 
     def test_first_patched_identifier_accepts_both_api_shapes(self):
         self.assertEqual(cdc.first_patched_identifier("3.4.13"), "3.4.13")
@@ -436,6 +447,43 @@ class TestAdvisoryExemption(unittest.TestCase):
         self.assertTrue(cdc.version_matches_range("<= 2.70.1", "2.70.1"))
         self.assertTrue(cdc.version_matches_range(">= 3.8.0, < 4.12.34", "4.0.0"))
         self.assertTrue(cdc.version_matches_range(">= 4.4.0, <= 4.5.0", "4.5.0"))
+
+    def test_advisory_without_a_ghsa_id_grants_nothing(self):
+        advisories = [{"vulnerabilities": DOMPURIFY_ADVISORIES[0]["vulnerabilities"]}]
+
+        self.assertIsNone(cdc.advisory_exemption("dompurify", "3.4.13", {"3.4.11"}, advisories))
+
+    def test_an_unparseable_sibling_range_reads_as_still_vulnerable(self):
+        advisories = [
+            {
+                "ghsa_id": "GHSA-unparseable-0001",
+                "vulnerabilities": [
+                    {
+                        "package": {"ecosystem": "npm", "name": "pkg"},
+                        "vulnerable_version_range": ">= 1.0.0, < 1.5.0",
+                        "first_patched_version": "1.5.0",
+                    },
+                    {
+                        "package": {"ecosystem": "npm", "name": "pkg"},
+                        "vulnerable_version_range": "^1.5.0",
+                        "first_patched_version": "1.9.0",
+                    },
+                ],
+            }
+        ]
+
+        self.assertIsNone(cdc.advisory_exemption("pkg", "1.5.1", {"1.2.0"}, advisories))
+
+    def test_a_zero_major_minor_is_its_own_release_line(self):
+        advisories = [advisory("GHSA-zero-0001", "pkg", "< 0.1.1", "0.1.1")]
+
+        self.assertIsNotNone(cdc.advisory_exemption("pkg", "0.1.2", {"0.1.0"}, advisories))
+        self.assertIsNone(cdc.advisory_exemption("pkg", "0.9.0", {"0.1.0"}, advisories))
+
+    def test_an_unparseable_first_patched_version_grants_nothing(self):
+        advisories = [advisory("GHSA-unknown-0001", "pkg", "< 1.0.0", "unknown")]
+
+        self.assertIsNone(cdc.advisory_exemption("pkg", "0.9.9", {"0.5.0"}, advisories))
 
     def test_exemption_is_deterministic_when_several_advisories_match(self):
         first = cdc.advisory_exemption("dompurify", "3.4.13", {"3.4.10"}, DOMPURIFY_ADVISORIES)
@@ -672,18 +720,92 @@ class TestAdvisoryFetchFailOpen(unittest.TestCase):
             def read(self):
                 return self._body
 
-        calls = []
+        for link in (
+            "https://evil.example/advisories",
+            "https://api.github.com.evil.example/advisories",
+            "https://api.github.com/advisories/../other",
+            "https://user@api.github.com/advisories",
+        ):
+            calls = []
+
+            def fake_urlopen(request, timeout=None, _link=link):
+                calls.append(request.full_url)
+                return Response(b"[]", '<%s>; rel="next"' % _link)
+
+            with mock.patch.object(cdc.urllib.request, "urlopen", side_effect=fake_urlopen):
+                advisories, warnings = cdc.fetch_advisories("dompurify")
+
+            self.assertEqual(advisories, [], link)
+            self.assertEqual(warnings, [], link)
+            self.assertEqual(len(calls), 1, link)
+
+    def test_a_failure_after_the_first_page_keeps_what_was_already_read(self):
+        second = cdc.ADVISORY_API_URL + "?page=2"
+
+        class Response:
+            def __init__(self, body, link):
+                self._body = body
+                self.headers = {"Link": link} if link else {}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return self._body
 
         def fake_urlopen(request, timeout=None):
-            calls.append(request.full_url)
-            return Response(b"[]", '<https://evil.example/advisories>; rel="next"')
+            if request.full_url == second:
+                raise cdc.urllib.error.HTTPError(second, 404, "Not Found", {}, None)
+            return Response(b'[{"ghsa_id": "GHSA-page-one"}]', '<%s>; rel="next"' % second)
 
         with mock.patch.object(cdc.urllib.request, "urlopen", side_effect=fake_urlopen):
             advisories, warnings = cdc.fetch_advisories("dompurify")
 
+        self.assertEqual([a["ghsa_id"] for a in advisories], ["GHSA-page-one"])
+        self.assertEqual(len(warnings), 1)
+
+    def test_hitting_the_page_cap_warns_that_the_list_is_truncated(self):
+        class Response:
+            headers = {"Link": '<%s?page=n>; rel="next"' % cdc.ADVISORY_API_URL}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b"[]"
+
+        with mock.patch.object(cdc.urllib.request, "urlopen", return_value=Response()) as urlopen:
+            advisories, warnings = cdc.fetch_advisories("dompurify")
+
         self.assertEqual(advisories, [])
-        self.assertEqual(warnings, [])
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(urlopen.call_count, cdc.ADVISORY_MAX_PAGES)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("truncated", warnings[0])
+
+    def test_the_lookup_phase_stops_once_its_time_budget_is_spent(self):
+        changed = {dep("aaa", "1.0.1"), dep("bbb", "1.0.1")}
+        base = {d: {"1.0.0"} for d in changed}
+        calls = []
+        clock = iter([0, 0, cdc.GLOBAL_DEADLINE_SECONDS + 1])
+
+        def fake_fetch(name, deadline_at=None):
+            calls.append(name)
+            return [], []
+
+        with mock.patch.object(cdc, "fetch_advisories", side_effect=fake_fetch), \
+                mock.patch.object(cdc.time, "monotonic", side_effect=lambda: next(clock)):
+            exempt, warnings = cdc.security_exemptions(changed, base, changed)
+
+        self.assertEqual(exempt, {})
+        self.assertEqual(calls, ["aaa"])
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("time budget", warnings[0])
 
 
 class TestLockfileDiffBaseVersions(unittest.TestCase):
@@ -748,6 +870,62 @@ class TestLockfileDiffBaseVersions(unittest.TestCase):
         self.assertEqual(result.changed, {dep("mermaid", "11.16.1")})
         self.assertEqual(result.attested, set())
 
+    def test_a_scope_swap_that_keeps_the_basename_is_not_attested(self):
+        head = {
+            "packages": {
+                "": {},
+                "node_modules/mermaid": {
+                    "name": "mermaid",
+                    "version": "11.16.1",
+                    "resolved": "https://registry.npmjs.org/@evil/mermaid/-/mermaid-11.16.1.tgz",
+                },
+            }
+        }
+
+        result = cdc.lockfile_diff(head, {"packages": {"": {}}})
+
+        self.assertEqual(result.changed, {dep("mermaid", "11.16.1")})
+        self.assertEqual(result.attested, set())
+
+    def test_a_resolved_url_with_a_query_or_extra_segments_is_not_attested(self):
+        for resolved in (
+            "https://registry.npmjs.org/pkg/-/pkg-1.0.0.tgz?token=abc",
+            "https://registry.npmjs.org/evil/pkg/-/pkg-1.0.0.tgz",
+            "http://registry.npmjs.org/pkg/-/pkg-1.0.0.tgz",
+            "https://user@registry.npmjs.org/pkg/-/pkg-1.0.0.tgz",
+        ):
+            head = {
+                "packages": {
+                    "": {},
+                    "node_modules/pkg": {"version": "1.0.0", "resolved": resolved},
+                }
+            }
+
+            self.assertEqual(cdc.lockfile_diff(head, {"packages": {"": {}}}).attested, set(), resolved)
+
+    def test_simultaneous_bumps_do_not_borrow_each_others_base_versions(self):
+        base = {
+            "packages": {
+                "": {},
+                "node_modules/pkg": registry_entry("pkg", "1.0.0"),
+                "node_modules/x/node_modules/pkg": registry_entry("pkg", "1.5.0"),
+            }
+        }
+        head = {
+            "packages": {
+                "": {},
+                "node_modules/pkg": registry_entry("pkg", "1.0.1"),
+                "node_modules/x/node_modules/pkg": registry_entry("pkg", "1.6.0"),
+            }
+        }
+
+        result = cdc.lockfile_diff(head, base)
+
+        self.assertEqual(
+            result.base_versions,
+            {dep("pkg", "1.0.1"): {"1.0.0"}, dep("pkg", "1.6.0"): {"1.5.0"}},
+        )
+
     def test_a_scoped_package_is_attested(self):
         head = {
             "packages": {
@@ -759,6 +937,81 @@ class TestLockfileDiffBaseVersions(unittest.TestCase):
         result = cdc.lockfile_diff(head, {"packages": {"": {}}})
 
         self.assertEqual(result.attested, {dep("@scope/pkg", "1.2.3")})
+
+
+class TestDiffFromGit(unittest.TestCase):
+    def _run(self, lockfiles):
+        def fake_lockfile_at(ref, path):
+            return lockfiles[path]["head" if ref == "head" else "base"]
+
+        with mock.patch.object(cdc, "ref_exists", return_value=True), \
+                mock.patch.object(cdc, "rev_parse", side_effect=lambda ref: ref), \
+                mock.patch.object(cdc, "merge_base", return_value="base"), \
+                mock.patch.object(cdc, "discover_lockfiles", return_value=tuple(lockfiles)), \
+                mock.patch.object(cdc, "lockfile_at", side_effect=fake_lockfile_at):
+            return cdc.diff_from_git("base", "head", "pull_request")
+
+    def test_a_version_another_lockfile_still_pins_closes_no_alert(self):
+        bumped = {
+            "base": {"packages": {"": {}, "node_modules/pkg": registry_entry("pkg", "1.0.0")}},
+            "head": {"packages": {"": {}, "node_modules/pkg": registry_entry("pkg", "1.5.0")}},
+        }
+        untouched = {
+            "base": {"packages": {"": {}, "node_modules/pkg": registry_entry("pkg", "1.0.0")}},
+            "head": {"packages": {"": {}, "node_modules/pkg": registry_entry("pkg", "1.0.0")}},
+        }
+
+        result = self._run({"a/package-lock.json": bumped, "b/package-lock.json": untouched})
+
+        self.assertEqual(result.changed, {dep("pkg", "1.5.0")})
+        self.assertEqual(result.base_versions, {})
+
+    def test_a_bump_no_other_lockfile_holds_back_keeps_its_base_version(self):
+        bumped = {
+            "base": {"packages": {"": {}, "node_modules/pkg": registry_entry("pkg", "1.0.0")}},
+            "head": {"packages": {"": {}, "node_modules/pkg": registry_entry("pkg", "1.5.0")}},
+        }
+
+        result = self._run({"a/package-lock.json": bumped})
+
+        self.assertEqual(result.base_versions, {dep("pkg", "1.5.0"): {"1.0.0"}})
+
+
+class TestMainWiring(unittest.TestCase):
+    def _diff(self, changed, base_versions):
+        return cdc.LockfileDiff(
+            changed=set(changed), base_versions=dict(base_versions), attested=set(changed)
+        )
+
+    def test_a_clean_run_never_looks_up_an_advisory(self):
+        changed = {dep("pkg", "2.0.0")}
+        old = datetime.now(timezone.utc) - timedelta(days=90)
+
+        with mock.patch.object(cdc, "diff_from_git", return_value=self._diff(changed, {})), \
+                mock.patch.object(cdc, "fetch_publish_times", return_value=({dep("pkg", "2.0.0"): old}, [])), \
+                mock.patch.object(cdc, "fetch_advisories", side_effect=AssertionError("queried")):
+            self.assertEqual(cdc.main(["--base", "a", "--head", "b"]), 0)
+
+    def test_a_fresh_security_patch_passes_and_a_fresh_ordinary_bump_fails(self):
+        fresh = datetime.now(timezone.utc) - timedelta(days=1)
+        patched = dep("dompurify", "3.4.13")
+        ordinary = dep("left-pad", "9.9.9")
+        diff = self._diff({patched, ordinary}, {patched: {"3.4.11"}})
+        times = {patched: fresh, ordinary: fresh}
+
+        def fake_fetch(name, deadline_at=None):
+            return DOMPURIFY_ADVISORIES if name == "dompurify" else [], []
+
+        with mock.patch.object(cdc, "diff_from_git", return_value=diff), \
+                mock.patch.object(cdc, "fetch_publish_times", return_value=(times, [])), \
+                mock.patch.object(cdc, "fetch_advisories", side_effect=fake_fetch):
+            self.assertEqual(cdc.main(["--base", "a", "--head", "b"]), 1)
+
+        diff = self._diff({patched}, {patched: {"3.4.11"}})
+        with mock.patch.object(cdc, "diff_from_git", return_value=diff), \
+                mock.patch.object(cdc, "fetch_publish_times", return_value=({patched: fresh}, [])), \
+                mock.patch.object(cdc, "fetch_advisories", side_effect=fake_fetch):
+            self.assertEqual(cdc.main(["--base", "a", "--head", "b"]), 0)
 
 
 if __name__ == "__main__":

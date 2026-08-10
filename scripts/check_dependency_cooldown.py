@@ -25,14 +25,21 @@ unauthenticated rate limit.
 The exemption is deliberately narrow, because it opts a fresh release out of a supply-chain
 hygiene control:
 
-  - The vulnerable version must be GONE from the head lockfile. A bump that leaves the vulnerable
-    copy pinned somewhere does not close the alert, so it is not exempt.
+  - The vulnerable version must be GONE from the head lockfiles. A bump that leaves the vulnerable
+    copy pinned anywhere in the tree does not close the alert, so it is not exempt.
   - The new version must stay in the patched release line (it shares a major with
-    `first_patched_version`). Dependabot's own security update takes the nearest fixed version; a
-    leap to a brand-new major is an upgrade, and cooldown still applies to it.
-  - The lockfile entry must corroborate itself: its `resolved` tarball URL has to name the same
-    package and version the entry claims, so an entry cannot borrow another package's advisory.
+    `first_patched_version`, and the minor too when that major is 0). Dependabot's own security
+    update takes the nearest fixed version; a leap to a brand-new major is an upgrade, and cooldown
+    still applies to it.
+  - The lockfile entry must corroborate itself: its `resolved` tarball URL has to be exactly the
+    registry path for the package and version the entry claims, so an entry cannot borrow another
+    package's advisory.
   - An advisory that GitHub has withdrawn never produced an alert, and never grants an exemption.
+  - A vulnerable range the parser does not recognize reads as STILL VULNERABLE, never as clean.
+
+The exemption is granted to a `name@version` pair, not to one lockfile entry: cooldown measures how
+long that published artifact has been public, so once a bump has been established as the fix for an
+alert, the same artifact is exempt wherever this PR introduces it.
 
 Every lookup fails OPEN: an unreachable, rate-limited, unauthorized, or malformed response yields
 no exemptions and a warning, so the gate keeps its previous behavior instead of blocking a PR.
@@ -236,19 +243,45 @@ def _non_registry_warning(dep):
 def resolved_attests_identity(dep):
     """True when the entry's `resolved` tarball URL names the same package and version it claims.
 
-    npm writes `https://registry.npmjs.org/<name>/-/<basename>-<version>.tgz`, so a mismatch means
-    the entry's `name`/`version` describe something other than the tarball that will be installed.
-    Such an entry never earns a security exemption - it could otherwise borrow another package's
-    advisory.
+    npm writes `https://registry.npmjs.org/<name>/-/<basename>-<version>.tgz`, so anything but that
+    exact path means the entry's `name`/`version` describe something other than the tarball that
+    will be installed. Such an entry never earns a security exemption - it could otherwise borrow
+    another package's advisory (a scope swap keeps the same basename).
     """
     try:
-        parsed = urllib.parse.urlparse(str(dep.resolved or ""))
+        parsed = urllib.parse.urlsplit(str(dep.resolved or ""))
+        port = parsed.port
     except ValueError:
         return False
-    if parsed.netloc.lower() != NPM_REGISTRY_HOST:
+    if parsed.scheme.lower() != "https" or (parsed.hostname or "").lower() != NPM_REGISTRY_HOST:
+        return False
+    if parsed.username or parsed.password or port not in (None, 443):
+        return False
+    if parsed.query or parsed.fragment:
         return False
     basename = dep.name.rsplit("/", 1)[-1]
-    return parsed.path.endswith("/-/%s-%s.tgz" % (basename, dep.version))
+    expected = "/%s/-/%s-%s.tgz" % (dep.name, basename, dep.version)
+    return urllib.parse.unquote(parsed.path) == expected
+
+
+def _pair_replacements(removed, added):
+    """Match each added version to the newest removed version at or below it.
+
+    npm records no lineage, so when a package is pinned several times a bump has to be paired by
+    order. Matching monotonically keeps a routine `1.5.0 -> 1.6.0` bump from borrowing the
+    vulnerable `1.0.0` that a sibling `1.0.0 -> 1.0.1` security bump replaced.
+    """
+    available = sorted(removed, key=version_sort_key)
+    pairs = {}
+    for version in sorted(added, key=version_sort_key):
+        candidate = None
+        for index in range(len(available) - 1, -1, -1):
+            if compare_versions(available[index], version) <= 0:
+                candidate = available.pop(index)
+                break
+        if candidate is not None:
+            pairs[version] = candidate
+    return pairs
 
 
 def lockfile_diff(head_lockfile, base_lockfile):
@@ -264,6 +297,8 @@ def lockfile_diff(head_lockfile, base_lockfile):
         removed_versions.setdefault(base_dep.name, set()).add(base_dep.version)
     base_identities = {DependencyVersion(d.name, d.version) for d in base_deps}
     result = LockfileDiff()
+    added_versions = {}
+    attesting = {}
     for head_dep in sorted(head_deps, key=lambda d: (d.name, d.version, d.resolved)):
         identity = DependencyVersion(head_dep.name, head_dep.version)
         if identity in base_identities:
@@ -272,20 +307,14 @@ def lockfile_diff(head_lockfile, base_lockfile):
             result.warnings.append(_non_registry_warning(head_dep))
             continue
         result.changed.add(identity)
-        replaced = removed_versions.get(head_dep.name)
-        if replaced:
-            result.base_versions.setdefault(identity, set()).update(replaced)
-        if resolved_attests_identity(head_dep):
-            result.attested.add(identity)
+        added_versions.setdefault(head_dep.name, set()).add(head_dep.version)
+        attesting[identity] = attesting.get(identity, False) or resolved_attests_identity(head_dep)
+    for name, added in added_versions.items():
+        for version, replaced in _pair_replacements(removed_versions.get(name, set()), added).items():
+            result.base_versions.setdefault(DependencyVersion(name, version), set()).add(replaced)
+    result.attested.update(identity for identity, ok in attesting.items() if ok)
     result.warnings.sort()
     return result
-
-
-def changed_dependency_versions(head_lockfile, base_lockfile, include_warnings=False):
-    result = lockfile_diff(head_lockfile, base_lockfile)
-    if include_warnings:
-        return result.changed, result.warnings
-    return result.changed
 
 
 def diff_from_git(base_ref, head_ref, event):
@@ -306,21 +335,25 @@ def diff_from_git(base_ref, head_ref, event):
 
     from_ref = base_ref if event == "push" else merge_base(base_ref, head_ref)
     result = LockfileDiff()
+    head_versions = {}
     for path in discover_lockfiles():
         head_lockfile = lockfile_at(head_ref, path)
         if head_lockfile is None:
             continue
+        for head_dep in parse_lockfile_dependencies(head_lockfile):
+            head_versions.setdefault(head_dep.name, set()).add(head_dep.version)
         base_lockfile = lockfile_at(from_ref, path)
         result.merge(lockfile_diff(head_lockfile, base_lockfile))
+    # A version another lockfile still pins is not gone from the tree, so it closes no alert.
+    for identity in sorted(result.base_versions):
+        surviving = head_versions.get(identity.name, set())
+        remaining = result.base_versions[identity] - surviving
+        if remaining:
+            result.base_versions[identity] = remaining
+        else:
+            del result.base_versions[identity]
     result.warnings.sort()
     return result
-
-
-def changed_pairs_from_git(base_ref, head_ref, event, include_warnings=False):
-    result = diff_from_git(base_ref, head_ref, event)
-    if include_warnings:
-        return result.changed, result.warnings
-    return result.changed
 
 
 def parse_npm_time(value):
@@ -443,13 +476,24 @@ def _identifier_key(part):
     return (1, 0, part)
 
 
-def version_sort_key(version):
-    """Order versions the way semver does: release parts numerically, prerelease below release."""
+def _split_version(version):
     text = str(version or "").strip()
     if text[:1] in ("v", "V"):
         text = text[1:]
     text = text.split("+", 1)[0]
     core, _, prerelease = text.partition("-")
+    return core, prerelease
+
+
+def is_parseable_version(version):
+    """True when the text looks like a version at all (a digit, then dotted parts)."""
+    core, _ = _split_version(version)
+    return bool(core) and all(part.isdigit() for part in core.split("."))
+
+
+def version_sort_key(version):
+    """Order versions the way semver does: release parts numerically, prerelease below release."""
+    core, prerelease = _split_version(version)
     release = []
     for chunk in core.split("."):
         digits = "".join(ch for ch in chunk if ch.isdigit())
@@ -469,18 +513,35 @@ def compare_versions(left, right):
     return 1 if left_key > right_key else 0
 
 
-def version_matches_range(range_text, version):
-    """True when `version` satisfies a GitHub advisory `vulnerable_version_range`.
+def range_covers(range_text, version):
+    """Whether `version` satisfies an advisory `vulnerable_version_range`; None if unparseable.
 
-    Unrecognized syntax matches nothing, so an unparseable range never grants an exemption.
+    A caller must treat None as "cannot tell", never as "not vulnerable" - an unrecognized range
+    that silently read as clean would re-open the hole the sibling-range check closes.
     """
     if not isinstance(range_text, str) or not range_text.strip():
-        return False
+        return None
+    constraints = []
     for raw in range_text.split(","):
-        match = _CONSTRAINT_RE.match(raw.strip())
+        chunk = raw.strip()
+        if not chunk:
+            continue
+        match = _CONSTRAINT_RE.match(chunk)
         if not match:
+            return None
+        constraints.append((match.group(1) or "=", match.group(2)))
+    if not constraints:
+        return None
+    # node-semver keeps a prerelease out of a range unless a bound pins the same release tuple.
+    _, candidate_prerelease = _split_version(version)
+    if candidate_prerelease:
+        release = version_sort_key(version)[0]
+        if not any(
+            _split_version(bound)[1] and version_sort_key(bound)[0] == release
+            for _, bound in constraints
+        ):
             return False
-        operator, bound = match.group(1) or "=", match.group(2)
+    for operator, bound in constraints:
         order = compare_versions(version, bound)
         if operator == "<" and order >= 0:
             return False
@@ -495,12 +556,21 @@ def version_matches_range(range_text, version):
     return True
 
 
+def version_matches_range(range_text, version):
+    """`range_covers` collapsed to a bool; an unparseable range matches nothing."""
+    return range_covers(range_text, version) is True
+
+
 def first_patched_identifier(value):
     """Read `first_patched_version` from either API shape (advisory string, alert object)."""
     if isinstance(value, dict):
         value = value.get("identifier")
-    if isinstance(value, str) and value.strip():
-        return value.strip()
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (str, int, float)):
+        text = str(value).strip()
+        if text:
+            return text
     return None
 
 
@@ -524,7 +594,18 @@ def _package_vulnerabilities(advisory, name):
 
 
 def _same_release_line(version, patched):
-    return version_sort_key(version)[0][0] == version_sort_key(patched)[0][0]
+    """Whether `version` is in the patched version's compatibility line.
+
+    Under semver a `0.x` minor is itself a compatibility boundary, so major zero compares on the
+    minor too. An unparseable patched version has no line and never matches.
+    """
+    if not is_parseable_version(version) or not is_parseable_version(patched):
+        return False
+    version_release = version_sort_key(version)[0]
+    patched_release = version_sort_key(patched)[0]
+    if version_release[0] != patched_release[0]:
+        return False
+    return version_release[0] != 0 or version_release[1] == patched_release[1]
 
 
 def advisory_exemption(name, version, base_versions, advisories):
@@ -543,12 +624,16 @@ def advisory_exemption(name, version, base_versions, advisories):
             continue
         if advisory.get("withdrawn_at"):
             continue
+        ghsa_id = str(advisory.get("ghsa_id") or "")
+        if not ghsa_id:
+            continue
         entries = _package_vulnerabilities(advisory, name)
         if not entries:
             continue
-        if any(version_matches_range(e.get("vulnerable_version_range"), version) for e in entries):
+        coverage = [range_covers(e.get("vulnerable_version_range"), version) for e in entries]
+        # None is "cannot tell": an unrecognized range must read as still vulnerable, not clean.
+        if any(covered is not False for covered in coverage):
             continue
-        ghsa_id = str(advisory.get("ghsa_id") or "")
         for entry in entries:
             vulnerable_range = entry.get("vulnerable_version_range")
             patched = first_patched_identifier(entry.get("first_patched_version"))
@@ -585,9 +670,27 @@ def _next_advisory_page(response):
         url = section[0].strip()
         if url.startswith("<") and url.endswith(">"):
             url = url[1:-1]
-        if url.startswith(ADVISORY_API_URL):
+        if _is_advisory_url(url):
             return url
     return None
+
+
+def _is_advisory_url(url):
+    """Only a URL on the advisory endpoint itself may be followed."""
+    expected = urllib.parse.urlsplit(ADVISORY_API_URL)
+    try:
+        parts = urllib.parse.urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return False
+    return (
+        parts.scheme.lower() == expected.scheme
+        and (parts.hostname or "").lower() == expected.hostname
+        and not parts.username
+        and not parts.password
+        and port in (None, 443)
+        and parts.path == expected.path
+    )
 
 
 def _fetch_advisory_page(url, deadline_at):
@@ -627,7 +730,12 @@ def _fetch_advisory_page(url, deadline_at):
 
 
 def fetch_advisories(name, deadline_at=None):
-    """Fetch reviewed, non-withdrawn npm advisories affecting `name`. Any failure returns none."""
+    """Fetch reviewed, non-withdrawn npm advisories affecting `name`.
+
+    Whatever pages were read are returned even when a later page fails, since a partial list can
+    only ever miss an exemption, never invent one. A failure or a truncated list is reported as a
+    warning so the log explains a denial.
+    """
     if deadline_at is None:
         deadline_at = time.monotonic() + ADVISORY_DEADLINE_SECONDS
     query = urllib.parse.urlencode(
@@ -644,13 +752,15 @@ def fetch_advisories(name, deadline_at=None):
     for _ in range(ADVISORY_MAX_PAGES):
         page, error = _fetch_advisory_page(url, deadline_at)
         if error is not None:
-            return [], [_advisory_warning(name, error)]
+            return advisories, [_advisory_warning(name, error)]
         payload, next_url = page
         advisories.extend(payload)
         if not next_url:
             return advisories, []
         url = next_url
-    return advisories, []
+    return advisories, [
+        _advisory_warning(name, "advisory list truncated at %d pages" % ADVISORY_MAX_PAGES)
+    ]
 
 
 def security_exemptions(changed_pairs, base_versions, attested=None):
@@ -663,8 +773,14 @@ def security_exemptions(changed_pairs, base_versions, attested=None):
     ]
     if not candidates:
         return exemptions, warnings
+    # One budget for the whole phase: the job has its own timeout, and a blackholed API must not
+    # red the check by wall clock after promising to fail open.
+    deadline_at = time.monotonic() + GLOBAL_DEADLINE_SECONDS
     for name in sorted({dep.name for dep in candidates}):
-        advisories, name_warnings = fetch_advisories(name)
+        if time.monotonic() >= deadline_at:
+            warnings.append(_advisory_warning(name, "advisory lookups exceeded their time budget"))
+            continue
+        advisories, name_warnings = fetch_advisories(name, deadline_at)
         warnings.extend(name_warnings)
         if not advisories:
             continue

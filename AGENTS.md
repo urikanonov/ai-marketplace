@@ -753,14 +753,16 @@ survival check above is still the gate for that. The `pre-commit` hook runs it i
   that would otherwise FAIL, so a clean run issues no advisory request at all.
 - The exemption is deliberately NARROW, because it opts a fresh release out of a supply-chain
   hygiene control - do not widen it without the same care. All of these must hold: the base
-  (currently pinned) version matched a non-withdrawn advisory's vulnerable range; the head lockfile
-  no longer pins that vulnerable version (a bump that leaves a vulnerable copy behind closes no
-  alert); the new version sits outside EVERY vulnerable range that advisory records for the package
+  (currently pinned) version matched a non-withdrawn advisory's vulnerable range; no head lockfile
+  still pins that vulnerable version (a bump that leaves a vulnerable copy behind closes no alert);
+  the new version sits outside EVERY vulnerable range that advisory records for the package
   and at or above `first_patched_version`, in that patched version's release line (a leap to a
   brand-new major is an upgrade, and cooldown still applies); and the lockfile entry's `resolved`
-  tarball URL names the same package and version the entry claims, so an entry cannot borrow another
-  package's advisory. Every advisory lookup fails OPEN (an unreachable, rate-limited, unauthorized,
-  or malformed response exempts nothing and warns), so the gate never blocks a PR on a flaky API.
+  tarball URL is exactly the registry path for the package and version the entry claims, so an entry
+  cannot borrow another package's advisory. A vulnerable range the parser does not recognize reads
+  as still vulnerable, never as clean. Every advisory lookup fails OPEN (an unreachable,
+  rate-limited, unauthorized, or malformed response exempts nothing and warns), and the whole lookup
+  phase runs under one time budget, so the gate never blocks a PR on a flaky API.
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.
 - Spec-and-test gate (see "Spec-and-test discipline"): a pull request that adds or changes a feature
