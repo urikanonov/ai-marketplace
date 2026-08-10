@@ -235,7 +235,10 @@ async function waitForMermaid(page) {
 
 async function routeVendoredMermaid(context) {
   const dist = path.resolve(HERE, "..", "node_modules", "mermaid", "dist");
-  await context.route("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/**", async (route) => {
+  // Version-AGNOSTIC on purpose (CMH-BUILD-24): the pinned mermaid version is single-sourced from
+  // package.json and restamped into the shell on every build, so a literal version here would stop
+  // matching on the next bump and the catch-all abort below would silently starve mermaid.
+  await context.route(/^https:\/\/cdn\.jsdelivr\.net\/npm\/mermaid@[^/]+\/dist\//, async (route) => {
     const requestPath = new URL(route.request().url()).pathname;
     const relative = decodeURIComponent(requestPath.replace(/^.*\/dist\//, "")).replace(/\//g, path.sep);
     const fileName = path.resolve(dist, relative);

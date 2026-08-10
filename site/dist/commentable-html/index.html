@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.830.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.831.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,25 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.831.0] - 2026-08-10</h3></div>
+            <div class="group-label">Security</div>
+            <ul>
+              <li>The vendored mermaid copy that <code>Export Offline</code> inlines is bumped from <code>11.16.0</code> to <code>11.16.1</code>, which closes five upstream advisories: an infinite-loop denial of service in XY charts, a denial of service in radar diagrams, prototype pollution in architecture diagrams and in the configuration APIs, and a CSS injection that applied to elements SIBLING to the diagram. The same bump moves the version-pinned jsDelivr import the ONLINE render path uses, so both render paths land on the fixed release. The transitive <code>dompurify</code> bump that rides with it (<code>3.4.11</code> to <code>3.4.13</code>) closes two more: an <code>IN_PLACE</code> hook removal that left a detached subtree executable (XSS), and a custom-element hook bypass.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The tutorial-screenshot capture no longer breaks on a mermaid bump (<code>CMH-BUILD-24</code>). The capture aborts every remote fetch to stay hermetic and lets exactly one route serve mermaid from the local <code>node_modules</code>, but that route pinned a LITERAL <code>mermaid@11.16.0</code> while the URL it has to match is single-sourced from <code>package.json</code>. The two parted company the moment the dependency moved: mermaid never loaded, and <code>npm run shots</code> failed on a <code>waitForMermaid</code> timeout that named nothing. The route is now version-agnostic (and still narrow - a different package, or the same path on a different host, is aborted as before), matching what the Playwright helper already did.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.830.0] - 2026-08-09</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The in-document <code>Contents</code> table of contents and the side navigation menu now show the SAME number for the same heading. <code>generate_toc.py</code> used to emit one flat <code>&lt;ol&gt;</code>, so the browser&#x27;s list marker numbered a subsection as if it were a top-level section (<code>4</code>) while the side menu called the same heading <code>3.1</code>, and a reader could not cross-reference the two. The generated Contents list now carries the number itself - the number the heading displays when the document numbers its own sections, else a hierarchical <code>1</code>, <code>1.1</code>, <code>1.2</code>, <code>2</code> computed from the heading depth - and the side menu reads that number instead of computing a second one, so both surfaces are driven by one source. The number is a <code>cm-skip</code> span carrying its own separator, so re-baking a document&#x27;s Contents list adds no counted text and never moves an existing comment&#x27;s anchor, and the generated list suppresses its own ordered-list marker inline so a document whose embedded layer predates this release is not double-numbered. A hand-authored <code>.cm-toc</code> is untouched and keeps its browser marker, and the author-numbered de-dup (CMH-TOC-10) still holds. Two notes for an existing document: a Contents list an OLDER version generated keeps its flat marker until <code>generate_toc.py</code> (or <code>finalize.py --toc</code>) is re-run, because an upgrade never rewrites <code>#commentRoot</code>; and on that re-bake a document that numbers only SOME of its headings now leaves the unnumbered entries bare, matching the side menu, where the list marker used to number them.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.829.0] - 2026-08-09</h3></div>
             <div class="group-label">Changed</div>
@@ -509,8 +522,6 @@
               <li>The side-menu <strong>Filter sections</strong> box now matches SECTION TITLES ONLY. It used to search each entry&#x27;s heading PLUS the prose that entry owns, so a query that appeared nowhere in a title - a word buried in one paragraph - still kept that section and its menu entry listed, which made the filter noisy and surprising for a reader who expects it to narrow the list of titles. Matching is still case-insensitive, and both the query and the title are now compared with their internal whitespace runs collapsed and trimmed, so a heading broken across source lines matches the words a reader actually sees. The title a query sees is what the menu shows: the entry label plus the number the DOCUMENT itself supplies, so typing <code>10.3</code> still finds the row that reads <code>10.3 Vendor exposure</code> whether the author left that number in the label or <code>generate_toc</code> moved it into its own span. The sequential number the runtime computes for a document that carries none is chrome rather than title text and never matches, and the review status mark is a CSS pseudo-element, so it cannot leak in either. The row and the filter now resolve one title per entry, so a query can never surface a row whose title the reader cannot read: an author nav link with no text of its own falls back to the text of the heading it targets (minus a leading number the menu already shows in its own span), and that same title is what the row renders. (CMH-TOC-09)</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.828.0] - 2026-08-09</h3></div>
             <div class="group-label">Fixed</div>
@@ -549,14 +560,7 @@
               <li>Printing (and Save as PDF) now ignores an active section filter. The filter hides a non-matching <code>&lt;section&gt;</code> with <code>display:none</code>, which print honored, so a reader who printed while a query was in the Filter sections box silently got a PDF missing the sections they had filtered out - the same class of runtime state print already forces open for a collapsed section. A query that matches NOTHING now narrows the menu only, rather than hiding every section and blanking the document over what is usually a typo, and a deep link to a filtered-out entry reveals it even when its wrapper section stayed visible.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.824.0] - 2026-08-09</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li><code>tools/authoring/generate_toc.py</code> no longer corrupts a document whose existing <code>nav.cm-toc</code> contains headings. Such a heading is navigation chrome, not a document section, but the parser treated the TOC subtree as ordinary content: it listed the heading (a phantom entry linking to an anchor the rewrite was about to delete) and, when the heading had no id, queued an <code>id=&quot;...&quot;</code> INSERTION at an offset INSIDE the <code>.cm-toc</code> span the same rewrite deletes. The edits are applied highest-offset-first, so the insertion ran first, moved the deletion boundary, and emitted a stray <code>2&gt;&lt;/nav&gt;</code> fragment - in a tool that rewrites the author&#x27;s file in place (<code>--in-place</code>, <code>finalize.py --toc</code>, <code>retrofit.py</code>), and the damage compounded on a second run. Headings under the <code>.cm-toc</code> the rewrite REPLACES are now excluded, and an id inside that nav no longer reserves a slug it takes to the grave (a real <code>Real</code> heading beside <code>&lt;h2 id=&quot;real&quot;&gt;</code> in the old TOC used to be baked as <code>id=&quot;real-2&quot;</code>), so the rewrite is lossless and idempotent. The rule is scoped to the replaced span: a <code>.cm-toc</code> the rewrite leaves in place - one an ancestor&#x27;s end tag or end of input closed, one wrapping or being <code>#commentRoot</code> - still has its headings listed, so the tool never silently writes an empty table of contents over a document. The edit applier now also refuses two overlapping spans instead of silently writing bad bytes.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">392 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">393 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

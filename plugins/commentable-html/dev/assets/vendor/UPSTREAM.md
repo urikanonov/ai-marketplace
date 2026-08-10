@@ -3,7 +3,7 @@
 These files are checked-in local copies used only to build fully self-contained
 `Export Offline` artifacts:
 
-- `mermaid.min.js` - copied from `mermaid@11.16.0/dist/mermaid.min.js` - MIT
+- `mermaid.min.js` - copied from `mermaid@11.16.1/dist/mermaid.min.js` - MIT
 - `chart.umd.min.js` - copied from `chart.js@4.5.1/dist/chart.umd.min.js` - MIT
 - `mermaid.LICENSE` - the upstream MIT license text for mermaid (copied verbatim)
 - `chart.umd.LICENSE` - the upstream MIT license text for Chart.js (copied verbatim)

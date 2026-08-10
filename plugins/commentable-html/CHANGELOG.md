@@ -4,6 +4,35 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.831.0] - 2026-08-10
+
+### Security
+
+- The vendored mermaid copy that `Export Offline` inlines is bumped from `11.16.0` to `11.16.1`,
+  which closes five upstream advisories: an infinite-loop denial of service in XY charts, a
+  denial of service in radar diagrams, prototype pollution in architecture diagrams and in the
+  configuration APIs, and a CSS injection that applied to elements SIBLING to the diagram. The
+  same bump moves the version-pinned jsDelivr import the ONLINE render path uses, so both render
+  paths land on the fixed release. The transitive `dompurify` bump that rides with it (`3.4.11`
+  to `3.4.13`) closes two more: an `IN_PLACE` hook removal that left a detached subtree
+  executable (XSS), and a custom-element hook bypass.
+
+  Nothing about the plugin's own behavior changes: `dev/package.json` is the single source for
+  the mermaid version, so `build.py` re-stamped the pin into `dist/SHAREABLE.html`,
+  `dist/NONSHAREABLE.html`, every `examples/report-*.html` and `THIRD_PARTY_NOTICES.md`, and the
+  hand-vendored `dev/assets/vendor/mermaid.min.js` (the bytes an offline artifact carries) was
+  re-copied from the fixed release so an offline export no longer ships the vulnerable code.
+
+### Fixed
+
+- The tutorial-screenshot capture no longer breaks on a mermaid bump (`CMH-BUILD-24`). The capture
+  aborts every remote fetch to stay hermetic and lets exactly one route serve mermaid from the local
+  `node_modules`, but that route pinned a LITERAL `mermaid@11.16.0` while the URL it has to match is
+  single-sourced from `package.json`. The two parted company the moment the dependency moved:
+  mermaid never loaded, and `npm run shots` failed on a `waitForMermaid` timeout that named nothing.
+  The route is now version-agnostic (and still narrow - a different package, or the same path on a
+  different host, is aborted as before), matching what the Playwright helper already did.
+
 ## [1.830.0] - 2026-08-09
 
 ### Fixed
