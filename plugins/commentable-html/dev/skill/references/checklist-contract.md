@@ -21,6 +21,13 @@ first cell or its `[data-cmh-state-cell]`); the item's label text stays ordinary
   position in document order within the checklist. Identity is never rendered (no visible numeration).
 - `data-cmh-parent="<item-id>"` - for the table shape only, names the parent item's `data-cmh-item`
   id, since table rows cannot nest. Required to build hierarchy in a table (which may be sorted).
+- `data-cmh-item-attr="<attr>"` / `data-cmh-parent-attr="<attr>"` - on the CONTAINER, names an
+  authored attribute that already holds each item's id (or parent id), so the item does not carry a
+  second copy. Do not write these by hand: `tools/authoring/dom_slim.py` adds them during `finalize`
+  when it finds an authored `data-*` attribute holding the byte-identical value on every item, and
+  drops the `data-cmh-item` / `data-cmh-parent` copy it made redundant. The runtime, the validator
+  and `checklist_apply.py` prefer the item's own attribute and fall back to the one named here, so a
+  document written either way behaves identically.
 
 ### Shape A - nested list (hierarchy by DOM nesting)
 

@@ -8,8 +8,10 @@ each named item inside its `data-cmh-checklist` container, so the state is baked
 source the agent owns. It is deterministic and idempotent, touches only the matched items'
 start tags, and leaves branch items (which derive their state at runtime) untouched.
 
-Item identity matches the runtime: an item's key is its `data-cmh-item` id when present,
-else its 1-based position in document order among the items of its checklist container.
+Item identity matches the runtime: an item's key is its `data-cmh-item` id when present, else
+the id held by the attribute the container names in `data-cmh-item-attr` (dom_slim.py drops the
+duplicated copy and leaves that pointer behind), else its 1-based position in document order
+among the items of its checklist container.
 
 Usage (run from the skill root):
     python tools/checklist_apply.py file.html --from-bundle bundle.txt   # or: -  (stdin)
@@ -33,6 +35,10 @@ _BUNDLE_RE = re.compile(r"^\s*CHECKLIST_STATE_JSON:\s*(\{.*\})\s*$", re.MULTILIN
 _TRAILER_OPEN_RE = re.compile(
     r"^=== CMH MACHINE TRAILER \(do not edit\) ===[^\n]*\n", re.MULTILINE)
 _TRAILER_CLOSE_RE = re.compile(r"^=== END CMH MACHINE TRAILER ===", re.MULTILINE)
+# A container may NAME where an item's identity lives instead of repeating it on every row (see
+# tools/authoring/dom_slim.py); the key derived here is the one the runtime derives.
+_ITEM_ALIAS_ATTR = "data-cmh-item-attr"
+_ALIAS_NAME_RE = re.compile(r"^data-[a-z0-9-]+$")
 _VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
 
@@ -63,11 +69,19 @@ class _ChecklistScanner(_browser_attrs.BrowserTagNames):
     def _record_item(self, d):
         if not self._containers:
             return
-        if "data-cmh-state" not in d and "data-cmh-item" not in d:
+        # A nested checklist CONTAINER is not an item of the checklist enclosing it. The runtime
+        # filters items with `el.closest("[data-cmh-checklist]") === container`, which is
+        # ancestor-or-SELF, so the nested container belongs to itself; recording it here made it
+        # a ghost item of the outer list that shifted every positional key after it.
+        if "data-cmh-checklist" in d:
             return
         ctx = self._containers[-1]
+        alias = ctx["alias"]
+        if ("data-cmh-state" not in d and "data-cmh-item" not in d
+                and not (alias and alias in d)):
+            return
         ctx["counter"] += 1
-        key = d.get("data-cmh-item") or str(ctx["counter"])
+        key = d.get("data-cmh-item") or (d.get(alias) if alias else "") or str(ctx["counter"])
         starttag = self.get_starttag_text() or ""
         self.items.append({
             "container_id": ctx["id"],
@@ -83,7 +97,10 @@ class _ChecklistScanner(_browser_attrs.BrowserTagNames):
         self._record_item(d)
         is_container = "data-cmh-checklist" in d
         if is_container:
-            self._containers.append({"id": d.get("data-cmh-checklist") or "", "counter": 0})
+            raw = (d.get(_ITEM_ALIAS_ATTR) or "").strip().lower()
+            self._containers.append({
+                "id": d.get("data-cmh-checklist") or "", "counter": 0,
+                "alias": raw if _ALIAS_NAME_RE.match(raw) else ""})
         if tag not in _VOID:
             self._elems.append((tag, is_container))
 
