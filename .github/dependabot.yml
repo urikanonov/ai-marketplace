@@ -1,4 +1,8 @@
 version: 2
+# `cooldown` holds back a VERSION update until the release is 14 days old. Dependabot deliberately
+# does NOT apply it to a SECURITY update: an advisory fix ships as soon as it is published. The CI
+# gate that mirrors this setting (scripts/check_dependency_cooldown.py) exempts security updates for
+# the same reason - see "dependency-cooldown EXEMPTS a security update" in AGENTS.md.
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"

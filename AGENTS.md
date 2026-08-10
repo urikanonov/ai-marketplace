@@ -729,14 +729,30 @@ survival check above is still the gate for that. The `pre-commit` hook runs it i
   workflow run it once a `BRANCH_PROTECTION_TOKEN` secret is configured), so the required set is
   code-reviewed rather than silently drifted. When you add or remove a required check, edit BOTH
   `.github/required-checks.json` and branch protection together.
-- Two ADVISORY checks also run on every PR but are intentionally NOT in the required set (so they
+- Three ADVISORY checks also run on every PR but are intentionally NOT in the required set (so they
   surface a signal without blocking merges, and adding them to `required-checks.json` without also
   editing branch protection would trip `check_required_checks.py`): `zizmor` (a defense-in-depth
   GitHub Actions security linter that complements the required `actionlint` and
-  `check_workflow_policy` gates) and `version-lane` (`scripts/check_version_lane.py`, an early
+  `check_workflow_policy` gates), `version-lane` (`scripts/check_version_lane.py`, an early
   warning when this PR's commentable-html `dev/VERSION` DUPLICATES another open PR's lane; trailing
-  a higher open lane is an informational note, not a failure). To
-  promote either to required later, add it to `required-checks.json` and branch protection together.
+  a higher open lane is an informational note, not a failure), and `dependency-cooldown`
+  (`scripts/check_dependency_cooldown.py`, which mirrors the `cooldown: default-days: 14` setting in
+  `.github/dependabot.yml` by failing a PR that pulls in an npm version younger than 14 days). To
+  promote any of them to required later, add it to `required-checks.json` and branch protection together.
+- `dependency-cooldown` EXEMPTS a security update, and must keep doing so. Dependabot applies
+  cooldown to VERSION updates only and deliberately bypasses it for a SECURITY update, because
+  holding a published fix for two weeks is the opposite of what an advisory calls for. Before the
+  exemption the gate reddened exactly the PRs that had to land fastest (#1233 and #1222 together
+  carried seven open alerts), and a guard that must be ignored to do the right thing trains everyone
+  to ignore it. The gate therefore resolves the exemption from the PUBLIC GitHub Advisory Database
+  (`GET /advisories`): a bump is exempt when the version the lockfile currently pins sits inside an
+  advisory's vulnerable range and the new version leaves that range at or above
+  `first_patched_version`. It does NOT read this repository's `dependabot/alerts` endpoint - that
+  needs a `security_events`/`repo`-scoped token, no `GITHUB_TOKEN` workflow permission grants it
+  (`security-events` covers code scanning alerts only), and a PAT would mean a `secrets.*` reference
+  in a `pull_request` workflow that runs PR code, which RULE B of `check_workflow_policy.py` forbids.
+  Every advisory lookup fails OPEN (an unreachable, rate-limited, unauthorized, or malformed
+  response exempts nothing and warns), so the gate never blocks a PR on a flaky API.
 - Do not weaken branch protection (in particular, do not re-enable direct pushes to `main`, and do
   not drop a required check) or bypass the validator.
 - Spec-and-test gate (see "Spec-and-test discipline"): a pull request that adds or changes a feature
