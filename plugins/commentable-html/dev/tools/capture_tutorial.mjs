@@ -20,6 +20,7 @@ import {
   compareImages, imagesMatch, MAX_DIFF_PIXELS, PIXEL_CHANNEL_TOLERANCE, writeDiffImage,
 } from "./shot_compare.mjs";
 import { freezeBuildStamps, STAMP_DATE, STAMP_VERSION } from "./shot_stamps.mjs";
+import { pinnedVersion, lockedVersion, pinMismatchMessage, NOT_INSTALLED_MESSAGE } from "./mermaid_pin.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The in-browser layout/scroll settle loops throw on a wall-clock deadline that was sized for a
@@ -234,39 +235,19 @@ async function waitForMermaid(page) {
 }
 
 // The mermaid the capture RENDERS with must be the one the plugin SHIPS. package.json is the single
-// source for that pin; node_modules is what the route below actually serves. A caret range makes
-// them legitimately differ only until the next `npm ci`, so treat any difference as "install first"
-// rather than guessing which one the committed screenshots should reflect (CMH-BUILD-24).
+// source for that pin; node_modules is what the route below actually serves. The DECISION lives in
+// tools/mermaid_pin.mjs so it can be tested directly (CMH-BUILD-24); this only reads the files.
 function assertInstalledMermaidIsPinned() {
   const read = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
-  const pkg = read(path.resolve(HERE, "..", "package.json"));
-  const spec = (pkg.devDependencies || {}).mermaid || (pkg.dependencies || {}).mermaid;
-  const pinned = String(spec || "").replace(/^[\^~]/, "");
+  const pinned = pinnedVersion(read(path.resolve(HERE, "..", "package.json")));
   const installedPkg = path.resolve(HERE, "..", "node_modules", "mermaid", "package.json");
-  if (!fs.existsSync(installedPkg)) {
-    throw new Error("capture_tutorial: mermaid is not installed; run `npm ci` in plugins/commentable-html/dev");
-  }
-  const installed = read(installedPkg).version;
-  if (installed !== pinned) {
-    // Distinguish the two causes: a stale install (npm ci fixes it) from a lockfile that has moved
-    // ABOVE the pin (npm ci REPRODUCES it, so telling the reader to run npm ci would loop).
-    const lockPath = path.resolve(HERE, "..", "package-lock.json");
-    let locked = null;
-    try {
-      const lock = read(lockPath);
-      locked = ((lock.packages || {})["node_modules/mermaid"] || {}).version || null;
-    } catch { /* no lockfile is itself an install problem, handled by the generic advice below */ }
-    const remedy = locked && locked === installed
-      ? `package.json pins ${pinned} but package-lock.json resolves ${locked}, so \`npm ci\` will ` +
-        "keep reproducing this. Bump the package.json pin to match and re-vendor " +
-        "assets/vendor/mermaid.min.js per assets/vendor/UPSTREAM.md."
-      : "Run `npm ci` in plugins/commentable-html/dev and re-run the capture.";
-    throw new Error(
-      `capture_tutorial: installed mermaid ${installed} does not match the pinned ${pinned}. ` +
-      "The capture serves mermaid from node_modules, so it would render the committed tutorial " +
-      "screenshots with a version that never ships, and CI (which installs the pinned version) " +
-      "would then fail the exact-pixel drift gate for no visible reason. " + remedy);
-  }
+  if (!fs.existsSync(installedPkg)) throw new Error(NOT_INSTALLED_MESSAGE);
+  let locked = null;
+  try {
+    locked = lockedVersion(read(path.resolve(HERE, "..", "package-lock.json")));
+  } catch { /* an unreadable lockfile is itself an install problem; the generic advice covers it */ }
+  const message = pinMismatchMessage({ pinned, installed: read(installedPkg).version, locked });
+  if (message) throw new Error(message);
 }
 
 async function routeVendoredMermaid(context) {

@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { pinnedVersion, lockedVersion, pinMismatchMessage } from "../tools/mermaid_pin.mjs";
 
 const DEV = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const VENDOR = path.join(DEV, "assets", "vendor");
@@ -63,4 +64,52 @@ test("the vendored mermaid bundle is the npm tarball the lockfile pins (CMH-BUIL
     `anywhere else. Re-copy it per assets/vendor/UPSTREAM.md and rerun ` +
     `'python tools/build.py --regen-vendor-gz'.`
   ).toBe(true);
+
+  // The MIT licence must travel with the redistributed bytes (CMH-LICENSE-01), and a re-vendor that
+  // updates the .js and forgets the .LICENSE leaves a STALE notice that still contains the word
+  // "MIT" - so presence is not enough; it has to be the licence shipped in this tarball.
+  const vendoredLicence = fs.readFileSync(path.join(VENDOR, "mermaid.LICENSE"));
+  const tarballLicence = fs.readFileSync(path.join(installedDir, "LICENSE"));
+  expect(
+    vendoredLicence.equals(tarballLicence),
+    `assets/vendor/mermaid.LICENSE does not match node_modules/mermaid/LICENSE for ` +
+    `mermaid@${installed}. THIRD_PARTY_NOTICES.md is generated from the vendored copy, so a stale ` +
+    `licence means the notices that ship beside the library bytes are not the ones upstream ` +
+    `published with them. Re-copy it per assets/vendor/UPSTREAM.md and rebuild.`
+  ).toBe(true);
+});
+
+// The refusal DECISION (CMH-BUILD-24) exercised directly, rather than asserted about as source
+// text: the capture reads three versions and must (a) proceed on agreement, (b) tell a maintainer
+// with a stale install to run `npm ci`, and (c) NOT say that when the lockfile itself has moved
+// above the pin, because `npm ci` reproduces that mismatch and the advice would loop.
+test("the mermaid pin-agreement decision covers match, stale install and lockfile-ahead (CMH-BUILD-24)", () => {
+  expect(pinnedVersion({ devDependencies: { mermaid: "^11.16.1" } })).toBe("11.16.1");
+  expect(pinnedVersion({ dependencies: { mermaid: "~11.16.1" } })).toBe("11.16.1");
+  expect(pinnedVersion({ devDependencies: { mermaid: "11.16.1" } })).toBe("11.16.1");
+  expect(pinnedVersion({})).toBe("");
+  expect(lockedVersion({ packages: { "node_modules/mermaid": { version: "11.17.0" } } })).toBe("11.17.0");
+  expect(lockedVersion({ packages: {} })).toBeNull();
+  expect(lockedVersion({})).toBeNull();
+
+  // (a) agreement - no refusal at all.
+  expect(pinMismatchMessage({ pinned: "11.16.1", installed: "11.16.1", locked: "11.16.1" })).toBeNull();
+
+  // (b) stale install: the lockfile still agrees with the pin, so `npm ci` really is the fix.
+  const stale = pinMismatchMessage({ pinned: "11.16.1", installed: "11.16.0", locked: "11.16.1" });
+  expect(stale).toContain("11.16.0");
+  expect(stale).toContain("npm ci");
+  expect(stale).not.toContain("Bump the package.json pin");
+
+  // (c) lockfile ahead of the pin: `npm ci` would reproduce it, so the advice must be to bump the
+  // pin and re-vendor. This is the Dependabot lockfile-only shape.
+  const ahead = pinMismatchMessage({ pinned: "11.16.1", installed: "11.17.0", locked: "11.17.0" });
+  expect(ahead).toContain("package-lock.json resolves 11.17.0");
+  expect(ahead).toContain("Bump the package.json pin");
+  expect(ahead).toContain("re-vendor");
+
+  // A missing lockfile entry must not be mistaken for the lockfile-ahead case.
+  const noLock = pinMismatchMessage({ pinned: "11.16.1", installed: "11.17.0", locked: null });
+  expect(noLock).toContain("npm ci");
+  expect(noLock).not.toContain("Bump the package.json pin");
 });
