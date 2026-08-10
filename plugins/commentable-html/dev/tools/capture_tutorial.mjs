@@ -233,11 +233,42 @@ async function waitForMermaid(page) {
   }, null, { timeout: 15000 });
 }
 
+// The mermaid the capture RENDERS with must be the one the plugin SHIPS. package.json is the single
+// source for that pin; node_modules is what the route below actually serves. A caret range makes
+// them legitimately differ only until the next `npm ci`, so treat any difference as "install first"
+// rather than guessing which one the committed screenshots should reflect (CMH-BUILD-24).
+function assertInstalledMermaidIsPinned() {
+  const read = (p) => JSON.parse(fs.readFileSync(p, "utf8"));
+  const pkg = read(path.resolve(HERE, "..", "package.json"));
+  const spec = (pkg.devDependencies || {}).mermaid || (pkg.dependencies || {}).mermaid;
+  const pinned = String(spec || "").replace(/^[\^~]/, "");
+  const installedPkg = path.resolve(HERE, "..", "node_modules", "mermaid", "package.json");
+  if (!fs.existsSync(installedPkg)) {
+    throw new Error("capture_tutorial: mermaid is not installed; run `npm ci` in plugins/commentable-html/dev");
+  }
+  const installed = read(installedPkg).version;
+  if (installed !== pinned) {
+    throw new Error(
+      `capture_tutorial: installed mermaid ${installed} does not match the pinned ${pinned}. ` +
+      "The capture serves mermaid from node_modules, so it would render the committed tutorial " +
+      "screenshots with a version that never ships, and CI (which installs the pinned version) " +
+      "would then fail the exact-pixel drift gate for no visible reason. Run `npm ci` in " +
+      "plugins/commentable-html/dev and re-run the capture.");
+  }
+}
+
 async function routeVendoredMermaid(context) {
   const dist = path.resolve(HERE, "..", "node_modules", "mermaid", "dist");
   // Version-AGNOSTIC on purpose (CMH-BUILD-24): the pinned mermaid version is single-sourced from
   // package.json and restamped into the shell on every build, so a literal version here would stop
   // matching on the next bump and the catch-all abort below would silently starve mermaid.
+  //
+  // Being version-agnostic about the URL means being STRICT about the bytes: the route serves
+  // whatever mermaid happens to be installed, so an installed copy that is not the pinned one would
+  // render the committed PNGs from a version that never ships. That is invisible here and surfaces
+  // much later as an unexplained pixel-drift failure in CI (which installs the pinned version), so
+  // refuse it up front with a diagnostic that names the real problem.
+  assertInstalledMermaidIsPinned();
   await context.route(/^https:\/\/cdn\.jsdelivr\.net\/npm\/mermaid@[^/]+\/dist\//, async (route) => {
     const requestPath = new URL(route.request().url()).pathname;
     const relative = decodeURIComponent(requestPath.replace(/^.*\/dist\//, "")).replace(/\//g, path.sep);

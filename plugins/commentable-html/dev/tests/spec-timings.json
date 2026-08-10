@@ -1,6 +1,7 @@
 {
   "00-projects.spec.js": 71,
   "01-inline.spec.js": 1558,
+  "01-vendor-provenance.spec.js": 120,
   "02-toolbar.spec.js": 2487,
   "03-comments-text.spec.js": 4902,
   "04-comments-code-mermaid.spec.js": 11739,

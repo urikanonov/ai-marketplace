@@ -13,15 +13,29 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   denial of service in radar diagrams, prototype pollution in architecture diagrams and in the
   configuration APIs, and a CSS injection that applied to elements SIBLING to the diagram. The
   same bump moves the version-pinned jsDelivr import the ONLINE render path uses, so both render
-  paths land on the fixed release. The transitive `dompurify` bump that rides with it (`3.4.11`
-  to `3.4.13`) closes two more: an `IN_PLACE` hook removal that left a detached subtree
-  executable (XSS), and a custom-element hook bypass.
+  paths land on the fixed release.
 
   Nothing about the plugin's own behavior changes: `dev/package.json` is the single source for
   the mermaid version, so `build.py` re-stamped the pin into `dist/SHAREABLE.html`,
   `dist/NONSHAREABLE.html`, every `examples/report-*.html` and `THIRD_PARTY_NOTICES.md`, and the
   hand-vendored `dev/assets/vendor/mermaid.min.js` (the bytes an offline artifact carries) was
   re-copied from the fixed release so an offline export no longer ships the vulnerable code.
+
+- The transitive `dompurify` bump that rides along in the lockfile (`3.4.11` to `3.4.13`) is
+  stated precisely here, because the obvious reading of it is wrong. It clears the two advisories
+  Dependabot raises against the DEPENDENCY TREE (an `IN_PLACE` hook removal that left a detached
+  subtree executable - XSS, and a custom-element hook bypass), but it does NOT change a single
+  shipped byte: upstream mermaid BUNDLES DOMPurify into its prebuilt `dist/mermaid.min.js`, and
+  `mermaid@11.16.1` inlines DOMPurify `3.4.0` - exactly as `11.16.0` did. So the vendored copy is
+  unchanged in that respect, and this release is not a fix for those two advisories in the
+  product. It is not a regression either.
+
+  That residual is acceptable rather than ignored: mermaid runs DOMPurify over markup it derives
+  from the document's own diagram source, and `CMH-SEC-01` declares authored content trusted and
+  unsanitized by design, so the party who would have to exploit a sanitizer bypass there is the
+  author, who already runs arbitrary inline script. `CMH-BUILD-25` now pins the bundled DOMPurify
+  version so this stops being a thing a reader has to discover by decompiling a 3.5 MB bundle, and
+  the next mermaid release that rebundles a fixed DOMPurify will move it visibly.
 
 ### Fixed
 

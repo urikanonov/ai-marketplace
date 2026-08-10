@@ -25,11 +25,14 @@ sys.path.insert(0, _paths.DEV_TOOLS)
 import build  # noqa: E402
 
 CAPTURE = os.path.join(_paths.DEV_TOOLS, "capture_tutorial.mjs")
-# The first argument of the `context.route(...)` call inside routeVendoredMermaid: either a quoted
-# glob string or a regex literal.
+# The first argument of the `context.route(...)` call inside routeVendoredMermaid: a quoted glob, a
+# regex literal, or an identifier bound to one of those just above (all three are ordinary ways to
+# write this, and a guard that reds on a benign refactor is drift waiting to happen).
 _ROUTE_CALL = re.compile(
-    r"routeVendoredMermaid\s*\([^)]*\)\s*\{.*?context\.route\(\s*(?P<arg>\"[^\"]+\"|'[^']+'|/.+?/[a-z]*)\s*,",
+    r"routeVendoredMermaid\s*\([^)]*\)\s*\{(?P<body>.*?)context\.route\(\s*"
+    r"(?P<arg>\"[^\"]+\"|'[^']+'|/.+?/[a-z]*|[A-Za-z_$][\w$]*)\s*,",
     re.S)
+_PATTERN_LITERAL = r"(\"[^\"]+\"|'[^']+'|/.+?/[a-z]*)"
 
 
 def _read(path):
@@ -38,23 +41,56 @@ def _read(path):
 
 
 def _route_argument():
-    m = _ROUTE_CALL.search(_read(CAPTURE))
+    source = _read(CAPTURE)
+    m = _ROUTE_CALL.search(source)
     if not m:
         raise AssertionError("could not find the context.route(...) call in routeVendoredMermaid")
-    return m.group("arg")
+    arg = m.group("arg")
+    if arg[0] in "\"'/":
+        return arg
+    # An identifier: resolve the binding, so moving the pattern into a `const` stays supported.
+    bound = re.search(r"\b(?:const|let|var)\s+%s\s*=\s*%s" % (re.escape(arg), _PATTERN_LITERAL),
+                      source)
+    if not bound:
+        raise AssertionError(
+            "the route pattern is the identifier %r and its literal binding could not be found; "
+            "bind it to a literal in this module or extend _route_argument" % arg)
+    return bound.group(1)
 
 
 def _as_python_pattern(arg):
     """Translate the JS route argument into an equivalent Python regex.
 
-    Playwright accepts either a glob string (`**` spans path separators, `*` does not) or a regex
-    that is tested against the whole URL. Both forms are supported here so the test pins the
-    BEHAVIOR (does this route match the URL?) rather than one particular spelling of it.
+    Playwright accepts either a glob string or a regex that is tested against the whole URL. Both
+    forms are handled so the test pins the BEHAVIOR (does this route match the URL?) rather than one
+    particular spelling of it - but the equivalence is only claimed for the two shapes this route is
+    plausibly written in: a regex literal, and a glob whose wildcards are not the `/**/` form.
+    Playwright compiles a `**` flanked by slashes on BOTH sides to an optional group that can also
+    match zero segments INCLUDING the slashes, which a naive `.*` does not reproduce; rather than
+    model that badly, refuse it and say so.
     """
     if arg.startswith("/"):
-        body = arg[1:arg.rindex("/")]
-        return re.compile(body), False
+        end = arg.rindex("/")
+        body, flags = arg[1:end], arg[end + 1:]
+        # A dropped flag would silently change what is being asserted, so map what we can and refuse
+        # the rest instead of quietly comparing a different pattern than Playwright would evaluate.
+        py_flags = 0
+        for flag in flags:
+            if flag == "i":
+                py_flags |= re.IGNORECASE
+            elif flag in "su":
+                continue
+            else:
+                raise AssertionError(
+                    "unsupported JS regex flag %r in the route pattern; teach _as_python_pattern "
+                    "how it maps to Python re before relying on this test" % flag)
+        return re.compile(body, py_flags), False
     literal = arg[1:-1]
+    if "/**/" in literal:
+        raise AssertionError(
+            "the route is a glob containing '/**/', whose Playwright semantics (a group that may "
+            "match zero segments, slashes included) this translator does not reproduce; express the "
+            "route as a regex literal or extend _as_python_pattern")
     out = []
     i = 0
     while i < len(literal):
@@ -107,6 +143,27 @@ class CaptureMermaidRouteTests(unittest.TestCase):
                     "https://evil.example/npm/mermaid@11.16.1/dist/mermaid.esm.min.mjs"):
             hit = pattern.match(url) if anchored else pattern.search(url)
             self.assertIsNone(hit, "the route must stay narrow; it matched %s" % url)
+
+    def test_the_capture_refuses_to_render_with_a_mermaid_that_is_not_the_pinned_one(self):
+        """Version-agnostic about the URL must not mean indifferent to the BYTES.
+
+        The route serves the local entry module, whose relative chunk imports resolve back through
+        the same route, so a render is internally consistent at WHATEVER version is on disk. Without
+        a refusal the capture would happily write the committed PNGs from a mermaid that never
+        ships, and the only symptom would be an unexplained exact-pixel drift failure in CI, which
+        installs the pinned version.
+        """
+        source = _read(CAPTURE)
+        self.assertIn(
+            "assertInstalledMermaidIsPinned()", source,
+            "routeVendoredMermaid must assert the installed mermaid is the pinned one before "
+            "serving it, or a stale node_modules silently renders the tutorial screenshots")
+        guard = re.search(r"function assertInstalledMermaidIsPinned\(\)\s*\{(.*?)\n\}", source, re.S)
+        self.assertIsNotNone(guard, "assertInstalledMermaidIsPinned is not defined")
+        body = guard.group(1)
+        self.assertIn("node_modules", body, "the guard must read the INSTALLED version")
+        self.assertIn("package.json", body, "the guard must read the PINNED version")
+        self.assertIn("throw", body, "the guard must refuse, not warn - a warning scrolls past")
 
 
 if __name__ == "__main__":

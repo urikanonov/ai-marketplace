@@ -4,6 +4,8 @@ These files are checked-in local copies used only to build fully self-contained
 `Export Offline` artifacts:
 
 - `mermaid.min.js` - copied from `mermaid@11.16.1/dist/mermaid.min.js` - MIT
+  - bundles `DOMPurify 3.4.0` (upstream prebuilds its dependencies into this file, so the
+    `dompurify` version resolved in `package-lock.json` does NOT reach these bytes)
 - `chart.umd.min.js` - copied from `chart.js@4.5.1/dist/chart.umd.min.js` - MIT
 - `mermaid.LICENSE` - the upstream MIT license text for mermaid (copied verbatim)
 - `chart.umd.LICENSE` - the upstream MIT license text for Chart.js (copied verbatim)
