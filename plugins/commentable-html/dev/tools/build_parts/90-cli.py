@@ -64,6 +64,9 @@ def main(argv):
                     else os.path.join(out_dir, "examples"))
     dist_dir = os.path.join(out_dir, "dist")
     outputs, version = build_all(assets_dir, out_dir, examples_dir)
+    budget_lines, budget_failures = size_budget_check(outputs, out_dir)
+    js_name = os.path.join(dist_dir, _names()[1])
+    syntax_msg = verify_js_syntax(outputs[js_name], "dist/" + _names()[1]) if js_name in outputs else None
     stamps = source_stamps(version, assets_dir, out_dir, pkg_dir)
     stamps.update(example_stamps(examples_dir, read_mermaid_version()))
     stale = _unexpected_dist_files(outputs.keys(), dist_dir)
@@ -95,6 +98,11 @@ def main(argv):
             for d in drift:
                 sys.stderr.write("  - " + d + "\n")
             return 1
+        if budget_failures:
+            sys.stderr.write("build --check FAILED (size budget exceeded):\n")
+            for f in budget_failures:
+                sys.stderr.write("  - " + f + "\n")
+            return 1
         if ns.check_fixtures:
             ok, msg = _check_fixtures()
             if not ok:
@@ -104,6 +112,18 @@ def main(argv):
             print("  " + msg)
         print("build --check OK (%d generated files in sync, version %s)" % (len(outputs), version))
         return 0
+    # The gate REFUSES rather than reports: a build that blows a ceiling must not leave the
+    # oversize artifacts in the tree, where the next `git add -A` would commit what the gate
+    # rejected. The report names the actual byte count, so the ceiling can be raised deliberately
+    # without needing the artifact on disk to measure. (`--check` above writes nothing, so it
+    # reports drift first and only then the budget.)
+    if budget_failures:
+        sys.stderr.write("build FAILED (size budget exceeded):\n")
+        for f in budget_failures:
+            sys.stderr.write("  - " + f + "\n")
+        for line in budget_lines:
+            sys.stderr.write(line + "\n")
+        return 1
     for name in stale:
         os.remove(os.path.join(dist_dir, name))
     for path in legacy:
@@ -117,4 +137,9 @@ def main(argv):
     if stale:
         print("removed %d stale dist file(s): %s" % (len(stale), ", ".join(stale)))
     _report(outputs, version, out_dir)
+    print("  size budget:")
+    for line in budget_lines:
+        print(line)
+    if syntax_msg:
+        print("  " + syntax_msg)
     return 0

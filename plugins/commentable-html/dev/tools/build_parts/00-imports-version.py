@@ -62,6 +62,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 # Flat-layout defaults: assets sit next to the generated outputs under the skill root.
 # The split layout overrides these per-call via --assets-dir / --out-dir (and the

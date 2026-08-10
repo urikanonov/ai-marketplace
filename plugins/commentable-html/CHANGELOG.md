@@ -4,6 +4,36 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.832.0] - 2026-08-10
+
+### Changed
+
+- The layer that SHIPS no longer carries its developer commentary. `build.py` now strips comments
+  and layout whitespace from the runtime and the stylesheet after the version stamp and before
+  every consumer, so `dist/commentable-html.js`, `dist/commentable-html.css`, the asset registry,
+  both templates and every built example embed one identical stripped copy. `assets/js/**` and
+  `assets/css/**` stay fully commented and remain the single source of truth. The runtime drops
+  from 1,219,713 to 615,676 bytes and the stylesheet from 215,138 to 138,539, so a prose report
+  goes from 1,474,743 to 794,105 bytes (-46%) and a diagram-and-chart report from 3,102,790 to
+  2,422,152 (-22%, the remainder being the vendored diagram payload that workstream A of #1250
+  still owns). Nothing about the runtime's behavior changes: the transform is not a general
+  minifier (no identifier mangling, no statement joining), it only deletes comments and whitespace,
+  it never touches a byte inside a string, template literal or regex literal, it preserves every
+  line terminator that automatic semicolon insertion depends on, it decides regex-versus-division
+  from parse context rather than guessing, it refuses a source that leaves a construct
+  unterminated, and it hands the result to `node --check` as an independent parser
+  (`CMH-BUILD-26`). The vendored lz-string MIT notice - copyright and permission text in full -
+  now travels as a `/*! @license */` comment so it keeps accompanying the redistributed copy
+  inside every generated document and offline export.
+
+### Added
+
+- A per-component size budget (`dev/tools/size-budget.json`) that `build.py` enforces on every
+  build and every `--check`, refusing to write when a shipped component grows past its ceiling, so
+  the required `dist-in-sync` job fails a pull request that blows a budget. The runtime grew 3.5x
+  across earlier versions with nothing to notice it; raising a ceiling is now a deliberate,
+  reviewed edit (`CMH-BUILD-27`).
+
 ## [1.831.0] - 2026-08-10
 
 ### Security

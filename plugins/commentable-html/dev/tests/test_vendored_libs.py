@@ -6574,9 +6574,9 @@ class RuntimeParityTests(unittest.TestCase):
         def built_place(index):
             return "skill/dist/commentable-html.js line %d" % (built.count("\n", 0, index) + 1)
 
-        for label, source, place in (
-                ("the concatenated source partials (assets/js/NN-*.js)", bundle, source_place),
-                ("the BUILT layer (skill/dist/commentable-html.js)", built, built_place)):
+        for label, source, place, indented in (
+                ("the concatenated source partials (assets/js/NN-*.js)", bundle, source_place, True),
+                ("the BUILT layer (skill/dist/commentable-html.js)", built, built_place, False)):
             scan = _js_shared_scope_declarations(source)
             self.assertEqual(
                 scan.stack, [],
@@ -6623,21 +6623,29 @@ class RuntimeParityTests(unittest.TestCase):
             # `^\s*`: allowing indentation makes it count the runtime's NESTED functions, which
             # are correctly not shared-scope declarations, and that reds today (measured: `menu`
             # and `root` are each a shared-scope name AND a local binding in a nested function).
+            # ... which is why this floor runs on the INDENTED source only. The build strips layout
+            # whitespace from the bytes that ship (CMH-BUILD-26), so in the built layer EVERY
+            # declaration sits at column 0 and the anchor stops separating shared scope from a
+            # nested local - the heuristic's precondition is gone, and with `^\s*` it reds on
+            # exactly the `menu` / `root` pair named above. The built layer is still walked, still
+            # cross-checked against V8 below, and still reported on for duplicates; only this
+            # indentation-dependent backstop is scoped to where indentation exists.
             walked = collections.Counter(name for _kind, name, _at in scan.declarations)
-            naive = collections.Counter(
-                m.group(1) for m in re.finditer(
-                    r"(?m)^(?:async\s+)?(?:function\s*\*?\s*|class\s+|const\s+|let\s+|var\s+)"
-                    r"((?:[^\W\d]|\$)[\w$]*)", source))
-            missed = sorted(name for name, count in naive.items()
-                            if walked[name] and walked[name] < count)
-            self.assertEqual(
-                missed, [],
-                "a plain column-0 scan of %s finds %s declared more often than the delimiter walk "
-                "did (%s). The walk skipped a declaration of a name it otherwise knows, so a "
-                "duplicate of it could go unreported. (If one of those lines is really inside a "
-                "block comment or a template literal, indent it.)" % (
-                    label, missed, ", ".join("%s: %d vs %d" % (name, naive[name], walked[name])
-                                             for name in missed)))
+            if indented:
+                naive = collections.Counter(
+                    m.group(1) for m in re.finditer(
+                        r"(?m)^(?:async\s+)?(?:function\s*\*?\s*|class\s+|const\s+|let\s+|var\s+)"
+                        r"((?:[^\W\d]|\$)[\w$]*)", source))
+                missed = sorted(name for name, count in naive.items()
+                                if walked[name] and walked[name] < count)
+                self.assertEqual(
+                    missed, [],
+                    "a plain column-0 scan of %s finds %s declared more often than the delimiter "
+                    "walk did (%s). The walk skipped a declaration of a name it otherwise knows, "
+                    "so a duplicate of it could go unreported. (If one of those lines is really "
+                    "inside a block comment or a template literal, indent it.)" % (
+                        label, missed, ", ".join("%s: %d vs %d" % (name, naive[name], walked[name])
+                                                 for name in missed)))
 
             self._assert_v8_agrees(label, source, scan)
 

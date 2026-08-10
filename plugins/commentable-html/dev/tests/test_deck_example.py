@@ -139,7 +139,7 @@ class DeckExampleTests(unittest.TestCase):
         version = _read_version()
         html = _read(DECK)
         meta = re.search(r'<meta name="commentable-html-version" content="([0-9.]+)"', html)
-        const = re.search(r'const CMH_VERSION = "([0-9.]+)"', html)
+        const = _paths.CMH_VERSION_CONST_RE.search(html)
         self.assertIsNotNone(meta, "no version <meta> in the deck example")
         self.assertIsNotNone(const, "no CMH_VERSION const in the deck example")
         self.assertEqual(meta.group(1), version, "deck <meta> version is stale (run build.py)")
