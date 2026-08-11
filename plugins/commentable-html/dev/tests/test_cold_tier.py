@@ -12,6 +12,7 @@ import base64
 import glob
 import gzip
 import json
+import math
 import os
 import re
 import shutil
@@ -32,7 +33,36 @@ import new_document  # noqa: E402
 import section_hash  # noqa: E402
 import validate  # noqa: E402
 
+# Fixture sizes derive from the SHIPPED thresholds rather than repeating them: retuning the
+# defaults (CMH-COLD-10) must not silently turn an eligibility test into a no-op. The invariants
+# below are asserted at import time because each one is a way this module has already gone vacuous:
+# BIG must clear the eligibility bar, and SMALL must sit BETWEEN keep_rows and min_rows so
+# "a small table is left alone" really exercises the min_rows gate rather than simply having no
+# tail to take.
+MIN = cold_tier.DEFAULT_MIN_ROWS
+KEEP = cold_tier.DEFAULT_KEEP_ROWS
+BIG = max(MIN, KEEP) + 1
+SMALL = KEEP + max(1, (MIN - KEEP) // 2)
+HALF = KEEP + (BIG - KEEP) // 2  # a split point genuinely INSIDE the compressible tail
+LAST_ROW = "<td>r%d</td>" % (BIG - 1)
+
+# Most of this module is about the payload shape, the round trip, the failure paths and the runtime
+# wiring - none of which depend on the SHIPPED thresholds, only on there being a compressible tail.
+# Those tests pass explicit small thresholds so that retuning a default cannot add minutes to a CI
+# shard for no extra coverage (at 2000/4000 every fixture would otherwise be a 4001-row document).
+# The tests that genuinely pin the shipped defaults - eligibility, the skeleton guarantee, and the
+# browser-fixture pins - keep the derived sizes above.
+TEST_MIN = 40
+TEST_KEEP = 20
+TEST_BIG = TEST_MIN + TEST_KEEP
+TEST_LAST_ROW = "<td>r%d</td>" % (TEST_BIG - 1)
+
+
+def _compress(html, min_rows=TEST_MIN, keep_rows=TEST_KEEP):
+    return cold_tier.compress(html, min_rows=min_rows, keep_rows=keep_rows)
+
 PREAMBLE = os.path.join(_paths.ASSETS, "js", "00-preamble.js")
+SWEEP = os.path.join(_paths.DEV, "tools", "cold-tier-threshold-sweep.json")
 LOADER = os.path.join(_paths.ASSETS, "js", "01-cold-tier.js")
 STARTUP = os.path.join(_paths.ASSETS, "js", "95-startup.js")
 
@@ -61,7 +91,7 @@ def _table(row_count, head="  <thead><tr><th>a</th><th>b</th><th>c</th></tr></th
             + _rows(row_count) + extra_rows + "\n  </tbody>\n</table>")
 
 
-def _big_doc(row_count=60):
+def _big_doc(row_count=BIG):
     return _doc("<h1>Title</h1>\n<p>Prose stays plain.</p>\n" + _table(row_count))
 
 
@@ -70,6 +100,36 @@ def _payload(html):
     assert span is not None, "no payload in document"
     inner = html[span[0]:span[1]]
     return json.loads(inner[inner.index(">") + 1:inner.rindex("</")])
+
+
+def _sign_test_p(hits, n):
+    """Exact one-sided binomial tail P(X >= hits) for X ~ Binomial(n, 1/2).
+
+    Recomputed here rather than read out of the artifact, so a transcribed p-value cannot be wrong
+    while the suite stays green.
+    """
+    if not n:
+        return 1.0
+    return sum(math.comb(n, k) for k in range(hits, n + 1)) / float(2 ** n)
+
+
+def _clopper_pearson_upper(hits, n, alpha):
+    """One-sided exact upper bound on the rate given *hits* of *n*.
+
+    A non-rejection says only that the data do not exclude zero; this says what they DO exclude,
+    which is the honest form of "the residual is small".
+    """
+    def cdf(p):
+        return sum(math.comb(n, i) * p ** i * (1 - p) ** (n - i) for i in range(0, hits + 1))
+
+    lo, hi = 0.0, 1.0
+    for _ in range(200):
+        mid = (lo + hi) / 2
+        if cdf(mid) > alpha:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
 
 
 def _spec_row(feature_id):
@@ -86,14 +146,14 @@ class EligibilityTests(unittest.TestCase):
     """Only a large table's row TAIL is ever taken, and only when it is safe to take."""
 
     def test_a_large_table_tail_is_compressed(self):
-        out, changed = cold_tier.compress(_big_doc(60))
+        out, changed = cold_tier.compress(_big_doc(BIG))
         self.assertTrue(changed)
         self.assertEqual(cold_tier.state(out), "compressed")
-        self.assertEqual(_payload(out)["parts"][0]["rows"], 40)
+        self.assertEqual(_payload(out)["parts"][0]["rows"], BIG - KEEP)
 
     def test_a_small_table_is_left_alone(self):
         # At the default min-rows, a table this size is entirely first-screen material.
-        out, changed = cold_tier.compress(_big_doc(30))
+        out, changed = cold_tier.compress(_big_doc(SMALL))
         self.assertFalse(changed)
         self.assertEqual(cold_tier.state(out), "plain")
 
@@ -107,13 +167,13 @@ class EligibilityTests(unittest.TestCase):
         self.assertEqual(out.count("<tr><td>r"), 5)
 
     def test_every_large_body_in_the_document_is_taken(self):
-        html = _doc("<h1>T</h1>\n" + _table(60) + "\n" + _table(60))
+        html = _doc("<h1>T</h1>\n" + _table(BIG) + "\n" + _table(BIG))
         out, changed = cold_tier.compress(html)
         self.assertTrue(changed)
         self.assertEqual(len(_payload(out)["parts"]), 2)
 
     def test_a_tail_row_holding_a_heading_disqualifies_the_table(self):
-        html = _doc("<h1>T</h1>\n" + _table(60, extra_rows='\n    <tr><td><h3 id="deep">Deep</h3></td></tr>'))
+        html = _doc("<h1>T</h1>\n" + _table(BIG, extra_rows='\n    <tr><td><h3 id="deep">Deep</h3></td></tr>'))
         out, changed = cold_tier.compress(html)
         self.assertFalse(changed, "a heading (an anchor target) must never be compressed")
 
@@ -129,7 +189,7 @@ class EligibilityTests(unittest.TestCase):
 
     def test_a_first_wins_duplicate_attribute_is_read_the_way_a_browser_reads_it(self):
         html = ("<!DOCTYPE html>\n<html><head><title>t</title></head><body>\n"
-                '<main id="commentRoot">\n<h1>T</h1>\n' + _table(60) + "\n</main>\n"
+                '<main id="commentRoot">\n<h1>T</h1>\n' + _table(BIG) + "\n</main>\n"
                 '<script type="text/plain" type="application/json" id="cmhColdTier">x</script>\n'
                 "</body></html>\n")
         # A browser keeps the FIRST `type`, so this is NOT an inert JSON payload.
@@ -154,7 +214,7 @@ class EligibilityTests(unittest.TestCase):
                 markup = ("<%s>" % tag) if tag in ("link", "base", "meta", "embed") \
                     else "<%s></%s>" % (tag, tag)
                 html = _doc("<h1>T</h1>\n"
-                            + _table(60, extra_rows="\n    <tr><td>" + markup + "</td></tr>"))
+                            + _table(BIG, extra_rows="\n    <tr><td>" + markup + "</td></tr>"))
                 _out, changed = cold_tier.compress(html)
                 self.assertFalse(changed, tag)
 
@@ -179,7 +239,7 @@ class EligibilityTests(unittest.TestCase):
                        "<table><tbody><tr><td>nested</td></tr></tbody></table>"):
             with self.subTest(markup=markup):
                 html = _doc("<h1>T</h1>\n"
-                            + _table(60, extra_rows="\n    <tr><td>" + markup + "</td></tr>"))
+                            + _table(BIG, extra_rows="\n    <tr><td>" + markup + "</td></tr>"))
                 _out, changed = cold_tier.compress(html)
                 self.assertFalse(changed, markup)
 
@@ -191,7 +251,7 @@ class EligibilityTests(unittest.TestCase):
             with self.subTest(markup=markup):
                 nested = ("<table><tbody><tr><td>" + markup + "</td></tr></tbody></table>")
                 html = _doc("<h1>T</h1>\n"
-                            + _table(60, extra_rows="\n    <tr><td>" + nested + "</td></tr>"))
+                            + _table(BIG, extra_rows="\n    <tr><td>" + nested + "</td></tr>"))
                 out, changed = cold_tier.compress(html)
                 self.assertFalse(changed, markup)
                 self.assertIn(markup, out)
@@ -199,7 +259,7 @@ class EligibilityTests(unittest.TestCase):
     def test_a_table_inside_a_template_is_never_compressed(self):
         # Its placeholder would live in `template.content`, which the loader cannot reach - so
         # hydration would fail for the WHOLE document, not just that table.
-        html = _doc("<h1>T</h1>\n<template>\n" + _table(60) + "\n</template>")
+        html = _doc("<h1>T</h1>\n<template>\n" + _table(BIG) + "\n</template>")
         _out, changed = cold_tier.compress(html)
         self.assertFalse(changed)
 
@@ -207,14 +267,14 @@ class EligibilityTests(unittest.TestCase):
         # A browser foster-parents such text out of the table, and the loader hands back only the
         # parsed tbody - so it would be silently dropped on hydration.
         html = _doc("<h1>T</h1>\n<table>\n  <tbody>\n"
-                    + _rows(30) + "\n stray text \n" + _rows(30, start=30)
+                    + _rows(HALF) + "\n stray text \n" + _rows(BIG - HALF, start=HALF)
                     + "\n  </tbody>\n</table>")
         _out, changed = cold_tier.compress(html)
         self.assertFalse(changed)
 
     def test_a_comment_between_tail_rows_is_fine(self):
         html = _doc("<h1>T</h1>\n<table>\n  <tbody>\n"
-                    + _rows(30) + "\n<!-- a note -->\n" + _rows(30, start=30)
+                    + _rows(HALF) + "\n<!-- a note -->\n" + _rows(BIG - HALF, start=HALF)
                     + "\n  </tbody>\n</table>")
         out, changed = cold_tier.compress(html)
         self.assertTrue(changed)
@@ -223,19 +283,19 @@ class EligibilityTests(unittest.TestCase):
 
     def test_a_table_outside_the_content_root_is_never_touched(self):
         html = ("<!DOCTYPE html>\n<html><head><title>t</title></head><body>\n"
-                + _table(60) + '\n<main id="commentRoot">\n<p>only prose</p>\n</main>\n'
+                + _table(BIG) + '\n<main id="commentRoot">\n<p>only prose</p>\n</main>\n'
                 "</body></html>\n")
         _out, changed = cold_tier.compress(html)
         self.assertFalse(changed)
 
     def test_a_document_with_no_content_root_is_left_entirely_alone(self):
-        html = "<!DOCTYPE html>\n<html><body>\n" + _table(60) + "\n</body></html>\n"
+        html = "<!DOCTYPE html>\n<html><body>\n" + _table(BIG) + "\n</body></html>\n"
         _out, changed = cold_tier.compress(html)
         self.assertFalse(changed)
 
     def test_an_implicitly_closed_row_refuses_the_whole_body(self):
         # Cutting at a guessed offset would cost content; refusing only costs bytes.
-        rows = "\n".join("    <tr><td>r%d</td>" % i for i in range(60))
+        rows = "\n".join("    <tr><td>r%d</td>" % i for i in range(BIG))
         html = _doc("<h1>T</h1>\n<table>\n  <tbody>\n" + rows + "\n  </tbody>\n</table>")
         _out, changed = cold_tier.compress(html)
         self.assertFalse(changed)
@@ -243,7 +303,7 @@ class EligibilityTests(unittest.TestCase):
     def test_a_quoted_angle_bracket_does_not_confuse_the_scan(self):
         # The regex failure mode `vendored_libs.py` paid for: `[^>]*` stops inside the attribute.
         rows = "\n".join(
-            '    <tr title="a > b"><td>r%d</td><td>x</td><td>y</td></tr>' % i for i in range(60))
+            '    <tr title="a > b"><td>r%d</td><td>x</td><td>y</td></tr>' % i for i in range(BIG))
         html = _doc("<h1>T</h1>\n<table>\n  <tbody>\n" + rows + "\n  </tbody>\n</table>")
         out, changed = cold_tier.compress(html)
         self.assertTrue(changed)
@@ -255,33 +315,34 @@ class SkeletonTests(unittest.TestCase):
     """The semantic skeleton is literal text in the raw file, always."""
 
     def test_headings_prose_caption_and_thead_stay_literal(self):
-        html = _doc("<h1>Title</h1>\n<h2>Sub</h2>\n<p>Prose stays plain.</p>\n" + _table(60))
+        html = _doc("<h1>Title</h1>\n<h2>Sub</h2>\n<p>Prose stays plain.</p>\n" + _table(BIG))
         out, _ = cold_tier.compress(html)
         for literal in ("<h1>Title</h1>", "<h2>Sub</h2>", "<p>Prose stays plain.</p>",
                         "<caption>Rows</caption>", "<th>a</th>"):
             self.assertIn(literal, out, literal)
 
     def test_the_first_rows_of_a_compressed_table_stay_literal(self):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = cold_tier.compress(_big_doc(BIG))
         self.assertIn("<td>r0</td>", out)
-        self.assertIn("<td>r19</td>", out)
-        self.assertNotIn("<td>r20</td>", out)
+        self.assertIn("<td>r%d</td>" % (KEEP - 1), out)
+        self.assertNotIn("<td>r%d</td>" % KEEP, out)
         self.assertEqual(out.count("<tr><td>r"), cold_tier.DEFAULT_KEEP_ROWS)
 
     def test_the_compressed_text_is_recoverable_offline_with_the_standard_library_alone(self):
         # The documented reconstruction procedure: read the JSON, base64-decode, gunzip.
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = cold_tier.compress(_big_doc(BIG))
         part = _payload(out)["parts"][0]
         text = gzip.decompress(base64.b64decode(part["data"])).decode("utf-8")
-        self.assertIn("<td>r59</td>", text)
+        self.assertIn("<td>r%d</td>" % (BIG - 1), text)
 
 
 class RoundTripTests(unittest.TestCase):
     def test_expanding_reproduces_the_original_bytes(self):
-        for rows in (41, 60, 200):
+        for rows in (TEST_MIN + 1, TEST_MIN + TEST_KEEP, TEST_MIN * 2):
+            self.assertGreater(rows, max(TEST_MIN, TEST_KEEP))
             with self.subTest(rows=rows):
                 html = _big_doc(rows)
-                out, changed = cold_tier.compress(html)
+                out, changed = _compress(html)
                 self.assertTrue(changed)
                 back, expanded = cold_tier.expand(out)
                 self.assertTrue(expanded)
@@ -289,44 +350,44 @@ class RoundTripTests(unittest.TestCase):
 
     def test_the_whitespace_between_rows_survives(self):
         html = _doc("<h1>T</h1>\n<table>\n<tbody>\n"
-                    + "\n\n".join("<tr><td>r%d</td></tr>" % i for i in range(60))
+                    + "\n\n".join("<tr><td>r%d</td></tr>" % i for i in range(TEST_BIG))
                     + "\n</tbody>\n</table>")
-        out, _ = cold_tier.compress(html)
+        out, _ = _compress(html)
         back, _ = cold_tier.expand(out)
         self.assertEqual(back, html)
 
     def test_a_unicode_cell_survives_the_round_trip(self):
         rows = "\n".join(
             "    <tr><td>r%d</td><td>caf\u00e9 \u4e2d\u6587 \U0001f680</td></tr>" % i
-            for i in range(60))
+            for i in range(TEST_BIG))
         html = _doc("<h1>T</h1>\n<table>\n  <tbody>\n" + rows + "\n  </tbody>\n</table>")
-        out, changed = cold_tier.compress(html)
+        out, changed = _compress(html)
         self.assertTrue(changed)
         back, _ = cold_tier.expand(out)
         self.assertEqual(back, html)
 
     def test_compressing_an_already_compressed_document_is_a_no_op(self):
-        out, _ = cold_tier.compress(_big_doc(60))
-        again, changed = cold_tier.compress(out)
+        out, _ = _compress(_big_doc(TEST_BIG))
+        again, changed = _compress(out)
         self.assertFalse(changed)
         self.assertEqual(again, out)
 
     def test_expanding_a_plain_document_is_a_no_op(self):
-        html = _big_doc(60)
+        html = _big_doc(TEST_BIG)
         out, changed = cold_tier.expand(html)
         self.assertFalse(changed)
         self.assertEqual(out, html)
 
     def test_compression_is_deterministic(self):
-        html = _big_doc(60)
-        first, _ = cold_tier.compress(html)
-        second, _ = cold_tier.compress(html)
+        html = _big_doc(TEST_BIG)
+        first, _ = _compress(html)
+        second, _ = _compress(html)
         self.assertEqual(first, second, "a timestamped payload would churn every finalize")
 
 
 class PayloadTests(unittest.TestCase):
     def test_the_payload_is_one_inert_script_after_the_content(self):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         self.assertEqual(out.count('id="cmhColdTier"'), 1)
         self.assertIn('<script type="application/json" id="cmhColdTier">', out)
         self.assertGreater(out.index("cmhColdTier"), out.index("</main>"))
@@ -342,10 +403,10 @@ class PayloadTests(unittest.TestCase):
         """
         with open(_paths.TEMPLATE, "r", encoding="utf-8", newline="") as fh:
             template = fh.read()
-        content = ("<h1>Cold tier</h1>\n<p>Prose.</p>\n" + _table(60))
+        content = ("<h1>Cold tier</h1>\n<p>Prose.</p>\n" + _table(TEST_BIG))
         doc = new_document.make_document(template, content, "cold-order-test", "Cold order test",
                                          source="cold.html", kind="report")
-        out, changed = cold_tier.compress(doc)
+        out, changed = _compress(doc)
         self.assertTrue(changed)
         payload_at = out.index('id="cmhColdTier"')
         layer_at = out.index("__commentableHtmlReady")
@@ -354,7 +415,7 @@ class PayloadTests(unittest.TestCase):
         self.assertGreater(payload_at, out.index("</main>"))
 
     def test_the_payload_is_fenced_as_skippable_machinery(self):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         self.assertIn(cold_tier.FENCE_OPEN, out)
         self.assertIn(cold_tier.FENCE_CLOSE, out)
         self.assertIn("safe to skip", cold_tier.FENCE_OPEN)
@@ -362,7 +423,7 @@ class PayloadTests(unittest.TestCase):
         self.assertGreater(out.index(cold_tier.FENCE_CLOSE), out.index("cmhColdTier"))
 
     def test_the_payload_carries_no_executable_script_and_no_url(self):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         payload = _payload(out)
         self.assertEqual(payload["v"], cold_tier.PAYLOAD_VERSION)
         for part in payload["parts"]:
@@ -374,9 +435,9 @@ class PayloadTests(unittest.TestCase):
         # that as the payload is the data-loss shape `vendored_libs.py` was bitten by twice.
         html = _doc('<h1>T</h1>\n<p>Example:</p>\n'
                     '<script type="application/json" id="cmhColdTier">{"v":1,"parts":[]}</script>\n'
-                    + _table(60))
+                    + _table(TEST_BIG))
         self.assertEqual(cold_tier.state(html), "plain")
-        out, changed = cold_tier.compress(html)
+        out, changed = _compress(html)
         self.assertTrue(changed)
         self.assertIn('<p>Example:</p>', out)
         self.assertEqual(out.count('id="cmhColdTier"'), 2)
@@ -388,11 +449,11 @@ class PayloadTests(unittest.TestCase):
         # test here the two sides disagree about what the payload IS, and an authored example
         # outside the content root would silently disable compression for the document.
         html = ("<!DOCTYPE html>\n<html><head><title>t</title></head><body>\n"
-                '<main id="commentRoot">\n<h1>T</h1>\n' + _table(60) + "\n</main>\n"
+                '<main id="commentRoot">\n<h1>T</h1>\n' + _table(TEST_BIG) + "\n</main>\n"
                 '<script type="text/plain" id="cmhColdTier">not the payload</script>\n'
                 "</body></html>\n")
         self.assertEqual(cold_tier.state(html), "plain")
-        _out, changed = cold_tier.compress(html)
+        _out, changed = _compress(html)
         self.assertTrue(changed)
 
     def test_the_payload_cannot_close_its_own_script_element(self):
@@ -400,7 +461,7 @@ class PayloadTests(unittest.TestCase):
             cold_tier._payload_script([{"id": "x</script>", "enc": "gzip+base64", "data": ""}])
 
     def test_the_document_stays_a_single_self_contained_file(self):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         span = cold_tier.find_blob(out)
         self.assertNotIn("src=", out[span[0]:span[1]])
         self.assertNotIn("http", out[span[0]:span[1]])
@@ -408,7 +469,7 @@ class PayloadTests(unittest.TestCase):
 
 class NoscriptTests(unittest.TestCase):
     def test_the_placeholder_explains_itself_without_scripting(self):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         slot = re.search(r"<tr class=\"cmh-cold-slot[^\"]*\"[\s\S]*?</tr>", out).group(0)
         self.assertIn("<noscript>", slot)
         self.assertIn("stored compressed", slot)
@@ -418,7 +479,7 @@ class NoscriptTests(unittest.TestCase):
     def test_the_note_is_hidden_by_this_versions_stylesheet_not_by_an_attribute(self):
         # An OLDER runtime carries neither the loader nor this rule, so it must SHOW the note
         # rather than render an unexplained empty row - which a `hidden` attribute would have done.
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         slot = re.search(r"<tr class=\"cmh-cold-slot[^\"]*\"[\s\S]*?</tr>", out).group(0)
         self.assertIn('<span class="cmh-cold-note">', slot)
         self.assertNotIn('class="cmh-cold-note" hidden', slot)
@@ -428,7 +489,7 @@ class NoscriptTests(unittest.TestCase):
         self.assertIn('note.style.display = "inline"', _read(LOADER))
 
     def test_the_placeholder_spans_the_full_table_width(self):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         self.assertIn('<td colspan="3">', out)
 
 
@@ -441,7 +502,7 @@ class FailureShapeTests(unittest.TestCase):
     """
 
     def _broken(self, mutate):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         return mutate(out)
 
     def test_a_compression_bomb_is_refused_before_it_is_materialized(self):
@@ -488,7 +549,7 @@ class FailureShapeTests(unittest.TestCase):
             cold_tier.expand(broken)
 
     def test_a_duplicated_section_id_raises(self):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         part = re.search(r'\{"data":"[^"]+","enc":"gzip\+base64","id":"cmh-cold-1","rows":\d+\}', out)
         self.assertIsNotNone(part)
         doubled = out.replace(part.group(0), part.group(0) + "," + part.group(0), 1)
@@ -496,20 +557,20 @@ class FailureShapeTests(unittest.TestCase):
             cold_tier.expand(doubled)
 
     def test_a_duplicate_placeholder_raises(self):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         slot = re.search(r"<tr class=\"cmh-cold-slot[\s\S]*?</tr>", out).group(0)
         with self.assertRaises(cold_tier.ColdTierError):
             cold_tier.expand(out.replace(slot, slot + slot, 1))
 
     def test_a_placeholder_the_block_does_not_name_raises(self):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         slot = re.search(r"<tr class=\"cmh-cold-slot[\s\S]*?</tr>", out).group(0)
         extra = slot.replace('"cmh-cold-1"', '"cmh-cold-7"')
         with self.assertRaises(cold_tier.ColdTierError):
             cold_tier.expand(out.replace(slot, slot + extra, 1))
 
     def test_two_payload_blocks_raise_rather_than_stripping_both(self):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         span = cold_tier.find_blob(out)
         doubled = out[:span[1]] + out[span[0]:span[1]] + out[span[1]:]
         with self.assertRaises(cold_tier.ColdTierError):
@@ -518,9 +579,9 @@ class FailureShapeTests(unittest.TestCase):
     def test_a_document_that_already_has_a_placeholder_is_never_recompressed(self):
         # A generated id landing on top of a stale placeholder would make `expand` restore the
         # wrong rows into it.
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = _compress(_big_doc(TEST_BIG))
         stripped, _ = cold_tier._strip_blob(out)
-        again, changed = cold_tier.compress(stripped)
+        again, changed = _compress(stripped)
         self.assertFalse(changed)
 
 
@@ -728,25 +789,44 @@ class InflateTests(unittest.TestCase):
             self.assertTrue(line.endswith(":true"), line)
 
     def test_it_expands_a_real_payload_this_tool_produced(self):
-        compressed, _ = cold_tier.compress(_big_doc(400))
+        rows = TEST_BIG
+        compressed, _ = _compress(_big_doc(rows))
         data = _payload(compressed)["parts"][0]["data"]
         out = self._run(self._harness(
             'const text = api.utf8(api.gunzip(api.b64(%s)));\n'
             'console.log("rows:" + (text.match(/<tr>/g) || []).length);\n'
-            'console.log("last:" + text.includes("<td>r399</td>"));\n' % json.dumps(data)))
-        self.assertIn("rows:380", out)
+            'console.log("last:" + text.includes("<td>r%d</td>"));\n'
+            % (json.dumps(data), rows - 1)))
+        self.assertIn("rows:%d" % (rows - TEST_KEEP), out)
         self.assertIn("last:true", out)
 
 
 class FinalizeWiringTests(unittest.TestCase):
+    """How the tier is wired INTO finalize - a property of the pipeline, not of the thresholds.
+
+    These cases run against a small document with `cold_tier.compress` bound to explicit small
+    thresholds, so the wiring is exercised without paying for a body over the shipped `min_rows` in
+    every one of them: at 4000 that cost was 199 s of this module's runtime. The shipped thresholds
+    really flowing through finalize is a separate claim, proved once by
+    `ShippedThresholdPipelineTests` below on a real over-threshold document with nothing patched.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        content = ('<h1>Cold tier</h1>\n<p>Prose stays plain.</p>\n'
+                   '<h2 id="rows">Rows</h2>\n' + _table(TEST_BIG))
+        cls.document = new_document.make_document(
+            _read(_paths.TEMPLATE), content, "cold-tier-test", "Cold tier test",
+            source="cold.html", kind="report")
+
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="cmh_cold_")
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        content = ('<h1>Cold tier</h1>\n<p>Prose stays plain.</p>\n'
-                   '<h2 id="rows">Rows</h2>\n' + _table(60))
-        self.doc = new_document.make_document(
-            _read(_paths.TEMPLATE), content, "cold-tier-test", "Cold tier test",
-            source="cold.html", kind="report")
+        real_compress = cold_tier.compress
+        cold_tier.compress = lambda html, **kw: real_compress(
+            html, **dict({"min_rows": TEST_MIN, "keep_rows": TEST_KEEP}, **kw))
+        self.addCleanup(setattr, cold_tier, "compress", real_compress)
+        self.doc = self.document
         self.path = os.path.join(self.tmp, "doc.html")
         with open(self.path, "w", encoding="utf-8", newline="") as fh:
             fh.write(self.doc)
@@ -770,7 +850,7 @@ class FinalizeWiringTests(unittest.TestCase):
         html, result = self._finalize()
         self.assertEqual(cold_tier.state(html), "plain")
         self.assertIn(("cold-tier", "expanded"), result["steps"])
-        self.assertIn("<td>r59</td>", html)
+        self.assertIn(TEST_LAST_ROW, html)
 
     def test_repeated_finalize_settles(self):
         first, _ = self._finalize(cold_tier_enabled=True)
@@ -793,7 +873,7 @@ class FinalizeWiringTests(unittest.TestCase):
         set) and reported as an error, or the test passes for the wrong reason.
         """
         plain = self.doc.replace(
-            "<td>r59</td>", '<td>r59<img src="https://example.test/x.png"></td>', 1)
+            TEST_LAST_ROW, TEST_LAST_ROW.replace("</td>", '<img src="https://example.test/x.png"></td>'), 1)
         loud, _ = validate.validate(self.path, html=plain)
         self.assertTrue(loud, "the probe must trip a real check on the plain document")
         compressed, changed = cold_tier.compress(plain)
@@ -817,7 +897,7 @@ class FinalizeWiringTests(unittest.TestCase):
             validate._stamp_validated_file(self.path)
             after = _read(self.path)
             self.assertEqual(cold_tier.state(after), "compressed")
-            self.assertNotIn("<td>r59</td>", after, "the tier must not be expanded on disk")
+            self.assertNotIn(TEST_LAST_ROW, after, "the tier must not be expanded on disk")
         strip = lambda text: re.sub(r'<meta name="commentable-html-validated"[^>]*>', "", text)
         self.assertEqual(strip(cold_tier.expanded_view(after)),
                          strip(cold_tier.expanded_view(before)))
@@ -911,7 +991,7 @@ class FinalizeWiringTests(unittest.TestCase):
         compressed, _ = self._finalize(cold_tier_enabled=True)
         with open(self.path, "r", encoding="utf-8", newline="") as fh:
             fragment = content_extract.extract(fh.read())
-        self.assertIn("<td>r59</td>", fragment)
+        self.assertIn(TEST_LAST_ROW, fragment)
         self.assertNotIn("cmh-cold-slot", fragment)
 
     def test_replacing_the_content_of_a_compressed_document_keeps_its_rows_and_its_tier(self):
@@ -923,7 +1003,7 @@ class FinalizeWiringTests(unittest.TestCase):
         self.assertIn("<h1>Cold tier edited</h1>", final)
         # The edit loop must not silently un-compress the document, and must not lose a row.
         self.assertEqual(cold_tier.state(final), "compressed")
-        self.assertIn("<td>r59</td>", cold_tier.expanded_view(final))
+        self.assertIn(TEST_LAST_ROW, cold_tier.expanded_view(final))
 
     def test_replacing_the_content_of_a_plain_document_leaves_it_plain(self):
         plain, _ = self._finalize()
@@ -932,7 +1012,29 @@ class FinalizeWiringTests(unittest.TestCase):
         final = content_replace.replace(self.path, fragment.replace("<h1>Cold tier</h1>",
                                                                     "<h1>Still plain</h1>"))
         self.assertEqual(cold_tier.state(final), "plain")
-        self.assertIn("<td>r59</td>", final)
+        self.assertIn(TEST_LAST_ROW, final)
+
+class ShippedThresholdPipelineTests(unittest.TestCase):
+    """The SHIPPED thresholds really flow through the pipeline, on a real over-threshold body.
+
+    `FinalizeWiringTests` binds small explicit thresholds so the wiring cases do not each pay
+    for a body over `min_rows`; that makes this the one place the shipped defaults themselves
+    are exercised end to end. It runs the CLI in a SUBPROCESS, which reads the defaults from the
+    module rather than from anything this test could patch - so it is also the case that would
+    catch a default the pipeline cannot actually use.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="cmh_cold_")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        content = ('<h1>Cold tier</h1>\n<p>Prose stays plain.</p>\n'
+                   '<h2 id="rows">Rows</h2>\n' + _table(BIG))
+        doc = new_document.make_document(
+            _read(_paths.TEMPLATE), content, "cold-tier-shipped", "Cold tier shipped",
+            source="cold.html", kind="report")
+        self.path = os.path.join(self.tmp, "doc.html")
+        with open(self.path, "w", encoding="utf-8", newline="") as fh:
+            fh.write(doc)
 
     def test_the_cli_reports_and_round_trips(self):
         env = dict(os.environ)
@@ -951,6 +1053,16 @@ class FinalizeWiringTests(unittest.TestCase):
                               capture_output=True, text=True, env=env, timeout=300)
         self.assertEqual(back.returncode, 0, back.stderr)
         self.assertEqual(_read(self.path), before)
+
+    def test_finalize_compresses_at_the_shipped_defaults(self):
+        result = finalize.finalize(self.path, run_stats=False, run_normalize=False,
+                                   cold_tier_enabled=True)
+        html = _read(self.path)
+        self.assertEqual(cold_tier.state(html), "compressed")
+        self.assertIn(("cold-tier", "compressed"), result["steps"])
+        self.assertIn(LAST_ROW, cold_tier.expanded_view(html))
+        self.assertNotIn(LAST_ROW, html)
+
 
 
 class SpecFixtureTests(unittest.TestCase):
@@ -972,7 +1084,7 @@ class SpecFixtureTests(unittest.TestCase):
             self.assertIn(literal, self.spec, literal)
 
     def test_the_browser_fixture_matches_a_real_placeholder_and_payload(self):
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = cold_tier.compress(_big_doc(BIG))
         slot = re.search(r"<tr class=\"cmh-cold-slot[^\"]*\"[\s\S]*?</tr>", out).group(0)
         for sentence in ("stored compressed further down in this same file",
                          "restored automatically when scripting is enabled",
@@ -986,11 +1098,17 @@ class SpecFixtureTests(unittest.TestCase):
     def test_the_browser_fixture_pins_the_default_keep_rows(self):
         self.assertIn("const KEEP = %d;" % cold_tier.DEFAULT_KEEP_ROWS, self.spec)
 
+    def test_the_browser_fixture_is_a_body_the_shipped_defaults_would_compress(self):
+        # A fixture at or below `min_rows` is a shape `finalize.py --cold-tier` never emits, so the
+        # browser suite would be asserting hydration for a document the tool declines. That is the
+        # drift this class exists to catch, and raising `keep_rows` is exactly what causes it.
+        self.assertIn("const TOTAL = %d;" % (cold_tier.DEFAULT_MIN_ROWS + 1), self.spec)
+
     def test_the_browser_fixture_cuts_where_the_real_emitter_cuts(self):
         # A fixture that cut the leading indentation too would round-trip to the same text but put
         # the inter-row whitespace on the other side of the boundary - so the "identical DOM"
         # assertion, the spec's load-bearing one, would be testing a construction nobody ships.
-        out, _ = cold_tier.compress(_big_doc(60))
+        out, _ = cold_tier.compress(_big_doc(BIG))
         part = _payload(out)["parts"][0]
         text = gzip.decompress(base64.b64decode(part["data"])).decode("utf-8")
         self.assertTrue(text.startswith("<tr>"), text[:40])
@@ -1005,9 +1123,316 @@ class SpecFixtureTests(unittest.TestCase):
         self.assertNotIn('lastIndexOf("</body>")', self.spec)
 
 
+class DerivedFixtureTests(unittest.TestCase):
+    """The derived fixture sizes must stay meaningful at whatever the shipped thresholds become.
+
+    These ran as import-time `assert`s until review pointed out two problems: `python -O` strips
+    them, and a tripped one aborts collection instead of reporting a failure. They are ordinary
+    tests now, so they always run and they name what broke.
+    """
+
+    def test_the_big_fixture_clears_the_eligibility_bar(self):
+        self.assertGreater(BIG, max(MIN, KEEP))
+
+    def test_the_small_fixture_has_a_tail_but_is_still_refused_by_min_rows(self):
+        # SMALL <= KEEP would have no tail to take, so the table would stay plain even if the
+        # min_rows gate stopped working - which is exactly how this test went vacuous once.
+        self.assertGreater(SMALL, KEEP)
+        self.assertLessEqual(SMALL, MIN)
+
+    def test_the_split_point_lands_inside_the_compressible_tail(self):
+        self.assertGreater(HALF, KEEP)
+        self.assertLess(HALF, BIG)
+
+
+class ThresholdChoiceTests(unittest.TestCase):
+    """The shipped thresholds are the ones a SWEEP measured, not a guess (CMH-COLD-10).
+
+    What these tests DO cover: that the shipped constants match the pair the recorded sweep chose,
+    that the sweep is a sweep (several points, whole corpus, enough iterations), that every recorded
+    verdict follows the recorded rule, and that each recorded `blankP` really is the exact sign-test
+    p-value for its own recorded counts - so a hand-transcribed number, the one value the whole
+    decision hangs on, cannot be wrong while the suite stays green.
+
+    What they deliberately do NOT cover: a wholesale fabrication of the measurement. Nothing here
+    re-runs the browser harness, so a self-consistent artifact invented to justify some other
+    default would pass. The artifact IS the evidence; these tests keep it internally honest and tied
+    to the shipped constants, they do not re-derive it.
+    """
+
+    def setUp(self):
+        with open(SWEEP, "r", encoding="utf-8") as fh:
+            self.sweep = json.load(fh)
+
+    def _measured(self, point):
+        """The documents a point actually MEASURED.
+
+        A document the tier DECLINED is byte-identical in both variants, so it carries no
+        information about the tier's paint cost - it can neither pass nor fail. `cold_tier_perf.mjs`
+        FAILS such a document outright ("nothing was measured"); this sweep records it as unmeasured
+        instead and excludes it, which is a deliberate divergence recorded in the artifact's rule.
+        """
+        return [d for d in point["documents"] if d["engaged"]]
+
+    def _passes(self, doc):
+        return all(doc[state]["blankP"] >= self.sweep["alpha"] for state in ("cold", "warm"))
+
+    def test_the_shipped_defaults_are_the_pair_the_sweep_chose(self):
+        self.assertEqual(cold_tier.DEFAULT_KEEP_ROWS, self.sweep["chosen"]["keepRows"])
+        self.assertEqual(cold_tier.DEFAULT_MIN_ROWS, self.sweep["chosen"]["minRows"])
+
+    def _all_points(self):
+        return list(self.sweep["screen"]) + list(self.sweep["confirmation"]["points"])
+
+    def test_the_sweep_is_a_sweep_over_the_whole_corpus(self):
+        # Pinned to the EXACT grid and corpus the spec row names: a shape check ("at least four
+        # points, at least three documents") passes an artifact with points quietly dropped.
+        screen = [(p["keepRows"], p["minRows"]) for p in self.sweep["screen"]]
+        self.assertEqual(screen, [(20, 40), (100, 200), (250, 500), (500, 1000),
+                                  (1000, 2000), (2000, 4000)])
+        confirmed = [(p["keepRows"], p["minRows"]) for p in self.sweep["confirmation"]["points"]]
+        self.assertEqual(confirmed, [(20, 40), (1000, 2000), (2000, 4000)])
+        names = {"sm-report", "md-report", "xl-tree"}
+        for point in self._all_points():
+            self.assertEqual({d["name"] for d in point["documents"]}, names)
+            self.assertEqual(len([d for d in point["documents"] if d["largest"]]), 1)
+            self.assertTrue(self._measured(point), "every point must measure something")
+        self.assertGreaterEqual(self.sweep["screenIterations"], 10)
+
+    def test_the_gate_p_value_is_the_sign_test_of_its_own_counts(self):
+        # `blankP` is the value the gate is decided on, so it is recomputed - in BOTH stages, not
+        # just the screen, since the confirmation is the stage that reversed the decision. `fmpP`
+        # and `ttiP` are carried through from the harness for context and are NOT recomputable from
+        # this file (it does not record their direction counts); nothing is decided on them, and the
+        # artifact says so rather than implying a check that does not happen.
+        for point in self._all_points():
+            n = point["iterations"]
+            for doc in point["documents"]:
+                for state in ("cold", "warm"):
+                    s = doc[state]
+                    with self.subTest(keep=point["keepRows"], doc=doc["name"], state=state):
+                        self.assertEqual(s["discordant"], s["onlyOn"] + s["onlyOff"])
+                        self.assertAlmostEqual(
+                            s["blankP"], _sign_test_p(s["onlyOn"], s["discordant"]), places=12)
+                        self.assertEqual(s["blankOn"] - s["blankOff"], s["onlyOn"] - s["onlyOff"])
+                        for key in ("blankOn", "blankOff"):
+                            self.assertGreaterEqual(s[key], 0)
+                            self.assertLessEqual(s[key], n)
+                        self.assertLessEqual(s["discordant"], n)
+                        # Reported-only statistics: present and in range, nothing more is claimed.
+                        for key in ("fmpP", "ttiP"):
+                            self.assertIsNotNone(s[key])
+                            self.assertGreaterEqual(s[key], 0.0)
+                            self.assertLessEqual(s[key], 1.0)
+                        self.assertIn("dTti", s)
+                self.assertEqual(doc["bytesSaved"], doc["bytesOff"] - doc["bytesOn"])
+            self.assertEqual(point["bytesSaved"],
+                             sum(d["bytesSaved"] for d in point["documents"]))
+
+    def test_the_artifact_says_which_p_values_are_reproducible_from_it(self):
+        # Claiming "every p-value is recomputed" while only the gate's is would be the same class of
+        # overclaim this row exists to avoid.
+        self.assertIn("reported rather than reproducible here", self.sweep["generatedBy"])
+
+    def test_the_gate_is_described_the_same_way_everywhere(self):
+        # Review found `rule`, `metricCaveat` and the implemented `_passes` stating three different
+        # ship conditions - and the difference is what decided which pair shipped.
+        self.assertIn("GATE, at both stages, is the paired blank-until-parsed sign test",
+                      self.sweep["rule"])
+        self.assertIn("GATE is the blank rate", self.sweep["metricCaveat"])
+        self.assertIn("NOT the gate", self.sweep["metric"])
+
+    def test_the_artifact_enumerates_every_divergence_from_the_named_harness(self):
+        # `cold_tier_perf.mjs` fails a document on three independent conditions and this sweep keeps
+        # only one of them; claiming a single divergence was factually wrong.
+        divergences = self.sweep["divergencesFromHarness"]
+        self.assertGreaterEqual(len(divergences), 3)
+        joined = " ".join(divergences)
+        for topic in ("DECLINED", "FMP sign test", "TTI budget"):
+            self.assertIn(topic, joined, topic)
+
+    def test_the_artifact_records_its_own_limits(self):
+        # Each of these is a limit a reviewer had to point out because the file did not say it.
+        self.assertIn("false-positive floor", self.sweep["nullControl"])
+        self.assertIn("BETWEEN points it is not", self.sweep["drift"])
+        self.assertIn("EXTRAPOLATED, not observed", self.sweep["coverageLimit"])
+
+    def test_the_artifact_records_the_power_the_rule_actually_has(self):
+        # The rule cannot reject below a minimum number of DISCORDANT pairs - a property of that
+        # count, not of the iteration count, which is what made the first draft's "at 30 iterations
+        # the test can reject" misleading for a point with one discordant pair.
+        floor = min(d for d in range(1, 31) if _sign_test_p(d, d) <= self.sweep["alpha"])
+        self.assertIn("powerNote", self.sweep)
+        self.assertIn(str(floor), self.sweep["powerNote"])
+        self.assertIn("discordant", self.sweep["powerNote"].lower())
+
+    def test_the_chosen_pair_is_the_smallest_one_the_confirmation_passes(self):
+        # keep_rows and the compression win move in opposite directions, so anything larger than the
+        # smallest passing point gives away bytes it did not have to - but "passing" must be read off
+        # the CONFIRMATION, not the screen. On the screen the runner-up also passed; at the
+        # confirmation's power it did not, and shipping the screen's answer would have shipped a
+        # pair that still regresses.
+        passing = [p for p in self.sweep["confirmation"]["points"]
+                   if all(self._passes(d) for d in self._measured(p))]
+        self.assertTrue(passing)
+        self.assertEqual(min(p["keepRows"] for p in passing), self.sweep["chosen"]["keepRows"])
+        chosen = [p for p in passing if p["keepRows"] == self.sweep["chosen"]["keepRows"]][0]
+        self.assertEqual(chosen["minRows"], self.sweep["chosen"]["minRows"])
+
+    def test_the_screen_alone_would_have_chosen_a_pair_the_confirmation_rejects(self):
+        # This is the whole reason there are two stages; if it ever stops being true the second
+        # stage looks like ceremony, so the artifact has to keep showing the disagreement.
+        screened = [p for p in self.sweep["screen"]
+                    if all(self._passes(d) for d in self._measured(p))]
+        self.assertTrue(screened)
+        smallest = min(p["keepRows"] for p in screened)
+        self.assertLess(smallest, self.sweep["chosen"]["keepRows"])
+        confirmed = [p for p in self.sweep["confirmation"]["points"] if p["keepRows"] == smallest]
+        self.assertTrue(confirmed, "the screen's pick must be re-measured, not simply dropped")
+        self.assertFalse(all(self._passes(d) for d in self._measured(confirmed[0])))
+
+    def test_the_recorded_verdicts_match_the_recorded_rule(self):
+        for point in self.sweep["screen"]:
+            for doc in point["documents"]:
+                with self.subTest(keep=point["keepRows"], doc=doc["name"]):
+                    expected = self._passes(doc) if doc["engaged"] else None
+                    self.assertEqual(doc["paintPasses"], expected)
+            self.assertEqual(point["paintPasses"],
+                             all(d["paintPasses"] for d in self._measured(point)))
+
+    def test_the_sweep_records_why_the_previous_defaults_had_to_change(self):
+        # The baseline point is the shipped 20/40 pair #1271 measured as costing cold first paint.
+        baseline = [p for p in self.sweep["screen"]
+                    if p["keepRows"] == self.sweep["baseline"]["keepRows"]][0]
+        self.assertFalse(baseline["paintPasses"])
+        regressed = [d["name"] for d in self._measured(baseline) if not d["paintPasses"]]
+        self.assertTrue(regressed, "the baseline must record the regression it is the baseline for")
+
+    def test_the_new_defaults_keep_most_of_the_win_on_the_largest_document(self):
+        # The trade is stated in bytes, not asserted: the largest document must still get the bulk
+        # of its compression, or the tier is not worth carrying at all.
+        def largest(keep):
+            point = [p for p in self.sweep["screen"] if p["keepRows"] == keep][0]
+            return [d for d in point["documents"] if d["largest"]][0]
+
+        before = largest(self.sweep["baseline"]["keepRows"])
+        after = largest(self.sweep["chosen"]["keepRows"])
+        self.assertTrue(after["engaged"], "the tier must still engage on the largest document")
+        # Measured at 82.8 percent. The bound is what makes the tier worth carrying at all: a
+        # threshold raised until the largest document keeps only a fraction of its win would be a
+        # different feature wearing the same name.
+        self.assertGreater(after["bytesSaved"], before["bytesSaved"] * 0.75)
+
+    def test_a_document_the_tier_declines_is_unmeasured_rather_than_passing(self):
+        # Where the tier does not engage the two variants are the SAME bytes, so a verdict there
+        # would be a comparison that never happened. The recorded controls show how loud that noise
+        # is - which is why they are excluded from the gate rather than counted as passes.
+        declined = [(p, d) for p in self.sweep["screen"] for d in p["documents"]
+                    if not d["engaged"]]
+        self.assertTrue(declined)
+        for point, doc in declined:
+            with self.subTest(keep=point["keepRows"], doc=doc["name"]):
+                self.assertEqual(doc["bytesSaved"], 0)
+                self.assertEqual(doc["bytesOff"], doc["bytesOn"])
+                self.assertIsNone(doc["paintPasses"])
+
+    def test_the_confirmation_run_is_powered_to_reject(self):
+        # A rule that cannot reject cannot pass anything either. The confirmation is only worth
+        # reading if its sample can produce a significant result - and it must actually produce one
+        # on the baseline, or "the new pair is better" is a comparison against nothing.
+        confirm = self.sweep["confirmation"]
+        self.assertGreater(confirm["iterations"], self.sweep["iterations"])
+        floor = min(d for d in range(1, confirm["iterations"] + 1)
+                    if _sign_test_p(d, d) <= self.sweep["alpha"])
+        self.assertEqual(confirm["signTestFloor"], floor)
+        for point in confirm["points"]:
+            for doc in point["documents"]:
+                for state in ("cold", "warm"):
+                    s = doc[state]
+                    with self.subTest(keep=point["keepRows"], doc=doc["name"], state=state):
+                        self.assertEqual(s["discordant"], s["onlyOn"] + s["onlyOff"])
+                        self.assertAlmostEqual(
+                            s["blankP"], _sign_test_p(s["onlyOn"], s["discordant"]), places=12)
+        chosen = [p for p in confirm["points"]
+                  if p["keepRows"] == self.sweep["chosen"]["keepRows"]][0]
+        baseline = [p for p in confirm["points"]
+                    if p["keepRows"] == self.sweep["baseline"]["keepRows"]][0]
+        self.assertFalse(baseline["paintPasses"], "the baseline must be rejected at this power")
+        self.assertTrue(chosen["paintPasses"])
+        before = [d for d in baseline["documents"] if d["largest"]][0]
+        after = [d for d in chosen["documents"] if d["largest"]][0]
+        self.assertGreaterEqual(before["cold"]["discordant"], floor)
+        self.assertLess(after["cold"]["blankOn"], before["cold"]["blankOn"])
+        self.assertLess(after["cold"]["dFmp"], before["cold"]["dFmp"])
+
+    def test_the_artifact_bounds_the_residual_instead_of_claiming_parity(self):
+        # The chosen pair is NOT at parity - one blank load in thirty remains - and a non-rejection
+        # is not a proof of equivalence. Review read the earlier "the bound holds at this power" as
+        # the same error one notch quieter, so the residual is now a QUANTIFIED bound, checked here
+        # against the recorded counts rather than against the prose that describes it.
+        self.assertIn("NOT a demonstration of parity", self.sweep["residual"])
+        bound = self.sweep["residualBound"]
+        chosen = [p for p in self.sweep["confirmation"]["points"]
+                  if p["keepRows"] == self.sweep["chosen"]["keepRows"]][0]
+        largest = [d for d in chosen["documents"] if d["largest"]][0]
+        self.assertEqual(bound["document"], largest["name"])
+        self.assertEqual(bound["blankOn"], largest[bound["state"]]["blankOn"])
+        self.assertEqual(bound["iterations"], chosen["iterations"])
+        self.assertGreater(bound["blankOn"], 0,
+                           "if the residual reached zero this row should say so instead")
+        self.assertAlmostEqual(
+            bound["upperBound95"],
+            _clopper_pearson_upper(bound["blankOn"], bound["iterations"], self.sweep["alpha"]),
+            places=3)
+        self.assertIn("%.1f%%" % (bound["upperBound95"] * 100), self.sweep["residual"])
+
+    def test_the_shipped_document_scan_backs_the_no_reader_sees_a_change_claim(self):
+        # "Nothing a reader sees changes" rests on a scan of the real documents, so the scan is
+        # recorded and re-run here rather than asserted in prose only.
+        scan = self.sweep["shippedDocumentScan"]["documents"]
+        self.assertGreaterEqual(len(scan), 7)
+        for entry in scan:
+            path = os.path.join(_paths.EXAMPLES, entry["document"])
+            if not os.path.exists(path):
+                path = os.path.join(_paths.DEV, "upgrade-corpus", entry["document"])
+            with self.subTest(document=entry["document"]):
+                self.assertTrue(os.path.exists(path), path)
+                html = _read(path)
+                try:
+                    html, _ = cold_tier.expand(html)
+                except cold_tier.ColdTierError:
+                    pass
+                _out, old = cold_tier.compress(
+                    html, min_rows=self.sweep["baseline"]["minRows"],
+                    keep_rows=self.sweep["baseline"]["keepRows"])
+                _out, new = cold_tier.compress(html)
+                self.assertEqual(bool(old), entry["engagedAtBaseline"])
+                self.assertEqual(bool(new), entry["engagedAtChosen"])
+                self.assertFalse(new, "no shipped document engages the tier at the new defaults")
+
+    def test_the_spec_row_states_the_chosen_pair_and_the_trade(self):
+        row = _spec_row("CMH-COLD-10")
+        self.assertTrue(row)
+        for literal in (str(self.sweep["chosen"]["keepRows"]),
+                        str(self.sweep["chosen"]["minRows"]),
+                        "cold-tier-threshold-sweep.json"):
+            self.assertIn(literal, row, literal)
+
+    def test_the_spec_row_does_not_claim_equivalence_the_test_cannot_support(self):
+        # A non-significant sign test is a failure to detect, never a proof of equivalence, and
+        # four independent reviewers read the earlier wording as claiming the latter.
+        row = _spec_row("CMH-COLD-10")
+        self.assertNotIn("statistically indistinguishable", row)
+
+    def test_the_default_thresholds_row_states_the_shipped_numbers(self):
+        row = _spec_row("CMH-COLD-01")
+        self.assertIn("defaults %d and %d" % (cold_tier.DEFAULT_KEEP_ROWS,
+                                              cold_tier.DEFAULT_MIN_ROWS), row)
+
+
 class SpecTests(unittest.TestCase):
     def test_every_behavior_has_a_spec_row(self):
-        for index in range(1, 9):
+        for index in list(range(1, 9)) + [10]:
             feature = "CMH-COLD-%02d" % index
             with self.subTest(feature=feature):
                 self.assertTrue(_spec_row(feature), feature)
