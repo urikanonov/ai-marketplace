@@ -224,28 +224,37 @@ python tools/shots_linux.py --adopt <dir>          # adopt an artifact you alrea
 rewrites; the pinned container's `shots:check` - the required gate - is what confirms it.
 
 - **Prefer `npm run shots` when you have Docker.** Adopting installs a render made for the commit
-  that ran, so it is the recovery path, not the routine one. `--adopt-run` prints which commit the
-  run rendered and warns when it is not the one you have checked out, so adopt a run of `main` when
-  you are fixing `main` - not a PR's own run, whose pixels reflect that PR's unmerged source.
+  that ran, so it is the recovery path, not the routine one. `--adopt-run` prints what produced the
+  bytes - the commit, the branch, the run URL and the triggering EVENT - and warns both when the run
+  rendered a different commit and when its event is not `push`. Heed the second one: the drift
+  artifact is uploaded by `pull_request` runs too, and those pixels were rendered from that pull
+  request's own source, so adopt a `push` run of the branch you are fixing.
 - **It relaxes nothing.** Adopting is a re-baseline from the same renderer the gate uses, never a
   verdict that the screenshots are right; only `shots:check` in the container says that.
-- **It refuses as a whole rather than partly applying**, and decides (and reads every source byte)
-  before writing anything. A PNG whose name is not a committed shot, a file that is not a
-  structurally complete PNG (the chunk stream is walked with CRCs to a terminal `IEND`, so a
-  truncated download is caught - its signature alone is not enough for a gate that DECODES the
-  file), a symlink or other non-regular entry, one name appearing twice under the root, a path that
-  is not a directory, or an empty directory each refuse the whole adoption and write nothing. The
-  `*.diff.png` files the check writes beside a failing render are skipped - they are magenta-marked
-  reports of the failure, not renders.
+- **It refuses as a whole rather than partly applying**, and decides (and reads every byte on both
+  sides) before writing anything. A PNG whose name is not a committed shot, a file that is not a
+  usable PNG (the chunk stream is walked with CRCs, requiring a 13-byte `IHDR` with non-zero
+  dimensions, at least one `IDAT` that actually inflates, and an empty terminal `IEND` with nothing
+  trailing - a signature test would not catch a truncated download, and the gate DECODES these
+  files), a symlink or a linked directory (an NTFS junction is walked into by `os.walk`, so every
+  candidate must resolve inside the artifact), a file far larger than any screenshot, one name
+  appearing twice under the root, a path that is not a directory, or an empty directory each refuse
+  the whole adoption and write nothing. The `*.diff.png` files the check writes beside a failing
+  render are skipped - they are magenta-marked reports of the failure, not renders.
 - **The writes are all-or-nothing too**: each baseline is replaced through a sibling temp file and
-  `os.replace`, so a failure cannot truncate one in place, and if any replacement fails the ones
-  already written are rolled back.
+  `os.replace` (carrying the baseline's own file mode across), so a failure cannot truncate one in
+  place, and if any exception interrupts the loop - including a Ctrl-C - every file already written
+  is restored from the bytes the plan read.
 - It does NOT require the artifact to cover every committed shot, because a mid-capture crash
   legitimately uploads only the scenes rendered before the throw. The no-drift report therefore
   states the artifact's own coverage rather than implying the whole set is fresh.
-- It cannot be combined with `--check`, `--native`, `--print-image` or `--record-digest`: it installs
-  pixels another run rendered, so rendering here at the same time would leave it ambiguous which
-  pixels won. A green run uploads no artifact (it is produced only on failure), and artifacts expire.
+- On a refused ADOPTION the downloaded artifact is kept and its path named, so you can inspect it
+  and re-run `--adopt <dir>` without downloading again. A failed DOWNLOAD removes it instead, since
+  there is nothing to inspect.
+- It cannot be combined with `--check`, `--native`, `--print-image`, `--record-digest` or
+  `--skip-without-renderer`: it installs pixels another run rendered, so rendering here at the same
+  time would leave it ambiguous which pixels won. A green run uploads no artifact (it is produced
+  only on failure), and artifacts expire.
 
 **Scope of the guarantee.** This is equivalence by CONSTRUCTION, not by agreement: both sides
 execute the same image content-addressed by digest, so a GitHub runner-image update (which used to
