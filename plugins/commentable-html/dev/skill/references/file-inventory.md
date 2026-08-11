@@ -41,6 +41,7 @@ subdirectories under `tools/` (for example `tools/validate/validate.py`, `tools/
 - `retrofit.py` - injects the layer into an existing unlayered HTML file, validates before writing, and leaves the target unchanged on failure.
 - `upgrade.py` - upgrades the CSS, COMMENT UI, and JS regions and re-emits the shell-baked mermaid loader bootstrap from the current `dist/SHAREABLE.html`.
 - `finalize.py` - runs safe assembly steps (including AI-typography normalization by default; `--no-normalize` to skip), then validates.
+- `dom_slim.py` - stops a finished document storing a checklist item's identity twice: drops the `data-cmh-item` / `data-cmh-parent` copy of an authored id and names its source on the container instead. Run automatically by `finalize.py` (`--no-slim` to skip); inspect one document with `--check`.
 - `normalize_typography.py` - rewrites AI smart-typography (em/en dashes, ellipsis, curly quotes, nbsp/zero-width spaces) to plain ASCII in a document's prose, leaving code/script/style/comments verbatim (`--check`/`--out`/in-place). Run automatically by `finalize.py` and `deck_scaffold.py`.
 - `diff_block.py` - emits escaped `pre.cmh-diff` review blocks.
 - `chart_block.py` - emits a validator-clean Chart.js figure, loader, data block, and init. Fails

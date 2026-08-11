@@ -40,9 +40,28 @@ function _clSvg(state, size) {
   else inner = box + 'fill="none" stroke="#8a94a6" stroke-width="1.6"/>';
   return '<svg viewBox="0 0 20 20" width="' + s + '" height="' + s + '" aria-hidden="true" focusable="false">' + inner + '</svg>';
 }
+// A checklist may name WHERE an item's identity lives instead of repeating it on every row:
+// data-cmh-item-attr / data-cmh-parent-attr on the container name an authored attribute that
+// already holds the same string, so tools/authoring/dom_slim.py can drop the duplicated
+// data-cmh-item / data-cmh-parent copy and the runtime DERIVES it. The name is validated before
+// it reaches a selector, so a hand-written one can never throw.
+const CMH_CL_ALIAS_RE = /^data-[a-z0-9-]+$/;
+function _clAliasAttr(container, which) {
+  const raw = (container.getAttribute(which) || "").trim().toLowerCase();
+  return CMH_CL_ALIAS_RE.test(raw) ? raw : "";
+}
+function _clItemSelector(alias) {
+  return "[data-cmh-state], [data-cmh-item]" + (alias ? ", [" + alias + "]" : "");
+}
+function _clKeyOf(el, alias, fallback) {
+  return el.getAttribute("data-cmh-item") || (alias ? el.getAttribute(alias) : "") || fallback;
+}
+function _clParentOf(el, alias) {
+  return el.getAttribute("data-cmh-parent") || (alias ? el.getAttribute(alias) : "") || "";
+}
 // The item's own label: for a table row, the cells other than the state cell; for a list item,
 // its direct text (excluding any nested list / nested items / the injected control).
-function _clLabel(el) {
+function _clLabel(el, key, alias) {
   if (el.tagName === "TR") {
     const cells = Array.prototype.filter.call(el.children, (c) => c.tagName === "TD" || c.tagName === "TH");
     const stateCell = el.querySelector("[data-cmh-state-cell]") || cells[0];
@@ -50,13 +69,15 @@ function _clLabel(el) {
     const txt = labelCell ? (labelCell.textContent || "").replace(/\s+/g, " ").trim() : "";
     return txt || (el.textContent || "").replace(/\s+/g, " ").trim();
   }
+  const nested = "ul,ol,table,[data-cmh-checklist],[data-cmh-state],[data-cmh-item],.cmh-check"
+    + (alias ? ",[" + alias + "]" : "");
   let s = "";
   Array.prototype.forEach.call(el.childNodes, (n) => {
     if (n.nodeType === 3) s += n.nodeValue;
-    else if (n.nodeType === 1 && !n.matches("ul,ol,table,[data-cmh-checklist],[data-cmh-state],[data-cmh-item],.cmh-check")) s += n.textContent;
+    else if (n.nodeType === 1 && !n.matches(nested)) s += n.textContent;
   });
   s = s.replace(/\s+/g, " ").trim();
-  return s || (el.getAttribute("data-cmh-item") || "");
+  return s || key || (el.getAttribute("data-cmh-item") || "");
 }
 // Where the state control lives: a table row's state cell (or first cell), else the item itself.
 function _clSlot(el) {
@@ -257,11 +278,12 @@ function jumpToChecklist(cid) {
 // Bake current leaf states into data-cmh-state so an exported file reflects them and opens
 // with no pending changes (mirrors _applyWidgetLayoutToHtml for the layout case).
 function _clDocItemMap(container) {
+  const alias = _clAliasAttr(container, "data-cmh-item-attr");
   const els = Array.prototype.filter.call(
-    container.querySelectorAll("[data-cmh-state], [data-cmh-item]"),
+    container.querySelectorAll(_clItemSelector(alias)),
     (el) => el.closest("[data-cmh-checklist]") === container);
   const map = new Map();
-  els.forEach((el, idx) => { const key = el.getAttribute("data-cmh-item") || String(idx + 1); if (!map.has(key)) map.set(key, el); });
+  els.forEach((el, idx) => { const key = _clKeyOf(el, alias, String(idx + 1)); if (!map.has(key)) map.set(key, el); });
   return map;
 }
 function _applyChecklistStateToHtml(html) {
@@ -286,8 +308,10 @@ function setupChecklistLayer() {
   root.querySelectorAll("[data-cmh-checklist]").forEach((container) => {
     const id = container.getAttribute("data-cmh-checklist") || "";
     if (!id) return;
+    const alias = _clAliasAttr(container, "data-cmh-item-attr");
+    const parentAlias = _clAliasAttr(container, "data-cmh-parent-attr");
     const itemEls = Array.prototype.filter.call(
-      container.querySelectorAll("[data-cmh-state], [data-cmh-item]"),
+      container.querySelectorAll(_clItemSelector(alias)),
       (el) => el.closest("[data-cmh-checklist]") === container);
     if (!itemEls.length) return;
     const setEls = new Set(itemEls);
@@ -295,14 +319,14 @@ function setupChecklistLayer() {
     const byKey = new Map();
     const elItem = new Map();
     itemEls.forEach((el, idx) => {
-      const key = el.getAttribute("data-cmh-item") || String(idx + 1);
-      const item = { checklist: id, key, el, label: _clLabel(el), parentKey: null, children: [], isBranch: false, baseline: _clToken(el.getAttribute("data-cmh-state")), btn: null };
+      const key = _clKeyOf(el, alias, String(idx + 1));
+      const item = { checklist: id, key, el, label: _clLabel(el, key, alias), parentKey: null, children: [], isBranch: false, baseline: _clToken(el.getAttribute("data-cmh-state")), btn: null };
       items.push(item);
       elItem.set(el, item);
       if (!byKey.has(key)) byKey.set(key, item);
     });
     items.forEach((item) => {
-      const explicit = item.el.getAttribute("data-cmh-parent");
+      const explicit = _clParentOf(item.el, parentAlias);
       if (explicit && byKey.has(explicit)) { item.parentKey = explicit; return; }
       const pEl = _clParentEl(item.el, setEls, container);
       if (pEl && elItem.get(pEl)) item.parentKey = elItem.get(pEl).key;

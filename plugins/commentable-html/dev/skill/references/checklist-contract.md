@@ -4,10 +4,20 @@ A layered checklist turns a nested list (or a table) into interactive, four-stat
 parent state aggregates from its children, whose state persists in `localStorage`, and whose changes
 travel back to the agent through the Copy-all bundle so the states can be cemented into the source HTML.
 
+## Contents
+
+- [Author markup](#author-markup)
+  - [Shape A - nested list (hierarchy by DOM nesting)](#shape-a---nested-list-hierarchy-by-dom-nesting)
+  - [Shape B - table (hierarchy by explicit parent, sortable-safe)](#shape-b---table-hierarchy-by-explicit-parent-sortable-safe)
+- [Runtime behavior](#runtime-behavior)
+- [Cementing states into the source (the agent step)](#cementing-states-into-the-source-the-agent-step)
+- [Validation](#validation)
+
 ## Author markup
 
 A checklist is any element marked `data-cmh-checklist="<id>"`. An **item** is any descendant carrying
-`data-cmh-state` or `data-cmh-item`; the attribute is the opt-in, so an item can be a `<li>`, a table
+`data-cmh-state`, `data-cmh-item`, or the attribute the container names in `data-cmh-item-attr` (see
+below); the attribute is the opt-in, so an item can be a `<li>`, a table
 `<tr>`, or a `<div>`. A **branch** is an item that has child items; a **leaf** has none. The runtime
 injects a `cm-skip` state control into each item (before a list item's label, or into a table row's
 first cell or its `[data-cmh-state-cell]`); the item's label text stays ordinary commentable content.
@@ -21,6 +31,13 @@ first cell or its `[data-cmh-state-cell]`); the item's label text stays ordinary
   position in document order within the checklist. Identity is never rendered (no visible numeration).
 - `data-cmh-parent="<item-id>"` - for the table shape only, names the parent item's `data-cmh-item`
   id, since table rows cannot nest. Required to build hierarchy in a table (which may be sorted).
+- `data-cmh-item-attr="<attr>"` / `data-cmh-parent-attr="<attr>"` - on the CONTAINER, names an
+  authored attribute that already holds each item's id (or parent id), so the item does not carry a
+  second copy. Do not write these by hand: `tools/authoring/dom_slim.py` adds them during `finalize`
+  when it finds an authored `data-*` attribute holding the byte-identical value on every item, and
+  drops the `data-cmh-item` / `data-cmh-parent` copy it made redundant. The runtime, the validator
+  and `checklist_apply.py` prefer the item's own attribute and fall back to the one named here, so a
+  document written either way behaves identically.
 
 ### Shape A - nested list (hierarchy by DOM nesting)
 
@@ -85,7 +102,8 @@ python tools/checklist/checklist_apply.py source.html --from-bundle bundle.txt  
 python tools/checklist/checklist_apply.py source.html --state-json '{"audit":{"fw":"cross"}}'
 ```
 
-It rewrites `data-cmh-state` on each named item (by `data-cmh-item` id, else positional key), leaves
+It rewrites `data-cmh-state` on each named item (by `data-cmh-item` id, else the id held by the
+attribute the container names in `data-cmh-item-attr`, else positional key), leaves
 branches untouched, is idempotent, and skips invalid tokens. Run `python tools/validate/validate.py --strict`
 afterward.
 

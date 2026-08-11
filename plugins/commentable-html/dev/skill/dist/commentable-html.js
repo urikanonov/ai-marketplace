@@ -326,7 +326,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.832.0";
+const CMH_VERSION= "1.834.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -4491,7 +4491,21 @@ else if(state=== "mixed")inner=box+'fill="none" stroke="#8a94a6" stroke-width="1
 else inner=box+'fill="none" stroke="#8a94a6" stroke-width="1.6"/>';
 return'<svg viewBox="0 0 20 20" width="'+s+'" height="'+s+'" aria-hidden="true" focusable="false">'+inner+'</svg>';
 }
-function _clLabel(el){
+const CMH_CL_ALIAS_RE=/^data-[a-z0-9-]+$/;
+function _clAliasAttr(container,which){
+const raw=(container.getAttribute(which)||"").trim().toLowerCase();
+return CMH_CL_ALIAS_RE.test(raw)?raw:"";
+}
+function _clItemSelector(alias){
+return"[data-cmh-state], [data-cmh-item]"+(alias?", ["+alias+"]":"");
+}
+function _clKeyOf(el,alias,fallback){
+return el.getAttribute("data-cmh-item")||(alias?el.getAttribute(alias):"")||fallback;
+}
+function _clParentOf(el,alias){
+return el.getAttribute("data-cmh-parent")||(alias?el.getAttribute(alias):"")||"";
+}
+function _clLabel(el,key,alias){
 if(el.tagName=== "TR"){
 const cells=Array.prototype.filter.call(el.children,(c)=>c.tagName=== "TD"||c.tagName=== "TH");
 const stateCell=el.querySelector("[data-cmh-state-cell]")||cells[0];
@@ -4499,13 +4513,15 @@ const labelCell=cells.find((c)=>c!==stateCell);
 const txt=labelCell?(labelCell.textContent||"").replace(/\s+/g," ").trim():"";
 return txt||(el.textContent||"").replace(/\s+/g," ").trim();
 }
+const nested= "ul,ol,table,[data-cmh-checklist],[data-cmh-state],[data-cmh-item],.cmh-check"
++(alias?",["+alias+"]":"");
 let s= "";
 Array.prototype.forEach.call(el.childNodes,(n)=>{
 if(n.nodeType===3)s+=n.nodeValue;
-else if(n.nodeType===1&&!n.matches("ul,ol,table,[data-cmh-checklist],[data-cmh-state],[data-cmh-item],.cmh-check"))s+=n.textContent;
+else if(n.nodeType===1&&!n.matches(nested))s+=n.textContent;
 });
 s=s.replace(/\s+/g," ").trim();
-return s||(el.getAttribute("data-cmh-item")||"");
+return s||key||(el.getAttribute("data-cmh-item")||"");
 }
 function _clSlot(el){
 if(el.tagName=== "TR")return el.querySelector("[data-cmh-state-cell]")||el.querySelector("td, th")||el;
@@ -4694,11 +4710,12 @@ cl.container.classList.add("cmh-check-flash");
 setTimeout(()=>cl.container.classList.remove("cmh-check-flash"),2200);
 }
 function _clDocItemMap(container){
+const alias=_clAliasAttr(container,"data-cmh-item-attr");
 const els=Array.prototype.filter.call(
-container.querySelectorAll("[data-cmh-state], [data-cmh-item]"),
+container.querySelectorAll(_clItemSelector(alias)),
 (el)=>el.closest("[data-cmh-checklist]")===container);
 const map=new Map();
-els.forEach((el,idx)=>{const key=el.getAttribute("data-cmh-item")||String(idx+1);if(!map.has(key))map.set(key,el);});
+els.forEach((el,idx)=>{const key=_clKeyOf(el,alias,String(idx+1));if(!map.has(key))map.set(key,el);});
 return map;
 }
 function _applyChecklistStateToHtml(html){
@@ -4723,8 +4740,10 @@ _clLoad();
 root.querySelectorAll("[data-cmh-checklist]").forEach((container)=>{
 const id=container.getAttribute("data-cmh-checklist")||"";
 if(!id)return;
+const alias=_clAliasAttr(container,"data-cmh-item-attr");
+const parentAlias=_clAliasAttr(container,"data-cmh-parent-attr");
 const itemEls=Array.prototype.filter.call(
-container.querySelectorAll("[data-cmh-state], [data-cmh-item]"),
+container.querySelectorAll(_clItemSelector(alias)),
 (el)=>el.closest("[data-cmh-checklist]")===container);
 if(!itemEls.length)return;
 const setEls=new Set(itemEls);
@@ -4732,14 +4751,14 @@ const items=[];
 const byKey=new Map();
 const elItem=new Map();
 itemEls.forEach((el,idx)=>{
-const key=el.getAttribute("data-cmh-item")||String(idx+1);
-const item={checklist:id,key,el,label:_clLabel(el),parentKey:null,children:[],isBranch:false,baseline:_clToken(el.getAttribute("data-cmh-state")),btn:null};
+const key=_clKeyOf(el,alias,String(idx+1));
+const item={checklist:id,key,el,label:_clLabel(el,key,alias),parentKey:null,children:[],isBranch:false,baseline:_clToken(el.getAttribute("data-cmh-state")),btn:null};
 items.push(item);
 elItem.set(el,item);
 if(!byKey.has(key))byKey.set(key,item);
 });
 items.forEach((item)=>{
-const explicit=item.el.getAttribute("data-cmh-parent");
+const explicit=_clParentOf(item.el,parentAlias);
 if(explicit&&byKey.has(explicit)){item.parentKey=explicit;return;}
 const pEl=_clParentEl(item.el,setEls,container);
 if(pEl&&elItem.get(pEl))item.parentKey=elItem.get(pEl).key;

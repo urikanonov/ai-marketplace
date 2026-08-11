@@ -14,7 +14,8 @@ Order is always:
   4) fix_skip (when --fix-skip)
   5) inline_images (when --inline-images)
   6) highlight_document (on by default; skip with --no-highlight)
-  7) validate
+  7) dom_slim (on by default; skip with --no-slim)
+  8) validate
 """
 import argparse
 import os
@@ -26,6 +27,7 @@ import _toolpath  # noqa: E402
 _toolpath.ensure()
 
 import _atomic_io  # noqa: E402
+import dom_slim  # noqa: E402
 import fix_skip  # noqa: E402
 import generate_toc  # noqa: E402
 import doc_stats  # noqa: E402
@@ -106,6 +108,16 @@ def _apply_stats(html):
     return rewritten, True, (rewritten != html)
 
 
+def _apply_dom_slim(html):
+    """Stop the finished document storing a checklist item's identity twice.
+
+    Runs after every content-producing phase, since an earlier phase can still ADD the markup
+    this reads (a wrapped section, a generated table of contents).
+    """
+    rewritten, changed, stats = dom_slim.slim(html)
+    return rewritten, changed, stats
+
+
 def _apply_vendored_libs(html):
     """Carry the vendored mermaid/Chart.js payload only when the CONTENT can use it.
 
@@ -127,7 +139,7 @@ def _apply_vendored_libs(html):
 
 def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_base=None,
              run_highlight=True, run_wrap_sections=True, run_stats=True, run_normalize=True,
-             stamp_when_clean=False):
+             run_slim=True, stamp_when_clean=False):
     # Read ONCE, thread the document through the pure phase transforms in memory, write ONCE.
     # Each phase used to re-read and re-write the whole file, so a 1.4 - 2.5 MB document paid
     # about 8 reads, 8 writes and 8 independent full-document parses per finalize - and
@@ -175,6 +187,10 @@ def finalize(path, run_toc=False, run_fix_skip=False, run_inline=False, images_b
     # Drop (or restore) the vendored rich-libraries payload last, once the content is final -
     # an earlier phase can still ADD a chart or diagram, so deciding before them could strip a
     # payload the finished document needs.
+    if run_slim:
+        html, changed, stats = _apply_dom_slim(html)
+        if changed:
+            steps.append(("dom-slim", "derived %d checklist identity(ies)" % stats["identity"]))
     html, changed = _apply_vendored_libs(html)
     if changed:
         steps.append(("vendored-libs", "adjusted"))
@@ -217,6 +233,9 @@ def main(argv):
     parser.add_argument("--no-normalize", action="store_true",
                         help="skip rewriting AI smart-typography (em/en dashes, ellipsis, curly "
                              "quotes, nbsp) to plain ASCII in prose (on by default)")
+    parser.add_argument("--no-slim", action="store_true",
+                        help="skip trimming the duplicated generated-DOM checklist identity "
+                             "(on by default)")
     parser.add_argument("--strict", action="store_true",
                         help="treat BLOCKING validator warnings as failures (errors already fail; "
                              "an advisory, which the author cannot clear, never fails strict)")
@@ -239,6 +258,7 @@ def main(argv):
             run_wrap_sections=not args.no_wrap_sections,
             run_stats=not args.no_stats,
             run_normalize=not args.no_normalize,
+            run_slim=not args.no_slim,
             # Stamp inside the pipeline so the strict-clean path still writes ONCE. The
             # condition is no errors and no BLOCKING warnings (an advisory, which the author
             # cannot clear, must not withhold the stamp - CMH-VAL-18), and --no-stamp keeps a

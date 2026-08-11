@@ -1,17 +1,30 @@
 """Layered-checklist authoring checks (`data-cmh-checklist` containers)."""
 
+import re
+
 from .parsing import _BrowserStartTag, _browser_attrs_dict
 
 _CHECK_STATES = ("blank", "check", "cross", "question")
+
+# A container may NAME where an item's identity lives rather than repeat it on every row (see
+# tools/authoring/dom_slim.py); the reading here derives the same id the runtime does.
+_ITEM_ALIAS_ATTR = "data-cmh-item-attr"
+_PARENT_ALIAS_ATTR = "data-cmh-parent-attr"
+_ALIAS_NAME_RE = re.compile(r"^data-[a-z0-9-]+$")
 
 _CL_VOID = frozenset(
     "area base br col embed hr img input link meta param source track wbr".split())
 
 
+def _alias(d, which):
+    raw = (d.get(which) or "").strip().lower()
+    return raw if _ALIAS_NAME_RE.match(raw) else ""
+
+
 class _ChecklistParser(_BrowserStartTag):
     """Collect each data-cmh-checklist container INSTANCE and the items inside it (an item is
-    an element carrying data-cmh-state or data-cmh-item). Scoped to the innermost open
-    container, mirroring the runtime's ownership rule."""
+    an element carrying data-cmh-state, data-cmh-item, or the container's named identity
+    attribute). Scoped to the innermost open container, mirroring the runtime's ownership rule."""
 
     def __init__(self):
         super().__init__(convert_charrefs=False)
@@ -26,12 +39,22 @@ class _ChecklistParser(_BrowserStartTag):
         return _browser_attrs_dict(self, tag, attrs)
 
     def _record_item(self, d):
-        if self._containers and ("data-cmh-state" in d or "data-cmh-item" in d):
-            self._containers[-1]["items"].append({
-                "state": d.get("data-cmh-state"),
-                "item_id": d.get("data-cmh-item"),
-                "parent": d.get("data-cmh-parent"),
-            })
+        if not self._containers:
+            return
+        # A nested checklist CONTAINER is not an item of the checklist enclosing it - the runtime
+        # scopes items with `closest("[data-cmh-checklist]") === container`, which is
+        # ancestor-or-SELF. Recording it made it a ghost item of the outer list.
+        if "data-cmh-checklist" in d:
+            return
+        ctx = self._containers[-1]
+        alias, parent_alias = ctx["alias"], ctx["parent_alias"]
+        if not ("data-cmh-state" in d or "data-cmh-item" in d or (alias and alias in d)):
+            return
+        ctx["items"].append({
+            "state": d.get("data-cmh-state"),
+            "item_id": d.get("data-cmh-item") or (d.get(alias) if alias else None),
+            "parent": d.get("data-cmh-parent") or (d.get(parent_alias) if parent_alias else None),
+        })
 
     def handle_starttag(self, tag, attrs):
         tag = self._browser_tag(tag)
@@ -39,14 +62,23 @@ class _ChecklistParser(_BrowserStartTag):
         self._record_item(d)
         opened = None
         if "data-cmh-checklist" in d:
-            opened = {"id": d.get("data-cmh-checklist") or "", "items": []}
+            opened = {"id": d.get("data-cmh-checklist") or "", "items": [],
+                      "alias": _alias(d, _ITEM_ALIAS_ATTR),
+                      "parent_alias": _alias(d, _PARENT_ALIAS_ATTR)}
             self.instances.append(opened)
             self._containers.append(opened)
         if tag not in _CL_VOID:
             self._stack.append((tag, opened))
 
     def handle_startendtag(self, tag, attrs):
-        self._record_item(self._attrs(self._browser_tag(tag), attrs))
+        # A trailing `/>` only closes a VOID element; on an ordinary HTML element a browser
+        # ignores it and the element stays open, so a self-closing container still owns the
+        # rows that follow it.
+        name = self._browser_tag(tag)
+        if name in _CL_VOID:
+            self._record_item(self._attrs(name, attrs))
+            return
+        self.handle_starttag(tag, attrs)
 
     def handle_endtag(self, tag):
         tag = self._browser_tag(tag)
@@ -78,7 +110,7 @@ def check_checklists(html):
     for inst in p.instances:
         cid = inst["id"]
         if not inst["items"]:
-            warnings.append('checklist "%s" has no items (elements with data-cmh-state or data-cmh-item)' % cid)
+            warnings.append('checklist "%s" has no items (elements with data-cmh-state, data-cmh-item, or the container\'s named identity attribute)' % cid)
             continue
         item_ids = [it["item_id"] for it in inst["items"] if it["item_id"]]
         seen, dups = set(), set()
