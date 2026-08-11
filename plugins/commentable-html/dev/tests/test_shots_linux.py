@@ -1524,8 +1524,7 @@ class AdoptRunDownloadTests(unittest.TestCase):
         with mock.patch.object(S, "_capture",
                                return_value="https://github.com/urikanonov/ai-marketplace"):
             repo = S.checkout_repo()
-        self.assertEqual(repo.count("/"), 2, repo)
-        self.assertTrue(repo.startswith("github.com/"), repo)
+        self.assertEqual(repo.split("/"), ["github.com", "urikanonov", "ai-marketplace"])
 
     def test_the_real_checkout_resolves_to_this_repository(self):
         # Guards the parsing against the actual remote URL shape this repo uses.
