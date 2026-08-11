@@ -234,9 +234,11 @@ rewrites; the pinned container's `shots:check` - the required gate - is what con
 - **It refuses as a whole rather than partly applying**, and decides (and reads every byte on both
   sides) before writing anything. A PNG whose name is not a committed shot, a file that is not a
   usable PNG (the chunk stream is walked with CRCs, requiring a 13-byte `IHDR` with non-zero
-  dimensions, at least one `IDAT` that actually inflates, and an empty terminal `IEND` with nothing
-  trailing - a signature test would not catch a truncated download, and the gate DECODES these
-  files), a symlink or a linked directory (an NTFS junction is walked into by `os.walk`, so every
+  dimensions, at least one `IDAT` that inflates to a non-empty result and reaches its zlib
+  end-of-stream, bounded by what the declared dimensions could hold so a decompression bomb is
+  refused rather than inflated, and an empty terminal `IEND` with nothing trailing - a signature
+  test would not catch a truncated download, and the gate DECODES these files), a symlink or a
+  linked directory (an NTFS junction is walked into by `os.walk`, so every
   candidate must resolve inside the artifact), a file far larger than any screenshot, one name
   appearing twice under the root, a path that is not a directory, or an empty directory each refuse
   the whole adoption and write nothing. The `*.diff.png` files the check writes beside a failing

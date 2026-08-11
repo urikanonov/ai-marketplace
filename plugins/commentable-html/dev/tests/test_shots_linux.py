@@ -1026,6 +1026,51 @@ class PngStructureTests(unittest.TestCase):
         bad = PNG_MAGIC + chunk(b"IHDR", ihdr) + chunk(b"IDAT", b"not zlib") + chunk(b"IEND", b"")
         self.assertIn("inflate", S.png_problem(bad))
 
+    def test_a_pixel_stream_cut_short_mid_zlib_is_refused(self):
+        # decompress() does not raise on a stream that simply stops, so a partial download would
+        # otherwise read as "inflates fine" and install an undecodable baseline.
+        import struct
+        import zlib
+
+        def chunk(kind, data):
+            return (struct.pack(">I", len(data)) + kind + data
+                    + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF))
+
+        ihdr = struct.pack(">IIBBBBB", 1, 100, 8, 2, 0, 0, 0)
+        full = zlib.compress(b"\x00\xff\x00\x00" * 100)
+        cut = PNG_MAGIC + chunk(b"IHDR", ihdr) + chunk(b"IDAT", full[:len(full) // 2]) \
+            + chunk(b"IEND", b"")
+        self.assertIn("mid-stream", S.png_problem(cut))
+
+    def test_an_empty_pixel_stream_is_refused(self):
+        import struct
+        import zlib
+
+        def chunk(kind, data):
+            return (struct.pack(">I", len(data)) + kind + data
+                    + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF))
+
+        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+        empty = PNG_MAGIC + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(b"")) \
+            + chunk(b"IEND", b"")
+        self.assertIn("empty", S.png_problem(empty))
+
+    def test_a_decompression_bomb_is_refused_against_the_declared_image_size(self):
+        # A 1x1 image whose IDAT inflates to 100 MB is not the image it claims to be. Bounding the
+        # inflation by what the DECLARED dimensions can hold refuses it after a few dozen bytes
+        # instead of burning CPU on the whole stream.
+        import struct
+        import zlib
+
+        def chunk(kind, data):
+            return (struct.pack(">I", len(data)) + kind + data
+                    + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF))
+
+        ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+        bomb = PNG_MAGIC + chunk(b"IHDR", ihdr) \
+            + chunk(b"IDAT", zlib.compress(b"\x00" * (64 * 1024 * 1024))) + chunk(b"IEND", b"")
+        self.assertIn("inflates to more than", S.png_problem(bomb))
+
     def test_a_malformed_ihdr_is_refused(self):
         import struct
         import zlib
@@ -1462,17 +1507,29 @@ class AdoptRunDownloadTests(unittest.TestCase):
         self.assertNotIn("GH_REPO", run.call_args[1]["env"])
 
     def test_the_repository_is_derived_from_the_checkouts_origin_remote(self):
-        for url, want in (("https://github.com/urikanonov/ai-marketplace", "urikanonov/ai-marketplace"),
-                          ("https://github.com/urikanonov/ai-marketplace.git\n", "urikanonov/ai-marketplace"),
-                          ("git@github.com:urikanonov/ai-marketplace.git", "urikanonov/ai-marketplace")):
+        for url, want in (
+                ("https://github.com/urikanonov/ai-marketplace", "github.com/urikanonov/ai-marketplace"),
+                ("https://github.com/urikanonov/ai-marketplace.git\n", "github.com/urikanonov/ai-marketplace"),
+                ("git@github.com:urikanonov/ai-marketplace.git", "github.com/urikanonov/ai-marketplace"),
+                ("ssh://git@ghe.example.com/team/repo.git", "ghe.example.com/team/repo")):
             with mock.patch.object(S, "_capture", return_value=url):
                 self.assertEqual(S.checkout_repo(), want, url)
         with mock.patch.object(S, "_capture", return_value=None):
             self.assertIsNone(S.checkout_repo())
 
+    def test_the_pinned_repo_carries_the_HOST_so_gh_host_cannot_redirect_it(self):
+        # GH_REPO takes the documented [HOST/]OWNER/REPO form, and with the host omitted gh falls
+        # back to an ambient GH_HOST - so an enterprise host in the environment could serve the
+        # same run id and artifact name from a different server.
+        with mock.patch.object(S, "_capture",
+                               return_value="https://github.com/urikanonov/ai-marketplace"):
+            repo = S.checkout_repo()
+        self.assertEqual(repo.count("/"), 2, repo)
+        self.assertTrue(repo.startswith("github.com/"), repo)
+
     def test_the_real_checkout_resolves_to_this_repository(self):
         # Guards the parsing against the actual remote URL shape this repo uses.
-        self.assertEqual(S.checkout_repo(), "urikanonov/ai-marketplace")
+        self.assertEqual(S.checkout_repo(), "github.com/urikanonov/ai-marketplace")
 
     def test_a_run_id_that_is_not_a_number_is_refused_before_gh_is_invoked(self):
         # The id is interpolated into an argv; anything but digits (an option, a path) must not

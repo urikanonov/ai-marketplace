@@ -401,7 +401,7 @@ def png_problem(data):
         return "not a PNG (wrong signature)"
     pos, first, seen_end = len(PNG_MAGIC), True, False
     idat = zlib.decompressobj()
-    idat_chunks = 0
+    idat_chunks, inflated, raw_budget = 0, 0, 0
     while pos < len(data):
         if pos + 8 > len(data):
             return "truncated: a chunk header runs past the end of the file"
@@ -421,19 +421,31 @@ def png_problem(data):
             height = int.from_bytes(data[body + 4:body + 8], "big")
             if not width or not height:
                 return "malformed: the image is %dx%d" % (width, height)
+            # The largest raw stream the DECLARED image could produce: one filter byte per row plus
+            # 8 bytes per pixel (16-bit RGBA, the widest PNG format), and an interlaced image is
+            # split into passes that add at most one filter byte per row again. Inflating past this
+            # means the file is not the image it claims to be, which is what makes a decompression
+            # bomb refusable without inflating it: a 1x1 PNG gets a budget of a few dozen bytes.
+            raw_budget = height * (2 + width * 8) + 4096
         expect = int.from_bytes(data[body + length:body + length + 4], "big")
         if zlib.crc32(data[pos + 4:body + length]) & 0xFFFFFFFF != expect:
             return "corrupt: the CRC of chunk %r does not match" % kind
         if ctype == b"IDAT":
             idat_chunks += 1
             try:
-                # Inflate and DISCARD: this asks "does the pixel stream decompress?" without
-                # holding a decompressed frame (several MB per shot) in memory.
-                idat.decompress(data[body:body + length], 1)
-                while idat.unconsumed_tail:
-                    idat.decompress(idat.unconsumed_tail, 1 << 16)
+                # Inflate and DISCARD, bounded by the budget above: this asks "does the pixel
+                # stream decompress to something the size of this image?" without holding a
+                # decompressed frame (several MB per shot) in memory or trusting its size.
+                chunk_out = idat.decompress(data[body:body + length], 1 << 16)
+                inflated += len(chunk_out)
+                while idat.unconsumed_tail and inflated <= raw_budget:
+                    chunk_out = idat.decompress(idat.unconsumed_tail, 1 << 16)
+                    inflated += len(chunk_out)
             except zlib.error as exc:
                 return "corrupt: the compressed image data does not inflate (%s)" % exc
+            if inflated > raw_budget:
+                return ("malformed: the image data inflates to more than a %dx%d image can hold"
+                        % (width, height))
         first = False
         pos = body + length + 4
         if ctype == b"IEND":
@@ -445,6 +457,12 @@ def png_problem(data):
         return "truncated: the image has no IEND chunk"
     if not idat_chunks:
         return "malformed: the image has no IDAT chunk"
+    if not idat.eof:
+        # decompress() does not raise on a stream that simply stops early, so an IDAT cut short by
+        # a partial download would otherwise pass as "inflates fine".
+        return "truncated: the compressed image data ends mid-stream"
+    if not inflated:
+        return "malformed: the image data is empty"
     if pos != len(data):
         return "malformed: %d byte(s) of data follow the IEND chunk" % (len(data) - pos)
     return None
@@ -673,12 +691,16 @@ def adopt_artifact(artifact_root, shots_dir):
 
 
 def checkout_repo():
-    """`owner/name` for this checkout's `origin` remote, or None.
+    """`host/owner/name` for this checkout's `origin` remote, or None.
 
     Derived from the worktree rather than hardcoded, so it stays a single source of truth, and
     forced onto gh as GH_REPO because cwd alone does NOT settle the question: `gh repo set-default`
     records its answer in the checkout's own git config, and with several remotes gh prefers by
     NAME. This clone really does carry stray remotes, so "wherever gh looks" is not good enough.
+
+    The HOST is included, not just `owner/name`: GH_REPO takes the documented `[HOST/]OWNER/REPO`
+    form, and with the host omitted gh falls back to an ambient `GH_HOST` - so an enterprise host
+    set in the environment could serve the same run id and artifact name from a different server.
     """
     url = _capture(["git", "-C", REPO_ROOT, "remote", "get-url", "origin"])
     if not url:
@@ -686,16 +708,18 @@ def checkout_repo():
     url = url.strip().rstrip("/")
     if url.endswith(".git"):
         url = url[:-4]
-    match = re.search(r"[/:]([^/:]+)/([^/]+)\Z", url)
-    return "%s/%s" % (match.group(1), match.group(2)) if match else None
+    match = re.search(r"\A(?:[a-zA-Z][a-zA-Z0-9+.-]*://)?(?:[^/@]+@)?([^/:]+)[/:]([^/:]+)/([^/]+)\Z",
+                      url)
+    return "%s/%s/%s" % match.groups() if match else None
 
 
 def _gh_env():
-    """The environment for a `gh` call, pinned to this checkout's repository.
+    """The environment for a `gh` call, pinned to this checkout's repository AND host.
 
     gh resolves the repository from GH_REPO first, then `gh repo set-default` (stored in the
-    checkout's git config), then the cwd's remotes by name preference. Setting GH_REPO from the
-    origin remote overrides all three, so a run id names a run of THIS repository whatever the local
+    checkout's git config), then the cwd's remotes by name preference; and with GH_REPO carrying no
+    host it uses an ambient GH_HOST. Setting GH_REPO to `host/owner/name` from the origin remote
+    overrides all four, so a run id names a run of THIS repository on THIS host whatever the local
     config says. When the remote cannot be read, GH_REPO is removed rather than left to an ambient
     value and gh falls back to resolving from cwd.
     """
