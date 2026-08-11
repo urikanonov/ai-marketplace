@@ -897,5 +897,280 @@ class MidCaptureCrashTests(unittest.TestCase):
         self.assertIn("process.env.CMH_SHOTS_FAIL_AFTER_SCENE", body)
         self.assertNotIn("CMH_SHOTS_FAIL_AFTER_SCENE = ", body)
 
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def _png(body=b"garden"):
+    """Bytes that pass a PNG magic-number test. The adopt path never decodes an image."""
+    return PNG_MAGIC + b"\x00\x00\x00\rIHDR" + body
+
+
+def _artifact(root, shots, diffs=()):
+    """An unzipped tutorial-shots-drift tree: <pid>/<scene>/<scene>-<shot>.png."""
+    for name, body in shots.items():
+        scene = name.split("-", 1)[0]
+        d = os.path.join(root, "1", scene)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, name), "wb") as fh:
+            fh.write(body)
+    for name in diffs:
+        scene = name.split("-", 1)[0]
+        d = os.path.join(root, "1", scene)
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, name), "wb") as fh:
+            fh.write(_png(b"diff"))
+    return root
+
+
+def _baselines(root, shots):
+    os.makedirs(root, exist_ok=True)
+    for name, body in shots.items():
+        with open(os.path.join(root, name), "wb") as fh:
+            fh.write(body)
+    return root
+
+
+class AdoptArtifactScanTests(unittest.TestCase):
+    """CMH-BUILD-28: read the fresh PNGs out of an unzipped drift artifact."""
+
+    def test_shots_are_found_at_any_depth_and_keyed_by_file_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _artifact(tmp, {"garden-15-format-toolbar.png": _png(), "note-01-note.png": _png()})
+            found = S.find_artifact_shots(tmp)
+            self.assertEqual(sorted(found), ["garden-15-format-toolbar.png", "note-01-note.png"])
+
+    def test_the_generated_diff_images_are_not_adoptable_shots(self):
+        # The check writes <shot>.diff.png beside the fresh PNG. It is a magenta-marked REPORT,
+        # not a render, so adopting one would install a picture of the failure as the baseline.
+        with tempfile.TemporaryDirectory() as tmp:
+            _artifact(tmp, {"garden-15-format-toolbar.png": _png()},
+                      diffs=["garden-15-format-toolbar.diff.png"])
+            self.assertEqual(list(S.find_artifact_shots(tmp)), ["garden-15-format-toolbar.png"])
+
+    def test_one_name_appearing_twice_is_refused_rather_than_resolved_by_walk_order(self):
+        # Two runs unzipped into one directory would otherwise adopt whichever os.walk reached
+        # last - a silent coin flip over which render becomes the committed baseline.
+        with tempfile.TemporaryDirectory() as tmp:
+            for pid in ("1", "2"):
+                d = os.path.join(tmp, pid, "garden")
+                os.makedirs(d)
+                with open(os.path.join(d, "garden-15-format-toolbar.png"), "wb") as fh:
+                    fh.write(_png(pid.encode()))
+            with self.assertRaises(S.ShotsError) as ctx:
+                S.find_artifact_shots(tmp)
+            self.assertIn("garden-15-format-toolbar.png", str(ctx.exception))
+
+
+class AdoptPlanTests(unittest.TestCase):
+    """CMH-BUILD-28: what may be adopted, decided before anything is written."""
+
+    def _dirs(self, tmp):
+        return os.path.join(tmp, "artifact"), os.path.join(tmp, "shots")
+
+    def test_only_the_shots_that_actually_differ_are_adopted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            art, shots = self._dirs(tmp)
+            _artifact(art, {"garden-15-format-toolbar.png": _png(b"new"),
+                            "note-01-note.png": _png(b"same")})
+            _baselines(shots, {"garden-15-format-toolbar.png": _png(b"old"),
+                               "note-01-note.png": _png(b"same"),
+                               "landing-composer.png": _png(b"hand")})
+            plan = S.plan_adoption(art, shots)
+            self.assertEqual([n for n, _ in plan.changed], ["garden-15-format-toolbar.png"])
+            self.assertEqual(plan.unchanged, ["note-01-note.png"])
+
+    def test_a_png_with_no_committed_baseline_refuses_the_whole_adoption(self):
+        # The safety property: adopt only ever REWRITES an existing baseline. A name that is not
+        # one is the signature of the wrong artifact (another repo, another tool), and adopting
+        # the rest of it would re-baseline from a render of something else.
+        with tempfile.TemporaryDirectory() as tmp:
+            art, shots = self._dirs(tmp)
+            _artifact(art, {"garden-15-format-toolbar.png": _png(b"new"),
+                            "totally-other-thing.png": _png()})
+            _baselines(shots, {"garden-15-format-toolbar.png": _png(b"old")})
+            with self.assertRaises(S.ShotsError) as ctx:
+                S.plan_adoption(art, shots)
+            self.assertIn("totally-other-thing.png", str(ctx.exception))
+            # And nothing was written on the way to deciding that.
+            with open(os.path.join(shots, "garden-15-format-toolbar.png"), "rb") as fh:
+                self.assertEqual(fh.read(), _png(b"old"))
+
+    def test_a_file_that_is_not_a_png_refuses_the_whole_adoption(self):
+        # A truncated download or an HTML error page saved as .png must never be installed as a
+        # baseline; the drift gate would then fail on an unreadable image forever.
+        with tempfile.TemporaryDirectory() as tmp:
+            art, shots = self._dirs(tmp)
+            _artifact(art, {"garden-15-format-toolbar.png": b"<html>rate limited</html>"})
+            _baselines(shots, {"garden-15-format-toolbar.png": _png(b"old")})
+            with self.assertRaises(S.ShotsError) as ctx:
+                S.plan_adoption(art, shots)
+            self.assertIn("garden-15-format-toolbar.png", str(ctx.exception))
+
+    def test_an_artifact_with_no_shots_is_refused_not_reported_as_nothing_to_do(self):
+        # "Nothing to adopt" and "you pointed me at the wrong directory" must not look the same:
+        # the second would read as a clean success while main stayed red.
+        with tempfile.TemporaryDirectory() as tmp:
+            art, shots = self._dirs(tmp)
+            os.makedirs(art)
+            _baselines(shots, {"garden-15-format-toolbar.png": _png(b"old")})
+            with self.assertRaises(S.ShotsError):
+                S.plan_adoption(art, shots)
+
+
+class AdoptWriteTests(unittest.TestCase):
+    """CMH-BUILD-28: adopting writes the container's bytes and reports exactly what moved."""
+
+    def test_the_committed_baseline_becomes_the_artifacts_bytes(self):
+        import io
+        import contextlib
+        with tempfile.TemporaryDirectory() as tmp:
+            art, shots = os.path.join(tmp, "artifact"), os.path.join(tmp, "shots")
+            _artifact(art, {"garden-15-format-toolbar.png": _png(b"fresh")})
+            _baselines(shots, {"garden-15-format-toolbar.png": _png(b"stale")})
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = S.adopt_artifact(art, shots)
+            self.assertEqual(rc, 0)
+            with open(os.path.join(shots, "garden-15-format-toolbar.png"), "rb") as fh:
+                self.assertEqual(fh.read(), _png(b"fresh"))
+            self.assertIn("garden-15-format-toolbar.png", out.getvalue())
+
+    def test_an_artifact_that_matches_reports_no_drift_and_writes_nothing(self):
+        import io
+        import contextlib
+        with tempfile.TemporaryDirectory() as tmp:
+            art, shots = os.path.join(tmp, "artifact"), os.path.join(tmp, "shots")
+            _artifact(art, {"garden-15-format-toolbar.png": _png(b"same")})
+            _baselines(shots, {"garden-15-format-toolbar.png": _png(b"same")})
+            before = os.stat(os.path.join(shots, "garden-15-format-toolbar.png")).st_mtime_ns
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = S.adopt_artifact(art, shots)
+            self.assertEqual(rc, 0)
+            self.assertEqual(
+                os.stat(os.path.join(shots, "garden-15-format-toolbar.png")).st_mtime_ns, before)
+            self.assertIn("no drift", out.getvalue().lower())
+
+    def test_the_report_points_back_at_the_authoritative_gate(self):
+        # Adopting is a re-baseline from CI's render, never a verdict: the pinned container's
+        # check stays the only thing that says the screenshots are right.
+        import io
+        import contextlib
+        with tempfile.TemporaryDirectory() as tmp:
+            art, shots = os.path.join(tmp, "artifact"), os.path.join(tmp, "shots")
+            _artifact(art, {"garden-15-format-toolbar.png": _png(b"fresh")})
+            _baselines(shots, {"garden-15-format-toolbar.png": _png(b"stale")})
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                S.adopt_artifact(art, shots)
+            self.assertIn("shots:check", out.getvalue())
+
+
+class AdoptRunDownloadTests(unittest.TestCase):
+    """CMH-BUILD-28: fetching that artifact from the run that produced it."""
+
+    def test_the_download_asks_gh_for_this_repos_drift_artifact_by_run_id(self):
+        with mock.patch.object(S.shutil, "which", return_value="/usr/bin/gh"), \
+                mock.patch.object(S, "_run", return_value=0) as run:
+            S.download_drift_artifact("31463992366", "/tmp/dest")
+        cmd = run.call_args[0][0]
+        self.assertEqual(cmd[:3], ["gh", "run", "download"])
+        self.assertIn("31463992366", cmd)
+        self.assertIn(S.DRIFT_ARTIFACT, cmd)
+        self.assertIn("/tmp/dest", cmd)
+        # No --repo: gh resolves it from the checkout, so a run id can only ever be read from
+        # the repository the command is run in.
+        self.assertNotIn("--repo", cmd)
+
+    def test_a_run_id_that_is_not_a_number_is_refused_before_gh_is_invoked(self):
+        # The id is interpolated into an argv; anything but digits (an option, a path) must not
+        # reach gh at all.
+        with mock.patch.object(S.shutil, "which", return_value="/usr/bin/gh"), \
+                mock.patch.object(S, "_run", return_value=0) as run:
+            with self.assertRaises(S.ShotsError):
+                S.download_drift_artifact("--repo=evil/repo", "/tmp/dest")
+            run.assert_not_called()
+
+    def test_a_missing_gh_says_so_instead_of_failing_obscurely(self):
+        with mock.patch.object(S.shutil, "which", return_value=None):
+            with self.assertRaises(S.ShotsError) as ctx:
+                S.download_drift_artifact("1", "/tmp/dest")
+            self.assertIn("gh", str(ctx.exception))
+
+
+class AdoptCliTests(unittest.TestCase):
+    """CMH-BUILD-28: the CLI wiring, and the modes it may not be combined with."""
+
+    def _main(self, argv):
+        import io
+        import contextlib
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = S.main(argv)
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_adopt_reads_the_named_directory_and_needs_no_docker(self):
+        # The whole point: this is the path for a maintainer who cannot run the renderer at all.
+        with tempfile.TemporaryDirectory() as tmp:
+            art, shots = os.path.join(tmp, "artifact"), os.path.join(tmp, "shots")
+            _artifact(art, {"garden-15-format-toolbar.png": _png(b"fresh")})
+            _baselines(shots, {"garden-15-format-toolbar.png": _png(b"stale")})
+            with mock.patch.object(S, "SHOTS_DIR", shots), \
+                    mock.patch.object(S.shutil, "which", return_value=None), \
+                    mock.patch.object(S, "_docker_daemon_ok", return_value=False):
+                rc, _, _ = self._main(["shots_linux.py", "--adopt", art])
+            self.assertEqual(rc, 0)
+            with open(os.path.join(shots, "garden-15-format-toolbar.png"), "rb") as fh:
+                self.assertEqual(fh.read(), _png(b"fresh"))
+
+    def test_adopt_run_downloads_then_adopts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shots = _baselines(os.path.join(tmp, "shots"),
+                               {"garden-15-format-toolbar.png": _png(b"stale")})
+
+            def fake_download(run_id, dest):
+                _artifact(dest, {"garden-15-format-toolbar.png": _png(b"fresh")})
+
+            with mock.patch.object(S, "SHOTS_DIR", shots), \
+                    mock.patch.object(S, "download_drift_artifact", side_effect=fake_download):
+                rc, _, _ = self._main(["shots_linux.py", "--adopt-run", "31463992366"])
+            self.assertEqual(rc, 0)
+            with open(os.path.join(shots, "garden-15-format-toolbar.png"), "rb") as fh:
+                self.assertEqual(fh.read(), _png(b"fresh"))
+
+    def test_adopt_never_renders_so_it_cannot_be_combined_with_check_or_native(self):
+        # Adopting INSTALLS someone else's render. Pairing it with a mode that renders here
+        # would make it ambiguous which pixels won.
+        for other in (["--check"], ["--native"], ["--record-digest"], ["--print-image"]):
+            rc, _, err = self._main(["shots_linux.py", "--adopt", "somewhere"] + other)
+            self.assertNotEqual(rc, 0, other)
+            self.assertIn("--adopt", err)
+
+    def test_adopt_and_adopt_run_are_mutually_exclusive(self):
+        rc, _, err = self._main(["shots_linux.py", "--adopt", "d", "--adopt-run", "1"])
+        self.assertNotEqual(rc, 0)
+        self.assertIn("--adopt", err)
+
+    def test_a_refused_adoption_exits_non_zero_with_the_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            art, shots = os.path.join(tmp, "artifact"), os.path.join(tmp, "shots")
+            _artifact(art, {"stranger.png": _png()})
+            _baselines(shots, {"garden-15-format-toolbar.png": _png(b"stale")})
+            with mock.patch.object(S, "SHOTS_DIR", shots):
+                rc, _, err = self._main(["shots_linux.py", "--adopt", art])
+            self.assertNotEqual(rc, 0)
+            self.assertIn("stranger.png", err)
+
+
+class AdoptShotsDirTests(unittest.TestCase):
+    """CMH-BUILD-28: the tool writes the real committed baselines, not some other directory."""
+
+    def test_the_shots_dir_is_the_committed_tutorial_assets(self):
+        self.assertTrue(os.path.isdir(S.SHOTS_DIR), S.SHOTS_DIR)
+        self.assertEqual(os.path.basename(S.SHOTS_DIR), "assets")
+        self.assertTrue(os.path.exists(
+            os.path.join(S.SHOTS_DIR, "garden-15-format-toolbar.png")))
+
+
 if __name__ == "__main__":
     unittest.main()

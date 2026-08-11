@@ -525,7 +525,13 @@ the browser runs on. `rebuild_all.py` drives that container too, so it regenerat
 any host WITH Docker and skips just that step where Docker is unavailable. Regenerate with
 `npm run shots` (or verify with `npm run shots:check`) from `plugins/commentable-html/dev`: every
 shots script routes through `tools/shots_linux.py`, which always renders in the pinned container -
-so Docker is needed by the shots commands only, never for development or the test suites. After
+so Docker is needed by the shots commands only, never for development or the test suites. Without
+Docker there is still a way to FIX a stale screenshot rather than only detect one: the failing
+`playwright-heavy` gate uploads what the pinned container rendered as the `tutorial-shots-drift`
+artifact, and `python tools/shots_linux.py --adopt-run <run-id>` adopts those exact bytes as the
+committed baselines (`--adopt <dir>` for an artifact you already unzipped). That matters because a
+stale shot on `main` reddens a required check for EVERY open pull request, so it must be fixable by
+whoever notices it. After
 bumping `@playwright/test`, re-pin the renderer with `npm run shots:digest` and commit
 `dev/tools/shots-image.lock`. Note the trade: the habitual commands now render in a container
 wherever Docker exists (they used to skip off Linux), so the first run pulls ~900 MB and `npm test`
