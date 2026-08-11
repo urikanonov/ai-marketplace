@@ -51,8 +51,11 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
+import zlib
 
 DEV_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(DEV_DIR)))
@@ -76,7 +79,7 @@ PLUGIN_DIR = os.path.dirname(DEV_DIR)
 # The committed baselines the capture writes and the gate compares against.
 SHOTS_DIR = os.path.join(PLUGIN_DIR, "docs", "assets")
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
-RUN_ID_RE = re.compile(r"^[0-9]+$")
+RUN_ID_RE = re.compile(r"\A[0-9]+\Z")
 # Set for the capture script so it knows a guarded renderer invoked it; capture_tutorial.mjs
 # refuses to render or verify the COMMITTED screenshots without it, which is what stops a raw
 # `node capture_tutorial.mjs` from rewriting them with the host's fonts.
@@ -273,13 +276,14 @@ def renderer_available():
     return bool(shutil.which("docker")) and _docker_daemon_ok()
 
 
-def _run(cmd, env=None):
-    return subprocess.run(cmd, env=env).returncode
+def _run(cmd, env=None, cwd=None):
+    return subprocess.run(cmd, env=env, cwd=cwd).returncode
 
 
-def _capture(cmd):
+def _capture(cmd, env=None, cwd=None):
     try:
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                              env=env, cwd=cwd)
     except OSError:
         return None
     return proc.stdout.decode("utf-8", "replace") if proc.returncode == 0 else None
@@ -356,48 +360,110 @@ def _report_pin(warning):
     return True
 
 
+def _regular_file(path):
+    """True only for a real file: not a symlink, not a device, not a directory.
+
+    An artifact is a downloaded ZIP or, for --adopt, any directory the operator names, so a symlink
+    inside it would make copyfile read a file from OUTSIDE the tree and install its bytes as a
+    baseline. Refusing non-regular entries keeps "the bytes come from this artifact" true here
+    rather than resting on an external tool happening to dereference links at upload time.
+    """
+    try:
+        return stat.S_ISREG(os.lstat(path).st_mode)
+    except OSError:
+        return False
+
+
+def png_problem(data):
+    """None when `data` is a structurally complete PNG, else a short reason.
+
+    The gate compares DECODED pixels, and this installs the file it will decode, so a signature test
+    is not enough: a truncated download keeps the 8-byte signature and would red the drift gate
+    permanently with an undecodable baseline. Walk the chunk stream instead - stdlib only, no
+    decoder - and require a well-formed IHDR..IEND with correct CRCs and nothing trailing after
+    IEND. That makes the refusal message ("a truncated download or an error page") literally true,
+    and it also rejects data smuggled after the image ends.
+    """
+    if not data.startswith(PNG_MAGIC):
+        return "not a PNG (wrong signature)"
+    pos, first, seen_end = len(PNG_MAGIC), True, False
+    while pos < len(data):
+        if pos + 8 > len(data):
+            return "truncated: a chunk header runs past the end of the file"
+        length = int.from_bytes(data[pos:pos + 4], "big")
+        ctype = data[pos + 4:pos + 8]
+        body = pos + 8
+        if length > len(data) or body + length + 4 > len(data):
+            return "truncated: chunk %r runs past the end of the file" % ctype.decode("latin-1")
+        if first and ctype != b"IHDR":
+            return "malformed: the first chunk is %r, not IHDR" % ctype.decode("latin-1")
+        expect = int.from_bytes(data[body + length:body + length + 4], "big")
+        if zlib.crc32(data[pos + 4:body + length]) & 0xFFFFFFFF != expect:
+            return "corrupt: the CRC of chunk %r does not match" % ctype.decode("latin-1")
+        first = False
+        pos = body + length + 4
+        if ctype == b"IEND":
+            seen_end = True
+            break
+    if not seen_end:
+        return "truncated: the image has no IEND chunk"
+    if pos != len(data):
+        return "malformed: %d byte(s) of data follow the IEND chunk" % (len(data) - pos)
+    return None
+
+
 def find_artifact_shots(root):
     """{file name: path} for every candidate shot in an unzipped drift artifact.
 
     The artifact unzips to a ``<pid>/<scene>/`` tree, so the walk is depth-agnostic and keys on the
-    FILE NAME - which is exactly the committed baseline's name. The per-shot ``*.diff.png`` the
-    check writes beside a failing render is excluded: it is a magenta-marked report of the failure,
-    not a render, and installing one as a baseline would commit a picture of the drift.
+    FILE NAME - which is exactly the committed baseline's name. Two classes are excluded rather than
+    adopted: the per-shot ``*.diff.png`` the check writes beside a failing render (a magenta-marked
+    report of the failure, so installing one would commit a picture of the drift), and any entry
+    that is not a regular file (see _regular_file).
+
+    The suffix tests are case-INSENSITIVE on purpose. A lowercase-only test would silently ignore a
+    ``.PNG``, quietly adopting the rest of the artifact - and "silently adopt a subset" is the one
+    outcome this tool must never produce. Matching it here means such a name is either adopted or
+    refused by name as a stranger, loudly, either way.
     """
-    found = {}
+    found, folded = {}, {}
     for dirpath, _dirs, files in os.walk(root):
         for name in sorted(files):
-            if not name.endswith(".png") or name.endswith(".diff.png"):
+            lower = name.lower()
+            if not lower.endswith(".png") or lower.endswith(".diff.png"):
                 continue
             path = os.path.join(dirpath, name)
-            if name in found:
+            if not _regular_file(path):
+                raise ShotsError(
+                    "%s is not a regular file (a symlink or a device). Adopting it would install "
+                    "bytes from outside the artifact as a committed screenshot - nothing was "
+                    "written." % path)
+            # Fold the key for the DUPLICATE test: on a case-insensitive filesystem two spellings
+            # address one baseline, so they must collide here rather than race each other later.
+            if lower in folded:
                 raise ShotsError(
                     "%r appears more than once under %s (%s and %s). Unzip ONE run's artifact into "
                     "an empty directory: adopting from two would silently pick whichever the walk "
-                    "reached last." % (name, root, found[name], path))
+                    "reached last." % (name, root, folded[lower], path))
+            folded[lower] = path
             found[name] = path
     return found
 
 
 class AdoptionPlan(object):
-    """What an adoption would do, decided before a single byte is written."""
+    """What an adoption would do, decided - and fully READ - before a single byte is written."""
 
     def __init__(self, changed, unchanged):
-        self.changed = changed      # [(name, source path)] - baselines whose bytes would change
+        self.changed = changed      # [(name, bytes)] - baselines whose content would change
         self.unchanged = unchanged  # [name] - already byte-identical to the artifact
 
 
-def _is_png(path):
+def _read(path, what):
     try:
         with open(path, "rb") as handle:
-            return handle.read(len(PNG_MAGIC)) == PNG_MAGIC
-    except OSError:
-        return False
-
-
-def _read(path):
-    with open(path, "rb") as handle:
-        return handle.read()
+            return handle.read()
+    except OSError as exc:
+        raise ShotsError("could not read %s %s (%s) - nothing was written." % (what, path, exc))
 
 
 def plan_adoption(artifact_root, shots_dir):
@@ -407,34 +473,74 @@ def plan_adoption(artifact_root, shots_dir):
     whose name is not a committed shot is the signature of the wrong artifact (another repo, another
     tool, a hand-assembled directory), so it refuses the WHOLE operation rather than adopting the
     part it recognizes - a partly-adopted set is the one outcome nobody can review.
+
+    Every source byte is read HERE, into the returned plan, so the write phase cannot re-read a
+    source that changed underneath it and cannot fail partway for a reason this validation would
+    have caught.
     """
+    if not os.path.isdir(artifact_root):
+        raise ShotsError(
+            "%s is not a directory. Point --adopt at the unzipped %s artifact (its root is the "
+            "<pid>/<scene>/ tree), or use --adopt-run <run-id> to fetch it."
+            % (artifact_root, DRIFT_ARTIFACT))
     shots = find_artifact_shots(artifact_root)
     if not shots:
         raise ShotsError(
             "no screenshots found under %s. Point --adopt at the unzipped %s artifact (its root is "
             "the <pid>/<scene>/ tree), or use --adopt-run <run-id> to fetch it."
             % (artifact_root, DRIFT_ARTIFACT))
-    strangers = sorted(n for n in shots if not os.path.isfile(os.path.join(shots_dir, n)))
+    # The EXACT committed names. os.path.isfile would answer case-insensitively on Windows and let
+    # a differently-cased name through, which copyfile would then write under the artifact's
+    # spelling and change the tracked file's case.
+    try:
+        baselines = set(os.listdir(shots_dir))
+    except OSError as exc:
+        raise ShotsError("could not list the committed screenshots in %s (%s)." % (shots_dir, exc))
+    strangers = sorted(n for n in shots if n not in baselines)
     if strangers:
         raise ShotsError(
             "%s carries %d PNG(s) that are not committed tutorial screenshots: %s. Adopting only "
-            "ever rewrites an existing baseline in %s, so this looks like the wrong artifact - "
-            "nothing was written." % (artifact_root, len(strangers), ", ".join(strangers),
-                                      shots_dir))
-    unreadable = sorted(n for n, p in shots.items() if not _is_png(p))
-    if unreadable:
-        raise ShotsError(
-            "%s carries %d file(s) that are not PNGs: %s. A truncated download or an error page "
-            "saved under a .png name would install an undecodable baseline and red the drift gate "
-            "permanently - nothing was written." % (artifact_root, len(unreadable),
-                                                    ", ".join(unreadable)))
-    changed, unchanged = [], []
+            "ever rewrites an existing baseline in %s, so this is either the wrong artifact or a "
+            "shot this repository renders but has never committed - and a NEW baseline has to come "
+            "from the renderer, not from here. Nothing was written."
+            % (artifact_root, len(strangers), ", ".join(strangers), shots_dir))
+    sources = {}
+    problems = []
     for name in sorted(shots):
-        if _read(shots[name]) == _read(os.path.join(shots_dir, name)):
+        data = _read(shots[name], "the artifact's")
+        why = png_problem(data)
+        if why:
+            problems.append("%s (%s)" % (name, why))
+        else:
+            sources[name] = data
+    if problems:
+        raise ShotsError(
+            "%s carries %d file(s) that are not usable PNGs: %s. The drift gate DECODES these, so "
+            "installing one would red it permanently - nothing was written."
+            % (artifact_root, len(problems), "; ".join(problems)))
+    changed, unchanged = [], []
+    for name in sorted(sources):
+        if sources[name] == _read(os.path.join(shots_dir, name), "the committed screenshot"):
             unchanged.append(name)
         else:
-            changed.append((name, shots[name]))
+            changed.append((name, sources[name]))
     return AdoptionPlan(changed, unchanged)
+
+
+def _write_atomically(path, data):
+    """Replace `path` with `data` via a sibling temp file, so a failure never truncates it."""
+    directory = os.path.dirname(path) or "."
+    handle, temp = tempfile.mkstemp(dir=directory, prefix=".shots-adopt-", suffix=".tmp")
+    try:
+        with os.fdopen(handle, "wb") as fh:
+            fh.write(data)
+        os.replace(temp, path)
+    except BaseException:
+        try:
+            os.unlink(temp)
+        except OSError:
+            pass
+        raise
 
 
 def adopt_artifact(artifact_root, shots_dir):
@@ -442,14 +548,38 @@ def adopt_artifact(artifact_root, shots_dir):
 
     This is a re-baseline, never a verdict: the bytes come from the pinned container (CI rendered
     them), but only `shots:check` in that container says the screenshots are RIGHT.
+
+    All-or-nothing in the write phase too, not merely in the decision: each file is replaced
+    atomically, and if any replacement fails the ones already written are restored from bytes read
+    before the first write. Otherwise a disk-full or permission error mid-loop would leave a
+    half-adopted set - the exact outcome the refusals above exist to prevent.
     """
     plan = plan_adoption(artifact_root, shots_dir)
     if not plan.changed:
-        print("shots_linux: no drift - all %d screenshot(s) in %s already match %s."
+        print("shots_linux: no drift - the %d screenshot(s) %s carries already match %s. (That is "
+              "the artifact's own coverage, not a statement that every committed shot is fresh; "
+              "the pinned container's 'shots:check' is what says that.)"
               % (len(plan.unchanged), artifact_root, shots_dir))
         return 0
-    for name, source in plan.changed:
-        shutil.copyfile(source, os.path.join(shots_dir, name))
+    originals, written = {}, []
+    for name, _data in plan.changed:
+        originals[name] = _read(os.path.join(shots_dir, name), "the committed screenshot")
+    for name, data in plan.changed:
+        target = os.path.join(shots_dir, name)
+        try:
+            _write_atomically(target, data)
+        except OSError as exc:
+            for done in written:
+                try:
+                    _write_atomically(os.path.join(shots_dir, done), originals[done])
+                except OSError:
+                    raise ShotsError(
+                        "could not write %s (%s), and rolling back %s failed too. Restore them "
+                        "with 'git checkout -- %s'." % (target, exc, done, shots_dir))
+            raise ShotsError(
+                "could not write %s (%s). The %d screenshot(s) already written were rolled back, "
+                "so nothing changed." % (target, exc, len(written)))
+        written.append(name)
         print("shots_linux: adopted %s" % name)
     print("shots_linux: adopted %d screenshot(s) from %s (%d already matched). These are the pixels "
           "the PINNED container rendered, so commit them and let 'shots:check' in that container - "
@@ -458,13 +588,27 @@ def adopt_artifact(artifact_root, shots_dir):
     return 0
 
 
+def _gh_env():
+    """The environment for a `gh` call, with the repository override removed.
+
+    gh resolves the repository from GH_REPO first, then `gh repo set-default`, then the cwd's git
+    remotes. Dropping GH_REPO and running in REPO_ROOT is what actually makes "a run id can only
+    name a run of THIS checkout" true; without both, an ambient variable or the operator's cwd
+    silently chooses a different repository.
+    """
+    env = dict(os.environ)
+    env.pop("GH_REPO", None)
+    return env
+
+
 def download_drift_artifact(run_id, dest):
     """Fetch a run's drift artifact with `gh` into dest.
 
-    No --repo: gh resolves the repository from the checkout the command runs in, so a run id can
-    only ever name a run of THIS repository.
+    Pinned to this checkout rather than to a repository NAME: gh runs with cwd=REPO_ROOT and no
+    GH_REPO, so it resolves the repository from the worktree the tool lives in. That keeps a run id
+    naming a run of this repository without hardcoding an owner/name as a second source of truth.
     """
-    run_id = "" if run_id is None else str(run_id)
+    run_id = ("" if run_id is None else str(run_id)).strip()
     if not RUN_ID_RE.match(run_id):
         raise ShotsError(
             "%r is not a workflow run id. Pass the numeric id from the run's URL "
@@ -474,12 +618,40 @@ def download_drift_artifact(run_id, dest):
             "gh is not installed (or not on PATH), so the %s artifact cannot be downloaded. "
             "Install the GitHub CLI, or download the artifact from the failing run's page and pass "
             "the unzipped directory to --adopt instead." % DRIFT_ARTIFACT)
-    rc = _run(["gh", "run", "download", run_id, "-n", DRIFT_ARTIFACT, "-D", dest])
+    rc = _run(["gh", "run", "download", run_id, "-n", DRIFT_ARTIFACT, "-D", dest],
+              env=_gh_env(), cwd=REPO_ROOT)
     if rc:
         raise ShotsError(
             "gh could not download the %s artifact from run %s. A green run does not produce one "
             "(it is uploaded only when the drift gate FAILS), and artifacts expire; check the run "
             "page." % (DRIFT_ARTIFACT, run_id))
+
+
+def report_run_provenance(run_id):
+    """Print which commit the run rendered, and warn when it is not the one checked out.
+
+    The adopted bytes are the authoritative render OF THAT RUN'S COMMIT. Adopting a run of a
+    different commit is not a gate bypass (the container re-diffs against the real source), but it
+    wastes a cycle and commits pixels that were never this tree's, so name it. Best-effort by
+    design: this is provenance reporting, and no lookup failure may cost the operator the fix.
+    """
+    head = _capture(["git", "-C", REPO_ROOT, "rev-parse", "HEAD"])
+    raw = _capture(["gh", "run", "view", str(run_id), "--json", "headSha,headBranch"],
+                   env=_gh_env(), cwd=REPO_ROOT)
+    try:
+        data = json.loads(raw) if raw else None
+    except ValueError:
+        data = None
+    if not isinstance(data, dict) or not _text(data.get("headSha")):
+        print("shots_linux: could not read run %s's provenance; adopt only a run of the commit you "
+              "are baselining." % run_id)
+        return
+    run_sha, branch = data["headSha"], _text(data.get("headBranch")) or "?"
+    print("shots_linux: run %s rendered %s (%s)." % (run_id, run_sha[:12], branch))
+    if head and head.strip() != run_sha:
+        print("shots_linux: WARNING - your HEAD is %s, so these pixels were rendered from DIFFERENT "
+              "source. Adopt them only if you know that commit's screenshots are the ones you want."
+              % head.strip()[:12])
 
 
 def record_digest(tag, lock_path=None):
@@ -510,21 +682,36 @@ def record_digest(tag, lock_path=None):
 
 def _adopt_main(adopt_dir, adopt_run):
     """--adopt / --adopt-run: install a drift artifact's PNGs as the committed baselines."""
-    if adopt_dir:
+    if adopt_dir is not None:
         try:
             return adopt_artifact(adopt_dir, SHOTS_DIR)
         except ShotsError as exc:
             return _fail("shots_linux: " + str(exc))
-    scratch = os.path.join(REPO_ROOT, "tmp", "shots-adopt", str(os.getpid()))
-    shutil.rmtree(scratch, ignore_errors=True)
-    os.makedirs(scratch, exist_ok=True)
+    holding = os.path.join(REPO_ROOT, "tmp", "shots-adopt")
+    try:
+        os.makedirs(holding, exist_ok=True)
+        # A unique directory the OS creates atomically, not a guessable pid-derived path that a
+        # previous crashed run may have left populated (its leftovers would adopt as this run's).
+        scratch = tempfile.mkdtemp(dir=holding, prefix="run-")
+    except OSError as exc:
+        return _fail("shots_linux: could not create a scratch directory under %s (%s)."
+                     % (holding, exc))
+    keep = False
     try:
         download_drift_artifact(adopt_run, scratch)
+        report_run_provenance(adopt_run)
         return adopt_artifact(scratch, SHOTS_DIR)
     except ShotsError as exc:
-        return _fail("shots_linux: " + str(exc))
+        # KEEP the download when the adoption is refused: it is the only unzipped copy, the error
+        # tells the operator to inspect it, and re-downloading it is pure cost. This mirrors the
+        # keep-the-evidence rule the drift gate itself follows (CMH-BUILD-18).
+        keep = True
+        return _fail("shots_linux: %s\n\n  The downloaded artifact was kept at %s - inspect it, "
+                     "then re-run with '--adopt %s' rather than downloading it again."
+                     % (exc, scratch, scratch))
     finally:
-        shutil.rmtree(scratch, ignore_errors=True)
+        if not keep:
+            shutil.rmtree(scratch, ignore_errors=True)
 
 
 def main(argv=None):
@@ -555,16 +742,27 @@ def main(argv=None):
     ns, passthrough = parser.parse_known_args(argv[1:])
     if ns.print_image and ns.record_digest:
         return _fail("shots_linux: --print-image and --record-digest are mutually exclusive.")
-    if ns.adopt and ns.adopt_run:
+    adopting = ns.adopt is not None or ns.adopt_run is not None
+    if ns.adopt is not None and ns.adopt_run is not None:
         return _fail("shots_linux: --adopt and --adopt-run are mutually exclusive (--adopt-run "
                      "downloads the directory --adopt would read).")
-    if (ns.adopt or ns.adopt_run) and (ns.check or ns.native or ns.print_image or ns.record_digest):
+    if adopting and (ns.check or ns.native or ns.print_image or ns.record_digest):
         # Adopting INSTALLS a render made elsewhere; rendering or verifying here at the same time
         # would leave it ambiguous which pixels won.
         return _fail("shots_linux: --adopt/--adopt-run installs the pixels another run rendered, "
                      "so it cannot be combined with --check, --native, --print-image or "
                      "--record-digest.")
-    if ns.adopt or ns.adopt_run:
+    if adopting and passthrough:
+        # Unknown args are forwarded to the capture script on the render paths. Adopting runs no
+        # capture, so a forwarded arg would be silently dropped - including a typo'd flag, which
+        # would then read as a successful adoption of something the operator did not ask for.
+        return _fail("shots_linux: --adopt/--adopt-run runs no capture, so it accepts no extra "
+                     "arguments; %s would be ignored." % " ".join(passthrough))
+    if adopting:
+        if not (ns.adopt if ns.adopt is not None else ns.adopt_run).strip():
+            return _fail("shots_linux: %s was given an empty value (an unset shell variable?). "
+                         "Pass the unzipped artifact directory, or a numeric run id."
+                         % ("--adopt" if ns.adopt is not None else "--adopt-run"))
         return _adopt_main(ns.adopt, ns.adopt_run)
     # capture_tutorial.mjs takes optional [example] [outDir] [prefix] and --print-paths; forward
     # them so a single-scene recapture does not have to fall back to the raw, unguarded command.

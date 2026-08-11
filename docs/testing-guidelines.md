@@ -224,15 +224,25 @@ python tools/shots_linux.py --adopt <dir>          # adopt an artifact you alrea
 rewrites; the pinned container's `shots:check` - the required gate - is what confirms it.
 
 - **Prefer `npm run shots` when you have Docker.** Adopting installs a render made for the commit
-  that ran, so it is the recovery path, not the routine one.
+  that ran, so it is the recovery path, not the routine one. `--adopt-run` prints which commit the
+  run rendered and warns when it is not the one you have checked out, so adopt a run of `main` when
+  you are fixing `main` - not a PR's own run, whose pixels reflect that PR's unmerged source.
 - **It relaxes nothing.** Adopting is a re-baseline from the same renderer the gate uses, never a
   verdict that the screenshots are right; only `shots:check` in the container says that.
-- **It refuses rather than partly applying.** It only ever rewrites a baseline that already exists,
-  so a PNG whose name is not a committed shot (the wrong artifact), a file without PNG magic bytes
-  (a truncated download, an error page saved as `.png`), one name appearing twice under the root
-  (two runs unzipped together), or an empty directory refuses the WHOLE adoption with the reason and
-  writes nothing. The `*.diff.png` files the check writes beside a failing render are skipped - they
-  are magenta-marked reports of the failure, not renders.
+- **It refuses as a whole rather than partly applying**, and decides (and reads every source byte)
+  before writing anything. A PNG whose name is not a committed shot, a file that is not a
+  structurally complete PNG (the chunk stream is walked with CRCs to a terminal `IEND`, so a
+  truncated download is caught - its signature alone is not enough for a gate that DECODES the
+  file), a symlink or other non-regular entry, one name appearing twice under the root, a path that
+  is not a directory, or an empty directory each refuse the whole adoption and write nothing. The
+  `*.diff.png` files the check writes beside a failing render are skipped - they are magenta-marked
+  reports of the failure, not renders.
+- **The writes are all-or-nothing too**: each baseline is replaced through a sibling temp file and
+  `os.replace`, so a failure cannot truncate one in place, and if any replacement fails the ones
+  already written are rolled back.
+- It does NOT require the artifact to cover every committed shot, because a mid-capture crash
+  legitimately uploads only the scenes rendered before the throw. The no-drift report therefore
+  states the artifact's own coverage rather than implying the whole set is fresh.
 - It cannot be combined with `--check`, `--native`, `--print-image` or `--record-digest`: it installs
   pixels another run rendered, so rendering here at the same time would leave it ambiguous which
   pixels won. A green run uploads no artifact (it is produced only on failure), and artifacts expire.
