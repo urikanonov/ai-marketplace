@@ -333,7 +333,34 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 }
 .cm-composer-handle:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 .cm-composer.dragging .cm-composer-handle { cursor: grabbing; background: var(--cp-accent-soft); color: var(--cp-accent); }
-.cm-composer-handle .grip { letter-spacing: 1px; font-weight: 700; font-size: 0.9rem; line-height: 1; }
+/* The drag grip is DRAWN, never typeset. As a text glyph pair (U+22EE) it went through the font
+   pipeline - fallback resolution, the glyph cache, and a text origin snapped to whole device pixels
+   from a font-metric-derived, off-grid baseline - and it landed one CSS pixel higher or lower
+   between two identical renders in the same pinned container. It was the only region of the
+   tutorial screenshots that was not reproducible (issue #1277). Drawing it takes that pipeline out
+   of the element entirely: a box and its dots are rasterized from their own geometry. */
+.cm-composer-handle .grip { flex: none; position: relative; width: 6px; height: 10px; }
+.cm-composer-handle .grip::before {
+  content: ""; position: absolute; left: 0; top: 0; width: 2px; height: 2px;
+  border-radius: 50%; background: currentColor;
+  box-shadow: 0 4px currentColor, 0 8px currentColor,
+              4px 0 currentColor, 4px 4px currentColor, 4px 8px currentColor;
+}
+@media (forced-colors: active) {
+  /* Forced-colors mode strips `box-shadow` and forces every background to the system canvas, which
+     would erase all six dots - a regression the old text glyph did not have, since the system palette
+     REPAINTS text rather than removing it. Opt this one decorative pseudo-element out and name the
+     system text colour explicitly. Both halves are load-bearing: opting out ALONE would keep the
+     author's mid-grey and paint it on a dark high-contrast canvas. Keep the opt-out ON THE
+     PSEUDO-ELEMENT - `forced-color-adjust` INHERITS, so hoisting it to `.grip` or the handle would
+     opt their backgrounds, the label and the composer surface out of the system palette too. */
+  .cm-composer-handle .grip::before {
+    forced-color-adjust: none;
+    background: CanvasText;
+    box-shadow: 0 4px CanvasText, 0 8px CanvasText,
+                4px 0 CanvasText, 4px 4px CanvasText, 4px 8px CanvasText;
+  }
+}
 .cm-composer-handle .label { opacity: 0.75; }
 @keyframes cm-composer-flash {
   0%   { box-shadow: var(--cp-shadow); }

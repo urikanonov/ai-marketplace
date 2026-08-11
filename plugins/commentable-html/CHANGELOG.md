@@ -4,6 +4,30 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.841.0] - 2026-08-11
+
+### Fixed
+
+- The floating composer's drag grip is now DRAWN rather than typeset. It was a pair of `U+22EE`
+  glyphs in a `line-height: 1` box, so it went through the font pipeline - fallback resolution, the
+  glyph cache, and a text origin snapped to whole device pixels from a font-metric-derived baseline
+  that measured OFF the device grid - and it landed one CSS pixel higher or lower between two
+  otherwise identical renders of the same page in the same digest-pinned container. It was the only
+  region of the tutorial screenshots that was not reproducible, so whichever variant a run happened
+  to commit reddened the exact-pixel drift gate for every pull request that followed, including ones
+  that had never touched the capture path. The precise input that varied between two runs was never
+  reproduced on a quiet host (six sequential and twelve concurrent captures were byte-identical), so
+  the fix removes the whole text-rendering pipeline from the element rather than chasing it: the grip
+  is now a definite 6x10 box of six `currentColor` dots painted from its own geometry, so there is no
+  glyph to rasterize and no font fallback, glyph cache or text-origin snapping left in the element. It
+  keeps the handle's hover and dragging colours, stays `aria-hidden` decoration beside the
+  `drag to move` label, and is shorter than that label's line box, so the handle and the composer are
+  otherwise unchanged. Under `forced-colors: active` - where the system palette strips `box-shadow`
+  and forces backgrounds, and would have erased the dots that the old glyph's own repainting survived
+  - the grip opts out and names `CanvasText` explicitly, so a high-contrast reader keeps the
+  affordance in their own palette rather than in the author's grey. The drift budget stays exact
+  (`MAX_DIFF_PIXELS` 0): the rendering was fixed, not the gate widened.
+
 ## [1.840.0] - 2026-08-11
 
 ### Changed

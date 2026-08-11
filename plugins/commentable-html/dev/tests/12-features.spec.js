@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
+import { PNG } from "pngjs";
 import { PYTHON } from "./helpers.js";
 import fs from "fs";
 import os from "os";
@@ -16,6 +17,36 @@ import {
 // ---------------------------------------------------------------------------
 // Composer + menu lifecycle
 // ---------------------------------------------------------------------------
+
+// How much of a screenshot is painted (non-background) ink, as a FRACTION of its area. The most
+// frequent colour is the surface the element sits on; every other pixel is ink. Two things matter
+// here: DECODING (the ENCODED bytes of a blank PNG are still varied, so a byte-level "is it
+// non-uniform" check calls an empty element painted - the regression the grip test must catch), and
+// a RATIO rather than a count, so the assertion does not silently go vacuous at a different device
+// scale factor. The grip's six dots measure 0.31 of its box at both dpr 1 and dpr 2.
+function inkRatio(shot) {
+  const img = PNG.sync.read(shot);
+  const counts = new Map();
+  for (let i = 0; i < img.data.length; i += 4) {
+    const key = (img.data[i] << 16) | (img.data[i + 1] << 8) | img.data[i + 2];
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const background = Math.max(...counts.values());
+  return ((img.width * img.height) - background) / (img.width * img.height);
+}
+
+// The colour the grip's dots are actually painted in, and the colour the handle's own text is
+// painted in. They must agree: that is what `currentColor` gives normally and what the explicit
+// `CanvasText` gives under forced colors, and it is what distinguishes the shipped rule from the
+// unsafe shortcut of opting out of forced colors while keeping the author's colour (which would
+// paint mid-grey dots on a black high-contrast canvas).
+function gripAndHandleColour(grip) {
+  return grip.evaluate((el) => ({
+    dots: getComputedStyle(el, "::before").backgroundColor,
+    handle: getComputedStyle(el.closest(".cm-composer-handle")).color,
+  }));
+}
+
 test.describe("composer and menu", () => {
   test("the Cancel button closes the composer without creating a comment", async ({ page }) => {
     await openKitchenSink(page);
@@ -50,6 +81,75 @@ test.describe("composer and menu", () => {
     await page.mouse.up();
     const after = await composer.boundingBox();
     expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y)).toBeGreaterThan(40);
+  });
+
+  // The drag grip must be DRAWN, not typeset (issue #1277). As a text glyph it went through the font
+  // pipeline - fallback resolution, the glyph cache, and a snapped text origin - and it moved 1 CSS px
+  // between two otherwise identical renders of the same page in the same pinned container, the only
+  // region of the tutorial screenshots that was not reproducible. Pin what removes that pipeline: the
+  // grip carries no text, and no font may change its box or its raster.
+  test("the composer drag grip is drawn, not typeset, so no font decides its pixels (CMH-CORE-24)", async ({ page }) => {
+    await openKitchenSink(page);
+    const composer = await openComposerFor(page, "#commentRoot section p");
+    const grip = composer.locator(".cm-composer-handle .grip");
+    await expect(grip).toBeVisible();
+    expect(await grip.evaluate((el) => el.textContent), "the grip must carry no text to typeset").toBe("");
+
+    const before = await grip.screenshot();
+    const box = await grip.boundingBox();
+    // It must actually paint something, and in the handle's own colour. Decode the PNG rather than
+    // inspecting the buffer: an encoded blank image still carries many distinct BYTE values, so a
+    // byte-level check would pass on a grip that draws nothing - the regression this test exists to
+    // catch. The six dots measure 0.31 of the box, so 0.2 fails an incomplete grip too.
+    expect(inkRatio(before), "the grip paints nothing").toBeGreaterThan(0.2);
+    const colours = await gripAndHandleColour(grip);
+    expect(colours.dots, "the grip's dots do not follow the handle's colour").toBe(colours.handle);
+
+    // A font change scoped to the grip itself: its box is definite, so nothing may move.
+    await page.addStyleTag({ content: ".cm-composer-handle .grip { font-family: 'Courier New', monospace !important;"
+      + " font-size: 32px !important; font-weight: 400 !important; letter-spacing: 7px !important; }" });
+    await expect.poll(async () => grip.evaluate((el) => getComputedStyle(el).fontSize)).toBe("32px");
+    expect(await grip.boundingBox(), "a font change resized the grip").toEqual(box);
+    expect(Buffer.compare(before, await grip.screenshot()), "a font change repainted the grip").toBe(0);
+
+    // A font change on the whole HANDLE, which resizes the label's line box and so re-centres the
+    // grip within it. The grip's own size and the ink it paints must be identical - only WHERE the
+    // flex line puts it may move, and that is the label's business, not the grip's. (Its raster is
+    // not compared here: moving the box to a different sub-pixel offset re-antialiases the circles,
+    // which is a property of the move, not of the drawing.)
+    await page.addStyleTag({ content: ".cm-composer-handle { font-family: 'Courier New', monospace !important;"
+      + " font-size: 28px !important; }" });
+    await expect.poll(async () => grip.evaluate((el) =>
+      getComputedStyle(el.closest(".cm-composer-handle")).fontSize)).toBe("28px");
+    const after = await grip.boundingBox();
+    expect({ width: after.width, height: after.height },
+      "a font change on the handle resized the grip").toEqual({ width: box.width, height: box.height });
+    expect(inkRatio(await grip.screenshot()),
+      "a font change on the handle stopped the grip painting").toBeGreaterThan(0.2);
+  });
+
+  // Forced-colors (Windows High Contrast) strips box-shadow and forces backgrounds to the system
+  // canvas, which would have erased a grip drawn only with those - a regression against the old text
+  // glyph, which the system palette REPAINTS rather than removes. The layer opts this one decorative
+  // pseudo-element out and names the system colour explicitly. Both halves matter, so both are
+  // pinned: opting out ALONE would keep the author's mid-grey and paint it on a dark high-contrast
+  // canvas, which is why "the dots still paint" is not enough on its own.
+  test("the drawn grip stays visible in forced-colors mode (CMH-CORE-24)", async ({ browser }) => {
+    const context = await browser.newContext({ forcedColors: "active" });
+    try {
+      const page = await context.newPage();
+      await openKitchenSink(page);
+      const composer = await openComposerFor(page, "#commentRoot section p");
+      const grip = composer.locator(".cm-composer-handle .grip");
+      await expect(grip).toBeVisible();
+      expect(inkRatio(await grip.screenshot()),
+        "the grip is invisible under forced colors").toBeGreaterThan(0.2);
+      const colours = await gripAndHandleColour(grip);
+      expect(colours.dots,
+        "the grip keeps an author colour under forced colors instead of the system one").toBe(colours.handle);
+    } finally {
+      await context.close();
+    }
   });
 
   test("an outside click closes the Add-comment menu", async ({ page }) => {

@@ -818,7 +818,23 @@ user-select: none;
 }
 .cm-composer-handle:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 .cm-composer.dragging .cm-composer-handle { cursor: grabbing; background: var(--cp-accent-soft); color: var(--cp-accent); }
-.cm-composer-handle .grip { letter-spacing: 1px; font-weight: 700; font-size: 0.9rem; line-height: 1; }
+
+.cm-composer-handle .grip { flex: none; position: relative; width: 6px; height: 10px; }
+.cm-composer-handle .grip::before {
+content: ""; position: absolute; left: 0; top: 0; width: 2px; height: 2px;
+border-radius: 50%; background: currentColor;
+box-shadow: 0 4px currentColor, 0 8px currentColor,
+4px 0 currentColor, 4px 4px currentColor, 4px 8px currentColor;
+}
+@media (forced-colors: active) {
+
+.cm-composer-handle .grip::before {
+forced-color-adjust: none;
+background: CanvasText;
+box-shadow: 0 4px CanvasText, 0 8px CanvasText,
+4px 0 CanvasText, 4px 4px CanvasText, 4px 8px CanvasText;
+}
+}
 .cm-composer-handle .label { opacity: 0.75; }
 @keyframes cm-composer-flash {
 0% { box-shadow: var(--cp-shadow); }

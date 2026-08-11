@@ -103,7 +103,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   el.setAttribute("aria-label", "Review comment composer");
   el.innerHTML = `
     <div class="cm-composer-handle" title="Drag to move">
-      <span class="grip" aria-hidden="true">&#x22EE;&#x22EE;</span>
+      <span class="grip" aria-hidden="true"></span>
       <span class="label">drag to move</span>
     </div>
     <div class="quote"></div>
