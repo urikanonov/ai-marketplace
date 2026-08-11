@@ -513,6 +513,7 @@
               <li>The layer resolves its OWN chrome through a boundary-aware lookup (<code>cmhEl</code>) rather than <code>document.getElementById</code>. Document order used to make the layer&#x27;s controls win a duplicate id because the chrome came first; with the content first, a content element that merely borrowed a control&#x27;s id would have been handed to the code that drives it.</li>
               <li>Deck code-block token defaults are declared with <code>:where()</code>, so a per-deck theme block always wins them whatever the source order - a default must never outrank the theme it is a default for.</li>
               <li>Every document terminates a head-opened script-data escape before its content, with 150 bytes of parse state (a <code>&lt;style&gt;</code> whose CSS comment carries the <code>&lt;/script&gt;</code> bytes). Without it, a <code>&lt;script&gt;</code> in the head whose bytes open such an escape would swallow the authored content that now follows it.</li>
+              <li>Tutorial screenshots regenerated for two composer scenes. The comment-UI markup now follows the content, which moves the composer to a marginally different sub-pixel anchor; the wording, colour and structure of garden-05-composer and garden-15-format-toolbar are unchanged, only the text rasterization phase and a 1px control rounding inside the panel.</li>
             </ul>
           </div>
           <div class="release">

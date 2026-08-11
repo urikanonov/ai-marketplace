@@ -67,6 +67,10 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   parse state (a `<style>` whose CSS comment carries the `</script>` bytes). Without it, a `<script>`
   in the head whose bytes open such an escape would swallow the authored content that now follows it.
 
+- Tutorial screenshots regenerated for two composer scenes. The comment-UI markup now follows the
+  content, which moves the composer to a marginally different sub-pixel anchor; the wording, colour
+  and structure of garden-05-composer and garden-15-format-toolbar are unchanged, only the text
+  rasterization phase and a 1px control rounding inside the panel.
 ## [1.836.0] - 2026-08-11
 
 ### Added
