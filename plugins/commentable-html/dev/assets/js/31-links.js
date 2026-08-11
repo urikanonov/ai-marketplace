@@ -9,7 +9,7 @@
       separate floating button, so activating it does not navigate and a normal
       click still follows the link. Same-page "#" fragments (e.g. the TOC), UI
       chrome (.cm-skip), and javascript: links are excluded. */
-const linkAddBtn = document.getElementById("linkAddBtn");
+const linkAddBtn = cmhEl("linkAddBtn");
 const linkEls = [];
 let pendingLink = null;
 let linkAddHideTimer = null;

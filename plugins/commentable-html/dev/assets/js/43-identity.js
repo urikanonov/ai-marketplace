@@ -61,13 +61,13 @@ function authorPillHtml(name) {
 // ---- Identity control (sidebar) ----
 function _identityEls() {
   return {
-    row: document.getElementById("cmIdentity"),
-    nameEl: document.getElementById("cmIdentityName"),
-    editBtn: document.getElementById("btnEditIdentity"),
-    editBox: document.getElementById("cmIdentityEdit"),
-    input: document.getElementById("cmIdentityInput"),
-    saveBtn: document.getElementById("btnSaveIdentity"),
-    cancelBtn: document.getElementById("btnCancelIdentity"),
+    row: cmhEl("cmIdentity"),
+    nameEl: cmhEl("cmIdentityName"),
+    editBtn: cmhEl("btnEditIdentity"),
+    editBox: cmhEl("cmIdentityEdit"),
+    input: cmhEl("cmIdentityInput"),
+    saveBtn: cmhEl("btnSaveIdentity"),
+    cancelBtn: cmhEl("btnCancelIdentity"),
   };
 }
 function updateIdentityUi() {
@@ -154,7 +154,7 @@ let _cmIdentityNudged = false;
 function maybeNudgeIdentity() {
   if (_cmIdentityNudged) return;
   if (getAuthorName()) return;
-  if (!document.getElementById("cmIdentity")) return;
+  if (!cmhEl("cmIdentity")) return;
   _cmIdentityNudged = true;
   // Reveal the identity editor so it is visible once the sidebar opens (adding a comment
   // opens it). Do not steal focus, open the sidebar, or toast - that would disrupt an

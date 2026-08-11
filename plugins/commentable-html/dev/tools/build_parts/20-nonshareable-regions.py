@@ -4,10 +4,20 @@ _CSS_REGION_RE = re.compile(
 _JS_REGION_RE = re.compile(
     r"<!--[^\n]*\n\s*BEGIN: commentable-html - JS.*?<!-- END: commentable-html - JS -->",
     re.S)
+# The fence that separates the authored content from the generated machinery (CMH-SIZE-05).
+MACHINERY_BEGIN = "BEGIN: commentable-html - MACHINERY"
 
 _BOOTSTRAP = (
     "<!-- BEGIN: commentable-html - NONSHAREABLE BOOTSTRAP -->\n"
-    '<div id="cmhAssetBanner" class="cm-skip" role="alert" hidden>\n'
+    # The banner reports that the companion files are MISSING, and its own `position: fixed`
+    # styling lives in that very stylesheet - so in the failure mode it exists for it would render
+    # as an unstyled block, and (since CMH-SIZE-05 puts it in the machinery fence) one the reader
+    # only meets after scrolling past the whole document. The inline style makes it
+    # self-sufficient: it pins itself to the top of the viewport with no stylesheet at all.
+    '<div id="cmhAssetBanner" class="cm-skip" role="alert" hidden'
+    ' style="position:fixed;top:0;left:0;right:0;z-index:400;display:flex;align-items:center;'
+    'justify-content:center;gap:12px;padding:10px 16px;font:13px/1.4 system-ui,sans-serif;'
+    'background:#dc2626;color:#fff;text-align:center">\n'
     '  <span class="cmh-asset-message">Commentable-html could not load its companion files. Keep\n'
     "  <code>__JSNAME__</code>, <code>__ASSETSNAME__</code> and <code>__CSSNAME__</code>\n"
     "  in the same folder as this HTML, or open the standalone copy instead.</span>\n"
@@ -32,18 +42,27 @@ def build_nonshareable(shell, version, mermaid_version, vendored_rich_libs_json=
     css_name, js_name, assets_name = _names()
     t = shell
 
-    # 1) Remove the inline layer-CSS region from inside <style>; link it instead.
+    # 1) Remove the inline layer-CSS region from inside <style>; link it instead. Both live in the
+    #    MACHINERY fence after the authored content (CMH-SIZE-05), so the <link> is placed right
+    #    after the <style> that carried the region rather than at the end of <head>. A pending
+    #    stylesheet blocks the scripts that follow it, so the reveal script just below still runs
+    #    only once the companion CSS has loaded.
     if not _CSS_REGION_RE.search(t):
         raise SystemExit("build: could not locate the CSS region in the shell")
-    t = _CSS_REGION_RE.sub("", t)
-    head_add = ("<!-- ============================================================\n"
+    t = _CSS_REGION_RE.sub("", t, count=1)
+    css_link = ("<!-- ============================================================\n"
                 "     BEGIN: commentable-html - CSS\n"
                 "     ============================================================ -->\n"
                 '<link rel="stylesheet" href="' + css_name + '">\n'
                 "<!-- END: commentable-html - CSS -->\n")
-    if "</style>\n</head>" not in t:
-        raise SystemExit("build: could not locate </style></head> in the shell")
-    t = t.replace("</style>\n</head>", "</style>\n" + head_add + "</head>", 1)
+    fence = t.find(MACHINERY_BEGIN)
+    if fence == -1:
+        raise SystemExit("build: could not locate the MACHINERY fence in the shell")
+    style_close = t.find("</style>\n", fence)
+    if style_close == -1:
+        raise SystemExit("build: could not locate the </style> after the shell's MACHINERY fence")
+    cut = style_close + len("</style>\n")
+    t = t[:cut] + css_link + t[cut:]
 
     # 2) Replace the inline JS region with external <script src> companions.
     js_add = ("<!-- ============================================================\n"
@@ -57,13 +76,16 @@ def build_nonshareable(shell, version, mermaid_version, vendored_rich_libs_json=
         raise SystemExit("build: could not locate the JS region in the shell")
     t = _JS_REGION_RE.sub(lambda _m: js_add, t)
 
-    # 3) Inject the missing-asset banner + bootstrap right after the real body
-    #    tag. Anchor the search after </head> so only the real <body> tag is matched.
-    head_end = t.index("</head>")
-    bm = re.search(r"<body[^>]*>", t[head_end:])
-    if not bm:
-        raise SystemExit("build: could not locate the <body> tag after </head>")
-    idx = head_end + bm.end()
+    # 3) Inject the missing-asset banner + bootstrap at the top of the MACHINERY fence, so the
+    #    authored content still comes first in source order (CMH-SIZE-05). The banner is
+    #    `position: fixed` and starts hidden, so its DOM position changes nothing on screen.
+    fence = t.find(MACHINERY_BEGIN)
+    if fence == -1:
+        raise SystemExit("build: could not locate the MACHINERY fence in the shell")
+    lead_end = t.find("-->\n", fence)
+    if lead_end == -1:
+        raise SystemExit("build: could not locate the end of the shell's MACHINERY fence comment")
+    idx = lead_end + len("-->\n")
     boot = (_BOOTSTRAP.replace("__JSNAME__", js_name)
             .replace("__ASSETSNAME__", assets_name)
             .replace("__CSSNAME__", css_name))

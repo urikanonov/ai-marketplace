@@ -33,6 +33,18 @@ const refresh = (page) => page.evaluate(() => window.__cmhReview.refresh());
 
 const REVIEW_SCRIPT_OPEN = '<script type="application/json" id="reviewedSections">';
 const REVIEW_BLOCK_RE = /<script[^>]*type="application\/json"[^>]*id="reviewedSections"[^>]*>[\s\S]*?<\/script>/;
+const REVIEW_BLOCK_RE_G = new RegExp(REVIEW_BLOCK_RE.source, "g");
+// The block the LAYER owns - the one OUTSIDE the authored content region. Since CMH-SIZE-02 the
+// layer's blocks follow the content, so a fixture that plants a decoy inside the content and then
+// takes the FIRST match would strip its own decoy and leave the layer's block in place, quietly
+// testing nothing. Matched by position against the CONTENT region, never by document order.
+function layerReviewBlock(html) {
+  const contentEnd = html.indexOf("<!-- END: commentable-html - CONTENT -->");
+  expect(contentEnd, "fixture has no content region").toBeGreaterThan(-1);
+  const owned = [...html.matchAll(REVIEW_BLOCK_RE_G)].filter((m) => m.index > contentEnd);
+  expect(owned.length, "expected exactly one layer-owned reviewedSections block").toBe(1);
+  return owned[0][0];
+}
 // A baked marker whose hash cannot match the live section: reading it at all shows as "changed",
 // so "unreviewed" means the block it came from was not read.
 function reviewMarkerJson(id) {
@@ -557,8 +569,7 @@ test.describe("section review tracking", () => {
     const decoy = REVIEW_SCRIPT_OPEN + reviewMarkerJson("rv-beta") + "</script>";
     const { html } = stageContent(CONTENT + decoy, { key: "cmh-review-root-decoy", source: "root-decoy.html" });
     const staged = fs.readFileSync(html, "utf8");
-    const owned = staged.match(REVIEW_BLOCK_RE);
-    expect(owned).toBeTruthy();
+    const owned = [layerReviewBlock(staged)];
     const stripped = staged.replace(owned[0], "")
       .replace(/<!--[^>]*?BEGIN: commentable-html - EMBEDDED COMMENTS[\s\S]*?-->/, "")
       .replace(/<!--\s*END: commentable-html - EMBEDDED COMMENTS\s*-->/, "");
@@ -581,8 +592,7 @@ test.describe("section review tracking", () => {
     const { html } = stageContent(CONTENT + '<div id="commentRoot" hidden></div>',
       { key: "cmh-review-contested", source: "contested.html" });
     const staged = fs.readFileSync(html, "utf8");
-    const owned = staged.match(REVIEW_BLOCK_RE);
-    expect(owned).toBeTruthy();
+    const owned = [layerReviewBlock(staged)];
     fs.writeFileSync(html, staged.replace(owned[0],
       REVIEW_SCRIPT_OPEN + reviewMarkerJson("rv-alpha") + "</script>"));
     await page.goto(fileUrl(html));
@@ -603,8 +613,7 @@ test.describe("section review tracking", () => {
     const decoy = '<script type="application/json" id="embeddedComments">"DECOY_SENTINEL"</script>';
     const { html } = stageContent(CONTENT + decoy, { key: "cmh-review-anchor-decoy", source: "anchor-decoy.html" });
     const staged = fs.readFileSync(html, "utf8");
-    const owned = staged.match(REVIEW_BLOCK_RE);
-    expect(owned).toBeTruthy();
+    const owned = [layerReviewBlock(staged)];
     fs.writeFileSync(html, staged.replace(owned[0], ""));
     await page.goto(fileUrl(html));
     await ready(page);
@@ -636,8 +645,7 @@ test.describe("section review tracking", () => {
     const decoy = REVIEW_SCRIPT_OPEN + reviewMarkerJson("rv-beta") + "</script>";
     const { html } = stageContent(CONTENT + decoy, { key: "cmh-review-write-decoy", source: "write-decoy.html" });
     const staged = fs.readFileSync(html, "utf8");
-    const owned = staged.match(REVIEW_BLOCK_RE);
-    expect(owned).toBeTruthy();
+    const owned = [layerReviewBlock(staged)];
     fs.writeFileSync(html, staged.replace(owned[0], ""));
     await page.goto(fileUrl(html));
     await ready(page);
@@ -663,8 +671,7 @@ test.describe("section review tracking", () => {
     // narrowing the candidates must not turn "no root" into "no blocks".
     const { html } = stageContent(CONTENT, { key: "cmh-review-no-root", source: "no-root.html" });
     const staged = fs.readFileSync(html, "utf8");
-    const owned = staged.match(REVIEW_BLOCK_RE);
-    expect(owned).toBeTruthy();
+    const owned = [layerReviewBlock(staged)];
     expect(staged).toContain('id="commentRoot"');
     fs.writeFileSync(html, staged
       .replace(owned[0], REVIEW_SCRIPT_OPEN + reviewMarkerJson("rv-alpha") + "</script>")

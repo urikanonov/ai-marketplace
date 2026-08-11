@@ -38,9 +38,9 @@ function _restoreMenuFocus() {
   if (rf && document.contains(rf)) { try { rf.focus({ preventScroll: true }); } catch (_e) { /* ignore */ } }
 }
 function _setMenuMode(mode) {
-  const mc = document.getElementById("menuComment");
-  const ms = document.getElementById("menuSlideComment");
-  const md = document.getElementById("menuDocComment");
+  const mc = cmhEl("menuComment");
+  const ms = cmhEl("menuSlideComment");
+  const md = cmhEl("menuDocComment");
   // In a deck, an empty right-click offers BOTH a slide-scoped comment and a deck-wide comment;
   // a flat document offers only the single document-wide comment.
   const deckDoc = (mode === "document") && IS_DECK;
@@ -370,7 +370,7 @@ function showMenuForRange(range) {
   showMenu(x, y);
 }
 function hideMenu() { menu.hidden = true; }
-document.getElementById("menuComment").addEventListener("click", () => {
+cmhEl("menuComment").addEventListener("click", () => {
   hideMenu();
   // Diff sub-line selection: comment the selected region of a line; the same
   // region re-opens its existing comment, a different region makes a new one.
@@ -405,7 +405,7 @@ document.getElementById("menuComment").addEventListener("click", () => {
   }
   openComposer(pendingRange, pendingQuote);
 });
-const _menuDocBtn = document.getElementById("menuDocComment");
+const _menuDocBtn = cmhEl("menuDocComment");
 if (_menuDocBtn) _menuDocBtn.addEventListener("click", () => { hideMenu(); openDocumentComposer(); });
-const _menuSlideBtn = document.getElementById("menuSlideComment");
+const _menuSlideBtn = cmhEl("menuSlideComment");
 if (_menuSlideBtn) _menuSlideBtn.addEventListener("click", () => { hideMenu(); openSlideComposer(pendingSlideId); });

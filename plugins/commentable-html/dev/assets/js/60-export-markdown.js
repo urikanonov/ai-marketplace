@@ -445,7 +445,7 @@ async function exportMarkdown() {
   showToast(`Markdown downloaded as ${filename}.`, { center: true });
 }
 ["btnExportMd", "btnExportMdTop"].forEach((id) => {
-  const b = document.getElementById(id);
+  const b = cmhEl(id);
   if (b) b.addEventListener("click", exportMarkdown);
 });
 // Exposed for deterministic tests and programmatic use.

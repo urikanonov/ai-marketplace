@@ -31,7 +31,7 @@ function ensureAssetBannerChrome(b) {
   return msgEl;
 }
 function revealAssetBanner(msg, pageVer, runtimeVer) {
-  const b = document.getElementById("cmhAssetBanner");
+  const b = cmhEl("cmhAssetBanner");
   if (!b) return;
   const key = (pageVer || runtimeVer) ? assetBannerDismissKey(pageVer, runtimeVer) : "";
   if (assetBannerDismissed(key)) {
@@ -157,7 +157,7 @@ function currentDocState() {
 function updateDocTypeUi() {
   const st = currentDocState();
   ["cmTypeBadge", "cmhModeBadge"].forEach(function (id) {
-    const el = document.getElementById(id);
+    const el = cmhEl(id);
     if (!el) return;
     el.textContent = st.type;
     el.setAttribute("data-doc-type", st.type);
@@ -174,7 +174,7 @@ function updateDocTypeUi() {
   });
 }
 function setupModeUi() {
-  const ver = document.getElementById("cmVersion");
+  const ver = cmhEl("cmVersion");
   if (ver) ver.textContent = "v" + CMH_VERSION;
   const meta = document.querySelector(".cm-sidebar .head-meta");
   if (meta && !meta.querySelector(".cm-brand-icon")) meta.insertAdjacentHTML("afterbegin", cmBrandLink(CMH_ICON_SVG));
@@ -186,7 +186,7 @@ function setupModeUi() {
     document.body.classList.add("cm-nonportable");
     // In nonshareable (companion) mode the shareability action embeds everything into one file.
     ["btnSaveHtml", "btnSaveHtmlTop"].forEach(function (id) {
-      const b = document.getElementById(id);
+      const b = cmhEl(id);
       if (b) {
         // Preserve each button's icon + label span; the sidebar button uses the compact
         // "Shareable" label, the overflow-menu item keeps the full "Export as Shareable".
@@ -213,7 +213,7 @@ function setupModeUi() {
   } else {
     // No mismatch: make sure a banner the bootstrap watchdog may have raced to
     // show (slow-but-successful load) is hidden now that the runtime is up.
-    const b = document.getElementById("cmhAssetBanner");
+    const b = cmhEl("cmhAssetBanner");
     if (b) b.hidden = true;
   }
 }

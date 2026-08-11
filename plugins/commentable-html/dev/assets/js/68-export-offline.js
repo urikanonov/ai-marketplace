@@ -2867,7 +2867,7 @@ async function saveOffline() {
   showToast("Downloaded " + filename + " - offline HTML with zero-network mermaid and Chart.js embedded." + note + inertNote + fallbackNote + headFallbackNote + baseNote + srcdocNote + review.note, { center: true });
 }
 ["btnExportOffline", "btnExportOfflineTop"].forEach(function (id) {
-  const b = document.getElementById(id);
+  const b = cmhEl(id);
   if (b) b.addEventListener("click", saveOffline);
 });
 _primeOfflineVendoredRichLibs();

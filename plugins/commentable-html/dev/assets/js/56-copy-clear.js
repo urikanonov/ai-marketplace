@@ -313,7 +313,7 @@ function updateCopyAllState() {
   const state = _copyAllState();
   const disabled = !state.hasContent;
   Object.keys(CMH_COPY_ALL_TITLES).forEach((id) => {
-    const btn = document.getElementById(id);
+    const btn = cmhEl(id);
     if (!btn) return;
     btn.setAttribute("aria-disabled", disabled ? "true" : "false");
     btn.classList.toggle("cm-copy-disabled", disabled);
@@ -361,5 +361,5 @@ async function copyAll() {
     showToast(`Copied ${n} comment${n === 1 ? "" : "s"}${reps}${extra}. They stay here until the agent marks them handled in the HTML.`);
   }
 }
-document.getElementById("btnCopyAll").addEventListener("click", copyAll);
-document.getElementById("btnCopyAllTop").addEventListener("click", copyAll);
+cmhEl("btnCopyAll").addEventListener("click", copyAll);
+cmhEl("btnCopyAllTop").addEventListener("click", copyAll);

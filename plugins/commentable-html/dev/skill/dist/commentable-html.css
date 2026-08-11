@@ -2203,7 +2203,8 @@ body.cmh-deck-comments-off #widgetAddBtn,
 body.cmh-deck-comments-off #headingAddBtn {
 display: none !important;
 }
-#commentRoot[data-cmh-mode="deck"] .slide {
+
+:where(#commentRoot[data-cmh-mode="deck"] .slide) {
 --cmh-deck-code-bg: #0f172a;
 --cmh-deck-code-bg-soft: #111827;
 --cmh-deck-code-border: rgba(148, 163, 184, 0.44);

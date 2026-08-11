@@ -5,7 +5,7 @@
 // announces the kind. When the author already opened the callout with a <strong> label
 // (e.g. "Bottom line."), the aria-label is suppressed so the variant is not announced twice.
 (function () {
-  const root = document.getElementById("commentRoot") || document.body;
+  const root = cmhEl("commentRoot") || document.body;
   if (!root) return;
   const LABELS = { info: "Note", success: "Success", warning: "Warning", danger: "Danger" };
   // The first meaningful child node of a container (skips whitespace text AND empty wrapper

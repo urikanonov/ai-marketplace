@@ -356,10 +356,11 @@ class UpgradeUnitTests(unittest.TestCase):
         out, changed = upgrade.upgrade(target, tpl)
         self.assertNotIn("mermaid bootstrap", changed)
 
-    def test_bootstrap_swap_is_scoped_to_head_cmh_mmd_09(self):
+    def test_bootstrap_swap_is_scoped_to_template_regions_cmh_mmd_09(self):
         # An authored module <script> in the document body/CONTENT that mentions mermaid and a
         # dynamic import must NOT be mistaken for the shell loader: it is left untouched and does
-        # not crash the upgrade (only the head loader is swapped).
+        # not crash the upgrade (only a loader in a TEMPLATE-OWNED scope - <head>, or the
+        # MACHINERY fence the content-first layout puts it in - is swapped).
         tpl = _tpl()
         authored = ('<script type="module">\n'
                     '  // demo only: await import("https://example.test/mermaid.js"); pre.mermaid\n'
@@ -370,8 +371,13 @@ class UpgradeUnitTests(unittest.TestCase):
         legacy = tpl.replace(marker, authored + "\n" + marker, 1)
         legacy = _mutate_region_inner(legacy, "JS", "\n/* STALE-JS */\n")
         hb, he = upgrade._mermaid_bootstrap_span(legacy, "legacy")
-        head = re.search(r"<head\b[^>]*>.*?</head>", legacy, re.IGNORECASE | re.DOTALL)
-        self.assertTrue(head.start() <= hb < he <= head.end())  # the matched span is inside <head>
+        scopes = upgrade._loader_scopes(legacy, upgrade._mask_html_comments(legacy))
+        self.assertTrue(any(lo <= hb < he <= hi for lo, hi in scopes),
+                        "the matched span must sit in a template-owned scope")
+        content_begin = legacy.index("BEGIN: commentable-html - CONTENT")
+        content_end = legacy.index(marker)
+        self.assertFalse(content_begin <= hb <= content_end,
+                         "the authored CONTENT region is never a loader scope")
         out, changed = upgrade.upgrade(legacy, tpl)  # must not raise on the body module script
         self.assertIn("JS", changed)
         self.assertIn(authored, out)  # authored body module script preserved verbatim

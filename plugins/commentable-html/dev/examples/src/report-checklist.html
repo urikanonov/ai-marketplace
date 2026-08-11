@@ -22,17 +22,148 @@
   })();
 </script>
 
-<!-- Mermaid loader (BUILD-OWNED). tools/build.py re-emits the canonical shell-baked loader
-     from assets/template.shell.html into every example on each build (CMH-MMD-09), so this
-     block is a placeholder only - edit the loader in the shell template, not here; an edit
-     here has no effect on the built example. -->
-<script type="module">
-  // Placeholder; build.py overwrites this with the canonical off-screen loader (CMH-MMD-07/08).
-  if (document.querySelector("pre.mermaid, div.mermaid")) {
-    await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs");
-  }
+<!-- ============================================================
+     BEGIN: commentable-html - FIRST PAINT
+     ============================================================
+     Generated machinery, safe to skip. The layer stylesheet lives at the END of
+     the document (authored content comes first in source order), so this hides the
+     body until that stylesheet has been parsed and the one-line reveal script right
+     after it runs. Scripting-off documents never set the class, so nothing can stay
+     hidden; a DOMContentLoaded listener and a timeout reveal the document even if the
+     stylesheet never arrives.
+-->
+<style id="cmhFirstPaintGuard">html.cmh-awaiting-style body { visibility: hidden; }</style>
+<script>
+  (() => {
+    const d = document.documentElement;
+    d.classList.add("cmh-awaiting-style");
+    const reveal = () => d.classList.remove("cmh-awaiting-style");
+    window.__cmhRevealDocument = reveal;
+    document.addEventListener("DOMContentLoaded", reveal);
+    setTimeout(reveal, 3000);
+  })();
 </script>
+<!-- END: commentable-html - FIRST PAINT -->
+</head>
 
+<body>
+
+<!-- commentable-html machinery (non-content): a parse-state terminator, and the only thing the
+     layer puts before the authored content. A <script> in the HEAD whose bytes open a script-data
+     escape (`<!--` then `<script`) leaves the tokenizer in an escaped state that swallows
+     everything after it as script text until the next `</script>` - which, with the content first,
+     would be the authored document itself. The end tag inside this CSS comment is those bytes: the
+     escaped state ends here, before the content, and a browser parsing normally sees only an empty
+     stylesheet (`<style>` is raw text, so the bytes are a comment, not markup). -->
+<style>/* </script> */</style>
+
+<!-- ============================================================
+     Per-document content (NOT one of the five pasteable regions).
+     This block is the only place you customize per document. Set:
+       data-comment-key   - unique localStorage key for this doc
+       data-doc-label     - human-readable name used in copy
+       data-doc-source    - source path written into the Copy bundle
+                            and into the agent-instructions block,
+                            so the agent knows which file to edit
+                            (falls back to location.pathname).
+     The five BEGIN/END: commentable-html regions above and below
+     stay byte-for-byte identical across docs, so upgrades are a
+     clean replace. This wrapper is intentionally NOT marked with
+     the commentable-html marker format - it is per-document
+     content, not a template-owned region.
+-->
+<div class="app">
+<main id="commentRoot" data-cmh-content-root data-comment-key="cmh-132b5c6f45a0" data-doc-label="Release readiness review" data-doc-source="report-checklist.html">
+<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
+
+<header class="cmh-lede">
+  <h1>Release readiness review</h1>
+</header>
+
+<section>
+  <h2 id="about-example">About this example</h2>
+  <p>A worked example of commentable-html <strong>layered checklists</strong>. Click any state box to cycle it
+     <em>blank &rarr; check &rarr; cross &rarr; question</em>. A parent row aggregates its children automatically,
+     and clicking a parent pushes its state down to every child. Changes are saved in this browser and collected
+     into the <em>Copy all</em> bundle so an agent can cement them back into the source with
+     <code>tools/checklist_apply.py</code>.</p>
+</section>
+
+<section>
+  <h2 id="sign-off">Sign-off checklist (nested list)</h2>
+  <p>Hierarchy comes from the nested lists here. Toggle the leaves and watch each area - and the top-level row -
+     re-aggregate. Set every child of an area to the same state and the area adopts it; leave them mixed and the
+     area shows a neutral dash.</p>
+  <div class="cmh-checklist" data-cmh-checklist="release" data-cmh-checklist-label="Release readiness">
+    <ul>
+      <li data-cmh-item="backend" data-cmh-state="blank">Backend
+        <ul>
+          <li data-cmh-item="migrations" data-cmh-state="check">Database migrations applied and reversible</li>
+          <li data-cmh-item="loadtest" data-cmh-state="cross">Load test meets the p99 latency target</li>
+          <li data-cmh-item="flags" data-cmh-state="question">Feature flags default to the safe state</li>
+        </ul>
+      </li>
+      <li data-cmh-item="frontend" data-cmh-state="blank">Frontend
+        <ul>
+          <li data-cmh-item="a11y" data-cmh-state="check">Accessibility audit passes (keyboard and screen reader)</li>
+          <li data-cmh-item="i18n" data-cmh-state="check">All new strings are localized</li>
+        </ul>
+      </li>
+      <li data-cmh-item="docs" data-cmh-state="question">Release notes and customer docs updated</li>
+      <li data-cmh-item="rollback" data-cmh-state="blank">Rollback plan rehearsed with on-call</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h2 id="component-audit">Component audit (sortable table)</h2>
+  <p>The same four-state control works in a table. Rows link to their parent with <code>data-cmh-parent</code>
+     instead of nesting, so the hierarchy survives even after you sort a column. Try sorting by <em>Owner</em>,
+     then toggle a control: the parent still aggregates correctly.</p>
+  <table class="cmh-checklist" data-cmh-checklist="audit" data-cmh-checklist-label="Security audit">
+    <thead><tr><th>State</th><th>Control</th><th>Owner</th></tr></thead>
+    <tbody>
+      <tr data-cmh-item="network" data-cmh-state="blank"><td></td><td>Network</td><td>Dana</td></tr>
+      <tr data-cmh-item="firewall" data-cmh-parent="network" data-cmh-state="check"><td></td><td>Firewall rules reviewed</td><td>Ravi</td></tr>
+      <tr data-cmh-item="tls" data-cmh-parent="network" data-cmh-state="cross"><td></td><td>TLS 1.2+ enforced end to end</td><td>Ravi</td></tr>
+      <tr data-cmh-item="identity" data-cmh-state="blank"><td></td><td>Identity</td><td>Mei</td></tr>
+      <tr data-cmh-item="mfa" data-cmh-parent="identity" data-cmh-state="check"><td></td><td>MFA required for admin roles</td><td>Mei</td></tr>
+      <tr data-cmh-item="secrets" data-cmh-parent="identity" data-cmh-state="question"><td></td><td>Secrets rotated within 90 days</td><td>Priya</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2 id="how">How to use this</h2>
+  <ul>
+    <li>Click a state box (or focus it and press Enter or Space) to cycle its state.</li>
+    <li>Click a parent box to set every child to the same state at once.</li>
+    <li>Open the comments panel: each checklist with changes shows a card with <em>jump</em> and <em>Reset</em>
+        buttons, placed in document order alongside any comments.</li>
+    <li>Click <strong>Copy all</strong> to hand the state changes to an agent, or <strong>Export as Shareable</strong>
+        to share a copy with the states baked into the HTML.</li>
+  </ul>
+  <p>You can still comment on any item's label text - only the icon control itself is excluded from selection.</p>
+</section>
+
+<!-- END: commentable-html - CONTENT -->
+</main>
+</div>
+<!-- End of per-document content -->
+
+<!-- ============================================================
+     BEGIN: commentable-html - MACHINERY
+     ============================================================
+     EVERYTHING BELOW THIS MARKER IS NON-CONTENT MACHINERY, NOT AUTHORED PROSE:
+     the layer stylesheet, the comment-UI markup, the saved comment state, the
+     optional loaders, the vendored rich-content payload, any per-document
+     bootstrap that has to run after the layer, and the runtime. A reader
+     - human or machine - that wants this document's content has already read all of
+     it above, and can stop here: the matching END marker is the last thing in the
+     body. Each block below repeats that note and carries its own BEGIN/END markers.
+-->
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <style>
 /* ============================================================
    Clawpilot theme variables (required by the comment layer)
@@ -834,7 +965,6 @@ html[data-theme="dark"] mark.cmh-dl-mark { background: rgba(251, 191, 36, 0.30);
 html[data-theme="dark"] mark.cmh-dl-mark:hover { background: rgba(251, 191, 36, 0.44); }
 .cm-diff-add { position: fixed; z-index: 200; }
 
-
 /* ---------------------------------------------------------------------------
    Default content styling (sections, tables, TOC, images, badges) - shipped so
    a generated or retrofitted document looks neat without the host adding its own
@@ -1017,7 +1147,6 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
 .cmh-sort-ctrl[data-dir="asc"] .cmh-sort-up { opacity: 1; color: var(--cp-accent); }
 .cmh-sort-ctrl[data-dir="desc"] .cmh-sort-dn { opacity: 1; color: var(--cp-accent); }
 
-
 /* ---------------------------------------------------------------------------
    Kusto query blocks - a framed figure (caption bar + code) with author-time KQL
    syntax highlighting. The .cmh-kql-* token spans are baked into the code by
@@ -1118,7 +1247,6 @@ html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
 html[data-theme="dark"] #commentRoot figure.cmh-kql .cmh-code-wrap code.cmh-code-lined > .cmh-code-gutter > .cmh-code-line.cmh-kql-line::before {
   color: #9da7b3;
 }
-
 
 .cm-skip[hidden], .cm-skip [hidden] { display: none !important; }
 /* A shared, themed focus ring for every interactive control the layer ships, so
@@ -1282,10 +1410,30 @@ body.cmh-deck-present #menuComment {
    END: commentable-html - CSS
    ============================================================ */
 </style>
-</head>
 
-<body>
+<!-- Per-document style slot. The layer stylesheet above is the LAST layer rule to be
+     parsed, so a per-document <style> belongs HERE (right after it) rather than in <head>:
+     at equal specificity the later rule wins, and a <style> left in the head would now lose
+     to the layer. This is the one author-owned slot inside the fence. -->
+<!-- commentable-html machinery (non-content): reveal the body now
+     that the layer stylesheet above has been parsed (see FIRST PAINT in the head). -->
+<script>
+  if (window.__cmhRevealDocument) window.__cmhRevealDocument();
+</script>
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
+<!-- Mermaid loader (BUILD-OWNED). tools/build.py re-emits the canonical shell-baked loader
+     from assets/template.shell.html into every example on each build (CMH-MMD-09), so this
+     block is a placeholder only - edit the loader in the shell template, not here; an edit
+     here has no effect on the built example. -->
+<script type="module">
+  // Placeholder; build.py overwrites this with the canonical off-screen loader (CMH-MMD-07/08).
+  if (document.querySelector("pre.mermaid, div.mermaid")) {
+    await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs");
+  }
+</script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - HANDLED IDS
      ============================================================
@@ -1304,6 +1452,7 @@ body.cmh-deck-present #menuComment {
 </script>
 <!-- END: commentable-html - HANDLED IDS -->
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - EMBEDDED COMMENTS
      ============================================================
@@ -1326,6 +1475,7 @@ body.cmh-deck-present #menuComment {
 </script>
 <!-- END: commentable-html - EMBEDDED COMMENTS -->
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - COMMENT UI
      ============================================================ -->
@@ -1403,100 +1553,7 @@ body.cmh-deck-present #menuComment {
 <div class="cm-toast cm-skip" id="toast"></div>
 <!-- END: commentable-html - COMMENT UI -->
 
-<!-- ============================================================
-     Per-document content (NOT one of the five pasteable regions).
-     This block is the only place you customize per document. Set:
-       data-comment-key   - unique localStorage key for this doc
-       data-doc-label     - human-readable name used in copy
-       data-doc-source    - source path written into the Copy bundle
-                            and into the agent-instructions block,
-                            so the agent knows which file to edit
-                            (falls back to location.pathname).
-     The five BEGIN/END: commentable-html regions above and below
-     stay byte-for-byte identical across docs, so upgrades are a
-     clean replace. This wrapper is intentionally NOT marked with
-     the commentable-html marker format - it is per-document
-     content, not a template-owned region.
--->
-<div class="app">
-<main id="commentRoot" data-cmh-content-root data-comment-key="cmh-132b5c6f45a0" data-doc-label="Release readiness review" data-doc-source="report-checklist.html">
-<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
-
-<header class="cmh-lede">
-  <h1>Release readiness review</h1>
-</header>
-
-<section>
-  <h2 id="about-example">About this example</h2>
-  <p>A worked example of commentable-html <strong>layered checklists</strong>. Click any state box to cycle it
-     <em>blank &rarr; check &rarr; cross &rarr; question</em>. A parent row aggregates its children automatically,
-     and clicking a parent pushes its state down to every child. Changes are saved in this browser and collected
-     into the <em>Copy all</em> bundle so an agent can cement them back into the source with
-     <code>tools/checklist_apply.py</code>.</p>
-</section>
-
-<section>
-  <h2 id="sign-off">Sign-off checklist (nested list)</h2>
-  <p>Hierarchy comes from the nested lists here. Toggle the leaves and watch each area - and the top-level row -
-     re-aggregate. Set every child of an area to the same state and the area adopts it; leave them mixed and the
-     area shows a neutral dash.</p>
-  <div class="cmh-checklist" data-cmh-checklist="release" data-cmh-checklist-label="Release readiness">
-    <ul>
-      <li data-cmh-item="backend" data-cmh-state="blank">Backend
-        <ul>
-          <li data-cmh-item="migrations" data-cmh-state="check">Database migrations applied and reversible</li>
-          <li data-cmh-item="loadtest" data-cmh-state="cross">Load test meets the p99 latency target</li>
-          <li data-cmh-item="flags" data-cmh-state="question">Feature flags default to the safe state</li>
-        </ul>
-      </li>
-      <li data-cmh-item="frontend" data-cmh-state="blank">Frontend
-        <ul>
-          <li data-cmh-item="a11y" data-cmh-state="check">Accessibility audit passes (keyboard and screen reader)</li>
-          <li data-cmh-item="i18n" data-cmh-state="check">All new strings are localized</li>
-        </ul>
-      </li>
-      <li data-cmh-item="docs" data-cmh-state="question">Release notes and customer docs updated</li>
-      <li data-cmh-item="rollback" data-cmh-state="blank">Rollback plan rehearsed with on-call</li>
-    </ul>
-  </div>
-</section>
-
-<section>
-  <h2 id="component-audit">Component audit (sortable table)</h2>
-  <p>The same four-state control works in a table. Rows link to their parent with <code>data-cmh-parent</code>
-     instead of nesting, so the hierarchy survives even after you sort a column. Try sorting by <em>Owner</em>,
-     then toggle a control: the parent still aggregates correctly.</p>
-  <table class="cmh-checklist" data-cmh-checklist="audit" data-cmh-checklist-label="Security audit">
-    <thead><tr><th>State</th><th>Control</th><th>Owner</th></tr></thead>
-    <tbody>
-      <tr data-cmh-item="network" data-cmh-state="blank"><td></td><td>Network</td><td>Dana</td></tr>
-      <tr data-cmh-item="firewall" data-cmh-parent="network" data-cmh-state="check"><td></td><td>Firewall rules reviewed</td><td>Ravi</td></tr>
-      <tr data-cmh-item="tls" data-cmh-parent="network" data-cmh-state="cross"><td></td><td>TLS 1.2+ enforced end to end</td><td>Ravi</td></tr>
-      <tr data-cmh-item="identity" data-cmh-state="blank"><td></td><td>Identity</td><td>Mei</td></tr>
-      <tr data-cmh-item="mfa" data-cmh-parent="identity" data-cmh-state="check"><td></td><td>MFA required for admin roles</td><td>Mei</td></tr>
-      <tr data-cmh-item="secrets" data-cmh-parent="identity" data-cmh-state="question"><td></td><td>Secrets rotated within 90 days</td><td>Priya</td></tr>
-    </tbody>
-  </table>
-</section>
-
-<section>
-  <h2 id="how">How to use this</h2>
-  <ul>
-    <li>Click a state box (or focus it and press Enter or Space) to cycle its state.</li>
-    <li>Click a parent box to set every child to the same state at once.</li>
-    <li>Open the comments panel: each checklist with changes shows a card with <em>jump</em> and <em>Reset</em>
-        buttons, placed in document order alongside any comments.</li>
-    <li>Click <strong>Copy all</strong> to hand the state changes to an agent, or <strong>Export as Shareable</strong>
-        to share a copy with the states baked into the HTML.</li>
-  </ul>
-  <p>You can still comment on any item's label text - only the icon control itself is excluded from selection.</p>
-</section>
-
-<!-- END: commentable-html - CONTENT -->
-</main>
-</div>
-<!-- End of per-document content -->
-
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - JS
      ============================================================
@@ -4989,7 +5046,6 @@ document.addEventListener("mousedown", (e) => {
   hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null;
 });
 
-
 let _sidebarWidthPx = 0;
 function _sidebarWidthBounds() {
   const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0, 1);
@@ -7668,7 +7724,6 @@ function restoreHighlights() {
   });
 }
 
-
 function setupChartContainment() {
   root.querySelectorAll("figure.chart > .chart-wrap").forEach(function (wrap) {
     if (!wrap.style.position) wrap.style.position = "relative";
@@ -7999,5 +8054,6 @@ window.__commentableHtmlVersion = CMH_VERSION;
 })();</script>
 <!-- END: commentable-html - JS -->
 
+<!-- END: commentable-html - MACHINERY -->
 </body>
 </html>

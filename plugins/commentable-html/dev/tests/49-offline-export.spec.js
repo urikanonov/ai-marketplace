@@ -2576,15 +2576,27 @@ test("CMH-OFFLINE-07: the vendored payload wins over a copy already in the docum
   }
 });
 
-// The vendored payload is INFRASTRUCTURE, not content: `tools/authoring/vendored_libs.py` places it
-// immediately before `</body>`, i.e. AFTER the content root, while the SHAREABLE template still
-// carries it in the head. Mirror the finalized placement so an authored decoy inside the content
-// region comes FIRST in document order - which is exactly what a document-order lookup would take.
-// Cut and re-insert by INDEX (not a replace() pattern): this is a fixture moving one known element,
-// not a sanitizer, and a regex here reads to CodeQL as incomplete sanitization.
+// The vendored payload is INFRASTRUCTURE, not content: since CMH-SIZE-02 the shell already places
+// it after the authored content, inside the machinery fence, and `tools/authoring/vendored_libs.py`
+// relocates a legacy head-placed one to the same place. This helper reproduces that placement for a
+// fixture, so an authored decoy inside the content region comes FIRST in document order - which is
+// exactly what a document-order lookup would take. It moves the payload that is OUTSIDE the content
+// region (never a decoy the fixture planted inside it), and is a no-op once that payload already
+// follows the content. Cut and re-insert by INDEX (not a replace() pattern): this is a fixture
+// moving one known element, not a sanitizer, and a regex here reads to CodeQL as incomplete
+// sanitization.
 function withPayloadAfterContent(html) {
-  const idAt = html.indexOf('id="cmhVendoredRichLibs"');
+  const contentAt = html.indexOf(CONTENT_BEGIN);
+  const contentEnd = html.indexOf(CONTENT_END);
+  if (contentAt < 0 || contentEnd < contentAt) throw new Error("fixture has no content region");
+  // The payload the LAYER owns is the one outside the authored content region.
+  let idAt = -1;
+  for (let at = html.indexOf('id="cmhVendoredRichLibs"'); at >= 0;
+       at = html.indexOf('id="cmhVendoredRichLibs"', at + 1)) {
+    if (at < contentAt || at > contentEnd) { idAt = at; break; }
+  }
   if (idAt < 0) throw new Error("fixture has no vendored payload to move");
+  if (idAt > contentEnd) return html;   // already where the shell puts it
   const openAt = html.lastIndexOf("<script", idAt);
   const closeAt = html.indexOf("</script>", idAt);
   if (openAt < 0 || closeAt < openAt) throw new Error("could not bound the vendored payload");

@@ -22,17 +22,230 @@
   })();
 </script>
 
-<!-- Mermaid loader (BUILD-OWNED). tools/build.py re-emits the canonical shell-baked loader
-     from assets/template.shell.html into every example on each build (CMH-MMD-09), so this
-     block is a placeholder only - edit the loader in the shell template, not here; an edit
-     here has no effect on the built example. -->
-<script type="module">
-  // Placeholder; build.py overwrites this with the canonical off-screen loader (CMH-MMD-07/08).
-  if (document.querySelector("pre.mermaid, div.mermaid")) {
-    await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs");
-  }
+<!-- ============================================================
+     BEGIN: commentable-html - FIRST PAINT
+     ============================================================
+     Generated machinery, safe to skip. The layer stylesheet lives at the END of
+     the document (authored content comes first in source order), so this hides the
+     body until that stylesheet has been parsed and the one-line reveal script right
+     after it runs. Scripting-off documents never set the class, so nothing can stay
+     hidden; a DOMContentLoaded listener and a timeout reveal the document even if the
+     stylesheet never arrives.
+-->
+<style id="cmhFirstPaintGuard">html.cmh-awaiting-style body { visibility: hidden; }</style>
+<script>
+  (() => {
+    const d = document.documentElement;
+    d.classList.add("cmh-awaiting-style");
+    const reveal = () => d.classList.remove("cmh-awaiting-style");
+    window.__cmhRevealDocument = reveal;
+    document.addEventListener("DOMContentLoaded", reveal);
+    setTimeout(reveal, 3000);
+  })();
 </script>
+<!-- END: commentable-html - FIRST PAINT -->
+</head>
 
+<body>
+
+<!-- commentable-html machinery (non-content): a parse-state terminator, and the only thing the
+     layer puts before the authored content. A <script> in the HEAD whose bytes open a script-data
+     escape (`<!--` then `<script`) leaves the tokenizer in an escaped state that swallows
+     everything after it as script text until the next `</script>` - which, with the content first,
+     would be the authored document itself. The end tag inside this CSS comment is those bytes: the
+     escaped state ends here, before the content, and a browser parsing normally sees only an empty
+     stylesheet (`<style>` is raw text, so the bytes are a comment, not markup). -->
+<style>/* </script> */</style>
+
+<!-- ============================================================
+     Per-document content (NOT one of the five pasteable regions).
+     This block is the only place you customize per document. Set:
+       data-comment-key   - unique localStorage key for this doc
+       data-doc-label     - human-readable name used in copy
+       data-doc-source    - source path written into the Copy bundle
+                            and into the agent-instructions block,
+                            so the agent knows which file to edit
+                            (falls back to location.pathname).
+     The five BEGIN/END: commentable-html regions above and below
+     stay byte-for-byte identical across docs, so upgrades are a
+     clean replace. This wrapper is intentionally NOT marked with
+     the commentable-html marker format - it is per-document
+     content, not a template-owned region.
+-->
+<div class="app">
+<main data-cmh-content-root id="commentRoot" data-comment-key="commentable-visuals-matrix-report" data-doc-label="Commentable Visuals Matrix" data-doc-source="report-metrics.html" data-generated="2026-07-12">
+<nav class="cm-toc" aria-label="Table of contents">
+  <div class="cm-toc-title">Contents</div>
+  <ol>
+    <li><a href="#visual-index">Inventory</a></li>
+    <li><a href="#mermaid-gallery">Mermaid gallery</a></li>
+    <li><a href="#chart-gallery">Chart gallery</a></li>
+    <li><a href="#svg-widget">SVG parts</a></li>
+    <li><a href="#review-blocks">Diff and KQL</a></li>
+  </ol>
+</nav>
+<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
+
+<h1>Commentable Visuals Matrix</h1>
+<p class="cmh-lede">A dense gallery for testing diagram, chart, diff, KQL, SVG, table, and callout review anchors.</p>
+<div class="visual-chip-list"><span>Mermaid x7</span><span>Chart.js x4</span><span>Diff</span><span>KQL</span><span>SVG parts</span></div>
+<section aria-labelledby="visual-index">
+  <h2 id="visual-index">Inventory</h2>
+  <table>
+    <thead><tr><th>Kind</th><th>Count</th><th>Comment target</th></tr></thead>
+    <tbody>
+      <tr><td>Mermaid</td><td>7</td><td>Diagram nodes and whole diagrams</td></tr>
+      <tr><td>Chart.js</td><td>4</td><td>Canvas plus caption</td></tr>
+      <tr><td>Code review diff</td><td>1</td><td>Changed lines</td></tr>
+      <tr><td>KQL</td><td>1</td><td>Query text</td></tr>
+      <tr><td>Inline SVG figure</td><td>1</td><td>The whole graphic</td></tr>
+    </tbody>
+  </table>
+</section>
+<section aria-labelledby="mermaid-gallery">
+  <h2 id="mermaid-gallery">Mermaid gallery</h2>
+  <div class="cmh-diagram-gallery">
+    <pre class="mermaid cm-skip">flowchart LR
+  Signal[Signal] --> Gate{Known issue?}
+  Gate -->|yes| Runbook[Runbook]
+  Gate -->|no| Triage[Triage]</pre>
+    <pre class="mermaid cm-skip">sequenceDiagram
+  participant Monitor
+  participant Router
+  participant Owner
+  Monitor->>Router: alert payload
+  Router->>Owner: assign incident
+  Owner-->>Router: mitigation posted</pre>
+    <pre class="mermaid cm-skip">gantt
+  title Repair plan
+  dateFormat  YYYY-MM-DD
+  section Stabilize
+  Patch queue       :a1, 2026-07-12, 1d
+  Verify canary     :a2, after a1, 1d
+  section Close
+  Update runbook    :a3, after a2, 1d</pre>
+    <pre class="mermaid cm-skip">stateDiagram-v2
+  [*] --> Intake
+  Intake --> Investigating
+  Investigating --> Mitigating
+  Mitigating --> Resolved
+  Resolved --> [*]</pre>
+    <pre class="mermaid cm-skip">classDiagram
+  class SignalRouter {
+    +route(signal)
+    +dedupe(alert)
+  }
+  class IncidentQueue {
+    +promote(card)
+  }
+  SignalRouter --> IncidentQueue</pre>
+    <pre class="mermaid cm-skip">erDiagram
+  INCIDENT ||--o{ SIGNAL : has
+  INCIDENT }o--|| OWNER : assigned_to
+  SIGNAL }o--|| SERVICE : emitted_by</pre>
+    <pre class="mermaid cm-skip">pie title Alert mix
+  "Latency" : 38
+  "Errors" : 24
+  "Saturation" : 18
+  "Deploy" : 9</pre>
+  </div>
+</section>
+<section aria-labelledby="chart-gallery">
+  <h2 id="chart-gallery">Chart gallery</h2>
+  <div class="visual-grid">
+    <!-- chart_block.py: paste this figure inside #commentRoot content -->
+<figure class="chart" aria-labelledby="metricsBarChart-caption">
+  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
+    <canvas id="metricsBarChart" role="img" aria-label="Chart: Incidents by service. Bar chart: incidents by service."></canvas>
+  </div>
+  <figcaption id="metricsBarChart-caption">Bar chart: incidents by service.</figcaption>
+</figure>
+<!-- chart_block.py: paste this figure inside #commentRoot content -->
+<figure class="chart" aria-labelledby="metricsLineChart-caption">
+  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
+    <canvas id="metricsLineChart" role="img" aria-label="Chart: Error rate trend. Line chart: error rate over six hours."></canvas>
+  </div>
+  <figcaption id="metricsLineChart-caption">Line chart: error rate over six hours.</figcaption>
+</figure>
+<!-- chart_block.py: paste this figure inside #commentRoot content -->
+<figure class="chart" aria-labelledby="metricsPieChart-caption">
+  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
+    <canvas id="metricsPieChart" role="img" aria-label="Chart: Alert source mix. Pie chart: alert source mix."></canvas>
+  </div>
+  <figcaption id="metricsPieChart-caption">Pie chart: alert source mix.</figcaption>
+</figure>
+<!-- chart_block.py: paste this figure inside #commentRoot content -->
+<figure class="chart" aria-labelledby="metricsDoughnutChart-caption">
+  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
+    <canvas id="metricsDoughnutChart" role="img" aria-label="Chart: Severity mix. Doughnut chart: severity mix."></canvas>
+  </div>
+  <figcaption id="metricsDoughnutChart-caption">Doughnut chart: severity mix.</figcaption>
+</figure>
+  </div>
+</section>
+<section aria-labelledby="svg-widget">
+  <h2 id="svg-widget">SVG parts</h2>
+  <figure aria-labelledby="signal-svg-caption">
+    <svg class="metric-svg cm-skip" data-cm-widget="metric-signal-svg" aria-label="Metric signal path" viewBox="0 0 620 160" role="img">
+      <g data-cm-part="ingest" data-cm-part-label="Ingest node"><rect class="node-box" x="20" y="45" width="130" height="64" rx="12"></rect><text x="52" y="82">Ingest</text></g>
+      <path class="node-line" d="M150 77 H250"></path>
+      <g data-cm-part="score" data-cm-part-label="Score node"><rect class="node-box" x="250" y="45" width="130" height="64" rx="12"></rect><text x="290" y="82">Score</text></g>
+      <path class="node-line" d="M380 77 H480"></path>
+      <g data-cm-part="route" data-cm-part-label="Route node"><rect class="node-box" x="480" y="45" width="120" height="64" rx="12"></rect><text x="520" y="82">Route</text></g>
+    </svg>
+    <figcaption id="signal-svg-caption">SVG: metric signal path.</figcaption>
+  </figure>
+  <figure aria-labelledby="headroom-svg-caption">
+    <svg class="metric-svg" viewBox="0 0 620 160" role="img" aria-label="Capacity headroom by region">
+      <rect class="node-box" x="20" y="20" width="580" height="120" rx="12"></rect>
+      <path class="node-line" d="M40 122 H160 V78 H300 V96 H440 V52 H580"></path>
+      <text x="40" y="46">Headroom trend (EU, US, APAC)</text>
+    </svg>
+    <figcaption id="headroom-svg-caption">Inline SVG figure: capacity headroom across regions. A plain inline <code>&lt;svg&gt;</code> with no labelled parts is one whole comment target - hover it (or focus it and press Enter) and click Add Comment.</figcaption>
+  </figure>
+</section>
+<section aria-labelledby="review-blocks">
+  <h2 id="review-blocks">Diff and KQL</h2>
+  <div class="cmh-callout cmh-callout-warning"><strong>Review focus.</strong> Confirm that promotion to Sev 1 requires both rate and regional spread.</div>
+  <pre class="cmh-diff" data-diff-label="rules/metric_router.py" data-diff-lang="python">--- a/rules/metric_router.py
++++ b/rules/metric_router.py
+@@ -4,7 +4,8 @@ def route(signal):
+-    if signal.error_rate &gt; 2.0:
+-        return "sev2"
++    if signal.error_rate &gt; 2.0 and signal.region_count &gt;= 3:
++        return "sev1"
++    if signal.error_rate &gt; 1.2:
++        return "sev2"
+     return "watch"
+</pre>
+  <figure class="cmh-kql">
+<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help.kusto.windows.net / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F02OsQ6CQBBEe75iY3UkNDQ25kyMlTX%2BwHE3yiZwl%2BwtEIwfL6gF5WTmzUwPpZljSHOjTpQsuWcyx648FbfoOSBqLt40dxDQVeAU4c4D6LzH1kQeh8EJv0CXHqLZ%2BjRGNWVFDab6p%2FhhVgFhXchaOmzOoaR2oZaj2bVXVHdfUib2WNuTBMgW3F9w2Vf%2FNQrI%2FgPJBdkNzAAAAA%3D%3D" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
+<pre><code class="language-kusto"><span class="cmh-kql-kw">let</span> windowStart <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">ago</span><span class="cmh-kql-op">(</span><span class="cmh-kql-num">6h</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">;</span>
+Incidents
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> CreatedTime <span class="cmh-kql-op">&gt;</span> windowStart
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Alerts<span class="cmh-kql-op">=</span><span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> Sev1<span class="cmh-kql-op">=</span><span class="cmh-kql-fn">countif</span><span class="cmh-kql-op">(</span>Severity <span class="cmh-kql-op">=</span><span class="cmh-kql-op">=</span> <span class="cmh-kql-str">"Sev1"</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-kw">by</span> <span class="cmh-kql-fn">bin</span><span class="cmh-kql-op">(</span>CreatedTime<span class="cmh-kql-op">,</span> <span class="cmh-kql-num">1h</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> Service
+<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> CreatedTime <span class="cmh-kql-kw">asc</span><span class="cmh-kql-op">,</span> Alerts <span class="cmh-kql-kw">desc</span></code></pre>
+</figure>
+</section>
+
+<!-- END: commentable-html - CONTENT -->
+</main>
+</div>
+<!-- End of per-document content -->
+
+<!-- ============================================================
+     BEGIN: commentable-html - MACHINERY
+     ============================================================
+     EVERYTHING BELOW THIS MARKER IS NON-CONTENT MACHINERY, NOT AUTHORED PROSE:
+     the layer stylesheet, the comment-UI markup, the saved comment state, the
+     optional loaders, the vendored rich-content payload, any per-document
+     bootstrap that has to run after the layer, and the runtime. A reader
+     - human or machine - that wants this document's content has already read all of
+     it above, and can stop here: the matching END marker is the last thing in the
+     body. Each block below repeats that note and carries its own BEGIN/END markers.
+-->
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <style>
 /* ============================================================
    Clawpilot theme variables (required by the comment layer)
@@ -819,7 +1032,6 @@ html[data-theme="dark"] mark.cmh-dl-mark { background: rgba(251, 191, 36, 0.30);
 html[data-theme="dark"] mark.cmh-dl-mark:hover { background: rgba(251, 191, 36, 0.44); }
 .cm-diff-add { position: fixed; z-index: 200; }
 
-
 /* ---------------------------------------------------------------------------
    Default content styling (sections, tables, TOC, images, badges) - shipped so
    a generated or retrofitted document looks neat without the host adding its own
@@ -963,7 +1175,6 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
 .cmh-sort-ctrl[data-dir="asc"] .cmh-sort-up { opacity: 1; color: var(--cp-accent); }
 .cmh-sort-ctrl[data-dir="desc"] .cmh-sort-dn { opacity: 1; color: var(--cp-accent); }
 
-
 /* ---------------------------------------------------------------------------
    Kusto query blocks - a framed figure (caption bar + code) with author-time KQL
    syntax highlighting. The .cmh-kql-* token spans are baked into the code by
@@ -1056,7 +1267,6 @@ html[data-theme="dark"] #commentRoot .cmh-code-kw  { color: #d2a8ff; }
 html[data-theme="dark"] #commentRoot .cmh-code-fn  { color: #79c0ff; }
 html[data-theme="dark"] #commentRoot .cmh-code-str { color: #7ee787; }
 html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
-
 
 .cm-skip[hidden], .cm-skip [hidden] { display: none !important; }
 
@@ -1187,6 +1397,7 @@ body.cmh-deck-present #menuComment {
    ============================================================ */
 </style>
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <style>
 #commentRoot .visual-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; align-items: start; }
 #commentRoot .visual-grid > pre.mermaid, #commentRoot .visual-grid > figure { margin: 0; }
@@ -1197,10 +1408,30 @@ body.cmh-deck-present #menuComment {
 #commentRoot .metric-svg .node-line { stroke: var(--cp-accent); stroke-width: 3; fill: none; }
 #commentRoot .metric-svg text { fill: var(--cp-text); font: 13px system-ui, sans-serif; }
 </style>
-</head>
 
-<body>
+<!-- Per-document style slot. The layer stylesheet above is the LAST layer rule to be
+     parsed, so a per-document <style> belongs HERE (right after it) rather than in <head>:
+     at equal specificity the later rule wins, and a <style> left in the head would now lose
+     to the layer. This is the one author-owned slot inside the fence. -->
+<!-- commentable-html machinery (non-content): reveal the body now
+     that the layer stylesheet above has been parsed (see FIRST PAINT in the head). -->
+<script>
+  if (window.__cmhRevealDocument) window.__cmhRevealDocument();
+</script>
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
+<!-- Mermaid loader (BUILD-OWNED). tools/build.py re-emits the canonical shell-baked loader
+     from assets/template.shell.html into every example on each build (CMH-MMD-09), so this
+     block is a placeholder only - edit the loader in the shell template, not here; an edit
+     here has no effect on the built example. -->
+<script type="module">
+  // Placeholder; build.py overwrites this with the canonical off-screen loader (CMH-MMD-07/08).
+  if (document.querySelector("pre.mermaid, div.mermaid")) {
+    await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs");
+  }
+</script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - HANDLED IDS
      ============================================================
@@ -1219,6 +1450,7 @@ body.cmh-deck-present #menuComment {
 </script>
 <!-- END: commentable-html - HANDLED IDS -->
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - EMBEDDED COMMENTS
      ============================================================
@@ -1241,6 +1473,7 @@ body.cmh-deck-present #menuComment {
 </script>
 <!-- END: commentable-html - EMBEDDED COMMENTS -->
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - COMMENT UI
      ============================================================ -->
@@ -1318,182 +1551,7 @@ body.cmh-deck-present #menuComment {
 <div class="cm-toast cm-skip" id="toast"></div>
 <!-- END: commentable-html - COMMENT UI -->
 
-<!-- ============================================================
-     Per-document content (NOT one of the five pasteable regions).
-     This block is the only place you customize per document. Set:
-       data-comment-key   - unique localStorage key for this doc
-       data-doc-label     - human-readable name used in copy
-       data-doc-source    - source path written into the Copy bundle
-                            and into the agent-instructions block,
-                            so the agent knows which file to edit
-                            (falls back to location.pathname).
-     The five BEGIN/END: commentable-html regions above and below
-     stay byte-for-byte identical across docs, so upgrades are a
-     clean replace. This wrapper is intentionally NOT marked with
-     the commentable-html marker format - it is per-document
-     content, not a template-owned region.
--->
-<div class="app">
-<main data-cmh-content-root id="commentRoot" data-comment-key="commentable-visuals-matrix-report" data-doc-label="Commentable Visuals Matrix" data-doc-source="report-metrics.html" data-generated="2026-07-12">
-<nav class="cm-toc" aria-label="Table of contents">
-  <div class="cm-toc-title">Contents</div>
-  <ol>
-    <li><a href="#visual-index">Inventory</a></li>
-    <li><a href="#mermaid-gallery">Mermaid gallery</a></li>
-    <li><a href="#chart-gallery">Chart gallery</a></li>
-    <li><a href="#svg-widget">SVG parts</a></li>
-    <li><a href="#review-blocks">Diff and KQL</a></li>
-  </ol>
-</nav>
-<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
-
-<h1>Commentable Visuals Matrix</h1>
-<p class="cmh-lede">A dense gallery for testing diagram, chart, diff, KQL, SVG, table, and callout review anchors.</p>
-<div class="visual-chip-list"><span>Mermaid x7</span><span>Chart.js x4</span><span>Diff</span><span>KQL</span><span>SVG parts</span></div>
-<section aria-labelledby="visual-index">
-  <h2 id="visual-index">Inventory</h2>
-  <table>
-    <thead><tr><th>Kind</th><th>Count</th><th>Comment target</th></tr></thead>
-    <tbody>
-      <tr><td>Mermaid</td><td>7</td><td>Diagram nodes and whole diagrams</td></tr>
-      <tr><td>Chart.js</td><td>4</td><td>Canvas plus caption</td></tr>
-      <tr><td>Code review diff</td><td>1</td><td>Changed lines</td></tr>
-      <tr><td>KQL</td><td>1</td><td>Query text</td></tr>
-      <tr><td>Inline SVG figure</td><td>1</td><td>The whole graphic</td></tr>
-    </tbody>
-  </table>
-</section>
-<section aria-labelledby="mermaid-gallery">
-  <h2 id="mermaid-gallery">Mermaid gallery</h2>
-  <div class="cmh-diagram-gallery">
-    <pre class="mermaid cm-skip">flowchart LR
-  Signal[Signal] --> Gate{Known issue?}
-  Gate -->|yes| Runbook[Runbook]
-  Gate -->|no| Triage[Triage]</pre>
-    <pre class="mermaid cm-skip">sequenceDiagram
-  participant Monitor
-  participant Router
-  participant Owner
-  Monitor->>Router: alert payload
-  Router->>Owner: assign incident
-  Owner-->>Router: mitigation posted</pre>
-    <pre class="mermaid cm-skip">gantt
-  title Repair plan
-  dateFormat  YYYY-MM-DD
-  section Stabilize
-  Patch queue       :a1, 2026-07-12, 1d
-  Verify canary     :a2, after a1, 1d
-  section Close
-  Update runbook    :a3, after a2, 1d</pre>
-    <pre class="mermaid cm-skip">stateDiagram-v2
-  [*] --> Intake
-  Intake --> Investigating
-  Investigating --> Mitigating
-  Mitigating --> Resolved
-  Resolved --> [*]</pre>
-    <pre class="mermaid cm-skip">classDiagram
-  class SignalRouter {
-    +route(signal)
-    +dedupe(alert)
-  }
-  class IncidentQueue {
-    +promote(card)
-  }
-  SignalRouter --> IncidentQueue</pre>
-    <pre class="mermaid cm-skip">erDiagram
-  INCIDENT ||--o{ SIGNAL : has
-  INCIDENT }o--|| OWNER : assigned_to
-  SIGNAL }o--|| SERVICE : emitted_by</pre>
-    <pre class="mermaid cm-skip">pie title Alert mix
-  "Latency" : 38
-  "Errors" : 24
-  "Saturation" : 18
-  "Deploy" : 9</pre>
-  </div>
-</section>
-<section aria-labelledby="chart-gallery">
-  <h2 id="chart-gallery">Chart gallery</h2>
-  <div class="visual-grid">
-    <!-- chart_block.py: paste this figure inside #commentRoot content -->
-<figure class="chart" aria-labelledby="metricsBarChart-caption">
-  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-    <canvas id="metricsBarChart" role="img" aria-label="Chart: Incidents by service. Bar chart: incidents by service."></canvas>
-  </div>
-  <figcaption id="metricsBarChart-caption">Bar chart: incidents by service.</figcaption>
-</figure>
-<!-- chart_block.py: paste this figure inside #commentRoot content -->
-<figure class="chart" aria-labelledby="metricsLineChart-caption">
-  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-    <canvas id="metricsLineChart" role="img" aria-label="Chart: Error rate trend. Line chart: error rate over six hours."></canvas>
-  </div>
-  <figcaption id="metricsLineChart-caption">Line chart: error rate over six hours.</figcaption>
-</figure>
-<!-- chart_block.py: paste this figure inside #commentRoot content -->
-<figure class="chart" aria-labelledby="metricsPieChart-caption">
-  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-    <canvas id="metricsPieChart" role="img" aria-label="Chart: Alert source mix. Pie chart: alert source mix."></canvas>
-  </div>
-  <figcaption id="metricsPieChart-caption">Pie chart: alert source mix.</figcaption>
-</figure>
-<!-- chart_block.py: paste this figure inside #commentRoot content -->
-<figure class="chart" aria-labelledby="metricsDoughnutChart-caption">
-  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-    <canvas id="metricsDoughnutChart" role="img" aria-label="Chart: Severity mix. Doughnut chart: severity mix."></canvas>
-  </div>
-  <figcaption id="metricsDoughnutChart-caption">Doughnut chart: severity mix.</figcaption>
-</figure>
-  </div>
-</section>
-<section aria-labelledby="svg-widget">
-  <h2 id="svg-widget">SVG parts</h2>
-  <figure aria-labelledby="signal-svg-caption">
-    <svg class="metric-svg cm-skip" data-cm-widget="metric-signal-svg" aria-label="Metric signal path" viewBox="0 0 620 160" role="img">
-      <g data-cm-part="ingest" data-cm-part-label="Ingest node"><rect class="node-box" x="20" y="45" width="130" height="64" rx="12"></rect><text x="52" y="82">Ingest</text></g>
-      <path class="node-line" d="M150 77 H250"></path>
-      <g data-cm-part="score" data-cm-part-label="Score node"><rect class="node-box" x="250" y="45" width="130" height="64" rx="12"></rect><text x="290" y="82">Score</text></g>
-      <path class="node-line" d="M380 77 H480"></path>
-      <g data-cm-part="route" data-cm-part-label="Route node"><rect class="node-box" x="480" y="45" width="120" height="64" rx="12"></rect><text x="520" y="82">Route</text></g>
-    </svg>
-    <figcaption id="signal-svg-caption">SVG: metric signal path.</figcaption>
-  </figure>
-  <figure aria-labelledby="headroom-svg-caption">
-    <svg class="metric-svg" viewBox="0 0 620 160" role="img" aria-label="Capacity headroom by region">
-      <rect class="node-box" x="20" y="20" width="580" height="120" rx="12"></rect>
-      <path class="node-line" d="M40 122 H160 V78 H300 V96 H440 V52 H580"></path>
-      <text x="40" y="46">Headroom trend (EU, US, APAC)</text>
-    </svg>
-    <figcaption id="headroom-svg-caption">Inline SVG figure: capacity headroom across regions. A plain inline <code>&lt;svg&gt;</code> with no labelled parts is one whole comment target - hover it (or focus it and press Enter) and click Add Comment.</figcaption>
-  </figure>
-</section>
-<section aria-labelledby="review-blocks">
-  <h2 id="review-blocks">Diff and KQL</h2>
-  <div class="cmh-callout cmh-callout-warning"><strong>Review focus.</strong> Confirm that promotion to Sev 1 requires both rate and regional spread.</div>
-  <pre class="cmh-diff" data-diff-label="rules/metric_router.py" data-diff-lang="python">--- a/rules/metric_router.py
-+++ b/rules/metric_router.py
-@@ -4,7 +4,8 @@ def route(signal):
--    if signal.error_rate &gt; 2.0:
--        return "sev2"
-+    if signal.error_rate &gt; 2.0 and signal.region_count &gt;= 3:
-+        return "sev1"
-+    if signal.error_rate &gt; 1.2:
-+        return "sev2"
-     return "watch"
-</pre>
-  <figure class="cmh-kql">
-<figcaption class="cm-skip cmh-kql-cap"><button type="button" class="cmh-kql-title cmh-kql-cluster cm-skip" data-cmh-copy="help.kusto.windows.net" title="Copy cluster name (help.kusto.windows.net) to the clipboard">help.kusto.windows.net / Samples</button><a class="cmh-kql-run" href="https://dataexplorer.azure.com/clusters/help.kusto.windows.net/databases/Samples?query=H4sIAAAAAAAC%2F02OsQ6CQBBEe75iY3UkNDQ25kyMlTX%2BwHE3yiZwl%2BwtEIwfL6gF5WTmzUwPpZljSHOjTpQsuWcyx648FbfoOSBqLt40dxDQVeAU4c4D6LzH1kQeh8EJv0CXHqLZ%2BjRGNWVFDab6p%2FhhVgFhXchaOmzOoaR2oZaj2bVXVHdfUib2WNuTBMgW3F9w2Vf%2FNQrI%2FgPJBdkNzAAAAA%3D%3D" target="_blank" rel="noopener noreferrer">Run in Azure Data Explorer &#9654;</a></figcaption>
-<pre><code class="language-kusto"><span class="cmh-kql-kw">let</span> windowStart <span class="cmh-kql-op">=</span> <span class="cmh-kql-fn">ago</span><span class="cmh-kql-op">(</span><span class="cmh-kql-num">6h</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">;</span>
-Incidents
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">where</span> CreatedTime <span class="cmh-kql-op">&gt;</span> windowStart
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Alerts<span class="cmh-kql-op">=</span><span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> Sev1<span class="cmh-kql-op">=</span><span class="cmh-kql-fn">countif</span><span class="cmh-kql-op">(</span>Severity <span class="cmh-kql-op">=</span><span class="cmh-kql-op">=</span> <span class="cmh-kql-str">"Sev1"</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-kw">by</span> <span class="cmh-kql-fn">bin</span><span class="cmh-kql-op">(</span>CreatedTime<span class="cmh-kql-op">,</span> <span class="cmh-kql-num">1h</span><span class="cmh-kql-op">)</span><span class="cmh-kql-op">,</span> Service
-<span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">order</span> <span class="cmh-kql-kw">by</span> CreatedTime <span class="cmh-kql-kw">asc</span><span class="cmh-kql-op">,</span> Alerts <span class="cmh-kql-kw">desc</span></code></pre>
-</figure>
-</section>
-
-<!-- END: commentable-html - CONTENT -->
-</main>
-</div>
-<!-- End of per-document content -->
-
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - JS
      ============================================================
@@ -4498,7 +4556,6 @@ document.addEventListener("mousedown", (e) => {
   hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null;
 });
 
-
 let _sidebarWidthPx = 0;
 function _sidebarWidthBounds() {
   const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0, 1);
@@ -7146,7 +7203,6 @@ function restoreHighlights() {
   });
 }
 
-
 function setupChartContainment() {
   root.querySelectorAll("figure.chart > .chart-wrap").forEach(function (wrap) {
     if (!wrap.style.position) wrap.style.position = "relative";
@@ -7475,7 +7531,11 @@ window.__commentableHtmlReady = true;
 window.__commentableHtmlVersion = CMH_VERSION;
 })();</script>
 <!-- END: commentable-html - JS -->
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <script id="metricsBarChart-data" type="application/json">
 {
   "type": "bar",
@@ -7512,6 +7572,8 @@ window.__commentableHtmlVersion = CMH_VERSION;
   }
 }
 </script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <script>
 (function () {
   var el = document.getElementById("metricsBarChart");
@@ -7524,6 +7586,7 @@ window.__commentableHtmlVersion = CMH_VERSION;
 })();
 </script>
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <script id="metricsLineChart-data" type="application/json">
 {
   "type": "line",
@@ -7569,6 +7632,8 @@ window.__commentableHtmlVersion = CMH_VERSION;
   }
 }
 </script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <script>
 (function () {
   var el = document.getElementById("metricsLineChart");
@@ -7581,6 +7646,7 @@ window.__commentableHtmlVersion = CMH_VERSION;
 })();
 </script>
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <script id="metricsPieChart-data" type="application/json">
 {
   "type": "pie",
@@ -7612,6 +7678,8 @@ window.__commentableHtmlVersion = CMH_VERSION;
   }
 }
 </script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <script>
 (function () {
   var el = document.getElementById("metricsPieChart");
@@ -7624,6 +7692,7 @@ window.__commentableHtmlVersion = CMH_VERSION;
 })();
 </script>
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <script id="metricsDoughnutChart-data" type="application/json">
 {
   "type": "doughnut",
@@ -7653,6 +7722,8 @@ window.__commentableHtmlVersion = CMH_VERSION;
   }
 }
 </script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <script>
 (function () {
   var el = document.getElementById("metricsDoughnutChart");
@@ -7665,6 +7736,6 @@ window.__commentableHtmlVersion = CMH_VERSION;
 })();
 </script>
 
-
+<!-- END: commentable-html - MACHINERY -->
 </body>
 </html>

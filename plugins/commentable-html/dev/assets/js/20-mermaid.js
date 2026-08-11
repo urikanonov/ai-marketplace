@@ -5,7 +5,7 @@
    offsets. mermaid renders asynchronously, so a per-host
    MutationObserver waits for SVG insertion before
    attaching handlers and restoring highlights. */
-const mermaidAddBtn = document.getElementById("mermaidAddBtn");
+const mermaidAddBtn = cmhEl("mermaidAddBtn");
 const mermaidDiagrams = [];
 let pendingMermaid = null;
 let mermaidAddHideTimer = null;

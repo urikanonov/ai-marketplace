@@ -274,14 +274,12 @@ function _inlineNonShareableAssets(baseHtml) {
   t = t.replace(/[ \t]*<!--\s*BEGIN: commentable-html - NON(SHAREABLE|PORTABLE) BOOTSTRAP[\s\S]*?END: commentable-html - NON\1 BOOTSTRAP\s*-->[ \t]*/i, "");
   const cssRegion = /[ \t]*<!--\s*=*\s*BEGIN: commentable-html - CSS[\s\S]*?<!--\s*=*\s*END: commentable-html - CSS\s*=*\s*-->[ \t]*\n?/i;
   const jsRegion = /[ \t]*<!--\s*=*\s*BEGIN: commentable-html - JS[\s\S]*?<!--\s*=*\s*END: commentable-html - JS\s*=*\s*-->[ \t]*\n?/i;
-  if (cssRegion.test(t)) {
-    t = t.replace(cssRegion, "");
-  } else {
+  const cssPlaced = cssRegion.test(t);
+  const jsPlaced = jsRegion.test(t);
+  if (!cssPlaced) {
     t = t.replace(/[ \t]*<link\b[^>]*commentable-html[^>]*\.css[^>]*>[ \t]*\n?/ig, "");
   }
-  if (jsRegion.test(t)) {
-    t = t.replace(jsRegion, "");
-  } else {
+  if (!jsPlaced) {
     const companionScript = new RegExp("[ \\t]*<scr" + "ipt\\b[^>]*commentable-html[^>]*\\.js[^>]*>"
       + "\\s*<\\/scr" + "ipt>[ \\t]*\\n?", "ig");
     t = t.replace(/[ \t]*<!--\s*commentable-html - layer loaded[\s\S]*?-->[ \t]*\n?/i, "");
@@ -289,8 +287,11 @@ function _inlineNonShareableAssets(baseHtml) {
     t = t.replace(/[ \t]*<!--\s*END: commentable-html - JS\s*-->[ \t]*\n?/ig, "");
   }
 
-  // 2) Inline the CSS in place of the removed <link>, and the runtime just before
-  //    </body>. Each block carries its own region markers on their own lines.
+  // 2) Inline the CSS and the runtime IN PLACE of the regions they replace, so the document
+  //    keeps the content-first layout (CMH-SIZE-05): the layer stylesheet stays where the
+  //    companion <link> was - inside the machinery fence after the content, and still ahead of
+  //    the regions the validator orders it against - rather than being hoisted into <head>.
+  //    Each block carries its own region markers on their own lines.
   const styleBlock = "\n<style>\n"
     + "/* ============================================================\n"
     + "   BEGIN: commentable-html - CSS\n"
@@ -305,13 +306,31 @@ function _inlineNonShareableAssets(baseHtml) {
     + "     ============================================================ -->\n"
     + "<script>\n" + _escClose(CMH_ASSETS.js) + "\n</scr" + "ipt>\n"
     + "<!-- END: commentable-html - JS -->\n";
-  if (!/<\/head>/i.test(t)) throw new Error("Could not find </head> to inline the stylesheet.");
-  if (!/<\/body>/i.test(t)) throw new Error("Could not find </body> to inline the runtime.");
-  // Insert the CSS before the LAST </head> and the runtime before the LAST </body>,
-  // then re-collapse blank runs. Head first, so the runtime's own "</head>" string
-  // literals cannot be mistaken for the document's real head.
-  t = _insertBeforeLastTag(t, "head", styleBlock);
-  t = _insertBeforeLastTag(t, "body", jsBlock);
+  // Both slots are located on the SAME text, before either payload is inserted, and spliced back
+  // to front: the runtime source quotes both regions' marker text, so matching the second slot
+  // AFTER inlining the first would anchor on a quotation inside the payload. Splicing by offset
+  // (rather than String.replace) also inserts a `$&`/`$'` sequence in a payload literally.
+  const slots = [];
+  if (cssPlaced) {
+    const m = cssRegion.exec(t);
+    slots.push({ start: m.index, end: m.index + m[0].length, block: styleBlock });
+  }
+  if (jsPlaced) {
+    const m = jsRegion.exec(t);
+    slots.push({ start: m.index, end: m.index + m[0].length, block: jsBlock });
+  }
+  slots.sort((a, b) => b.start - a.start);
+  slots.forEach((s) => { t = t.slice(0, s.start) + s.block + t.slice(s.end); });
+  if (!cssPlaced) {
+    if (!/<\/head>/i.test(t)) throw new Error("Could not find </head> to inline the stylesheet.");
+    // Insert the CSS before the LAST </head>: the real closing tag of a well-formed document is
+    // the last one, so the runtime's own "</head>" string literals cannot be mistaken for it.
+    t = _insertBeforeLastTag(t, "head", styleBlock);
+  }
+  if (!jsPlaced) {
+    if (!/<\/body>/i.test(t)) throw new Error("Could not find </body> to inline the runtime.");
+    t = _insertBeforeLastTag(t, "body", jsBlock);
+  }
   return t.replace(/\n{3,}/g, "\n\n");
 }
 function _buildStandaloneHtml(baseHtml, commentArr) {

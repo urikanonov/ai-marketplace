@@ -461,14 +461,16 @@ class BuildTests(unittest.TestCase):
 
     def test_build_nonshareable_reports_malformed_shells(self):
         _css, _js, shell, version = build.load_sources()
-        head_end = shell.index("</head>")
-        body_pos = shell.index("<body", head_end)
-        no_body_shell = shell[:body_pos] + "<main" + shell[body_pos + len("<body"):]
+        fence = shell.index(build.MACHINERY_BEGIN)
+        style_close = shell.index("</style>\n", fence)
+        no_style_shell = (shell[:style_close] + "</style>"
+                          + shell[style_close + len("</style>\n"):])
+        no_fence_shell = shell.replace(build.MACHINERY_BEGIN, "BEGIN: broken MACHINERY", 1)
         cases = [
             (shell.replace("BEGIN: commentable-html - CSS", "BEGIN: broken CSS", 1), "CSS region"),
-            (shell.replace("</style>\n</head>", "</style></head>", 1), "</style></head>"),
+            (no_style_shell, "</style> after the shell's MACHINERY fence"),
             (shell.replace("BEGIN: commentable-html - JS", "BEGIN: broken JS", 1), "JS region"),
-            (no_body_shell, "<body> tag"),
+            (no_fence_shell, "MACHINERY fence"),
             (shell + "\n{{CMH_LEFT}}\n", "unresolved placeholder"),
         ]
         for bad_shell, message in cases:

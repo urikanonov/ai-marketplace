@@ -254,14 +254,14 @@ async function saveAsPlain() {
   catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_DOWNLOAD); return; }
   showToast("Downloaded " + filename + " (plain HTML, comment layer removed).", { center: true });
 }
-const _btnSaveHtml = document.getElementById("btnSaveHtml");
-const _btnSaveHtmlTop = document.getElementById("btnSaveHtmlTop");
+const _btnSaveHtml = cmhEl("btnSaveHtml");
+const _btnSaveHtmlTop = cmhEl("btnSaveHtmlTop");
 // "Export as Shareable" always downloads ONE combined/standalone file
 // with the current comments embedded: saveStandalone() rebuilds an inline file in
 // nonshareable mode and falls back to the in-file embed for inline documents.
 if (_btnSaveHtml) _btnSaveHtml.addEventListener("click", saveStandalone);
 if (_btnSaveHtmlTop) _btnSaveHtmlTop.addEventListener("click", saveStandalone);
-const _btnSavePlain = document.getElementById("btnSavePlain");
-const _btnSavePlainTop = document.getElementById("btnSavePlainTop");
+const _btnSavePlain = cmhEl("btnSavePlain");
+const _btnSavePlainTop = cmhEl("btnSavePlainTop");
 if (_btnSavePlain) _btnSavePlain.addEventListener("click", saveAsPlain);
 if (_btnSavePlainTop) _btnSavePlainTop.addEventListener("click", saveAsPlain);

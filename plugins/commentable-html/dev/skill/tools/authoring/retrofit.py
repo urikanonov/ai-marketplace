@@ -52,8 +52,17 @@ OPTIONAL_END_TAGS = frozenset((
 
 LAYER_IDS = {"commentableHtmlLayer", "handledCommentIds", "embeddedComments"}
 _KIND_META_NAME = "commentable-html-kind"
+# The one-line "this block is machinery, skip it" note the shell puts ahead of every fenced block
+# (CMH-SIZE-06), read from the template so the retrofit never carries its own drifting copy.
+_SKIP_NOTE_RE = re.compile(r"^[ \t]*<!--[ \t]*commentable-html machinery \(non-content[^\n]*-->[ \t]*$",
+                           re.MULTILINE)
 CSS_COLLISION_RE = re.compile(r"--cp-[A-Za-z0-9_-]*|(?:[.#])cm-[A-Za-z0-9_-]+|color-scheme\s*:", re.I)
 Z_INDEX_RE = re.compile(r"z-index\s*:\s*(-?\d+)", re.I)
+# Properties that make an element the containing block for its `position: fixed` descendants (and
+# a stacking context), which would trap or clip the review chrome inside host markup.
+FIXED_CONTAINING_BLOCK_RE = re.compile(
+    r"(?:transform|filter|perspective|backdrop-filter|contain|will-change)\s*:\s*(?!none\b)[^;}]+",
+    re.I)
 SELECTOR_RE = re.compile(r"^(?:#[A-Za-z_][\w:.-]*|\.[A-Za-z_][\w:.-]*|[A-Za-z][\w:-]*)$")
 # A start tag's NAME, terminated the way HTML terminates one: ASCII whitespace, `/` or `>`.
 _START_TAG_NAME_RE = re.compile(r"<([a-zA-Z][^\t\n\r\f />]*)")
@@ -247,7 +256,11 @@ def _write_atomic(path, text, copy_assets=False, newline="\n", source=None):
 
 
 def _has_layer(text, parser):
-    for region in upgrade.LAYER_REGIONS:
+    # The MACHINERY and FIRST PAINT fences are layer-owned too, and two tools now DEPEND on the
+    # machinery fence being a single unambiguous pair (the loader re-emit and the vendored-payload
+    # placement). A host page that already carries one would get a second, so refuse it here
+    # rather than emit a document whose fence is ambiguous forever after.
+    for region in tuple(upgrade.LAYER_REGIONS) + ("MACHINERY", "FIRST PAINT"):
         if upgrade._region_marker_matches(text, "BEGIN", region) or upgrade._region_marker_matches(text, "END", region):
             return True
     if new_document.BEGIN_MARKER in text or new_document.END_MARKER in text:
@@ -339,7 +352,65 @@ def _find_kind_meta(parser):
     return None
 
 
+def _machinery_lead(template):
+    """The MACHINERY fence's opening comment (through its `-->`), taken from the template so the
+    retrofitted document carries the same wording as every generated one."""
+    begins = upgrade._region_marker_matches(template, "BEGIN", "MACHINERY")
+    if len(begins) != 1:
+        raise RetrofitError("template MACHINERY fence is missing or duplicated")
+    start = template.rfind("<!--", 0, begins[0].start())
+    end = template.find("-->", begins[0].end())
+    if start < 0 or end < 0:
+        raise RetrofitError("template MACHINERY fence comment is malformed")
+    return template[start:end + 3] + "\n"
+
+
+def _machinery_tail(template):
+    ends = upgrade._region_marker_matches(template, "END", "MACHINERY")
+    if len(ends) != 1:
+        raise RetrofitError("template MACHINERY fence is missing or duplicated")
+    start = template.rfind("<!--", 0, ends[0].start())
+    end = template.find("-->", ends[0].end())
+    if start < 0 or end < 0:
+        raise RetrofitError("template MACHINERY fence comment is malformed")
+    return template[start:end + 3] + "\n"
+
+
+def _first_paint_block(template):
+    return _region_block(template, "FIRST PAINT")
+
+
+def _skip_note(template):
+    note = _SKIP_NOTE_RE.search(template)
+    if not note:
+        raise RetrofitError("template is missing the machinery skip note")
+    return note.group(0).rstrip() + "\n"
+
+
+def _reveal_block(template):
+    """The one-line reveal script that follows the layer stylesheet in the fence."""
+    at = template.find("__cmhRevealDocument()")
+    if at < 0:
+        raise RetrofitError("template is missing the first-paint reveal script")
+    open_at = template.rfind("<!--", 0, at)
+    close = template.find("</script>", at)
+    if open_at < 0 or close < 0:
+        raise RetrofitError("template first-paint reveal script is malformed")
+    stop = template.find("\n", close)
+    return template[open_at:(len(template) if stop < 0 else stop + 1)]
+
+
 def _layer_parts(shareable, kind, include_kind=True):
+    """(head, body_top, body_bottom) for a retrofit.
+
+    CONTENT-FIRST (CMH-SIZE-05): the head takes only the cheap first-paint pieces (the metas, the
+    layer descriptor and the first-paint guard) and `body_top` is EMPTY, so the host document's own
+    content stays at the top of the body. Everything else - the theme variables, the layer
+    stylesheet, the saved state, the comment UI and the runtime - goes into one MACHINERY fence in
+    `body_bottom`, in the same order and with the same skip notes the shell bakes, so a retrofitted
+    document reads exactly like a generated one. The five named regions keep their relative order
+    (CSS, HANDLED IDS, EMBEDDED COMMENTS, COMMENT UI, JS), which is what the validator checks.
+    """
     template = _template(shareable)
     head = ""
     head += _one_line(template, r'<meta\s+name="commentable-html-version"[^>]*>', "version meta")
@@ -347,19 +418,27 @@ def _layer_parts(shareable, kind, include_kind=True):
         head += _kind_meta_tag(kind) + "\n"
     head += _one_line(template, r'<script\s+type="application/json"\s+id="commentableHtmlLayer"[^>]*>.*?</script>',
                       "layer descriptor")
-    if shareable:
-        head += _nonshareable_theme_style(_template(False))
-        head += "<style>\n%s</style>\n" % _region_block(template, "CSS")
-    else:
-        head += _nonshareable_theme_style(template)
-        head += _region_block(template, "CSS")
-    body_top = ""
+    head += _first_paint_block(template)
+
+    skip = _skip_note(template)
+    trailer = _machinery_lead(template) + "\n"
+    # Mirror the shell's own fence order exactly: in NonShareable mode the missing-companion
+    # bootstrap is the FIRST block in the fence, so its 3-second banner timer is not queued behind
+    # the companion stylesheet and the runtime it is there to report on.
     if not shareable:
-        body_top += _nonshareable_bootstrap_block(template)
+        trailer += skip + _nonshareable_bootstrap_block(template) + "\n"
+    if shareable:
+        trailer += skip + _nonshareable_theme_style(_template(False))
+        trailer += skip + "<style>\n%s</style>\n" % _region_block(template, "CSS")
+    else:
+        trailer += skip + _nonshareable_theme_style(template)
+        trailer += skip + _region_block(template, "CSS")
+    trailer += _reveal_block(template) + "\n"
     for name in ("HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI"):
-        body_top += _region_block(template, name)
-    body_bottom = _region_block(template, "JS")
-    return head, body_top, body_bottom
+        trailer += skip + _region_block(template, name)
+    trailer += skip + _region_block(template, "JS")
+    trailer += _machinery_tail(template)
+    return head, "", trailer
 
 
 def _block_between(text, start_marker, end_marker):
@@ -608,6 +687,15 @@ def _collision_warnings(original):
     high = [int(m.group(1)) for m in Z_INDEX_RE.finditer(original) if int(m.group(1)) >= 300]
     if high:
         warnings.append("host CSS has z-index >= 300; confirm the review UI is not covered")
+    # The review chrome is `position: fixed`, and since CMH-SIZE-05 it is injected at the END of
+    # the body rather than right after `<body>`. A host ancestor with any of these properties
+    # becomes the containing block for fixed descendants and forms a stacking context, so the
+    # toolbar and sidebar can be clipped or covered no matter what their z-index says - and the
+    # z-index warning above stops meaning anything.
+    if FIXED_CONTAINING_BLOCK_RE.search(original):
+        warnings.append("host CSS creates a containing block for position: fixed "
+                        "(transform/filter/perspective/backdrop-filter/contain/will-change); "
+                        "confirm the review toolbar and sidebar are not clipped")
     return warnings
 
 

@@ -22,17 +22,136 @@
   })();
 </script>
 
-<!-- Mermaid loader (BUILD-OWNED). tools/build.py re-emits the canonical shell-baked loader
-     from assets/template.shell.html into every example on each build (CMH-MMD-09), so this
-     block is a placeholder only - edit the loader in the shell template, not here; an edit
-     here has no effect on the built example. -->
-<script type="module">
-  // Placeholder; build.py overwrites this with the canonical off-screen loader (CMH-MMD-07/08).
-  if (document.querySelector("pre.mermaid, div.mermaid")) {
-    await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs");
-  }
+<!-- ============================================================
+     BEGIN: commentable-html - FIRST PAINT
+     ============================================================
+     Generated machinery, safe to skip. The layer stylesheet lives at the END of
+     the document (authored content comes first in source order), so this hides the
+     body until that stylesheet has been parsed and the one-line reveal script right
+     after it runs. Scripting-off documents never set the class, so nothing can stay
+     hidden; a DOMContentLoaded listener and a timeout reveal the document even if the
+     stylesheet never arrives.
+-->
+<style id="cmhFirstPaintGuard">html.cmh-awaiting-style body { visibility: hidden; }</style>
+<script>
+  (() => {
+    const d = document.documentElement;
+    d.classList.add("cmh-awaiting-style");
+    const reveal = () => d.classList.remove("cmh-awaiting-style");
+    window.__cmhRevealDocument = reveal;
+    document.addEventListener("DOMContentLoaded", reveal);
+    setTimeout(reveal, 3000);
+  })();
 </script>
+<!-- END: commentable-html - FIRST PAINT -->
+</head>
 
+<body>
+
+<!-- commentable-html machinery (non-content): a parse-state terminator, and the only thing the
+     layer puts before the authored content. A <script> in the HEAD whose bytes open a script-data
+     escape (`<!--` then `<script`) leaves the tokenizer in an escaped state that swallows
+     everything after it as script text until the next `</script>` - which, with the content first,
+     would be the authored document itself. The end tag inside this CSS comment is those bytes: the
+     escaped state ends here, before the content, and a browser parsing normally sees only an empty
+     stylesheet (`<style>` is raw text, so the bytes are a comment, not markup). -->
+<style>/* </script> */</style>
+
+<!-- ============================================================
+     Per-document content (NOT one of the five pasteable regions).
+     This block is the only place you customize per document. Set:
+       data-comment-key   - unique localStorage key for this doc
+       data-doc-label     - human-readable name used in copy
+       data-doc-source    - source path written into the Copy bundle
+                            and into the agent-instructions block,
+                            so the agent knows which file to edit
+                            (falls back to location.pathname).
+     The five BEGIN/END: commentable-html regions above and below
+     stay byte-for-byte identical across docs, so upgrades are a
+     clean replace. This wrapper is intentionally NOT marked with
+     the commentable-html marker format - it is per-document
+     content, not a template-owned region.
+-->
+<div class="app">
+<main data-cmh-content-root id="commentRoot" data-comment-key="incident-triage-board-report" data-doc-label="Incident Triage Board" data-doc-source="report-triage.html" data-generated="2026-07-12">
+<nav class="cm-toc" aria-label="Table of contents">
+  <div class="cm-toc-title">Contents</div>
+  <ol>
+    <li><a href="#triage-snapshot">Snapshot</a></li>
+    <li><a href="#triage-board">Commentable board</a></li>
+    <li><a href="#triage-chart">Queue counts</a></li>
+  </ol>
+</nav>
+<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
+
+<h1>Incident Triage Board</h1>
+<p class="cmh-lede">A compact review surface for queue order, ownership, and the next repair move.</p>
+<section aria-labelledby="triage-snapshot">
+  <h2 id="triage-snapshot">Snapshot</h2>
+  <div class="triage-summary-grid">
+    <div class="triage-stat"><strong>18</strong><span>open incidents</span></div>
+    <div class="triage-stat"><strong>3</strong><span>customer-impacting</span></div>
+    <div class="triage-stat"><strong>42 min</strong><span>median age</span></div>
+  </div>
+  <table>
+    <thead><tr><th>Queue</th><th>Owner</th><th>Oldest</th><th>Exit check</th></tr></thead>
+    <tbody>
+      <tr><td>New</td><td>Live site</td><td>36 min</td><td>First responder assigned</td></tr>
+      <tr><td>Investigating</td><td>Platform</td><td>2 h</td><td>Repro and trace attached</td></tr>
+      <tr><td>Fixed</td><td>Release</td><td>4 h</td><td>Patch verified in canary</td></tr>
+    </tbody>
+  </table>
+</section>
+<section aria-labelledby="triage-board">
+  <h2 id="triage-board">Commentable board</h2>
+  <div class="triage-board-demo cm-skip" data-cm-widget="incident-triage-board" data-cm-draggable aria-label="Incident triage board">
+    <div class="triage-column" data-cm-slot="New" data-cm-part="column-new" data-cm-part-label="New column">
+      <h3>New</h3>
+      <article class="triage-card" data-cm-part="api-saturation" data-cm-part-label="API saturation"><strong>API saturation</strong><div class="triage-meta">Sev 2 - owner: gateway - impact: 8 regions</div></article>
+      <article class="triage-card" data-cm-part="checkout-timeouts" data-cm-part-label="Checkout timeouts"><strong>Checkout timeouts</strong><div class="triage-meta">Sev 1 - owner: commerce - impact: paid users</div></article>
+      <article class="triage-card" data-cm-part="schema-drift" data-cm-part-label="Schema drift alert"><strong>Schema drift alert</strong><div class="triage-meta">Sev 3 - owner: data - impact: reports delayed</div></article>
+    </div>
+    <div class="triage-column" data-cm-slot="Investigating" data-cm-part="column-investigating" data-cm-part-label="Investigating column">
+      <h3>Investigating</h3>
+      <article class="triage-card" data-cm-part="auth-retries" data-cm-part-label="Auth retries"><strong>Auth retries</strong><div class="triage-meta">Sev 2 - owner: identity - trace: retry storm</div></article>
+      <article class="triage-card" data-cm-part="worker-lag" data-cm-part-label="Worker lag"><strong>Worker lag</strong><div class="triage-meta">Sev 3 - owner: jobs - trace: queue depth</div></article>
+    </div>
+    <div class="triage-column" data-cm-slot="Fixed" data-cm-part="column-fixed" data-cm-part-label="Fixed column">
+      <h3>Fixed</h3>
+      <article class="triage-card" data-cm-part="cache-patch" data-cm-part-label="Cache patch"><strong>Cache patch</strong><div class="triage-meta">Sev 2 - owner: platform - verified in canary</div></article>
+      <article class="triage-card" data-cm-part="log-sampling" data-cm-part-label="Log sampling restored"><strong>Log sampling restored</strong><div class="triage-meta">Sev 3 - owner: observability - rolled out</div></article>
+    </div>
+  </div>
+</section>
+<section aria-labelledby="triage-chart">
+  <h2 id="triage-chart">Queue counts</h2>
+  <!-- chart_block.py: paste this figure inside #commentRoot content -->
+<figure class="chart" aria-labelledby="triageQueueChart-caption">
+  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
+    <canvas id="triageQueueChart" role="img" aria-label="Chart: Incident queue health. Open incidents by queue and severity."></canvas>
+  </div>
+  <figcaption id="triageQueueChart-caption">Open incidents by queue and severity.</figcaption>
+</figure>
+</section>
+
+<!-- END: commentable-html - CONTENT -->
+</main>
+</div>
+<!-- End of per-document content -->
+
+<!-- ============================================================
+     BEGIN: commentable-html - MACHINERY
+     ============================================================
+     EVERYTHING BELOW THIS MARKER IS NON-CONTENT MACHINERY, NOT AUTHORED PROSE:
+     the layer stylesheet, the comment-UI markup, the saved comment state, the
+     optional loaders, the vendored rich-content payload, any per-document
+     bootstrap that has to run after the layer, and the runtime. A reader
+     - human or machine - that wants this document's content has already read all of
+     it above, and can stop here: the matching END marker is the last thing in the
+     body. Each block below repeats that note and carries its own BEGIN/END markers.
+-->
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <style>
 /* ============================================================
    Clawpilot theme variables (required by the comment layer)
@@ -819,7 +938,6 @@ html[data-theme="dark"] mark.cmh-dl-mark { background: rgba(251, 191, 36, 0.30);
 html[data-theme="dark"] mark.cmh-dl-mark:hover { background: rgba(251, 191, 36, 0.44); }
 .cm-diff-add { position: fixed; z-index: 200; }
 
-
 /* ---------------------------------------------------------------------------
    Default content styling (sections, tables, TOC, images, badges) - shipped so
    a generated or retrofitted document looks neat without the host adding its own
@@ -963,7 +1081,6 @@ body.cm-widget-dragging, body.cm-widget-dragging #commentRoot { cursor: grabbing
 .cmh-sort-ctrl[data-dir="asc"] .cmh-sort-up { opacity: 1; color: var(--cp-accent); }
 .cmh-sort-ctrl[data-dir="desc"] .cmh-sort-dn { opacity: 1; color: var(--cp-accent); }
 
-
 /* ---------------------------------------------------------------------------
    Kusto query blocks - a framed figure (caption bar + code) with author-time KQL
    syntax highlighting. The .cmh-kql-* token spans are baked into the code by
@@ -1056,7 +1173,6 @@ html[data-theme="dark"] #commentRoot .cmh-code-kw  { color: #d2a8ff; }
 html[data-theme="dark"] #commentRoot .cmh-code-fn  { color: #79c0ff; }
 html[data-theme="dark"] #commentRoot .cmh-code-str { color: #7ee787; }
 html[data-theme="dark"] #commentRoot .cmh-code-num { color: #ffa657; }
-
 
 .cm-skip[hidden], .cm-skip [hidden] { display: none !important; }
 
@@ -1187,6 +1303,7 @@ body.cmh-deck-present #menuComment {
    ============================================================ */
 </style>
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <style>
 #commentRoot .triage-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin: 1rem 0; }
 #commentRoot .triage-stat { border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface-soft); padding: 0.85rem; }
@@ -1199,10 +1316,30 @@ body.cmh-deck-present #menuComment {
 #commentRoot .triage-meta { color: var(--cp-text-muted); font-size: 0.86rem; }
 @media (max-width: 820px) { #commentRoot .triage-board-demo { grid-template-columns: 1fr; } }
 </style>
-</head>
 
-<body>
+<!-- Per-document style slot. The layer stylesheet above is the LAST layer rule to be
+     parsed, so a per-document <style> belongs HERE (right after it) rather than in <head>:
+     at equal specificity the later rule wins, and a <style> left in the head would now lose
+     to the layer. This is the one author-owned slot inside the fence. -->
+<!-- commentable-html machinery (non-content): reveal the body now
+     that the layer stylesheet above has been parsed (see FIRST PAINT in the head). -->
+<script>
+  if (window.__cmhRevealDocument) window.__cmhRevealDocument();
+</script>
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
+<!-- Mermaid loader (BUILD-OWNED). tools/build.py re-emits the canonical shell-baked loader
+     from assets/template.shell.html into every example on each build (CMH-MMD-09), so this
+     block is a placeholder only - edit the loader in the shell template, not here; an edit
+     here has no effect on the built example. -->
+<script type="module">
+  // Placeholder; build.py overwrites this with the canonical off-screen loader (CMH-MMD-07/08).
+  if (document.querySelector("pre.mermaid, div.mermaid")) {
+    await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs");
+  }
+</script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - HANDLED IDS
      ============================================================
@@ -1221,6 +1358,7 @@ body.cmh-deck-present #menuComment {
 </script>
 <!-- END: commentable-html - HANDLED IDS -->
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - EMBEDDED COMMENTS
      ============================================================
@@ -1243,6 +1381,7 @@ body.cmh-deck-present #menuComment {
 </script>
 <!-- END: commentable-html - EMBEDDED COMMENTS -->
 
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - COMMENT UI
      ============================================================ -->
@@ -1320,88 +1459,7 @@ body.cmh-deck-present #menuComment {
 <div class="cm-toast cm-skip" id="toast"></div>
 <!-- END: commentable-html - COMMENT UI -->
 
-<!-- ============================================================
-     Per-document content (NOT one of the five pasteable regions).
-     This block is the only place you customize per document. Set:
-       data-comment-key   - unique localStorage key for this doc
-       data-doc-label     - human-readable name used in copy
-       data-doc-source    - source path written into the Copy bundle
-                            and into the agent-instructions block,
-                            so the agent knows which file to edit
-                            (falls back to location.pathname).
-     The five BEGIN/END: commentable-html regions above and below
-     stay byte-for-byte identical across docs, so upgrades are a
-     clean replace. This wrapper is intentionally NOT marked with
-     the commentable-html marker format - it is per-document
-     content, not a template-owned region.
--->
-<div class="app">
-<main data-cmh-content-root id="commentRoot" data-comment-key="incident-triage-board-report" data-doc-label="Incident Triage Board" data-doc-source="report-triage.html" data-generated="2026-07-12">
-<nav class="cm-toc" aria-label="Table of contents">
-  <div class="cm-toc-title">Contents</div>
-  <ol>
-    <li><a href="#triage-snapshot">Snapshot</a></li>
-    <li><a href="#triage-board">Commentable board</a></li>
-    <li><a href="#triage-chart">Queue counts</a></li>
-  </ol>
-</nav>
-<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
-
-<h1>Incident Triage Board</h1>
-<p class="cmh-lede">A compact review surface for queue order, ownership, and the next repair move.</p>
-<section aria-labelledby="triage-snapshot">
-  <h2 id="triage-snapshot">Snapshot</h2>
-  <div class="triage-summary-grid">
-    <div class="triage-stat"><strong>18</strong><span>open incidents</span></div>
-    <div class="triage-stat"><strong>3</strong><span>customer-impacting</span></div>
-    <div class="triage-stat"><strong>42 min</strong><span>median age</span></div>
-  </div>
-  <table>
-    <thead><tr><th>Queue</th><th>Owner</th><th>Oldest</th><th>Exit check</th></tr></thead>
-    <tbody>
-      <tr><td>New</td><td>Live site</td><td>36 min</td><td>First responder assigned</td></tr>
-      <tr><td>Investigating</td><td>Platform</td><td>2 h</td><td>Repro and trace attached</td></tr>
-      <tr><td>Fixed</td><td>Release</td><td>4 h</td><td>Patch verified in canary</td></tr>
-    </tbody>
-  </table>
-</section>
-<section aria-labelledby="triage-board">
-  <h2 id="triage-board">Commentable board</h2>
-  <div class="triage-board-demo cm-skip" data-cm-widget="incident-triage-board" data-cm-draggable aria-label="Incident triage board">
-    <div class="triage-column" data-cm-slot="New" data-cm-part="column-new" data-cm-part-label="New column">
-      <h3>New</h3>
-      <article class="triage-card" data-cm-part="api-saturation" data-cm-part-label="API saturation"><strong>API saturation</strong><div class="triage-meta">Sev 2 - owner: gateway - impact: 8 regions</div></article>
-      <article class="triage-card" data-cm-part="checkout-timeouts" data-cm-part-label="Checkout timeouts"><strong>Checkout timeouts</strong><div class="triage-meta">Sev 1 - owner: commerce - impact: paid users</div></article>
-      <article class="triage-card" data-cm-part="schema-drift" data-cm-part-label="Schema drift alert"><strong>Schema drift alert</strong><div class="triage-meta">Sev 3 - owner: data - impact: reports delayed</div></article>
-    </div>
-    <div class="triage-column" data-cm-slot="Investigating" data-cm-part="column-investigating" data-cm-part-label="Investigating column">
-      <h3>Investigating</h3>
-      <article class="triage-card" data-cm-part="auth-retries" data-cm-part-label="Auth retries"><strong>Auth retries</strong><div class="triage-meta">Sev 2 - owner: identity - trace: retry storm</div></article>
-      <article class="triage-card" data-cm-part="worker-lag" data-cm-part-label="Worker lag"><strong>Worker lag</strong><div class="triage-meta">Sev 3 - owner: jobs - trace: queue depth</div></article>
-    </div>
-    <div class="triage-column" data-cm-slot="Fixed" data-cm-part="column-fixed" data-cm-part-label="Fixed column">
-      <h3>Fixed</h3>
-      <article class="triage-card" data-cm-part="cache-patch" data-cm-part-label="Cache patch"><strong>Cache patch</strong><div class="triage-meta">Sev 2 - owner: platform - verified in canary</div></article>
-      <article class="triage-card" data-cm-part="log-sampling" data-cm-part-label="Log sampling restored"><strong>Log sampling restored</strong><div class="triage-meta">Sev 3 - owner: observability - rolled out</div></article>
-    </div>
-  </div>
-</section>
-<section aria-labelledby="triage-chart">
-  <h2 id="triage-chart">Queue counts</h2>
-  <!-- chart_block.py: paste this figure inside #commentRoot content -->
-<figure class="chart" aria-labelledby="triageQueueChart-caption">
-  <div class="chart-wrap cm-skip" style="position: relative; height: 360px; max-height: min(60vh, 480px); overflow: hidden;">
-    <canvas id="triageQueueChart" role="img" aria-label="Chart: Incident queue health. Open incidents by queue and severity."></canvas>
-  </div>
-  <figcaption id="triageQueueChart-caption">Open incidents by queue and severity.</figcaption>
-</figure>
-</section>
-
-<!-- END: commentable-html - CONTENT -->
-</main>
-</div>
-<!-- End of per-document content -->
-
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - JS
      ============================================================
@@ -4406,7 +4464,6 @@ document.addEventListener("mousedown", (e) => {
   hlBubble.hidden = true; hlBubbleCid = null; hlBubbleMark = null;
 });
 
-
 let _sidebarWidthPx = 0;
 function _sidebarWidthBounds() {
   const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0, 1);
@@ -7054,7 +7111,6 @@ function restoreHighlights() {
   });
 }
 
-
 function setupChartContainment() {
   root.querySelectorAll("figure.chart > .chart-wrap").forEach(function (wrap) {
     if (!wrap.style.position) wrap.style.position = "relative";
@@ -7383,7 +7439,11 @@ window.__commentableHtmlReady = true;
 window.__commentableHtmlVersion = CMH_VERSION;
 })();</script>
 <!-- END: commentable-html - JS -->
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js" integrity="sha384-FcQlsUOd0TJjROrBxhJdUhXTUgNJQxTMcxZe6nHbaEfFL1zjQ+bq/uRoBQxb0KMo" crossorigin="anonymous"></script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <script id="triageQueueChart-data" type="application/json">
 {
   "type": "bar",
@@ -7438,6 +7498,8 @@ window.__commentableHtmlVersion = CMH_VERSION;
   }
 }
 </script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <script>
 (function () {
   var el = document.getElementById("triageQueueChart");
@@ -7450,6 +7512,6 @@ window.__commentableHtmlVersion = CMH_VERSION;
 })();
 </script>
 
-
+<!-- END: commentable-html - MACHINERY -->
 </body>
 </html>

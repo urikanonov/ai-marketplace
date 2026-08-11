@@ -385,13 +385,27 @@ _MERMAID_IMPORT_RE = re.compile(r'import\(\s*(["\'])([^"\']*mermaid[^"\']*)\1', 
 
 
 def _mermaid_loader_body(html):
-    """The body of the <head> module script that boots mermaid (a dynamic mermaid import), or None."""
+    """The body of the module script that boots mermaid (a dynamic mermaid import), or None.
+
+    Searched in the TEMPLATE-OWNED scopes only - `<head>`, and the MACHINERY fence the
+    content-first layout (CMH-SIZE-02) parks the loader in - so an authored module script inside
+    the content region can never be read as the loader.
+    """
     lo = html.lower()
+    scopes = []
     hs, he = lo.find("<head"), lo.find("</head>")
-    head = html[hs:he] if (hs != -1 and he != -1 and he > hs) else html
-    for m in _MODULE_SCRIPT_RE.finditer(head):
-        if _MERMAID_IMPORT_RE.search(m.group(2)):
-            return m.group(2)
+    if hs != -1 and he > hs:
+        scopes.append(html[hs:he])
+    fb = html.find("BEGIN: commentable-html - MACHINERY")
+    fe = html.find("END: commentable-html - MACHINERY", fb + 1) if fb != -1 else -1
+    if fb != -1 and fe > fb:
+        scopes.append(html[fb:fe])
+    if not scopes:
+        scopes = [html]
+    for scope in scopes:
+        for m in _MODULE_SCRIPT_RE.finditer(scope):
+            if _MERMAID_IMPORT_RE.search(m.group(2)):
+                return m.group(2)
     return None
 
 

@@ -1,9 +1,9 @@
 /* ---------- Toolbar overflow menu (declutters the save/export actions) ---------- */
 (function () {
-  const btn = document.getElementById("btnToolbarMenu");
-  const menu = document.getElementById("toolbarMenu");
+  const btn = cmhEl("btnToolbarMenu");
+  const menu = cmhEl("toolbarMenu");
   if (!btn || !menu) return;
-  const badge = document.getElementById("cmhModeBadge");
+  const badge = cmhEl("cmhModeBadge");
   if (badge && !menu.querySelector(".cm-toolbar-menu-head")) {
     const head = document.createElement("div");
     head.className = "cm-toolbar-menu-head";
@@ -50,16 +50,16 @@
 
 /* ---------- Sidebar export menu ---------- */
 (function () {
-  const btn = document.getElementById("btnSidebarExportMenu");
-  const menu = document.getElementById("sidebarExportMenu");
+  const btn = cmhEl("btnSidebarExportMenu");
+  const menu = cmhEl("sidebarExportMenu");
   if (!btn || !menu) return;
   function setOpen(open) {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
     if (open) {
-      const other = document.getElementById("sidebarMoreMenu");
+      const other = cmhEl("sidebarMoreMenu");
       if (other) other.hidden = true;
-      const otherBtn = document.getElementById("btnMoreMenu");
+      const otherBtn = cmhEl("btnMoreMenu");
       if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
       if (window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
     }
@@ -81,16 +81,16 @@
 
 /* ---------- Sidebar More menu (preferences + manage storage + clear) ---------- */
 (function () {
-  const btn = document.getElementById("btnMoreMenu");
-  const menu = document.getElementById("sidebarMoreMenu");
+  const btn = cmhEl("btnMoreMenu");
+  const menu = cmhEl("sidebarMoreMenu");
   if (!btn || !menu) return;
   function setOpen(open) {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
     if (open) {
-      const other = document.getElementById("sidebarExportMenu");
+      const other = cmhEl("sidebarExportMenu");
       if (other) other.hidden = true;
-      const otherBtn = document.getElementById("btnSidebarExportMenu");
+      const otherBtn = cmhEl("btnSidebarExportMenu");
       if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
       syncPrefRows();
       setRovingTabStop(null);

@@ -181,7 +181,7 @@ function showToast(msg, opts) {
   // not one of these is not an export control, whatever id it carries.
   const EXPORT_CONTROLS = new Map();
   Object.keys(EXPORT_LABELS).forEach(function (id) {
-    const el = document.getElementById(id);
+    const el = cmhEl(id);
     if (el) EXPORT_CONTROLS.set(el, EXPORT_LABELS[id]);
   });
   document.addEventListener("click", function (e) {

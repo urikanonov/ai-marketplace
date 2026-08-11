@@ -533,14 +533,14 @@ if (typeof window !== "undefined") {
     refresh: function () { refreshReviewUI(); },
     active: function () { return _reviewReady && !IS_DECK ? _reviewActive() : false; },
     stateOf: function (id) {
-      const el = document.getElementById(id);
+      const el = cmhEl(id);
       if (!el) return null;
       const info = computeSectionStates().get(el);
       return info ? info.state : null;
     },
     applyFilter: function (mode) { if (typeof applyReviewFilter === "function") applyReviewFilter(mode); },
     sectionHashOf: function (id) {
-      const el = document.getElementById(id);
+      const el = cmhEl(id);
       return el ? _cmhHashForHeadingEl(el) : null;
     },
     docHash: function () { return cmhDocContentHash(); },

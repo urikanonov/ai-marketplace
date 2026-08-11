@@ -33,8 +33,8 @@ function commentTimeValue(c) {
 // from a data-generated attribute on #commentRoot when the author set one (deterministic),
 // else the file's own last-modified time; "Last comment" is the newest comment timestamp.
 function updateSideInfo() {
-  const gen = document.getElementById("cmGenerated");
-  const last = document.getElementById("cmLastComment");
+  const gen = cmhEl("cmGenerated");
+  const last = cmhEl("cmLastComment");
   if (gen) {
     let g = root.getAttribute("data-generated");
     if (!g) { const lm = Date.parse(document.lastModified); if (!isNaN(lm)) g = new Date(lm).toISOString(); }
@@ -50,7 +50,7 @@ function updateSideInfo() {
   }
 }
 function updateSortUi() {
-  const b = document.getElementById("btnSort");
+  const b = cmhEl("btnSort");
   if (!b) return;
   const state = (commentSort === "time-desc" || commentSort === "time-asc") ? commentSort : "pos";
   const svg = 'viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false"'
@@ -75,7 +75,7 @@ function updateSortUi() {
   else b.setAttribute("title", TITLES[state]);
   const ARIA = { "pos": "document order", "time-desc": "newest first", "time-asc": "oldest first" };
   b.setAttribute("aria-label", "Sort comments (currently: " + ARIA[state] + ")");
-  const icon = document.getElementById("cmSortIcon");
+  const icon = cmhEl("cmSortIcon");
   if (icon && ICONS[state]) icon.innerHTML = ICONS[state];
   // If the shared tooltip bubble is currently showing for this button (a keyboard user focuses it,
   // then presses Enter to cycle the state), refresh it in place so it does not describe the old
@@ -812,7 +812,7 @@ let _cmReplyIdentityNudged = false;
 function _nudgeIdentityOnReply() {
   if (_cmReplyIdentityNudged) return;
   if (typeof getAuthorName === "function" && getAuthorName()) return;
-  if (!document.getElementById("cmIdentity")) return;
+  if (!cmhEl("cmIdentity")) return;
   _cmReplyIdentityNudged = true;
   if (typeof beginEditIdentity === "function") beginEditIdentity(false);
 }

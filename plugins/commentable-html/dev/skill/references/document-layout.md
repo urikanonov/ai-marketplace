@@ -3,6 +3,7 @@
 
 ## Contents
 
+- [Source order: content first, machinery fenced](#source-order-content-first-machinery-fenced)
 - [Runtime UI chrome and toolbar](#runtime-ui-chrome-and-toolbar)
 - [Theme (light by default)](#theme-light-by-default)
 - [Reusable brand profiles](#reusable-brand-profiles)
@@ -16,6 +17,26 @@
   - [Recipe B: full-bleed dashboard layout](#recipe-b-full-bleed-dashboard-layout)
   - [Default sidebar state](#default-sidebar-state)
 - [Per-document configuration example](#per-document-configuration-example)
+
+## Source order: content first, machinery fenced
+
+A generated document puts the AUTHORED CONTENT first in source order. The `<head>` keeps only what
+first paint needs (the metas, the title, the favicon, the theme-detection script, the small layer
+descriptor and a first-paint guard), the `<body>` opens with `#commentRoot`, and every generated
+block - the layer stylesheet, the comment-UI markup, the saved comment state, the optional loaders,
+the vendored rich-content payload and the runtime - sits after the content inside one
+`BEGIN/END: commentable-html - MACHINERY` fence, each block led by a one-line "skip this" comment.
+A tool that reads the first 50 KB of the raw file therefore gets the title and the opening of the
+content rather than a megabyte of base64.
+
+Two consequences for authoring:
+
+- **A per-document `<style>` belongs in the style slot inside the fence** (immediately after the
+  layer stylesheet), not in `<head>`. Source order decides an equal-specificity tie, so a head
+  `<style>` now loses to the layer's own `:root` block. For brand tokens prefer `--brand`.
+- **An authored inline script must not measure layout at parse time.** The stylesheet is parsed
+  after the content, so measure on `DOMContentLoaded` instead. A chart bootstrap belongs after the
+  layer runtime, at the end of the fence, which is where the shipped examples put theirs.
 
 ## Runtime UI chrome and toolbar
 

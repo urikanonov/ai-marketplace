@@ -1,13 +1,13 @@
 /* ---------- Sidebar open/close ---------- */
 function updateSidebarToggle() {
-  const btn = document.getElementById("btnToggleSidebar");
+  const btn = cmhEl("btnToggleSidebar");
   if (!btn) return;
   const open = document.body.classList.contains("sidebar-open");
   btn.textContent = open ? "Hide" : "Comments";
   btn.setAttribute("aria-expanded", open ? "true" : "false");
 }
 function _syncSidebarInert() {
-  const sb = document.getElementById("sidebar");
+  const sb = cmhEl("sidebar");
   if (sb) sb.inert = !document.body.classList.contains("sidebar-open");
 }
 function _syncFloatingAfterLayoutShift() {
@@ -21,12 +21,12 @@ function _syncFloatingAfterLayoutShift() {
 }
 function openSidebar()  { document.body.classList.add("sidebar-open"); updateSidebarToggle(); _syncSidebarInert(); _syncFloatingAfterLayoutShift(); }
 function closeSidebar() { document.body.classList.remove("sidebar-open"); updateSidebarToggle(); _syncSidebarInert(); _syncFloatingAfterLayoutShift(); }
-document.getElementById("btnToggleSidebar").addEventListener("click", () => { document.body.classList.toggle("sidebar-open"); updateSidebarToggle(); _syncSidebarInert(); _syncFloatingAfterLayoutShift(); });
-document.getElementById("btnCloseSidebar").addEventListener("click", closeSidebar);
+cmhEl("btnToggleSidebar").addEventListener("click", () => { document.body.classList.toggle("sidebar-open"); updateSidebarToggle(); _syncSidebarInert(); _syncFloatingAfterLayoutShift(); });
+cmhEl("btnCloseSidebar").addEventListener("click", closeSidebar);
 (function () {
   // "Show" entry in the overflow menu reopens the panel (the menu's own click handler
   // closes the menu). Redundant with the toolbar toggle but discoverable from the menu.
-  const b = document.getElementById("btnShowTop");
+  const b = cmhEl("btnShowTop");
   if (b) b.addEventListener("click", openSidebar);
 })();
 

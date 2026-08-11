@@ -10,7 +10,7 @@
    file re-renders on open. */
 const CMH_DIFF_LAYOUT_KEY = COMMENT_KEY + "::diffLayout";
 const diffBlocks = [];
-const diffAddBtn = document.getElementById("diffAddBtn");
+const diffAddBtn = cmhEl("diffAddBtn");
 let pendingDiff = null;
 let pendingDiffSel = null;
 let diffAddHideTimer = null;
