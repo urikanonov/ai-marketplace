@@ -117,5 +117,6 @@
   "95-composer-scroll.spec.js": 22302,
   "96-dom-text-integrity.spec.js": 13283,
   "97-export-cr-fidelity.spec.js": 15540,
+  "98-content-first.spec.js": 4621,
   "98-dom-slim.spec.js": 7680
 }

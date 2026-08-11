@@ -18,7 +18,7 @@ function showHelp(restoreEl) {
   };
   // An older document's shell may predate the toolbar Clear item while loading current companion
   // assets, so only advertise that entry point when this document actually has it.
-  const hasToolbarClear = !!document.getElementById("btnClearAllTop");
+  const hasToolbarClear = !!cmhEl("btnClearAllTop");
   // Same reason, plus deck mode: a shell that predates the toolbar brand mark does not have one,
   // and a deck hides the whole floating toolbar, so neither must be told the mark is there.
   const isDeck = !!document.querySelector('#commentRoot[data-cmh-mode="deck"]')
@@ -259,12 +259,12 @@ function showHelp(restoreEl) {
   (search || box.querySelector(".cm-help-close")).focus();
 }
 ["btnHelp", "btnHelpTop"].forEach(function (id) {
-  const b = document.getElementById(id);
+  const b = cmhEl(id);
   if (b) b.addEventListener("click", function () {
-    const menu = document.getElementById("toolbarMenu");
+    const menu = cmhEl("toolbarMenu");
     // The overflow menu (and btnHelpTop) is hidden before the modal opens, so restore
     // focus to the still-visible menu button rather than the now-hidden item.
-    const restore = (id === "btnHelpTop") ? document.getElementById("btnToolbarMenu") : b;
+    const restore = (id === "btnHelpTop") ? cmhEl("btnToolbarMenu") : b;
     if (menu) menu.hidden = true;
     showHelp(restore);
   });

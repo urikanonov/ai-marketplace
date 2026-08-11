@@ -63,6 +63,26 @@ function cmhLayerBlock(doc, id) {
   const blocks = cmhLayerBlocks(doc, id);
   return blocks.length ? blocks[0] : null;
 }
+// The LAYER's own element for `id`, in the LIVE document - the lookup every part of the runtime
+// uses to reach its own chrome. It is `getElementById` plus the content-root boundary, and it
+// exists because CMH-SIZE-05 inverted document order: the layer's chrome now FOLLOWS the authored
+// content, so `getElementById` - which answers with the first owner in tree order - would hand a
+// content element that merely BORROWS a control's id to the code that drives that control. It used
+// to be safe by position alone (the chrome came first); now it has to be safe by boundary.
+//
+// The fast path is the normal one: a single owner, or a first owner already outside the content
+// root, is returned without any scan, so this is a drop-in for `document.getElementById` at every
+// call site - including the ones that legitimately look up AUTHORED content (a chart canvas, a
+// heading), where every owner is inside the root and the first is returned unchanged. Only a
+// duplicate id that spans the boundary costs the extra pass, and only there does the answer differ.
+function cmhEl(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const root = cmhContentRoot(document);
+  if (!root || !root.contains(el)) return el;
+  const owned = cmhLayerBlocks(document, id);
+  return owned.length ? owned[0] : el;
+}
 // Say WHY a reserved block resolved to nothing while elements carrying its id exist, once per id.
 // Plain absence is normal (a document with no comments yet), but "the block is there and the layer
 // ignored it" is a document-shape problem the reader would otherwise experience as review state
@@ -204,7 +224,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.836.0";
+const CMH_VERSION = "1.837.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

@@ -72,6 +72,35 @@ MERMAID = '<h1>Diagram</h1>\n<pre class="mermaid cm-skip">graph TD; A--&gt;B;</p
 CHART = ('<h1>Chart</h1>\n<figure class="chart">'
          '<canvas id="c" class="cmh-chart" data-cmh-chart="{}"></canvas></figure>')
 
+
+def _assert_inside_the_fence(case, html, span, where):
+    """The payload must land INSIDE the MACHINERY fence, not merely somewhere in the body: a
+    fallback that parked it after the fence would still satisfy a body-bounds assertion while
+    contradicting the fence lead that told the reader everything below it is machinery."""
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(_paths.DEV, "skill", "tools", "authoring"))
+    import upgrade as _upgrade
+    begins = _upgrade._region_marker_matches(html, "BEGIN", "MACHINERY")
+    ends = _upgrade._region_marker_matches(html, "END", "MACHINERY")
+    case.assertEqual((len(begins), len(ends)), (1, 1), "%s: expected one machinery fence" % where)
+    case.assertTrue(begins[0].start() < span[0] and span[1] < ends[0].start(),
+                    "%s must sit inside the machinery fence" % where)
+
+
+def _legacy_head_payload(html):
+    """The same document as a PRE-CMH-SIZE-05 file: the payload back on line 7, in the head.
+
+    Documents generated before the content-first layout carry it there, and the relocation phase
+    exists for exactly them - so the fixture has to build that shape rather than read it out of a
+    shell that no longer produces it.
+    """
+    span = vendored_libs.find_blob(html)
+    assert span is not None, "fixture premise: the document carries a payload to move"
+    blob = html[span[0]:span[1]]
+    without = html[:span[0]] + html[span[1]:]
+    anchor = without.index("<title>")
+    return without[:anchor] + blob + "\n" + without[anchor:]
+
 # An adversary for the LOCAL-BINDING half of the scripted-navigation predicate, parameterized on
 # the whitespace run it plants. `%s` is the run; everything around it is what makes the predicate
 # actually REACH `OFFLINE_LOCAL_LOCATION_RE` and still answer False: the run is never followed by
@@ -594,17 +623,20 @@ class StripAndRestoreTests(unittest.TestCase):
         self.assertGreater(span[0], out.rindex("</main>"),
                            "the restored payload must sit after the document content")
         self.assertLessEqual(span[1], body_end)
+        _assert_inside_the_fence(self, out, span, "a restored payload")
 
     def test_a_head_placed_payload_is_moved_out_of_the_head(self):
-        # A document that legitimately needs the payload still should not carry it on line 7.
-        html = _doc(CHART)
+        # A LEGACY document (the shell stamped the payload into the head until CMH-SIZE-05) still
+        # needs the payload, and must not keep carrying it on line 7.
+        html = _legacy_head_payload(_doc(CHART))
         head_end = html.lower().find("</head>")
         self.assertLess(vendored_libs.find_blob(html)[0], head_end,
-                        "fixture premise: the template stamps the payload into the head")
+                        "fixture premise: the legacy document carries the payload in the head")
         out, changed = vendored_libs.apply(html, self.blob)
         self.assertTrue(changed)
         self.assertGreater(vendored_libs.find_blob(out)[0], out.lower().find("</head>"))
         self.assertLessEqual(vendored_libs.find_blob(out)[1], out.lower().rfind("</body>"))
+        _assert_inside_the_fence(self, out, vendored_libs.find_blob(out), "a relocated payload")
 
     def test_applying_twice_is_a_no_op(self):
         once, _ = vendored_libs.apply(_doc(PROSE), self.blob)
@@ -613,13 +645,27 @@ class StripAndRestoreTests(unittest.TestCase):
         self.assertEqual(twice, once)
 
     def test_applying_twice_is_a_no_op_for_a_document_that_keeps_the_payload(self):
-        # The relocation must settle: a document that needs the payload is rewritten once and
-        # then left byte-identical, or every finalize would churn it.
-        once, changed = vendored_libs.apply(_doc(CHART), self.blob)
+        # The relocation must settle: a legacy head-placed payload is rewritten once and then left
+        # byte-identical, or every finalize would churn it.
+        once, changed = vendored_libs.apply(_legacy_head_payload(_doc(CHART)), self.blob)
         self.assertTrue(changed)
         twice, changed_again = vendored_libs.apply(once, self.blob)
         self.assertFalse(changed_again, "an already-placed payload must not be rewritten")
         self.assertEqual(twice, once)
+
+    def test_a_current_document_keeps_its_payload_untouched(self):
+        # CMH-SIZE-05: the shell already places the payload after the content, so finalize's
+        # relocation phase has nothing to do - a fresh document must come back byte-identical.
+        # The content uses BOTH libraries, so the per-library trim has nothing to do either and
+        # this stays a test of PLACEMENT rather than of right-sizing.
+        html = _doc(CHART + "\n" + MERMAID)
+        span = vendored_libs.find_blob(html)
+        self.assertIsNotNone(span)
+        self.assertGreater(span[0], html.rindex("</main>"),
+                           "fixture premise: the shell places the payload after the content")
+        out, changed = vendored_libs.apply(html, self.blob)
+        self.assertFalse(changed, "a current document must not be rewritten")
+        self.assertEqual(out, html)
 
     def test_a_document_that_cannot_be_classified_is_never_grown(self):
         # Fail-safe must mean "leave it alone", NOT "add a payload". A foreign document has no
@@ -851,8 +897,9 @@ class PerLibraryPayloadTests(unittest.TestCase):
 
     def test_an_unparseable_payload_is_still_moved_out_of_the_head(self):
         # Structural placement needs no JSON parse, so refusing to parse must not also refuse to
-        # relocate - that would leave a payload on line 7 forever.
-        html = _doc(CHART)
+        # relocate - that would leave a payload on line 7 forever. Built from a LEGACY head-placed
+        # document, since the shell itself stopped putting one there (CMH-SIZE-05).
+        html = _legacy_head_payload(_doc(CHART))
         span = vendored_libs.find_blob(html)
         broken = (html[:span[0]]
                   + '<script id="cmhVendoredRichLibs" type="application/json">{oops</script>'
@@ -1134,8 +1181,15 @@ class RuntimeDifferentialTests(unittest.TestCase):
         self.assertGreater(html.lower().count("</body>"), 1,
                            "fixture premise: the layer JS carries decoy </body> literals")
         span = vendored_libs.find_blob(html)
-        self.assertEqual(html[span[1]:].strip(), "</body>\n</html>".strip(),
-                         "the payload must sit immediately before the real end of the document")
+        # Not "immediately before </body>" any more: since CMH-SIZE-05 the shell parks the payload
+        # inside the machinery fence, ahead of the runtime it feeds. What must hold is the property
+        # the relocation exists for - the payload is out of the head and after the authored content,
+        # and inside the REAL body (not a decoy `</body>` inside the layer's own JS).
+        self.assertGreater(span[0], html.rindex("</main>"),
+                           "the payload must sit after the document content")
+        self.assertLessEqual(span[1], html.lower().rfind("</body>"),
+                             "the payload must sit inside the real end of the document")
+        _assert_inside_the_fence(self, html, span, "the settled payload")
 
 
 class HtmlBlindnessTests(unittest.TestCase):
@@ -1226,8 +1280,11 @@ class HtmlBlindnessTests(unittest.TestCase):
     def test_a_padded_closing_tag_is_cut_completely(self):
         # `</script   >` is valid HTML. Assuming len("</script>") would leave orphaned bytes
         # behind in the document when the payload span is cut out.
-        html = _doc(PROSE).replace(
-            '</script>\n<link rel="icon"', '</script   >\n<link rel="icon"', 1)
+        base = _doc(PROSE)
+        span = vendored_libs.find_blob(base)
+        self.assertIsNotNone(span, "fixture premise: the document carries a payload")
+        self.assertTrue(base[:span[1]].endswith("</script>"))
+        html = base[:span[1] - len("</script>")] + "</script   >" + base[span[1]:]
         span = vendored_libs.find_blob(html)
         self.assertIsNotNone(span)
         self.assertTrue(html[:span[1]].rstrip().endswith(">"))

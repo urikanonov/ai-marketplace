@@ -9,7 +9,7 @@
 const imageEls = [];
 // Memoized structural signatures, keyed by media element; rebuilt with the media index.
 let imageSigCache = new WeakMap();
-const imageAddBtn = document.getElementById("imageAddBtn");
+const imageAddBtn = cmhEl("imageAddBtn");
 // Every commentable media element that can carry an image ring. Shared by the clear and flash
 // paths so a canvas or svg anchor is never left ringed after its comment is deleted.
 const CMH_MEDIA_HL_SEL = "img.cm-img-hl, canvas.cm-img-hl, svg.cm-img-hl";
@@ -54,7 +54,7 @@ function _chartConfig(canvas) {
   const sourceId = (canvas.getAttribute("data-cmh-chart-source") || "").trim();
   let source = null;
   if (sourceId) {
-    const el = document.getElementById(sourceId);
+    const el = cmhEl(sourceId);
     if (el) {
       try { source = JSON.parse((el.textContent || "").trim() || "null"); }
       catch (e) { console.warn("Could not parse chart data source #" + sourceId + ":", e); return null; }
@@ -448,7 +448,7 @@ function _svgLabelledByText(el) {
   const parts = [];
   ids.forEach((id) => {
     let ref = null;
-    try { ref = document.getElementById(id); } catch (e) { ref = null; }
+    try { ref = cmhEl(id); } catch (e) { ref = null; }
     if (ref) parts.push(ref.textContent || "");
   });
   return parts.join(" ");

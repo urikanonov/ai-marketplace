@@ -359,7 +359,7 @@ function _focusAfterPopoverClosed() {
   const deckToggle = document.querySelector(".cmh-deck-mode-toggle");
   const targets = [
     (typeof listEl !== "undefined") ? listEl : null,
-    document.getElementById("btnToggleSidebar"),
+    cmhEl("btnToggleSidebar"),
     // Resolved by class, so exclude anything inside the annotated document: author content there is
     // untrusted and could wear the same class (CMH-CORE-21). Where the layer anchors to `<body>`
     // (CMH-CORE-15) the two cannot be told apart, but that mode has no deck either.

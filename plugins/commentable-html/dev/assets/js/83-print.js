@@ -104,7 +104,7 @@ function materializePrintAppendix() {
     // DUPLICATE id would be invalid HTML and would leave an author element and ours
     // indistinguishable to anything that still resolves by id. The CLASS is the real hook - the
     // print stylesheet keys off `.cmh-print-comments`, never the id.
-    if (!document.getElementById("cmhPrintComments")) appendix.id = "cmhPrintComments";
+    if (!cmhEl("cmhPrintComments")) appendix.id = "cmhPrintComments";
     appendix.className = "cmh-print-comments";
     appendix.setAttribute("aria-label", "Review comments");
     root.appendChild(appendix);
@@ -271,7 +271,13 @@ function setupSinglePagePrint() {
     if (styleEl) return;
     styleEl = document.createElement("style");
     styleEl.id = "cmhPrintSinglePage";
-    document.head.appendChild(styleEl);
+    // The END OF BODY, not <head>: the honored-page math below relies on this <style> coming AFTER
+    // the bundled 92-print.css in source order (its `@page{margin:PAD}` and the tall-diagram
+    // measurement cap both win ties only from there). Since CMH-SIZE-05 the layer stylesheet lives
+    // in the machinery fence at the end of the body, so a head-injected rule would now LOSE every
+    // tie. End-of-body is after the layer stylesheet in BOTH layouts - the pre-1.833 one that keeps
+    // it in <head> and the content-first one - so this is correct for an upgraded old document too.
+    (document.body || document.documentElement).appendChild(styleEl);
     if (typeof CMH_INJECTED_CHROME !== "undefined" && CMH_INJECTED_CHROME.add) CMH_INJECTED_CHROME.add(styleEl);
   }
 
@@ -366,9 +372,10 @@ function setupSinglePagePrint() {
   // into the driver's real Letter/A4 printable area and paginates normally - NEVER forced to an
   // oversized width that the driver would then downscale (the old bug). The @page MARGIN (not body
   // padding) provides the inset, so it is honored on both paths without double-counting the height.
-  // Two assumptions the honored-path math relies on: (1) this runtime <style> is appended to <head>
-  // AFTER the bundled 92-print.css, so its `@page{margin:PAD}` wins over the base `@page{margin:0.6in}`
-  // by source order (keep it appended last); (2) the honored content area equals `pageW - 2*PAD`, so a
+  // Two assumptions the honored-path math relies on: (1) this runtime <style> is appended at the END
+  // OF BODY, AFTER the bundled 92-print.css, so its `@page{margin:PAD}` wins over the base
+  // `@page{margin:0.6in}` by source order (keep it appended last; since CMH-SIZE-05 the layer
+  // stylesheet is itself at the end of the body, so `<head>` is no longer "after" it); (2) the honored content area equals `pageW - 2*PAD`, so a
   // user who manually selects a LARGER margin than PAD in the browser's own print dialog shrinks that
   // area below the measured contentW - inherent to any custom-@page single-page layout, harmless
   // (content just wraps a little) but not something CSS can prevent.
@@ -552,6 +559,6 @@ function triggerNativePrint() {
   if (typeof window.print === "function") window.print();
 }
 ["btnPrint", "btnPrintTop"].forEach(function (id) {
-  const button = document.getElementById(id);
+  const button = cmhEl(id);
   if (button) button.addEventListener("click", triggerNativePrint);
 });

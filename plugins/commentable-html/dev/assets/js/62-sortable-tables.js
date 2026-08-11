@@ -606,7 +606,7 @@ function updateClearAllState(state) {
     ? !(comments.length || s.changes.length || s.clCh.length || s.noteCh.length)
     : _clearAllPending() === 0;
   ["btnClearAll", "btnClearAllTop"].forEach(function (id) {
-    const btn = document.getElementById(id);
+    const btn = cmhEl(id);
     if (!btn) return;
     btn.setAttribute("aria-disabled", disabled ? "true" : "false");
     btn.classList.toggle("cm-clear-disabled", disabled);
@@ -618,7 +618,7 @@ async function _confirmClearAll(restoreId) {
   // A confirm dialog is already up: do NOT touch focus - moving it to the menu trigger would pull
   // the caret outside the aria-modal dialog and behind its overlay.
   if (_clearAllBusy) return;
-  const restore = document.getElementById(restoreId);
+  const restore = cmhEl(restoreId);
   if (_clearAllPending() === 0) {
     // Nothing to clear: no dialog opens, so no restoreFocus fires - but the owning menu still
     // closes on this click, which would drop focus to <body>. Put it back on the menu's trigger.
@@ -643,7 +643,7 @@ async function _confirmClearAll(restoreId) {
   }
 }
 [["btnClearAll", "btnMoreMenu"], ["btnClearAllTop", "btnToolbarMenu"]].forEach(function (pair) {
-  const b = document.getElementById(pair[0]);
+  const b = cmhEl(pair[0]);
   if (b) {
     b.addEventListener("click", function () {
       // The listener cannot await, so surface a failure instead of leaving a floating rejection.

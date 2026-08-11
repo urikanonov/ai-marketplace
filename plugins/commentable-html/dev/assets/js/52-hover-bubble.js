@@ -2,7 +2,7 @@
    A highlighted region can itself be a link (or other clickable element), so a plain
    click there navigates instead of opening the comment. Hovering any highlight shows
    this small bubble; clicking it opens the comment regardless of what the text links to. */
-const hlBubble = document.getElementById("hlBubble");
+const hlBubble = cmhEl("hlBubble");
 let hlBubbleCid = null, hlBubbleMark = null, hlBubbleHideTimer = null;
 // On a phone the comments panel is a full-width SHEET over the document (`assets/css/00-base.css`)
 // while the bubble floats above it (z-index 210 vs 90), so the highlight it points at is hidden
@@ -170,7 +170,7 @@ function _setSidebarWidth(value, persist) {
   _sidebarWidthPx = w;
   document.documentElement.style.setProperty("--cm-sidebar-w", w + "px");
   if (sidebar) sidebar.classList.toggle("is-narrow", w <= 340);
-  const handle = document.getElementById("sidebarResizeHandle");
+  const handle = cmhEl("sidebarResizeHandle");
   if (handle) {
     handle.setAttribute("aria-valuemin", String(b.min));
     handle.setAttribute("aria-valuemax", String(b.max));
@@ -189,7 +189,7 @@ function setupSidebarResize() {
   try { saved = localStorage.getItem(SIDEBAR_WIDTH_KEY); } catch (e) { saved = null; }
   _setSidebarWidth(saved == null ? _sidebarWidthBounds().defaultWidth : Number(saved), false);
   window.addEventListener("resize", function () { _setSidebarWidth(_sidebarWidthPx || _sidebarWidthBounds().defaultWidth, false); });
-  const handle = document.getElementById("sidebarResizeHandle");
+  const handle = cmhEl("sidebarResizeHandle");
   if (!handle || handle._cmWired) return;
   handle._cmWired = true;
   let dragging = false;

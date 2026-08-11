@@ -625,7 +625,7 @@ function openStorageManager(opts) {
         const exp = el("button", "cm-storage-btn", "Export as Shareable");
         exp.type = "button";
         exp.addEventListener("click", function () {
-          const b = document.getElementById("btnSaveHtmlTop") || document.getElementById("btnSaveHtml");
+          const b = cmhEl("btnSaveHtmlTop") || cmhEl("btnSaveHtml");
           if (b) b.click();
         });
         actions.appendChild(exp);
@@ -914,12 +914,12 @@ function openStorageManager(opts) {
     { id: "btnStorage", menu: "sidebarMoreMenu", restore: "btnMoreMenu" },
   ];
   wiring.forEach(function (w) {
-    const b = document.getElementById(w.id);
+    const b = cmhEl(w.id);
     if (!b) return;
     b.addEventListener("click", function () {
-      const menu = document.getElementById(w.menu);
+      const menu = cmhEl(w.menu);
       if (menu) menu.hidden = true;
-      openStorageManager({ restoreFocus: document.getElementById(w.restore) || undefined });
+      openStorageManager({ restoreFocus: cmhEl(w.restore) || undefined });
     });
   });
 })();

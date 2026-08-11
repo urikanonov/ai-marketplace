@@ -8,7 +8,14 @@ import re
 import _toolpath
 _toolpath.ensure()
 import _browser_attrs  # noqa: E402
+import upgrade  # noqa: E402  (the shipped line-anchored region-marker matcher)
 from cmhval import contrast  # noqa: E402
+
+# What may sit between the CSS region's END marker line and the `</style>` that closes the layer
+# stylesheet: the decorated comment's own `*/` terminator line, and whitespace. When it does not
+# match, the region is the NonShareable `<link>` shape, which no `</style>` follows.
+_CSS_REGION_STYLE_CLOSE_RE = re.compile(r"(?:[^\S\n]*[-=]*[^\S\n]*\*/[^\S\n]*\n)?\s*</style\s*>",
+                                        re.IGNORECASE)
 
 
 class BrandProfileError(ValueError):
@@ -254,11 +261,62 @@ def render(profile):
     return "\n".join(lines) + "\n"
 
 
+def _css_region_end(html):
+    """Offset just past the layer stylesheet the CSS region declares, or None.
+
+    The marker is located LINE-ANCHORED through the shipped matcher, never by a raw
+    `re.search`: authored content now PRECEDES the layer stylesheet (CMH-SIZE-05), so a document
+    that merely quotes `END: commentable-html - CSS` in its prose would otherwise aim the brand
+    insertion at an unrelated `</style>` in the middle of authored markup. Exactly one marker is
+    required; anything else is treated as "no region" and falls back to `</head>`.
+
+    Both region shapes are handled: the inline Shareable region lives inside a `<style>`, so the
+    insertion point is just past that element's `</style>`; the NonShareable region is a
+    `<link rel="stylesheet">` inside an HTML comment pair with no `</style>` after it at all, so
+    the insertion point is the end of the END-marker line. Anchoring on `</style>` alone put the
+    brand block back in `<head>`, BEFORE the companion stylesheet, and the layer then won every
+    equal-specificity `:root` tie.
+    """
+    ends = upgrade._region_marker_matches(html, "END", "CSS")
+    if len(ends) != 1:
+        return None
+    line_end = html.find("\n", ends[0].start())
+    tail = len(html) if line_end == -1 else line_end + 1
+    close = _CSS_REGION_STYLE_CLOSE_RE.match(html, tail)
+    return close.end() if close else tail
+
+
 def _insert_head_style(html, style):
+    """Insert the brand `<style>` immediately AFTER the layer stylesheet, so brand tokens keep
+    overriding the layer's own `:root` block. The layer stylesheet used to be the last thing in
+    `<head>`, which made "before `</head>`" the right place; it now lives in the MACHINERY fence
+    after the authored content (CMH-SIZE-05), where inserting into the head would put the brand
+    FIRST and let the layer win every tie. The region anchor is correct for BOTH layouts.
+
+    When the CSS region cannot be located, `</head>` is the fallback ONLY for a legacy document
+    that has no machinery fence: in a content-first document that would silently reproduce the
+    very cascade defect this anchor exists to prevent, so the brand goes just inside the fence
+    instead - after every layer stylesheet the fence carries."""
+    at = _css_region_end(html)
+    if at is None:
+        at = _machinery_fence_end(html)
+    if at is not None:
+        return html[:at] + style + html[at:]
     match = re.search(r"</head\s*>", html, re.I)
     if not match:
         raise BrandProfileError("generated document has no </head> for brand profile")
     return html[:match.start()] + style + html[match.start():]
+
+
+def _machinery_fence_end(html):
+    """Offset of the start of the MACHINERY fence's closing comment, or None. Line-anchored and
+    required to be a single well-ordered pair, so a quoted marker cannot aim the insertion."""
+    begins = upgrade._region_marker_matches(html, "BEGIN", "MACHINERY")
+    ends = upgrade._region_marker_matches(html, "END", "MACHINERY")
+    if len(begins) != 1 or len(ends) != 1 or ends[0].start() <= begins[0].start():
+        return None
+    open_at = html.rfind("<!--", 0, ends[0].start())
+    return open_at if open_at != -1 else None
 
 
 def contrast_warnings(html):

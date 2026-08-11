@@ -2,7 +2,7 @@
 // A single 3-state cycle button: document (anchor position) order -> newest first (time-desc)
 // -> oldest first (time-asc) -> back to document order. The choice persists.
 (function () {
-  const b = document.getElementById("btnSort");
+  const b = cmhEl("btnSort");
   if (!b) return;
   const NEXT = { "pos": "time-desc", "time-desc": "time-asc", "time-asc": "pos" };
   b.addEventListener("click", function () {

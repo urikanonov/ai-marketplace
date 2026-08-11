@@ -63,7 +63,13 @@ body.cmh-deck-comments-off #widgetAddBtn,
 body.cmh-deck-comments-off #headingAddBtn {
   display: none !important;
 }
-#commentRoot[data-cmh-mode="deck"] .slide {
+/* Deck code-block token DEFAULTS. `:where()` gives the selector zero specificity on purpose, so a
+   per-deck theme block (`<style id="cmh-deck-theme">`, which declares the same tokens on the real
+   selector) always wins - whatever the source order. That matters since CMH-SIZE-05 put the layer
+   stylesheet AFTER the authored content: the theme block lives in the content, so at equal
+   specificity the layer would now win every tie and a themed deck would render with these
+   defaults. A default must never outrank the theme it is a default for. */
+:where(#commentRoot[data-cmh-mode="deck"] .slide) {
   --cmh-deck-code-bg: #0f172a;
   --cmh-deck-code-bg-soft: #111827;
   --cmh-deck-code-border: rgba(148, 163, 184, 0.44);

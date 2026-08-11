@@ -4,6 +4,73 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.837.0] - 2026-08-11
+
+### Changed
+
+- Documents now put their AUTHORED CONTENT FIRST in source order, and fence everything else. The
+  head keeps only what first paint needs (the metas, the title, the favicon, the theme-detection
+  script, the small layer descriptor, and a first-paint guard); the body opens with
+  `#commentRoot`; and every generated block - the layer stylesheet, the comment-UI markup, the
+  saved comment state, the mermaid loader, the vendored rich-content payload and the runtime -
+  now lives after the content inside one `BEGIN/END: commentable-html - MACHINERY` fence, with a
+  one-line "generated machinery, skip this" note ahead of each block. A tool that reads the first
+  50 KB of a shipped template used to get 1.3 MB of base64 and a large minified runtime before a
+  single sentence of prose; it now reaches the title within 1 KB and the opening of the content
+  within 4 KB. The relative order of the five named regions is unchanged, so a document generated
+  by an earlier version still validates and still upgrades, byte-for-byte, exactly as before.
+- Moving the stylesheet behind the content cannot flash unstyled content: a `FIRST PAINT` guard in
+  the head hides the body while the trailing stylesheet is unparsed AND paints the theme canvas
+  (light or dark) so a dark-theme document does not flash white, and a one-line reveal script
+  immediately after that stylesheet clears it (with a `DOMContentLoaded` listener and a timeout as
+  failsafes, and a no-op when scripting is off). `visibility: hidden` keeps layout boxes, so
+  nothing that measures the document at load sees a different page.
+- `retrofit.py` emits the same content-first layout: it injects nothing ahead of the host
+  document's own content and assembles the machinery fence at the end of the body, in both
+  Shareable and NonShareable mode.
+- `upgrade.py` and the example builder now look for the shell-baked mermaid loader in the
+  MACHINERY fence as well as in `<head>`, so an already-generated document still receives shell
+  bootstrap changes. Both scopes are template-owned, and the fence is located with the shipped
+  line-anchored marker matcher, so authored content that merely quotes a marker cannot be
+  mistaken for the loader.
+- A brand profile's `<style>` is inserted after the layer stylesheet's REGION rather than before
+  `</head>`, so its tokens keep overriding the layer's own `:root` block in the new layout - in
+  NonShareable mode too, where the region is a `<link>` with no `</style>` after it.
+- The runtime's print `<style>` is appended at the end of the body instead of into `<head>`: its
+  `@page` margin and its tall-diagram measurement cap win only by source order, and from the head
+  they would now lose to the layer stylesheet.
+- Because source order decides an equal-specificity tie, a per-document `<style>` no longer wins
+  from `<head>`. The shell carries an explicit per-document style slot immediately after the layer
+  stylesheet - which is where the shipped examples' own styles now live.
+- `Export standalone` inlines the reconstructed stylesheet and runtime IN PLACE of the companion
+  regions they replace, so an exported standalone file keeps the content-first shape instead of
+  hoisting 138 KB of CSS back into `<head>`.
+- The NonShareable missing-companion banner carries its own inline positioning, so it still pins
+  itself to the top of the viewport in the exact case it reports - the companion stylesheet, which
+  used to be the only thing that positioned it, being absent.
+- Every anchor the new layout depends on - the fence, the CSS region, the first-paint guard, the
+  mermaid-loader scope - is located with the shipped line-anchored marker matcher, required to sit
+  outside the authored content, and made to fail LOUDLY rather than silently when the markers are
+  present but ambiguous. `retrofit` now refuses a host page that already carries a `MACHINERY` or
+  `FIRST PAINT` marker, and warns when the host's own CSS would trap the fixed-position review
+  chrome in a containing block of its own.
+- Author guidance updated: `references/document-layout.md` and `references/content-conventions.md`
+  now describe the content-first source order, the per-document style slot, and the rule that an
+  authored script must not measure layout at parse time.
+- The layer resolves its OWN chrome through a boundary-aware lookup (`cmhEl`) rather than
+  `document.getElementById`. Document order used to make the layer's controls win a duplicate id
+  because the chrome came first; with the content first, a content element that merely borrowed a
+  control's id would have been handed to the code that drives it.
+- Deck code-block token defaults are declared with `:where()`, so a per-deck theme block always
+  wins them whatever the source order - a default must never outrank the theme it is a default for.
+- Every document terminates a head-opened script-data escape before its content, with 150 bytes of
+  parse state (a `<style>` whose CSS comment carries the `</script>` bytes). Without it, a `<script>`
+  in the head whose bytes open such an escape would swallow the authored content that now follows it.
+
+- Tutorial screenshots regenerated for two composer scenes. The comment-UI markup now follows the
+  content, which moves the composer to a marginally different sub-pixel anchor; the wording, colour
+  and structure of garden-05-composer and garden-15-format-toolbar are unchanged, only the text
+  rasterization phase and a 1px control rounding inside the panel.
 ## [1.836.0] - 2026-08-11
 
 ### Added

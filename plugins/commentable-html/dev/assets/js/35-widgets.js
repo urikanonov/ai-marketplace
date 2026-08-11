@@ -5,7 +5,7 @@
    commenting on a diagram node uses the same mechanism. Parts inside containers marked
    data-cm-slot also get state-change tracking: their slot at load is the baseline, and any
    later move is surfaced as a synthetic "layout change" record (see widgetStateChanges). */
-const widgetAddBtn = document.getElementById("widgetAddBtn");
+const widgetAddBtn = cmhEl("widgetAddBtn");
 const widgetParts = [];
 let pendingWidget = null;
 let widgetAddHideTimer = null;

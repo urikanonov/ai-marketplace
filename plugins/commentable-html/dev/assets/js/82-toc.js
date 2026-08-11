@@ -47,7 +47,7 @@ function cmhHeadingText(h) {
 // scrolls to it, so a reader can copy a link straight to any section.
 function setupHeadingAnchors() {
   const seen = {};
-  const headingAddBtn = document.getElementById("headingAddBtn");
+  const headingAddBtn = cmhEl("headingAddBtn");
   let headingHoverEl = null, headingHideTimer = null;
   function positionHeadingAdd(h) {
     const r = h.getBoundingClientRect();
@@ -155,7 +155,7 @@ function setupHeadingAnchors() {
     if (!h.id) {
       const base = _cmSlugify(cmhHeadingText(h) || "section");
       let id = base, n = 2;
-      while (document.getElementById(id) || seen[id]) { id = base + "-" + n; n++; }
+      while (cmhEl(id) || seen[id]) { id = base + "-" + n; n++; }
       h.id = id;
     }
     seen[h.id] = true;
@@ -315,14 +315,14 @@ function setupCollapsibleSections() {
   });
 }
 function setupSideToc() {
-  const root = document.getElementById("commentRoot") || document.body;
+  const root = cmhEl("commentRoot") || document.body;
   const items = [];
   const tocLinks = root.querySelectorAll(".cm-toc a[href^='#']");
   if (tocLinks.length) {
     tocLinks.forEach(function (a) {
       let id = (a.getAttribute("href") || "").slice(1);
       try { id = decodeURIComponent(id); } catch (e) { /* malformed %-encoding: keep the raw id */ }
-      const el = id && document.getElementById(id);
+      const el = id && cmhEl(id);
       if (el) items.push({ id: id, label: (a.textContent || "").trim(), el: el, hLevel: _cmHeadingDepth(el), listDepth: _cmTocListDepth(a), tocNum: _cmTocEntryNumber(a) });
     });
   } else {
@@ -530,7 +530,7 @@ function setupSideToc() {
   window.addEventListener("hashchange", function () {
     let id = (location.hash || "").slice(1);
     try { id = decodeURIComponent(id); } catch (e) { /* keep the raw id */ }
-    const el = id && document.getElementById(id);
+    const el = id && cmhEl(id);
     if (!el) return;
     const hidden = (el.closest && el.closest("section.cm-toc-filtered"))
       || items.some(function (it) { return it._cmFiltered && it.el === el; });
@@ -642,7 +642,7 @@ function setupSideToc() {
 // A small bottom-right bubble showing how far through the document the reader has
 // scrolled. cm-skip and runtime-created, so it never appears in a Plain export.
 function setupScrollProgress() {
-  if (document.getElementById("cmScrollProgress")) return;
+  if (cmhEl("cmScrollProgress")) return;
   const el = document.createElement("div");
   el.className = "cm-scroll-progress cm-skip";
   el.id = "cmScrollProgress";

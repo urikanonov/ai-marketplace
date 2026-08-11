@@ -5,12 +5,13 @@ Swaps the three layer regions - CSS, COMMENT UI, and JS - in a deployed standalo
 (inline) commentable-html file with the versions from a template, while leaving the
 document's own state and content untouched: HANDLED IDS, EMBEDDED COMMENTS, the
 CONTENT block, and the `#commentRoot` wrapper except for basename-only source provenance.
-It also re-emits the shell-baked mermaid loader bootstrap (the `<head>` module `<script>`,
-outside the swappable regions) from the template, so a change made in template.shell.html
+It also re-emits the shell-baked mermaid loader bootstrap (the module `<script>` the shell
+bakes outside the swappable regions - in `<head>`, or in the MACHINERY fence once a document
+uses the content-first layout) from the template, so a change made in template.shell.html
 - for example the CMH-MMD-08 deck `htmlLabels` gate - reaches already-generated documents.
-That lookup is scoped to `<head>` (authored body content is never mistaken for the loader),
-matches the loader by its mermaid `import(...)`, and preserves a hand-vendored (relative
-import) offline loader rather than re-pointing it at the CDN.
+That lookup is scoped to those TEMPLATE-OWNED regions (authored body content is never mistaken
+for the loader), matches the loader by its mermaid `import(...)`, and preserves a hand-vendored
+(relative import) offline loader rather than re-pointing it at the CDN.
 
 This is the "Upgrade an existing instance to a new dist/SHAREABLE.html" recipe from SKILL.md,
 made deterministic. Doing it by hand is error prone because of two documented footguns:
@@ -50,6 +51,7 @@ LAYER_REGIONS = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"]
 # is not actually a commentable-html document).
 REQUIRED_MARKERS = ["HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "CONTENT", "CSS", "JS"]
 CONTENT_BEGIN_RE = re.compile(r"<!--\s*BEGIN: commentable-html - CONTENT\b", re.IGNORECASE)
+CONTENT_END_RE = re.compile(r"<!--\s*END: commentable-html - CONTENT\b", re.IGNORECASE)
 # A real nonshareable document carries this exact bootstrap comment. The inline JS body only
 # mentions the marker text inside a regex literal (with `\s*`, not literal spaces), so
 # matching the full comment avoids a false positive on standalone files.
@@ -503,39 +505,94 @@ def _preceding_loader_comment(scope, start):
     return None
 
 
+def _machinery_fence(html):
+    """(start, end) of the MACHINERY fence, or None when the document has none.
+
+    Located with the SAME line-anchored marker matcher the regions use, and required to be a
+    single pair OUTSIDE the authored content. A raw substring search would be aimed by authored
+    content, which now PRECEDES the fence (CMH-SIZE-05): a document that quotes the marker text -
+    in prose, in an attribute, or in a code sample - would open a bogus "template-owned" scope
+    over its own module scripts, and the loader re-emit would then refuse or overwrite authored
+    markup. Requiring the fence to start after the CONTENT region closes rules that out even for a
+    quotation that is line-anchored.
+
+    An AMBIGUOUS fence (markers present but not a single well-ordered pair outside the content)
+    RAISES rather than reporting "no fence": for a content-first document the fence is the only
+    scope the loader lives in, so a silent None would make the document stop receiving shell
+    bootstrap updates forever, with a clean exit code and nothing in `changed`.
+    """
+    begins = _region_marker_matches(html, "BEGIN", "MACHINERY")
+    ends = _region_marker_matches(html, "END", "MACHINERY")
+    if not begins and not ends:
+        return None
+    content_end = _content_region_end(html)
+    ok = (len(begins) == 1 and len(ends) == 1 and begins[0].start() < ends[0].start()
+          and (content_end is None or begins[0].start() > content_end))
+    if not ok:
+        raise ValueError(
+            "the MACHINERY fence is ambiguous: expected exactly one BEGIN and one END marker "
+            "outside the CONTENT region, found %d and %d" % (len(begins), len(ends)))
+    return begins[0].start(), ends[0].end()
+
+
+def _content_region_end(html):
+    """Offset of the CONTENT region's END marker, or None. The authored content ends there, so
+    anything the layer owns must start after it."""
+    ends = list(CONTENT_END_RE.finditer(html or ""))
+    return ends[-1].start() if ends else None
+
+
+def _loader_scopes(html, masked):
+    """Byte ranges the shell-baked mermaid loader may legitimately live in: the document `<head>`,
+    and the MACHINERY fence that holds the generated machinery after the authored content
+    (CMH-SIZE-05). Both are template-owned, so an authored module script inside the document body
+    can never be mistaken for the loader - the property the old head-only scope provided. The
+    fence is located on the ORIGINAL text (masking blanks the comment interiors that carry its
+    markers, and preserves offsets, so the two views map 1:1)."""
+    scopes = []
+    head = _HEAD_RE.search(masked)
+    if head is not None:
+        scopes.append((head.start(), head.end()))
+    fence = _machinery_fence(html)
+    if fence is not None:
+        scopes.append(fence)
+    return scopes
+
+
 def _mermaid_bootstrap_span(html, where):
     """Return (start, end) byte offsets of the shell-baked mermaid loader block - the module
-    <script> in <head> that boots mermaid (a dynamic mermaid `import("...mermaid...")`), plus an
-    immediately-preceding "Mermaid loader" comment - or None when the head has no such loader.
-    Scoped to <head> so an authored module <script> in the document body (or CONTENT) can never be
-    mistaken for the loader (which would crash the upgrade or replace authored content). The head and
-    the module-script candidates are located on a comment-masked copy, so a `<head>` / `<script>`
-    inside an HTML comment before or around the real head is ignored; the loader-comment lookup runs
-    on the original text so the real loader's preceding comment stays part of the span. When more than
-    one head module script imports mermaid, the one bound to the "Mermaid loader" comment wins; if
-    that is still ambiguous, raise."""
+    <script> that boots mermaid (a dynamic mermaid `import("...mermaid...")`), plus an
+    immediately-preceding "Mermaid loader" comment - or None when the document has no such loader.
+    Scoped to the TEMPLATE-OWNED regions (`<head>` and the MACHINERY fence) so an authored module
+    <script> in the document body (or CONTENT) can never be mistaken for the loader (which would
+    crash the upgrade or replace authored content). The scopes and the module-script candidates are
+    located on a comment-masked copy, so a `<head>` / `<script>` inside an HTML comment before or
+    around the real head is ignored; the loader-comment lookup runs on the original text so the real
+    loader's preceding comment stays part of the span. When more than one candidate imports mermaid,
+    the one bound to the "Mermaid loader" comment wins; if that is still ambiguous, raise."""
     html = html or ""
     masked = _mask_html_comments(html)
-    head = _HEAD_RE.search(masked)
-    if head is None:
-        return None
-    base = head.start()
-    masked_scope = masked[base:head.end()]
-    orig_scope = html[base:head.end()]
-    candidates = [m for m in _MODULE_SCRIPT_RE.finditer(masked_scope) if _MERMAID_IMPORT_RE.search(m.group(2))]
+    candidates = []
+    for base, end in _loader_scopes(html, masked):
+        masked_scope = masked[base:end]
+        for m in _MODULE_SCRIPT_RE.finditer(masked_scope):
+            if _MERMAID_IMPORT_RE.search(m.group(2)):
+                candidates.append((base, end, m))
     if not candidates:
         return None
     if len(candidates) > 1:
-        commented = [m for m in candidates if _preceding_loader_comment(orig_scope, m.start())]
+        commented = [c for c in candidates
+                     if _preceding_loader_comment(html[c[0]:c[1]], c[2].start())]
         if len(commented) != 1:
-            raise ValueError("%s: multiple mermaid bootstrap scripts found in <head>" % where)
+            raise ValueError("%s: multiple mermaid bootstrap scripts found" % where)
         candidates = commented
-    script = candidates[0]
-    start, end = script.start(), script.end()
+    base, end, script = candidates[0]
+    orig_scope = html[base:end]
+    start, stop = script.start(), script.end()
     comment = _preceding_loader_comment(orig_scope, start)
     if comment is not None:
         start = comment.start()
-    return base + start, base + end
+    return base + start, base + stop
 
 
 def _mermaid_loader_is_vendored(bootstrap):
@@ -598,15 +655,16 @@ def upgrade(target_html, template_html, target_name="<target>", template_name="<
         if not _same_content_ignoring_crlf(out[db:de], new_inner):
             out = out[:db] + new_inner + out[de:]
             changed.append(name)
-    # Re-emit the shell-baked mermaid loader bootstrap from the template. It lives in <head>,
-    # outside the swappable regions, so CMH-MMD-08 (the deck `htmlLabels` gate) and any future
+    # Re-emit the shell-baked mermaid loader bootstrap from the template. It lives OUTSIDE the
+    # swappable regions - in <head>, or in the MACHINERY fence once a document uses the
+    # content-first layout - so CMH-MMD-08 (the deck `htmlLabels` gate) and any future
     # shell-bootstrap change would otherwise never reach an already-generated document. The lookup
-    # is scoped to <head> (so authored CONTENT can never be mistaken for the loader) and identifies
-    # the loader by its mermaid `import(...)` (not a specific selector string), so loaders from
-    # versions predating the `pre.mermaid, div.mermaid` guard match too. A hand-vendored offline
-    # loader (relative `import(...)`) is left alone so the swap never silently re-points mermaid back
-    # to the CDN. The Export Offline re-init is NOT shell-baked (it lives in the JS region) and is
-    # refreshed by the JS swap above.
+    # is scoped to those template-owned regions (so authored CONTENT can never be mistaken for the
+    # loader) and identifies the loader by its mermaid `import(...)` (not a specific selector
+    # string), so loaders from versions predating the `pre.mermaid, div.mermaid` guard match too. A
+    # hand-vendored offline loader (relative `import(...)`) is left alone so the swap never silently
+    # re-points mermaid back to the CDN. The Export Offline re-init is NOT shell-baked (it lives in
+    # the JS region) and is refreshed by the JS swap above.
     tpl_boot = _mermaid_bootstrap_span(template_html, template_name)
     tgt_boot = _mermaid_bootstrap_span(out, target_name)
     if tpl_boot is not None and tgt_boot is not None:

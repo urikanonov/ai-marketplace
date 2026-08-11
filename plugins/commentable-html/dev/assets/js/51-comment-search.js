@@ -54,8 +54,8 @@ function _toggleSearchEmptyNote(show) {
 // reader opens it via the Search button (searchUserState === true), regardless of comment count.
 function applyCommentSearch() {
   const row = document.querySelector(".head-search");
-  const countEl = document.getElementById("cmSearchCount");
-  const clearBtn = document.getElementById("cmSearchClear");
+  const countEl = cmhEl("cmSearchCount");
+  const clearBtn = cmhEl("cmSearchClear");
   const total = (typeof threadRoots === "function")
     ? threadRoots(comments).length
     : (Array.isArray(comments) ? comments.length : 0);
@@ -63,7 +63,7 @@ function applyCommentSearch() {
   if (row) {
     row.hidden = searchUserState !== true;
   }
-  const _searchToggle = document.getElementById("btnSearchToggle");
+  const _searchToggle = cmhEl("btnSearchToggle");
   if (_searchToggle && row) _searchToggle.setAttribute("aria-expanded", row.hidden ? "false" : "true");
   const q = _normalizeCommentSearchText(commentSearchQuery.trim());
   // Keep the clear (X) button in sync with the field even when there is nothing to search, so a query
@@ -104,12 +104,12 @@ function applyCommentSearch() {
 }
 
 function setupCommentSearch() {
-  const input = document.getElementById("cmSearchInput");
-  const clearBtn = document.getElementById("cmSearchClear");
+  const input = cmhEl("cmSearchInput");
+  const clearBtn = cmhEl("cmSearchClear");
   if (!input) return;
   // The filter field is hidden by default and never appears on its own; the Search button toggles it:
   // it opens and focuses the field, or closes and clears it.
-  const toggle = document.getElementById("btnSearchToggle");
+  const toggle = cmhEl("btnSearchToggle");
   const row = document.querySelector(".head-search");
   if (toggle && row) {
     toggle.addEventListener("click", () => {

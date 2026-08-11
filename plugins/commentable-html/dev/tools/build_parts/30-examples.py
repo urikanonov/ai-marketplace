@@ -38,6 +38,7 @@ _LAYER_DESCRIPTOR_INSERT_RE = re.compile(
     r'(<meta name="commentable-html-version" content="[0-9]+\.[0-9]+\.[0-9]+" />?\s*)',
     re.IGNORECASE)
 _CONTENT_BEGIN_TEXT = "BEGIN: commentable-html - CONTENT"
+_CONTENT_END_RE = re.compile(r"<!--\s*END: commentable-html - CONTENT\b", re.IGNORECASE)
 _CONTENT_ROOT_RE = re.compile(r'<main\b[^>]*?\bid\s*=\s*(["\'])commentRoot\1[^>]*>', re.IGNORECASE)
 # An existing data-generated attribute on the content-root <main>, replaced (or added when absent) so
 # every shipped example reports the build's release date rather than an authored in-story date.
@@ -139,35 +140,73 @@ def _nearest_loader_comment_start(head, start):
     return best
 
 
+def _machinery_fence(html):
+    """(start, end) of the MACHINERY fence, or None when the document has none. Line-anchored,
+    required to be a single well-ordered pair OUTSIDE the CONTENT region, and RAISING rather than
+    reporting "none" when markers are present but ambiguous - so authored content that merely
+    QUOTES the marker text can neither open a bogus "template-owned" scope nor silently disable
+    the loader re-emit (mirrors upgrade.py._machinery_fence)."""
+    begins = _region_marker_matches(html, "BEGIN", "MACHINERY")
+    ends = _region_marker_matches(html, "END", "MACHINERY")
+    if not begins and not ends:
+        return None
+    content_ends = list(_CONTENT_END_RE.finditer(html or ""))
+    content_end = content_ends[-1].start() if content_ends else None
+    ok = (len(begins) == 1 and len(ends) == 1 and begins[0].start() < ends[0].start()
+          and (content_end is None or begins[0].start() > content_end))
+    if not ok:
+        raise SystemExit("build: the MACHINERY fence is ambiguous (expected exactly one BEGIN and "
+                         "one END marker outside the CONTENT region, found %d and %d)"
+                         % (len(begins), len(ends)))
+    return begins[0].start(), ends[0].end()
+
+
+def _loader_scopes(html, masked):
+    """Byte ranges the shell-baked mermaid loader may legitimately live in: the document `<head>`,
+    and the MACHINERY fence that holds the generated machinery after the authored content
+    (CMH-SIZE-05). Both are template-owned, so an authored module script inside `#commentRoot`
+    can never be mistaken for the loader. The fence is located on the ORIGINAL text (masking
+    blanks the comment interiors that carry its markers, and preserves offsets)."""
+    scopes = []
+    head_m = _HEAD_RE.search(masked)
+    if head_m is not None:
+        scopes.append((head_m.start(), head_m.end()))
+    fence = _machinery_fence(html)
+    if fence is not None:
+        scopes.append(fence)
+    return scopes
+
+
 def _mermaid_loader_span(html, where="<example>"):
-    """(start, end) offsets of the <head> mermaid loader block - the module <script> that boots
+    """(start, end) offsets of the shell-baked mermaid loader block - the module <script> that boots
     mermaid via a dynamic mermaid `import(...)`, plus its immediately-preceding "Mermaid loader"
-    comment - or None. Scoped to <head> so an authored body module script is never mistaken for the
-    loader. The mermaid `import(...)` is matched in the script BODY (not the opening tag), so a decoy
-    import string in an attribute is ignored. The head and the module-script candidates are located
-    on a comment-masked copy, so a `<head>` / `<script>` inside an HTML comment before or around the
-    real head is ignored; the loader-comment lookup runs on the original text so the real loader's
-    preceding comment stays part of the span. When more than one head module imports mermaid, the one
-    bound to the "Mermaid loader" comment wins; otherwise ambiguity is an error (mirrors
-    upgrade.py._mermaid_bootstrap_span)."""
+    comment - or None. Scoped to the template-owned scopes (`<head>` and the MACHINERY fence) so an
+    authored body module script is never mistaken for the loader. The mermaid `import(...)` is
+    matched in the script BODY (not the opening tag), so a decoy import string in an attribute is
+    ignored. The module-script candidates are located on a comment-masked copy, so a `<script>`
+    inside an HTML comment is ignored; the loader-comment lookup runs on the original text so the
+    real loader's preceding comment stays part of the span. When more than one candidate imports
+    mermaid, the one bound to the "Mermaid loader" comment wins; otherwise ambiguity is an error
+    (mirrors upgrade.py._mermaid_bootstrap_span)."""
     html = html or ""
     masked = _mask_html_comments(html)
-    head_m = _HEAD_RE.search(masked)
-    if head_m is None:
-        return None
-    base = head_m.start()
-    masked_head = masked[base:head_m.end()]
-    orig_head = html[base:head_m.end()]
-    candidates = [m for m in _MODULE_SCRIPT_RE.finditer(masked_head) if _MERMAID_IMPORT_RE.search(m.group(2))]
+    candidates = []
+    for base, end in _loader_scopes(html, masked):
+        masked_scope = masked[base:end]
+        for m in _MODULE_SCRIPT_RE.finditer(masked_scope):
+            if _MERMAID_IMPORT_RE.search(m.group(2)):
+                candidates.append((base, end, m))
     if not candidates:
         return None
     if len(candidates) > 1:
-        commented = [m for m in candidates if _nearest_loader_comment_start(orig_head, m.start()) != m.start()]
+        commented = [c for c in candidates
+                     if _nearest_loader_comment_start(html[c[0]:c[1]], c[2].start()) != c[2].start()]
         if len(commented) != 1:
-            raise SystemExit("build: %s has ambiguous mermaid loader scripts in <head>" % where)
+            raise SystemExit("build: %s has ambiguous mermaid loader scripts" % where)
         candidates = commented
-    m = candidates[0]
-    return base + _nearest_loader_comment_start(orig_head, m.start()), base + m.end()
+    base, end, m = candidates[0]
+    orig_scope = html[base:end]
+    return base + _nearest_loader_comment_start(orig_scope, m.start()), base + m.end()
 
 
 def _mermaid_loader_is_vendored(bootstrap):
@@ -191,6 +230,49 @@ def _stamp_mermaid_loader(text, shareable_html):
     if tpl is None or tgt is None:
         return text
     if _mermaid_loader_is_vendored(text[tgt[0]:tgt[1]]):
+        return text
+    canonical = shareable_html[tpl[0]:tpl[1]]
+    if text[tgt[0]:tgt[1]] == canonical:
+        return text
+    return text[:tgt[0]] + canonical + text[tgt[1]:]
+
+
+def _first_paint_span(text, what="document"):
+    """(start, end) of the shell-baked FIRST PAINT guard block, or None when it has none.
+
+    Line-anchored through the shared marker matcher and required to be a single well-ordered
+    pair: a raw `find` would anchor on any earlier QUOTATION of the marker (a pre-`<html>`
+    documentation comment, say) and the re-emit would then splice from there through the real END
+    marker, replacing the doctype, the metas and the title of a shipped example.
+
+    ABSENT is a no-op; MALFORMED is fatal. A document with no markers at all simply predates the
+    guard, but one that has markers the matcher cannot pair unambiguously would silently stop
+    receiving guard updates for ever - the exact drift this re-emit exists to prevent - so it
+    raises instead of reading as absent.
+    """
+    begins = _region_marker_matches(text, "BEGIN", "FIRST PAINT")
+    ends = _region_marker_matches(text, "END", "FIRST PAINT")
+    if not begins and not ends:
+        return None
+    if len(begins) != 1 or len(ends) != 1 or ends[0].start() <= begins[0].start():
+        raise SystemExit(
+            "build: the FIRST PAINT guard in %s is ambiguous (%d BEGIN, %d END markers); "
+            "the guard cannot be re-emitted safely" % (what, len(begins), len(ends)))
+    start = text.rfind("<!--", 0, begins[0].start())
+    close = text.find("-->", ends[0].end())
+    if start == -1 or close == -1:
+        raise SystemExit(
+            "build: the FIRST PAINT guard in %s is not a well-formed comment block" % what)
+    return start, close + 3
+
+
+def _stamp_first_paint_guard(text, shareable_html, what="document"):
+    """Re-emit the shell-baked FIRST PAINT guard (CMH-SIZE-07) from SHAREABLE into an example, so
+    the guard is single-sourced from the shell exactly like the mermaid loader. No-op when either
+    side has none or it already matches; raises when either side's markers are malformed."""
+    tpl = _first_paint_span(shareable_html, "dist/SHAREABLE.html")
+    tgt = _first_paint_span(text, what)
+    if tpl is None or tgt is None:
         return text
     canonical = shareable_html[tpl[0]:tpl[1]]
     if text[tgt[0]:tgt[1]] == canonical:
@@ -307,6 +389,7 @@ def regen_example(example_html, shareable_html, version, mermaid_version, where=
     out = _stamp_content_root_hook(out)
     out = _stamp_generated_date(out, generated_date)
     out = _stamp_mermaid_loader(out, shareable_html)
+    out = _stamp_first_paint_guard(out, shareable_html, where)
     out = _MERMAID_CDN_RE.sub(lambda m: m.group(1) + mermaid_version + m.group(2), out)
     return out
 

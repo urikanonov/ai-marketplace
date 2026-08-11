@@ -33,6 +33,7 @@ _toolpath.ensure()
 import _atomic_io  # noqa: E402
 import _browser_attrs  # noqa: E402
 import new_document  # noqa: E402
+import upgrade  # noqa: E402  (the shipped line-anchored region-marker matcher)
 import _vendored_payload as vendored_payload  # noqa: E402
 from _vendored_payload import (  # noqa: E402,F401  (re-exported: one definition, two callers)
     CANONICAL_KEYS, LIB_FIELDS, LIBRARIES, carried_libs, payload_matches, reconcile,
@@ -334,6 +335,33 @@ def blob_script(source_html):
 
 
 
+def _machinery_fence_end(html, root_end=None):
+    """Offset of the start of the MACHINERY fence's closing comment, or None.
+
+    Located with the shipped LINE-ANCHORED marker matcher, required to be a single well-ordered
+    pair, and required to sit entirely AFTER the content root - so authored content that quotes
+    the marker text (in prose, in an attribute, or inside a `<script>` the line matcher still
+    reads as a comment line) can never aim a multi-hundred-KB insertion at itself.
+
+    Markers that are present but ambiguous are reported on stderr rather than silently ignored:
+    for a content-first document, falling through to the body end parks the payload AFTER the
+    fence that announces it, which is exactly what this anchor exists to prevent.
+    """
+    begins = upgrade._region_marker_matches(html, "BEGIN", "MACHINERY")
+    ends = upgrade._region_marker_matches(html, "END", "MACHINERY")
+    if not begins and not ends:
+        return None
+    ok = (len(begins) == 1 and len(ends) == 1 and begins[0].start() < ends[0].start()
+          and (root_end is None or begins[0].start() > root_end))
+    if not ok:
+        sys.stderr.write("vendored_libs: the MACHINERY fence is ambiguous (%d BEGIN, %d END "
+                         "markers outside the content); placing the payload at the end of the "
+                         "body instead\n" % (len(begins), len(ends)))
+        return None
+    open_at = html.rfind("<!--", 0, ends[0].start())
+    return open_at if open_at != -1 else None
+
+
 def strip_blob(html):
     span = find_blob(html)
     if not span:
@@ -341,14 +369,24 @@ def strip_blob(html):
     return html[:span[0]] + html[span[1]:], True
 
 
-def _insert_before_body_end(html, script, body_end=None):
-    """Insert `script` immediately before the document's real end of body.
+def _insert_before_body_end(html, script, body_end=None, root_end=None):
+    """Insert `script` at the end of the document's machinery, before the real end of body.
 
-    `body_end` comes from the PARSER. A substring search for `</body>` picks the last literal
-    occurrence, which can be inside an HTML comment or a script string - review found a case
-    where the 1.3 MB payload was inserted INSIDE a comment, invisible to both the runtime and
-    to find_blob, while apply() reported success.
+    Preferred anchor: just inside the MACHINERY fence (CMH-SIZE-05), so a relocated payload lands
+    with the rest of the non-content machinery instead of dangling after the fence that announces
+    it. The fence's own lead comment covers everything inside it, so the payload is not given a
+    second per-block note - which also keeps this helper's edit exactly one element wide, the
+    property `strip_blob` and the offset tests rely on.
+
+    Fallback (a pre-CMH-SIZE-05 document, which has no fence): the end of body. `body_end` comes
+    from the PARSER. A substring search for `</body>` picks the last literal occurrence, which can
+    be inside an HTML comment or a script string - review found a case where the 1.3 MB payload was
+    inserted INSIDE a comment, invisible to both the runtime and to find_blob, while apply()
+    reported success.
     """
+    fence_end = _machinery_fence_end(html, root_end)
+    if fence_end is not None:
+        return html[:fence_end] + script + html[fence_end:], True
     idx = body_end
     if idx is None:
         scan = _scan(html)
@@ -440,7 +478,7 @@ def apply(html, source_blob=None):
         script = _sourced_script(source_blob, needed)
         if script is None:
             return html, False
-        return _insert_before_body_end(html, script, scan.body_end)
+        return _insert_before_body_end(html, script, scan.body_end, scan.root_span[1])
 
     span = scan.blob_spans[0]
     inner = scan.blob_inner_spans[0]
@@ -457,10 +495,12 @@ def apply(html, source_blob=None):
         element = html[span[0]:inner[0]] + new_inner + html[inner[1]:span[1]]
     if not misplaced:
         return html[:span[0]] + element + html[span[1]:], True
+    # A misplaced copy is relocated into the fence; nothing else about the document moves.
     without = html[:span[0]] + html[span[1]:]
     shift = span[1] - span[0]
     body_end = scan.body_end - shift if scan.body_end > span[1] else scan.body_end
-    moved, ok = _insert_before_body_end(without, element.strip("\r\n \t") + "\n", body_end)
+    root_end = scan.root_span[1] - shift if scan.root_span[1] > span[1] else scan.root_span[1]
+    moved, ok = _insert_before_body_end(without, element.strip("\r\n \t") + "\n", body_end, root_end)
     return (moved, True) if ok else (html, False)
 
 

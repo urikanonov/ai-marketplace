@@ -79,7 +79,7 @@ function setupChartContainment() {
 }
 
 function setupFooter() {
-  if (document.getElementById("cmFooter")) return;
+  if (cmhEl("cmFooter")) return;
   const f = document.createElement("footer");
   f.id = "cmFooter";
   f.className = "cm-skip cm-footer";
@@ -690,13 +690,13 @@ function setupDeck() {
     return !!(sel && !sel.isCollapsed && String(sel).trim());
   }
   function _commentMenuOpen() {
-    const menuEl = document.getElementById("contextMenu");
+    const menuEl = cmhEl("contextMenu");
     return !!(menuEl && !menuEl.hidden);
   }
   // A visible hover bubble (raised by hovering a saved highlight) is transient chrome: an empty
   // click that dismisses it must not also advance the deck, like the context menu and popover.
   function _hlBubbleOpen() {
-    const b = document.getElementById("hlBubble");
+    const b = cmhEl("hlBubble");
     return !!(b && !b.hidden);
   }
   // A point suppresses advance when it is off any slide, on an interactive/effect target, or on
@@ -1195,7 +1195,7 @@ function setupDeck() {
       // Keep keyboard focus sensible after the menu closes: opening the review panel hides the
       // trigger, so move focus into the panel; otherwise return focus to the trigger.
       if (opt.mode === "open") {
-        const panelBtn = document.getElementById("btnCloseSidebar");
+        const panelBtn = cmhEl("btnCloseSidebar");
         if (panelBtn && panelBtn.focus) { try { panelBtn.focus(); } catch (e) {} }
       } else if (modeToggle && modeToggle.focus) {
         try { modeToggle.focus(); } catch (e) {}
