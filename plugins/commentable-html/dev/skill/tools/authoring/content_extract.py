@@ -31,6 +31,7 @@ import _toolpath  # noqa: E402
 _toolpath.ensure()
 import _atomic_io  # noqa: E402
 import _browser_attrs  # noqa: E402
+import cold_tier  # noqa: E402
 import _highlight_core as _core  # noqa: E402
 import highlight_code  # noqa: E402
 import highlight_document  # noqa: E402
@@ -134,7 +135,14 @@ def dehighlight_blocks(fragment, refusals=None):
 
 
 def extract(html, refusals=None):
-    """Return the document's CONTENT fragment as editable source."""
+    """Return the document's CONTENT fragment as editable source.
+
+    A compressed cold tier is expanded FIRST, so the caller is handed every row the reader can
+    see. Without that the agent gets a fragment in which the tail rows do not exist, and any edit
+    that rewrites that table drops the placeholder and orphans the payload - the rows are then
+    unrecoverable (`CMH-COLD-08`).
+    """
+    html = cold_tier.expanded_view(html)
     start, end = content_span(html)
     return dehighlight_blocks(html[start:end], refusals=refusals).strip("\n")
 
@@ -159,6 +167,10 @@ def main(argv):
         fragment = extract(_read(args.file), refusals=refusals)
     except (ExtractError, OSError) as exc:
         sys.stderr.write("content_extract: %s\n" % exc)
+        return 1
+    except cold_tier.ColdTierError as exc:
+        sys.stderr.write("content_extract: this document's compressed block cannot be expanded "
+                         "(%s), so its hidden rows cannot be handed back for editing\n" % exc)
         return 1
 
     if refusals:

@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.835.0" />
+<meta name="commentable-html-version" content="1.836.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.835.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.836.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -1585,6 +1585,13 @@ max-width: none !important; max-height: 15rem !important;
 outline: 2px solid var(--cp-accent); outline-offset: 2px;
 }
 }
+
+#commentRoot tr.cmh-cold-slot > td {
+color: var(--cp-text-muted);
+font-style: italic;
+text-align: center;
+}
+#commentRoot .cmh-cold-note { display: none; }
 
 #commentRoot img.cm-img-commentable, #commentRoot canvas.cm-img-commentable, #commentRoot svg.cm-img-commentable { cursor: pointer; }
 #commentRoot img.cm-img-commentable:hover, #commentRoot canvas.cm-img-commentable:hover, #commentRoot svg.cm-img-commentable:hover { outline: 2px dashed var(--cp-accent); outline-offset: 2px; }
@@ -3723,7 +3730,7 @@ scroll-behavior: auto !important;
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-cmh-content-root id="commentRoot" data-comment-key="commentable-visuals-matrix-report" data-doc-label="Commentable Visuals Matrix" data-doc-source="report-metrics.html" data-generated="2026-08-10">
+<main data-cmh-content-root id="commentRoot" data-comment-key="commentable-visuals-matrix-report" data-doc-label="Commentable Visuals Matrix" data-doc-source="report-metrics.html" data-generated="2026-08-11">
 <nav class="cm-toc" aria-label="Table of contents">
   <div class="cm-toc-title">Contents</div>
   <ol>
@@ -3892,6 +3899,7 @@ Incidents
 -->
 <script>
 (()=>{
+var CMH_COLD_TIER=cmhHydrateColdTier();
 let SNAPSHOT_HTML= "<!DOCTYPE html>\n"+cmhSerializeElementRaw(document.documentElement);
 const _CMH_SPACE_CH=/[\t\n\f\r ]/;
 const _CMH_NAME_END_SRC= "\\t\\n\\f\\r />";
@@ -4104,6 +4112,395 @@ members.forEach(function(n,i){parent.replaceChild(marks[i],n);});
 marks.forEach(function(m,i){parent.replaceChild(ordered[i],m);});
 return true;
 }
+function _cmhColdIdOk(id){
+return typeof id=== "string"&&/^cmh-cold-[0-9]+$/.test(id);
+}
+function _cmhColdMaxBytes(){return 64*1024*1024;}
+function _cmhColdCrc32(bytes){
+var crc=0xffffffff;
+for(var i=0;i<bytes.length;i+=1){
+var c=(crc^bytes[i])&0xff;
+for(var k=0;k<8;k+=1)c=(c&1)?((c>>>1)^0xedb88320):(c>>>1);
+crc=(crc>>>8)^c;
+}
+return(crc^0xffffffff)>>>0;
+}
+function _cmhColdHuff(lengths){
+var counts=new Int32Array(16);
+var i;
+for(i=0;i<lengths.length;i+=1)counts[lengths[i]]+=1;
+counts[0]=0;
+var offsets=new Int32Array(16);
+var total=0;
+for(i=1;i<=15;i+=1){offsets[i]=total;total+=counts[i];}
+var symbols=new Int32Array(total);
+for(i=0;i<lengths.length;i+=1){
+if(lengths[i]){symbols[offsets[lengths[i]]]=i;offsets[lengths[i]]+=1;}
+}
+return{counts:counts,symbols:symbols};
+}
+function _cmhColdInflateRaw(bytes,start,budget){
+var LBASE=[3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,
+99,115,131,163,195,227,258];
+var LEXT=[0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+var DBASE=[1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,
+1537,2049,3073,4097,6145,8193,12289,16385,24577];
+var DEXT=[0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,
+12,12,13,13];
+var CLORDER=[16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
+var pos=start;
+var bitbuf=0;
+var bitcnt=0;
+var out=new Uint8Array(1<<16);
+var len=0;
+var fixedLit=null;
+var fixedDist=null;
+function need(n){
+if(len+n<=out.length)return;
+if(len+n>budget)throw new Error("expanded content is too large");
+var cap=out.length;
+while(cap<len+n)cap*=2;
+if(cap>budget)cap=budget;
+var grown=new Uint8Array(cap);
+grown.set(out.subarray(0,len));
+out=grown;
+}
+function bits(count){
+var value=0;
+for(var i=0;i<count;i+=1){
+if(bitcnt===0){
+if(pos>=bytes.length)throw new Error("truncated");
+bitbuf=bytes[pos];pos+=1;bitcnt=8;
+}
+value|=(bitbuf&1)<<i;
+bitbuf>>>=1;bitcnt-=1;
+}
+return value;
+}
+function decode(table){
+var code=0;
+var first=0;
+var index=0;
+for(var length=1;length<=15;length+=1){
+if(bitcnt===0){
+if(pos>=bytes.length)throw new Error("truncated");
+bitbuf=bytes[pos];pos+=1;bitcnt=8;
+}
+code|=bitbuf&1;
+bitbuf>>>=1;bitcnt-=1;
+var count=table.counts[length];
+if(code-first<count)return table.symbols[index+(code-first)];
+index+=count;
+first=(first+count)<<1;
+code<<=1;
+}
+throw new Error("bad code");
+}
+function block(lit,dist){
+for(;;){
+var sym=decode(lit);
+if(sym<256){need(1);out[len]=sym;len+=1;continue;}
+if(sym===256)return;
+sym-=257;
+if(sym>=LBASE.length)throw new Error("bad length code");
+var run=LBASE[sym]+bits(LEXT[sym]);
+var dsym=decode(dist);
+if(dsym>=DBASE.length)throw new Error("bad distance code");
+var back=DBASE[dsym]+bits(DEXT[dsym]);
+if(back>len)throw new Error("distance before start");
+need(run);
+for(var i=0;i<run;i+=1){out[len]=out[len-back];len+=1;}
+}
+}
+var last=0;
+do{
+last=bits(1);
+var type=bits(2);
+if(type===0){
+bitbuf=0;bitcnt=0;
+if(pos+4>bytes.length)throw new Error("truncated");
+var stored=bytes[pos]|(bytes[pos+1]<<8);
+var check=bytes[pos+2]|(bytes[pos+3]<<8);
+pos+=4;
+if((stored^check)!==0xffff)throw new Error("bad stored block");
+if(pos+stored>bytes.length)throw new Error("truncated");
+need(stored);
+for(var s=0;s<stored;s+=1){out[len]=bytes[pos];len+=1;pos+=1;}
+}else if(type===1){
+if(!fixedLit){
+var litLengths=new Int32Array(288);
+var i;
+for(i=0;i<144;i+=1)litLengths[i]=8;
+for(i=144;i<256;i+=1)litLengths[i]=9;
+for(i=256;i<280;i+=1)litLengths[i]=7;
+for(i=280;i<288;i+=1)litLengths[i]=8;
+var distLengths=new Int32Array(30);
+for(i=0;i<30;i+=1)distLengths[i]=5;
+fixedLit=_cmhColdHuff(litLengths);
+fixedDist=_cmhColdHuff(distLengths);
+}
+block(fixedLit,fixedDist);
+}else if(type===2){
+var nlen=bits(5)+257;
+var ndist=bits(5)+1;
+var ncode=bits(4)+4;
+if(nlen>286||ndist>30)throw new Error("bad dynamic header");
+var clen=new Int32Array(19);
+for(var c=0;c<ncode;c+=1)clen[CLORDER[c]]=bits(3);
+var clTable=_cmhColdHuff(clen);
+var lengths=new Int32Array(nlen+ndist);
+var n=0;
+while(n<lengths.length){
+var sym=decode(clTable);
+if(sym<16){lengths[n]=sym;n+=1;continue;}
+var repeat=0;
+var value=0;
+if(sym===16){
+if(n===0)throw new Error("no previous length");
+value=lengths[n-1];
+repeat=3+bits(2);
+}else if(sym===17){
+repeat=3+bits(3);
+}else{
+repeat=11+bits(7);
+}
+if(n+repeat>lengths.length)throw new Error("length overflow");
+while(repeat>0){lengths[n]=value;n+=1;repeat-=1;}
+}
+block(_cmhColdHuff(lengths.subarray(0,nlen)),
+_cmhColdHuff(lengths.subarray(nlen)));
+}else{
+throw new Error("bad block type");
+}
+}while(!last);
+return{bytes:out.subarray(0,len),end:pos};
+}
+function _cmhColdGunzip(bytes,budget){
+if(typeof budget!== "number")budget=_cmhColdMaxBytes();
+if(bytes.length<18||bytes[0]!==0x1f||bytes[1]!==0x8b||bytes[2]!==8){
+throw new Error("not gzip");
+}
+var tail=bytes.length;
+var declared=(bytes[tail-4]|(bytes[tail-3]<<8)|(bytes[tail-2]<<16)
+|(bytes[tail-1]<<24))>>>0;
+if(declared>budget)throw new Error("expanded content is too large");
+var flags=bytes[3];
+var pos=10;
+if(flags&0xe0)throw new Error("reserved gzip flag");
+if(flags&4){
+if(pos+2>bytes.length)throw new Error("truncated");
+pos+=2+(bytes[pos]|(bytes[pos+1]<<8));
+}
+if(flags&8){while(pos<bytes.length&&bytes[pos]!==0)pos+=1;pos+=1;}
+if(flags&16){while(pos<bytes.length&&bytes[pos]!==0)pos+=1;pos+=1;}
+if(flags&2)pos+=2;
+if(pos>=bytes.length)throw new Error("truncated");
+var result=_cmhColdInflateRaw(bytes,pos,budget);
+if(result.end!==tail-8)throw new Error("trailing data");
+var crc=(bytes[tail-8]|(bytes[tail-7]<<8)|(bytes[tail-6]<<16)
+|(bytes[tail-5]<<24))>>>0;
+if(result.bytes.length!==declared)throw new Error("size mismatch");
+if(_cmhColdCrc32(result.bytes)!==crc)throw new Error("crc mismatch");
+return result.bytes;
+}
+function _cmhColdUtf8(bytes){
+if(typeof TextDecoder=== "function"){
+return new TextDecoder("utf-8",{fatal:true}).decode(bytes);
+}
+var chunks=[];
+var buffer=[];
+for(var i=0;i<bytes.length;){
+var b=bytes[i];
+var cp;
+var extra;
+if(b<0x80){cp=b;extra=0;}
+else if((b&0xe0)===0xc0){cp=b&0x1f;extra=1;}
+else if((b&0xf0)===0xe0){cp=b&0x0f;extra=2;}
+else if((b&0xf8)===0xf0){cp=b&0x07;extra=3;}
+else throw new Error("bad utf-8");
+if(i+extra>=bytes.length)throw new Error("bad utf-8");
+for(var k=1;k<=extra;k+=1){
+var next=bytes[i+k];
+if((next&0xc0)!==0x80)throw new Error("bad utf-8");
+cp=(cp<<6)|(next&0x3f);
+}
+i+=extra+1;
+if(cp>0x10ffff)throw new Error("bad utf-8");
+if(cp>0xffff){
+cp-=0x10000;
+buffer.push(0xd800+(cp>>10),0xdc00+(cp&0x3ff));
+}else{
+buffer.push(cp);
+}
+if(buffer.length>4096){chunks.push(String.fromCharCode.apply(null,buffer));buffer=[];}
+}
+if(buffer.length)chunks.push(String.fromCharCode.apply(null,buffer));
+return chunks.join("");
+}
+function _cmhColdBase64(text){
+var binary=atob(text.replace(/\s+/g,""));
+var bytes=new Uint8Array(binary.length);
+for(var i=0;i<binary.length;i+=1)bytes[i]=binary.charCodeAt(i)&0xff;
+return bytes;
+}
+function _cmhColdParseRows(html){
+var host=document.createElement("template");
+if(!("content"in host))return null;
+host.innerHTML= "<table><tbody>"+html+"</tbody></table>";
+var tbody=host.content.querySelector("tbody");
+return tbody||null;
+}
+function _cmhColdPayloadNode(){
+var root=document.getElementById("commentRoot");
+var candidates=document.querySelectorAll("script#cmhColdTier");
+for(var i=0;i<candidates.length;i+=1){
+var node=candidates[i];
+if((node.getAttribute("type")||"").trim().toLowerCase()!== "application/json")continue;
+if(root&&root.contains(node))continue;
+return node;
+}
+return null;
+}
+function _cmhColdSlots(){
+var found=[];
+var root=document.getElementById("commentRoot");
+if(!root)return found;
+var rows=root.querySelectorAll("tr.cmh-cold-slot[data-cmh-cold-part]");
+for(var i=0;i<rows.length;i+=1){
+var id=rows[i].getAttribute("data-cmh-cold-part");
+if(_cmhColdIdOk(id))found.push({id:id,row:rows[i]});
+}
+return found;
+}
+function _cmhColdSlotMap(){
+var map=Object.create(null);
+var found=_cmhColdSlots();
+for(var i=0;i<found.length;i+=1){
+if(found[i].id in map)return null;
+map[found[i].id]=found[i].row;
+}
+return map;
+}
+function _cmhColdSlotCount(){
+return _cmhColdSlots().length;
+}
+function _cmhColdRemovePayload(node){
+var doomed=[node];
+var walk=function(from,step){
+var pending=[];
+for(var sib=from;sib;sib=sib[step]){
+if(sib.nodeType===3&&!sib.nodeValue.trim()){pending.push(sib);continue;}
+if(sib.nodeType===8&&/commentable-html - COLD TIER/.test(sib.nodeValue||"")){
+pending.push(sib);
+var lead=sib[step];
+if(lead&&lead.nodeType===3&&lead.nodeValue=== "\n")pending.push(lead);
+for(var i=0;i<pending.length;i+=1)doomed.push(pending[i]);
+return;
+}
+return;
+}
+};
+walk(node.previousSibling,"previousSibling");
+walk(node.nextSibling,"nextSibling");
+for(var i=0;i<doomed.length;i+=1){
+if(doomed[i].parentNode)doomed[i].parentNode.removeChild(doomed[i]);
+}
+}
+function _cmhColdFail(state,reason){
+state.ok=false;
+state.reason=reason;
+var found=_cmhColdSlots();
+for(var i=0;i<found.length;i+=1){
+var note=found[i].row.querySelector(".cmh-cold-note");
+if(note){note.removeAttribute("hidden");note.style.display= "inline";}
+}
+return state;
+}
+function _cmhColdHydrate(state){
+var node=_cmhColdPayloadNode();
+if(!node){
+if(_cmhColdSlotCount()>0){
+state.present=true;
+return _cmhColdFail(state,"this file's compressed block is missing");
+}
+return state;
+}
+state.present=true;
+var slots=_cmhColdSlotMap();
+if(!slots)return _cmhColdFail(state,"this file has two sections claiming the same marker");
+var payload;
+try{
+payload=JSON.parse(node.textContent||"");
+}catch(e){
+return _cmhColdFail(state,"the compressed block could not be read");
+}
+if(!payload||payload.v!==1||!payload.parts||!payload.parts.length){
+return _cmhColdFail(state,"the compressed block is not a format this version understands");
+}
+var restored=[];
+var claimed=Object.create(null);
+var budget=_cmhColdMaxBytes();
+for(var i=0;i<payload.parts.length;i+=1){
+var part=payload.parts[i];
+if(!part||part.enc!== "gzip+base64"||!_cmhColdIdOk(part.id)){
+return _cmhColdFail(state,"the compressed block is not a format this version understands");
+}
+if(part.id in claimed){
+return _cmhColdFail(state,"the compressed block names one section twice");
+}
+claimed[part.id]=true;
+var slot=(part.id in slots)?slots[part.id]:null;
+if(!slot||!slot.parentNode){
+return _cmhColdFail(state,"a compressed section has no place to go in this document");
+}
+var rows;
+try{
+var raw=_cmhColdGunzip(_cmhColdBase64(part.data),budget);
+budget-=raw.length;
+rows=_cmhColdParseRows(_cmhColdUtf8(raw));
+}catch(e){
+return _cmhColdFail(state,"the compressed content could not be expanded");
+}
+if(!rows)return _cmhColdFail(state,"the compressed content could not be expanded");
+restored.push({slot:slot,rows:rows});
+}
+if(restored.length!==_cmhColdSlotCount()){
+return _cmhColdFail(state,"this file has compressed sections its block does not name");
+}
+for(var j=0;j<restored.length;j+=1){
+var target=restored[j].slot;
+var source=restored[j].rows;
+var parent=target.parentNode;
+var count=0;
+while(source.firstChild){
+var child=source.firstChild;
+if(child.nodeType===1)count+=1;
+parent.insertBefore(child,target);
+}
+parent.removeChild(target);
+state.parts+=1;
+state.rows+=count;
+}
+try{
+_cmhColdRemovePayload(node);
+}catch(e){
+}
+return state;
+}
+function cmhHydrateColdTier(){
+var state={present:false,ok:true,parts:0,rows:0,reason:""};
+try{
+return _cmhColdHydrate(state);
+}catch(e){
+try{
+return _cmhColdFail(state,"the compressed block could not be processed");
+}catch(e2){
+state.ok=false;
+state.reason= "the compressed block could not be processed";
+return state;
+}
+}
+}
 const root=document.getElementById("commentRoot")||document.body;
 function cmhContentRootState(doc){
 const d=doc||document;
@@ -4219,7 +4616,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.835.0";
+const CMH_VERSION= "1.836.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -14674,6 +15071,9 @@ if(!changed)return raw;
 return raw.slice(0,rootTag.start)+nextTag+raw.slice(rootTag.end);
 }
 async function _getBaseHtml(){
+if(typeof CMH_COLD_TIER=== "object"&&CMH_COLD_TIER&&CMH_COLD_TIER.present){
+return _normalizeDocSourceInHtml(_stripTransientBodyClasses(_snapshotWithTail()));
+}
 try{
 const r=await fetch(location.href,{cache:"no-store"});
 if(r.ok){
@@ -15034,6 +15434,12 @@ const m=name.match(/^(.*?)(\.html?)$/i);
 return m[1].replace(/-comments$/i,"")+".plain"+m[2];
 }
 async function saveAsPlain(){
+if(typeof CMH_COLD_TIER=== "object"&&CMH_COLD_TIER&&CMH_COLD_TIER.present
+&&!CMH_COLD_TIER.ok){
+_reportExportFailure(new Error(CMH_COLD_TIER.reason||"the compressed rows are not expanded"),
+_EXPORT_FAILURE_PREPARE);
+return;
+}
 let baseHtml;
 try{baseHtml=await _getBaseHtml();}
 catch(e){_reportExportFailure(e,_EXPORT_FAILURE_LOAD);return;}
@@ -19801,6 +20207,9 @@ if(s.nodeType===1)CMH_INJECTED_CHROME.add(s);
 if(cur.parentNode===document.body)break;
 }
 renderComments();
+if(CMH_COLD_TIER&&CMH_COLD_TIER.present&&!CMH_COLD_TIER.ok){
+showStartupDiagnostic(`Some compressed table rows could not be expanded (${CMH_COLD_TIER.reason}). The rest of the document is complete.`,{alert:true});
+}
 if(prunedCount>0){
 showStartupDiagnostic(`${prunedCount} previously-handled comment${prunedCount===1?"":"s"} cleared by the agent.`);
 }

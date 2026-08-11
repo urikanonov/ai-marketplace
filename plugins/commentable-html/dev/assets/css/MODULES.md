@@ -18,6 +18,7 @@ order the directory listing gives.
 | `30-mermaid.css` | CMH-MMD, CMH-DENSITY | Mermaid commenting layer + NonShareable controls. |
 | `40-diff.css` | CMH-DIFF | Diff / code-review layer. |
 | `50-content.css` | CMH-CONTENT, CMH-STATS, CMH-TOC | Default content styling (sections, tables, badges, document-overview strip, generated table-of-contents numbers). |
+| `51-cold-tier.css` | CMH-COLD | The placeholder row a compressed table body leaves behind, and its hidden-until-it-fails explanation. |
 | `60-images.css` | CMH-IMG | Image comment layer. |
 | `61-links.css` | CMH-LINK | Author-facing link comment layer (hover cue, commented-link ring, floating add button). |
 | `70-kql.css` | CMH-KQL, CMH-CODE | Kusto query figure + KQL token styling; standalone code-block frame and optional caption. |

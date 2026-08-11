@@ -220,3 +220,11 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-MENU-ICON-02 | help | opt-out: same mark in the overflow menu, and that menu belongs to the toolbar deck mode hides wholesale, so it cannot appear on a slide |
 | CMH-BUILD-26 | opt-out: build tooling - the strip runs at build time and the runtime behaves identically; the readable source stays in the repo, and the only reader-visible consequence is a smaller file, which is not a capability to document | opt-out: a build-time byte transform with nothing for a viewer to see on a slide |
 | CMH-BUILD-27 | opt-out: a maintainer-facing CI gate on the size of the generated components; a reader gains no capability and there is nothing on screen | opt-out: a build gate, not a demonstrable behavior |
+| CMH-COLD-01 | opt-out: an on-disk packaging optimisation; what a reader sees is unchanged by design | opt-out: the guarantee is that nothing changes on screen, so there is nothing to show on a slide |
+| CMH-COLD-02 | opt-out: authoring-tool round-trip invariant | opt-out: build/authoring tooling |
+| CMH-COLD-03 | opt-out: generated document layout, addressed to machine readers rather than reviewers | opt-out: file-layout detail with nothing to demonstrate |
+| CMH-COLD-04 | opt-out: internal load-order invariant; the visible result is a document identical to the uncompressed one | opt-out: an invariant whose whole point is that a viewer cannot tell |
+| CMH-COLD-05 | opt-out: a backwards-compatibility implementation choice inside the loader | opt-out: not user-facing |
+| CMH-COLD-06 | opt-out: a degraded-path notice; the document explains itself in its own text and the toast is a diagnostic, not a capability a reader has to learn | opt-out: a degraded-path notice a viewer should never meet |
+| CMH-COLD-07 | opt-out: a no-JS fallback the document explains in its own text | opt-out: the explanation ships in the document itself |
+| CMH-COLD-08 | opt-out: an authoring-pipeline flag, not a reviewer-facing behavior | opt-out: build/authoring tooling |

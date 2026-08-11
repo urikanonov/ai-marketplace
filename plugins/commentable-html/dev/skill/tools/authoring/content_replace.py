@@ -40,6 +40,7 @@ import _browser_attrs  # noqa: E402
 import content_extract  # noqa: E402
 import doc_stamp  # noqa: E402
 import finalize  # noqa: E402
+import cold_tier  # noqa: E402
 import generate_toc  # noqa: E402
 import kql_highlight  # noqa: E402
 import mark_handled  # noqa: E402
@@ -208,7 +209,7 @@ def splice(html, fragment):
     return html[:start] + "\n\n" + fragment.strip("\n") + "\n\n" + html[end:]
 
 
-def finalize_document(path, strict=True):
+def finalize_document(path, strict=True, cold_tier_enabled=False):
     """Re-bake, strict-validate and re-stamp a document in place.
 
     Raises ReplaceError unless the result is clean, so a caller can never end up with a
@@ -216,7 +217,8 @@ def finalize_document(path, strict=True):
     the stamp is written here only on a genuinely clean pass - the same rule the CLI uses.
     """
     try:
-        result = finalize.finalize(path, run_toc=_has_toc(_read(path)))
+        result = finalize.finalize(path, run_toc=_has_toc(_read(path)),
+                                   cold_tier_enabled=cold_tier_enabled)
     except Exception as exc:
         raise ReplaceError("finalize failed: %s" % exc)
     errors, warnings = result["errors"], result["warnings"]
@@ -271,7 +273,11 @@ def replace(path, fragment, handled_ids=None, strict=True):
     rather than a fresh validation timestamp and a needless diff.
     """
     _check_fragment(fragment)
-    original = _read(path)
+    # Splice into the EXPANDED document. Splicing into the compressed one would drop the
+    # placeholder along with the table the agent rewrote, orphaning the payload (CMH-COLD-08).
+    stored = _read(path)
+    was_compressed = cold_tier.state(stored) == "compressed"
+    original = cold_tier.expanded_view(stored)
     start, end = content_extract.content_span(original)
     fragment = restore_unchanged_blocks(fragment, original[start:end])
     fragment = refresh_kql_links(fragment)
@@ -282,7 +288,9 @@ def replace(path, fragment, handled_ids=None, strict=True):
     os.close(work_fd)
     try:
         _write(work, spliced)
-        finalize_document(work, strict=strict)
+        # Keep the document in the tier it arrived in: an edit loop that silently un-compressed
+        # every document would make the flag useless in the only workflow that edits one.
+        finalize_document(work, strict=strict, cold_tier_enabled=was_compressed)
         if handled_ids:
             mark_handled.mark_handled(work, handled_ids)
             # Marking handled ids edits state AFTER the stamp, so re-stamp the document.
@@ -296,8 +304,8 @@ def replace(path, fragment, handled_ids=None, strict=True):
         # document, so a KeyboardInterrupt mid-transaction must not leave it behind either.
         _quiet_remove(work)
 
-    if _without_validated_timestamp(final) == _without_validated_timestamp(original):
-        return original
+    if _without_validated_timestamp(final) == _without_validated_timestamp(stored):
+        return stored
     _atomic_write(path, final)
     return final
 
@@ -367,7 +375,8 @@ def main(argv):
             handled = mark_handled._ids_from_bundle(_read(args.handled_from_bundle))
         replace(args.file, _read_fragment(args.content), handled_ids=handled,
                 strict=not args.no_strict)
-    except (ReplaceError, content_extract.ExtractError, ValueError, OSError) as exc:
+    except (ReplaceError, content_extract.ExtractError, ValueError, OSError,
+            cold_tier.ColdTierError) as exc:
         sys.stderr.write("content_replace: %s (the document was NOT modified)\n" % exc)
         return 1
 

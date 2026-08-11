@@ -20,8 +20,31 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # tools/ root
+import _toolpath  # noqa: E402
+# The bucket bootstrap, so a caller that put only `tools/` on the path (a test harness, another
+# bucket) can still resolve the sibling `cold_tier` import below by bare name.
+_toolpath.ensure()
 import _browser_attrs  # noqa: E402
 import _browser_boundaries  # noqa: E402
+import cold_tier  # noqa: E402
+
+
+def _hashable(html):
+    """The document as the RUNTIME will have it, which is what a hash has to reproduce.
+
+    A compressed cold tier stands in for its rows with a `cm-skip` placeholder, and `cm-skip` is
+    excluded from the hash - so hashing the stored bytes silently omits every cold row while the
+    browser, which hashes AFTER hydration, includes them. Every section would open as "changed" and
+    the validated-hash stamp would never match. Expanding HERE, at the single hashing entry point,
+    makes every consumer (mark_reviewed, the validated stamp, content_replace's verification)
+    correct at once. A plain document is returned unchanged; a tier that cannot be expanded is left
+    alone rather than raising, because a hash is never the right place to refuse a document - the
+    callers that must fail closed already do so through `cold_tier.expanded_view`.
+    """
+    try:
+        return cold_tier.expand(html or "")[0]
+    except cold_tier.ColdTierError:
+        return html or ""
 
 # Whitespace class collapsed to a single space, matching the runtime REVIEW_WS_RE
 # (/[ \t\n\r\f\v\u00a0]+/). \v is \x0b and \f is \x0c.
@@ -211,7 +234,7 @@ def extract_sections(html):
     """Return a list of {id, level, headingText, hash} for every id'd heading in the content root,
     in document order. `hash` is the section content hash (heading through the next same-or-higher
     heading); `headingText` is the heading's own whitespace-collapsed text."""
-    text = html or ""
+    text = _hashable(html)
     p = _SectionParser(html=text)
     p.parse_document(text)
     full = "".join(p.parts)
@@ -250,7 +273,7 @@ def document_content_hash(html):
     Returns None when the document has no content root: without one the runtime cannot reproduce a
     matching hash, so the stamp is left un-content-bound (timestamp only) rather than risk a false
     banner on a valid document."""
-    text = html or ""
+    text = _hashable(html)
     p = _SectionParser(single_root=True, html=text)
     p.parse_document(text)
     if not p.found_root:

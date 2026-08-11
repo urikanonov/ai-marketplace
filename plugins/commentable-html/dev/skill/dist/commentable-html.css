@@ -1355,6 +1355,13 @@ outline: 2px solid var(--cp-accent); outline-offset: 2px;
 }
 }
 
+#commentRoot tr.cmh-cold-slot > td {
+color: var(--cp-text-muted);
+font-style: italic;
+text-align: center;
+}
+#commentRoot .cmh-cold-note { display: none; }
+
 #commentRoot img.cm-img-commentable, #commentRoot canvas.cm-img-commentable, #commentRoot svg.cm-img-commentable { cursor: pointer; }
 #commentRoot img.cm-img-commentable:hover, #commentRoot canvas.cm-img-commentable:hover, #commentRoot svg.cm-img-commentable:hover { outline: 2px dashed var(--cp-accent); outline-offset: 2px; }
 #commentRoot img.cm-img-commentable:focus-visible, #commentRoot canvas.cm-img-commentable:focus-visible, #commentRoot svg.cm-img-commentable:focus-visible { outline: 3px solid var(--cp-accent); outline-offset: 2px; }
