@@ -7,6 +7,7 @@ import {
   CORPUS, DEFAULT_TTI_BUDGET_MS, buildBody, stageDocument, compressDocument, checkOutPath,
   instrumentPage, measureLoad, readTimings, median, quantile, pairedDeltas, summarize,
   evaluateBounds, formatReport, parseArgs, signTestP, pairedBlankness, isBlank, onLoadsFirst,
+  COLD_TIER_PY,
 } from "../tools/cold_tier_perf.mjs";
 
 // CMH-COLD-09: the cold tier's paint / time-to-interactive measurement harness.
@@ -18,8 +19,22 @@ import {
 // recorded RESULT lives in the spec row and in tools/cold-tier-perf-baseline.json - a timing
 // threshold asserted on a shared CI runner would be a flake, not a gate.
 
-/** A deliberately small corpus shape: enough rows for the tier to engage, small enough to be fast. */
-const TINY = { name: "tiny", tables: 1, rows: 80, cols: 3, cellWords: 2, paragraphs: 2 };
+/** A deliberately small corpus shape: enough rows for the tier to engage, small enough to be fast.
+ *
+ * The row count is DERIVED from the shipped `min_rows` rather than written here, because retuning
+ * that default (CMH-COLD-10 moved it from 40 to 4000) otherwise turns this into a document the tier
+ * declines - and the test below exists precisely to prove the measured document really was
+ * compressed.
+ */
+const SHIPPED_MIN_ROWS = (() => {
+  const src = fs.readFileSync(COLD_TIER_PY, "utf8");
+  const m = /^DEFAULT_MIN_ROWS = (\d+)$/m.exec(src);
+  if (!m) throw new Error("cannot read DEFAULT_MIN_ROWS from cold_tier.py");
+  return Number(m[1]);
+})();
+const TINY = {
+  name: "tiny", tables: 1, rows: SHIPPED_MIN_ROWS + 80, cols: 3, cellWords: 2, paragraphs: 2,
+};
 
 const BASELINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)),
   "..", "tools", "cold-tier-perf-baseline.json");

@@ -60,10 +60,17 @@ MAX_EXPANDED_BYTES = 64 * 1024 * 1024
 # ever has to escape an id into a selector - both look a slot up by attribute VALUE instead.
 PART_ID_RE = re.compile(r"^cmh-cold-[0-9]+$")
 
-# Defaults chosen so an ordinary review table is never touched: a table has to be genuinely large
-# before any of it goes cold, and what stays plain is still more rows than fit on a first screen.
-DEFAULT_MIN_ROWS = 40
-DEFAULT_KEEP_ROWS = 20
+# Defaults chosen by MEASUREMENT, not by feel (CMH-COLD-10). #1271 measured the shipped 20/40 pair
+# as costing cold first paint. Confirmed at 30 paired iterations, that pair makes the largest
+# document paint nothing until the parser finishes on 19 of 30 cold loads against 0 of 30 plain, and
+# its median cold first paint 332 -> 4952 ms. A six-point screen followed by a 30-iteration
+# confirmation on a fresh sample (tools/cold-tier-threshold-sweep.json) found 2000/4000 the SMALLEST
+# pair that clears the blank-until-parsed gate at that power - 1 of 30, with paint time showing no
+# detectable change. It is a bounded residual rather than parity (one-sided 95% bound 14.9%), and
+# the artifact records that along with the measurement's own limits. The cost is bytes and reach:
+# the corpus win falls from 3,047,017 to 2,036,590, and only a body over min_rows engages at all.
+DEFAULT_MIN_ROWS = 4000
+DEFAULT_KEEP_ROWS = 2000
 
 # A tail row carrying one of these - at ANY depth below it - is left plain. Each is resolved
 # structurally by some other part of the layer or by an authoring tool: an anchor target, a

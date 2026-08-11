@@ -20,8 +20,12 @@ const SLOT_CLASS = "cmh-cold-slot";
 const PART_ATTR = "data-cmh-cold-part";
 const FENCE_OPEN = "<!-- BEGIN: commentable-html - COLD TIER (generated machinery; safe to skip) -->";
 const FENCE_CLOSE = "<!-- END: commentable-html - COLD TIER -->";
-const KEEP = 20;
-const TOTAL = 60;
+// The fixture is a body the SHIPPED defaults would really compress: `TOTAL` is one row past
+// `DEFAULT_MIN_ROWS` and `KEEP` is `DEFAULT_KEEP_ROWS`, both pinned to the tool by
+// `SpecFixtureTests`. A fixture below `min_rows` would be a shape `finalize.py --cold-tier` never
+// emits, which is exactly the drift those pins exist to catch.
+const KEEP = 2000;
+const TOTAL = 4001;
 
 function rows(from, to) {
   const out = [];
@@ -179,7 +183,19 @@ test.describe("Cold tier (CMH-COLD)", () => {
     const staged = stageCold();
     await page.goto(fileUrl(staged.html));
     await ready(page);
-    await addTextComment(page, "#commentRoot tbody tr:nth-child(55) td:nth-child(3)",
+    // The anchored row must be one the tier really took: a row at or below KEEP stayed plain in
+    // the file, so commenting on it would pass even if hydration of the compressed rows broke.
+    const coldRow = KEEP + 5;
+    expect(coldRow).toBeGreaterThan(KEEP);
+    expect(coldRow).toBeLessThanOrEqual(TOTAL);
+    // The row must be one the tier really took: absent from the raw file, present in the DOM only
+    // because hydration put it back. Anchoring on a row that stayed plain would pass even if
+    // restoring the compressed rows broke entirely.
+    const raw = fs.readFileSync(staged.html, "utf8");
+    expect(raw).not.toContain(`<td>r${coldRow - 1}</td>`);
+    await expect(page.locator(`#commentRoot tbody tr:nth-child(${coldRow}) td:nth-child(1)`))
+      .toHaveText(`r${coldRow - 1}`);
+    await addTextComment(page, `#commentRoot tbody tr:nth-child(${coldRow}) td:nth-child(3)`,
       "a note on a restored row");
     await expect(page.locator("mark.cm-hl")).toHaveCount(1);
     const anchored = await page.locator("mark.cm-hl").first().textContent();

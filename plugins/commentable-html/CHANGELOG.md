@@ -4,6 +4,32 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.840.0] - 2026-08-11
+
+### Changed
+
+- The cold tier's row thresholds are retuned from measurement: `keep_rows` moves from 20 to 2000 and
+  `min_rows` from 40 to 4000 (`CMH-COLD-10`). At the old defaults the tier cost COLD FIRST PAINT.
+  Re-measured at 30 paired iterations, the largest document painted nothing until the parser had
+  finished on 19 of 30 cold loads against 0 of 30 with the tier off (median cold first paint 332 ms
+  to 4952 ms), and the mid-size document on 22 of 30. The new pair was chosen in two stages - a
+  six-point screen at 10 iterations, then a confirmation on a fresh sample at 30 - because the
+  screen alone gets it wrong: 1000/2000 cleared the gate at 10 iterations (p=0.125) and failed at 30
+  (10 of 30 blank, p=0.00098). At 2000/4000 the largest document goes blank on 1 of 30 cold loads
+  against 0 of 30, paint time shows no detectable change, and time to interactive stays far better
+  than the plain document (-1517 ms cold, -1849 ms warm). Both stages are committed at
+  `dev/tools/cold-tier-threshold-sweep.json`, with the counts each p-value is computed from. This is
+  a judgement on a measured improvement with the residual BOUNDED, not a proof of parity: 1 of 30
+  puts a one-sided 95 percent bound of 14.9 percent on the remaining blank rate, and the artifact
+  records that, the false-positive floor of the measurement itself, the uncontrolled between-point
+  drift, and the fact that the gate at 4000 rows is extrapolated from an 11500-row body. The trade
+  in bytes: the corpus win falls from 3,047,017 to 2,036,590, of which 586,392 is the two mid-size
+  documents dropping out of the tier entirely. Reach narrows accordingly - the eligible set goes
+  from a single table body over 40 rows to one over 4000, and the roughly 1700-row generated shape
+  the #1250 survey recorded no longer engages - which is the measured price of the paint bound.
+  Nothing a reader sees changes: the tier remains opt-in and default OFF, and a recorded scan shows
+  it engages on no document this repository ships at either the old or the new defaults.
+
 ## [1.838.0] - 2026-08-11
 
 ### Changed
