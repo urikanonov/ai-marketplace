@@ -181,6 +181,19 @@ async function waitForStableLayout(page, frames = 2) {
     const snapshot = () => {
       const root = document.documentElement;
       const body = document.body;
+      // The floating chrome's POSITION, not merely its presence. Counting `.cm-composer` says the
+      // composer exists; it says nothing about where it is, and the composer MOVES after it opens:
+      // filling the textarea autogrows it, which calls cmhClampIntoViewport and rewrites `top`.
+      // Without this the loop could report "stable" while the box was still settling, so the shot
+      // caught it at a position that varied run to run - one CSS px of difference is enough to move
+      // the drag-grip glyph's line box onto a different device pixel and red the exact drift gate
+      // (issue #1277), which is what made 15-format-toolbar the only non-deterministic shot.
+      const floating = Array.from(document.querySelectorAll(".cm-composer, .cm-help-overlay"))
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return [r.top, r.left, r.width, r.height].join(",");
+        })
+        .join(";");
       return [
         root.scrollWidth,
         root.scrollHeight,
@@ -191,6 +204,7 @@ async function waitForStableLayout(page, frames = 2) {
         document.querySelectorAll("pre.mermaid[data-processed='true'] svg, div.mermaid[data-processed='true'] svg").length,
         document.querySelectorAll("figure.chart canvas, canvas.cmh-chart").length,
         document.querySelectorAll(".cm-composer, .cm-help-overlay, #toast.show, mark.cm-hl, .cmh-dl-hl").length,
+        floating,
       ].join("|");
     };
     let previous = snapshot();
