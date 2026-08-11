@@ -27,7 +27,8 @@ block - the layer stylesheet, the comment-UI markup, the saved comment state, th
 the vendored rich-content payload and the runtime - sits after the content inside one
 `BEGIN/END: commentable-html - MACHINERY` fence, each block led by a one-line "skip this" comment.
 A tool that reads the first 50 KB of the raw file therefore gets the title and the opening of the
-content rather than a megabyte of base64.
+content rather than a megabyte of base64. An `Export Offline` file is no exception: the libraries it
+inlines, their MIT notices and any chart script it reorders go to the tail of the same fence.
 
 Two consequences for authoring:
 

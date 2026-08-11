@@ -1090,7 +1090,11 @@ class MermaidRerenderMirrorTests(unittest.TestCase):
     @staticmethod
     def _offline_bootstrap(text):
         """Join the emitted mermaid re-init back into the script it becomes at export time."""
-        start = text.index('_offlineAppendInlineScript(doc, head,\n      "(function(){')
+        # Anchor on the bootstrap's own FIRST LINE, not on the emitting call: since 1.837.0 the
+        # exporter emits a second `(function(){` block through the same helper (the Chart.js
+        # defaults shim), so the call spelling alone no longer identifies this one.
+        start = text.index('"  if (!window.mermaid || !window.mermaid.initialize')
+        start = text.rindex('"(function(){', 0, start)
         end = text.index('{ "data-cmh-offline-lib-init": "mermaid" }', start)
         parts = re.findall(r'^\s*\+?\s*"((?:[^"\\]|\\.)*)"\s*$', text[start:end], re.M)
         if not parts:

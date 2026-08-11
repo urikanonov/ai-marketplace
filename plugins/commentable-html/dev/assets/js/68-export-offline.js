@@ -14,6 +14,25 @@ const _OFFLINE_CHART_GLOBAL_RE = /\bChart\b/;
 // changes the text offsets the comment anchors are measured against, so the move must stay rare and
 // deliberate rather than firing on any mention of the global.
 const _OFFLINE_CHART_CTOR_RE = /\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/;
+// Comments and quoted strings, in one alternation so a quote inside a comment cannot start a
+// string. Only BALANCED constructs match, so an unterminated quote (an apostrophe inside a regex
+// literal, say) strips nothing rather than swallowing the rest of the script. Template literals and
+// regex literals are deliberately left ALONE: a `${Chart.x}` interpolation is real code, and the
+// division-versus-regex ambiguity is not worth resolving here. Every direction this errs in leaves
+// MORE text to match, so it can only ever hoist a script that did not need it - never leave one
+// behind.
+const _OFFLINE_JS_LITERALS_RE = /\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g;
+// Does this script actually REFERENCE the `Chart` global, as opposed to merely mentioning the word?
+// The same bare-identifier signal the rest of the feature uses, applied to the code with comments
+// and string literals blanked out - which is what separates `Chart.defaults.font.size = 14` and the
+// aliased `const { Chart: C } = window` from a comment that says "Chart of accounts". It decides
+// whether a script INSIDE the authored content is relocated below the inlined library: such a
+// script must move when it genuinely calls the library, but moving one shifts the text offsets
+// every saved comment anchor is measured against, so a mention must not be enough. Outside the
+// content root there are no anchors to shift, so the raw signal still governs there.
+function _offlineScriptUsesChartGlobal(text) {
+  return _OFFLINE_CHART_GLOBAL_RE.test(String(text || "").replace(_OFFLINE_JS_LITERALS_RE, " "));
+}
 // The review layer's own script ships inside every exported document and its source text mentions
 // "Chart.js" (the third-party notice it emits), so every content scan must skip it or it matches
 // every document. The strip below keeps its historical broad signature (skipping too much there only
@@ -2079,22 +2098,34 @@ function _stripOfflineNetworkLoads(doc, neutralized) {
 function _stripOfflineRichRenderers(doc, neutralized) {
   // On a re-export of an already-offline document, remove any previously inlined library notice
   // comments so they are re-emitted exactly once (the inlined lib scripts below are stripped and
-  // re-added the same way); otherwise each re-export would append another duplicate notice.
-  const head = doc.head || doc.querySelector("head");
-  if (head) {
-    Array.prototype.slice.call(head.childNodes).forEach(function (n) {
-      if (n.nodeType === 8 && _OFFLINE_LIB_NOTICE_ANY_RE.test(n.nodeValue || "")) {
-        if (n.parentNode) n.parentNode.removeChild(n);
+  // re-added the same way); otherwise each re-export would append another duplicate notice. The
+  // sweep is scoped by the SAME boundary the capture gate uses (`_offlineOutsideContentRoot`), so a
+  // notice this exporter wrote - in `<head>` on a pre-1.834 file, in the machinery fence since - is
+  // removed while one an author quoted inside their own content is left exactly where it is.
+  const outsideContent = _offlineOutsideContentRoot(doc);
+  const stripNotices = function (node) {
+    Array.prototype.slice.call(node.childNodes).forEach(function (n) {
+      if (n.nodeType === 8) {
+        if (_OFFLINE_LIB_NOTICE_ANY_RE.test(n.nodeValue || "") && outsideContent(n) && n.parentNode) {
+          n.parentNode.removeChild(n);
+        }
+        return;
       }
+      if (n.nodeType === 1) stripNotices(n);
     });
-    // Libraries this exporter inlined on a previous pass carry their own marker, so remove them by
-    // that marker rather than by recognizing their bundled text: a text heuristic that ever failed
-    // would leave a stale 1 MB copy behind and append another on every re-export. The marker VALUE
-    // must be one this exporter emits, so an authored element carrying the attribute for its own
-    // bookkeeping is never silently deleted from the document.
-  }
+  };
+  if (doc.documentElement) stripNotices(doc.documentElement);
+  // Libraries this exporter inlined on a previous pass carry their own marker, so remove them by
+  // that marker rather than by recognizing their bundled text: a text heuristic that ever failed
+  // would leave a stale 1 MB copy behind and append another on every re-export. The marker VALUE
+  // must be one this exporter emits, so an authored element carrying the attribute for its own
+  // bookkeeping is never silently deleted from the document - and the SAME boundary predicate
+  // applies, so a marked script inside the authored content is preserved AS content exactly as an
+  // authored payload block is (`_offlineRemoveVendoredBundleScript`). Without that scope this pass
+  // deleted an author's marked example and shifted every comment anchor measured after it, while
+  // the capture gate beside it was already refusing to read the same element.
   doc.querySelectorAll("script[data-cmh-offline-lib], script[data-cmh-offline-lib-init]").forEach(function (s) {
-    if (_offlineIsInlinedLibScript(s)) s.remove();
+    if (_offlineIsInlinedLibScript(s) && outsideContent(s)) s.remove();
   });
   doc.querySelectorAll("script[src]").forEach(function (s) {
     // A renderer-shaped FILENAME is not on its own a reason to delete an element: the same
@@ -2207,6 +2238,24 @@ function _offlineContentRoot(d) {
   // rather than silently resolved away. The differing NULL POLICY stays here at the call site -
   // this resolver treats "no single content root" as ambiguous and refuses.
   return cmhContentRoot(d);
+}
+// "This node is NOT authored content" - the one position boundary the offline export uses for
+// everything it recognizes as its OWN machinery: the library capture gate (CMH-OFFLINE-07 gate 1)
+// and the stale-notice sweep. Built once per document so those two can never disagree about where
+// authored content ends, which is the whole point of expressing it as a single predicate.
+//
+// `<head>` is outside the content region by construction (the content root lives in the body), so a
+// file an earlier version wrote - which appended everything to the head - still qualifies. A BODY
+// node needs the boundary actually pinned down: with no content root, or a contested one, this
+// exporter cannot tell the machinery region from authored content, so it treats nothing in the body
+// as its own rather than acting on a region it cannot verify.
+function _offlineOutsideContentRoot(doc) {
+  const head = doc.head || doc.querySelector("head");
+  const state = cmhContentRootState(doc);
+  return function (node) {
+    if (head && head.contains(node)) return true;
+    return !state.contested && !!state.root && !state.root.contains(node);
+  };
 }
 // Decide, ONCE and against the PRISTINE document, both which block is the payload and which blocks
 // are infrastructure to strip. Deciding either later would judge containment against a document this
@@ -2382,13 +2431,131 @@ function _offlineDocNeedsChartLib(doc, referencesChartLib) {
   if (!canvases.every(drawnByRuntime)) return true;
   return referencesChartLib === undefined ? _offlineDocReferencesChartLib(doc) : !!referencesChartLib;
 }
-function _offlineAppendInlineScript(doc, head, code, attrs) {
+// The tail of the MACHINERY fence (CMH-SIZE-05), which is where everything this exporter generates
+// now goes. Appending to `<head>` would regrow exactly the megabyte-before-the-title head that
+// layout exists to remove: an offline export inlines ~1 MB of minified library, so a tool reading
+// the first 50 KB of the file would meet the bundle instead of the title and the opening prose.
+//
+// The markers are matched LINE-ANCHORED against a COMMENT node's text, never as a substring of the
+// document: authored content PRECEDES the machinery, so a document that quotes a marker (in prose,
+// or in a code sample explaining this very scheme) must not be able to aim an insertion at itself.
+// The pair is required to be unambiguous - exactly one BEGIN and one END, well ordered, both
+// outside the single resolvable content root - and anything less falls back to the end of the body,
+// which is still after the authored content and still after every author script. Falling back is
+// right here and refusing would not be: a document with no fence is the ordinary pre-1.833 or
+// retrofitted-host case, and an export is the wrong place to start rejecting those.
+//
+// The marker text is ASSEMBLED from pieces and never written out whole, for the same reason the
+// payload id is matched as an attribute value rather than an id-selector literal: this source is
+// inlined VERBATIM into every generated document, so a contiguous literal would make the runtime
+// itself a second copy of the fence markers - and every lookup in the toolchain that counts them
+// (the authoring tools, the build mirror, the payload placer, the layout tests) would then read a
+// perfectly ordinary document as carrying two fences.
+const _OFFLINE_FENCE_NAME = "MACHI" + "NERY";
+function _offlineFenceMarkerRe(kind) {
+  return new RegExp("^[ \\t]*(?:=+[ \\t]*)?" + kind + ": commentable-html - " + _OFFLINE_FENCE_NAME
+    + "[ \\t]*(?:=+[ \\t]*)?$", "m");
+}
+const _OFFLINE_FENCE_BEGIN_RE = _offlineFenceMarkerRe("BEGIN");
+const _OFFLINE_FENCE_END_RE = _offlineFenceMarkerRe("END");
+function _offlineFenceMarkerKind(node) {
+  if (!node || node.nodeType !== 8) return "";
+  const text = String(node.nodeValue || "");
+  const end = _OFFLINE_FENCE_END_RE.test(text);
+  const begin = _OFFLINE_FENCE_BEGIN_RE.test(text);
+  // A comment that matches BOTH is not a marker, it is prose ABOUT the fence - the shipped opening
+  // marker's own comment describes the closing one - so classifying it either way would either drop
+  // the real fence or aim an insertion at a description of it. Refusing makes the pair ambiguous,
+  // which falls back to the end of the body.
+  if (end && begin) return "";
+  if (end) return "end";
+  if (begin) return "begin";
+  return "";
+}
+// `<noscript>` and FOREIGN CONTENT are skipped ENTIRELY, subtree and all. This document is parsed by
+// `DOMParser` with scripting DISABLED, where a `<noscript>` body is a real element subtree; the
+// reader who opens the exported file has scripting ENABLED, where the same bytes are inert TEXT.
+// And a comment inside an `<svg>` or `<math>` subtree is a real comment node here, but a `<script>`
+// inserted beside it re-serializes into that foreign element and reparses as an SVG/MathML script,
+// which is not the HTML script this exporter thinks it emitted. Anchoring on either would insert a
+// megabyte of library, its notices and the init shims into a region that never runs - a file that
+// passes every check and renders nothing. (`cmhContentRootState` excludes a noscript-parked content
+// root for the same reason.) `<template>` needs no special case: `childNodes` does not descend into
+// a template's content fragment.
+function _offlineCollectFenceMarkers(node, contentRoot, found) {
+  Array.prototype.forEach.call(node.childNodes, function (child) {
+    if (child.nodeType === 1) {
+      if (child.namespaceURI && child.namespaceURI !== _OFFLINE_HTML_NS) return;
+      if (_offlineAsciiLower(child.localName || "") === "noscript") return;
+    }
+    const kind = _offlineFenceMarkerKind(child);
+    if (kind && !contentRoot.contains(child)) found[kind].push(child);
+    if (child.nodeType === 1) _offlineCollectFenceMarkers(child, contentRoot, found);
+  });
+}
+function _offlineMachineryFenceEnd(doc) {
+  const body = doc.body || doc.querySelector("body");
+  if (!body) return null;
+  // Without a single content root there is no boundary to be outside OF, so a marker cannot be told
+  // apart from one an author wrote inside their own prose. Fall back rather than guess.
+  const contentRoot = _offlineContentRoot(doc);
+  if (!contentRoot) return null;
+  const found = { begin: [], end: [] };
+  _offlineCollectFenceMarkers(body, contentRoot, found);
+  if (found.begin.length !== 1 || found.end.length !== 1) return null;
+  // DOCUMENT_POSITION_FOLLOWING: the END marker must come after the BEGIN one, so a document
+  // carrying the pair in the wrong order is treated as having no usable fence.
+  if (!(found.begin[0].compareDocumentPosition(found.end[0]) & 4)) return null;
+  // ...and the fence must OPEN after the authored content closes, the same `root_end` condition
+  // `vendored_libs.py` applies. Outside-the-root is not enough on its own: a fence that sits BEFORE
+  // the content is still outside it, and anchoring there would park the megabyte this move exists
+  // to relocate ahead of the prose again.
+  if (!(contentRoot.compareDocumentPosition(found.begin[0]) & 4)) return null;
+  return found.end[0].parentNode ? found.end[0] : null;
+}
+// One placer, resolved ONCE and shared by every insertion, so the libraries, their notices and the
+// hoisted author scripts all land in the same region in CALL order - which is what makes "the
+// library is defined before the author code that calls it" a property of the call order below
+// rather than of three separate anchor lookups that could disagree.
+//
+// The fallback is chosen so the WRITE boundary can never disagree with the READ boundary a later
+// re-export applies (`_offlineOutsideContentRoot`). The end of the body is only usable when the
+// content root is a PROPER descendant of it: a document whose root IS the body (or an ancestor of
+// it) would have every appended node read back as authored content, so the strip and the capture
+// gate would both skip it and each re-export would stack another megabyte on the last. Otherwise -
+// and whenever no single root resolves, where the reader refuses every body node - the pre-1.834
+// `<head>` placement is kept, which the reader honours unconditionally. Such a document has no
+// usable fence either, so the content-first property was never on the table for it.
+function _offlineMachineryPlacer(doc) {
+  const fenceEnd = _offlineMachineryFenceEnd(doc);
+  const body = doc.body || doc.querySelector("body");
+  const head = doc.head || doc.querySelector("head");
+  const root = _offlineContentRoot(doc);
+  const bodyIsOutsideContent = !!(root && body && !root.contains(body));
+  const parent = fenceEnd ? fenceEnd.parentNode : (bodyIsOutsideContent ? body : (head || body));
+  const place = function (node) {
+    if (!parent) return;
+    if (fenceEnd && fenceEnd.parentNode === parent) parent.insertBefore(node, fenceEnd);
+    else parent.appendChild(node);
+  };
+  // An AUTHOR script is relocated for one reason only - to run after the inlined library - so it
+  // must never follow the machinery into `<head>`. On that branch the library is in the head
+  // already, so every body script runs after it and there is nothing to order; moving an author's
+  // `new Chart(...)` up there would instead run it before its own `<canvas>` exists, which is a
+  // chart the base revision drew. Hoisting therefore targets the end of the body whenever the
+  // machinery did not go into the body itself.
+  const placeAuthor = (parent && body && parent !== head) || !body
+    ? place
+    : function (node) { body.appendChild(node); };
+  return { place: place, placeAuthor: placeAuthor };
+}
+function _offlineAppendInlineScript(doc, place, code, attrs) {
   const s = doc.createElement("script");
   Object.keys(attrs || {}).forEach(function (name) { s.setAttribute(name, attrs[name]); });
   s.textContent = _escClose(String(code || ""));
-  head.appendChild(s);
+  place(s);
 }
-function _offlineAppendLibNotice(doc, head, name, license) {
+function _offlineAppendLibNotice(doc, place, name, license) {
   // MIT requires the copyright + permission notice to accompany a redistributed copy of the library.
   // The Offline export inlines the library bytes, so emit its notice as an HTML comment beside it.
   // Neutralize any "--" so the comment cannot terminate early or serialize as invalid HTML (the
@@ -2398,15 +2565,19 @@ function _offlineAppendLibNotice(doc, head, name, license) {
   // THROW rather than a quiet return so a future caller cannot reintroduce the silent omission this
   // whole path exists to prevent.
   if (!text.trim()) throw new Error("Offline export is missing the MIT notice for the vendored " + name + " bundle.");
-  head.appendChild(doc.createComment(
+  place(doc.createComment(
     " " + _OFFLINE_LIB_NOTICE_LEAD + name + _OFFLINE_LIB_NOTICE_TAIL + "\n"
     + text + "\n"));
 }
-function _offlineHoistChartScripts(doc) {
+function _offlineHoistChartScripts(doc, place, inlinedChartLib) {
   const body = doc.body || doc.querySelector("body");
-  const head = doc.head || doc.querySelector("head");
-  if (!body || !head) return;
-  const scripts = Array.from(doc.querySelectorAll("script:not([src])")).filter(function (s) {
+  if (!body) return;
+  // Hoisting only ever exists to order author code AFTER the inlined library, so when no Chart.js
+  // was inlined the loose arm has nothing to order against and must not move anything. The CTOR arm
+  // still runs unconditionally: it predates this and serves a second purpose (the authoring
+  // validator requires chart init to sit after the layer's JS region, so Save-as-plain keeps it).
+  const outsideContent = _offlineOutsideContentRoot(doc);
+  const movable = Array.prototype.filter.call(doc.querySelectorAll("script:not([src])"), function (s) {
     if (_offlineIsInlinedLibScript(s)) return false;
     // Never hoist fallback content OUT of an HTML `<noscript>`. To this scripting-disabled
     // `DOMParser` such a script is a real element, but to the reader who opens the exported file it
@@ -2420,15 +2591,54 @@ function _offlineHoistChartScripts(doc) {
     // around it. It must also never move a MathML script, whose body does NOT run where it is but
     // WOULD run once hoisted into `<body>` and reparsed - the export must not add behavior.
     if (!_offlineScriptRunsInlineBody(s)) return false;
-    const text = s.textContent || "";
-    if (_OFFLINE_LAYER_DECL_RE.test(text)) return false;
-    if (_OFFLINE_CHART_CTOR_RE.test(text)) return true;
-    // A HEAD script that only references the global still has to move: the library is appended as
-    // the head's last child, so anything already in the head would otherwise run before it. Body
-    // scripts already run after it, and moving one would shift comment-anchor offsets for nothing.
-    return head.contains(s) && _OFFLINE_CHART_GLOBAL_RE.test(text);
+    return !_OFFLINE_LAYER_DECL_RE.test(s.textContent || "");
   });
-  scripts.forEach(function (s) { body.appendChild(s); });
+  // Two arms with deliberately different blast radius.
+  //
+  // The CONSTRUCTOR arm is unchanged and selects a script on its own, wherever it sits: it predates
+  // this change and also serves the authoring validator's rule that chart init follows the JS
+  // region. Any ordering it inverts against a non-matching sibling it inverted at the base revision
+  // too, so widening it here would only add churn.
+  const constructs = function (s) { return _OFFLINE_CHART_CTOR_RE.test(s.textContent || ""); };
+  // The REFERENCE arm is the one this change adds, and only while Chart.js was actually inlined -
+  // hoisting exists solely to order author code after that library, so with nothing inlined the
+  // move would be pure content churn. While the library was appended to `<head>` only a head script
+  // could run before it, so this arm was scoped to the head; the library is now the LAST thing in
+  // the machinery fence, so a script anywhere runs before it and a `Chart.defaults...` block left
+  // in place would simply break. The SIGNAL is read differently inside the authored content than
+  // outside it: outside there are no comment anchors to shift, so the raw text is enough; inside,
+  // relocating a script shifts the text offsets every saved comment is anchored against, so the
+  // same signal is read against the code with comments and strings blanked - it still catches the
+  // aliased `var C = window.Chart` construction the CTOR pattern cannot see, while leaving a script
+  // that merely says "Chart of accounts" exactly where its author put it.
+  const references = function (s) {
+    const text = s.textContent || "";
+    return !!inlinedChartLib
+      && (outsideContent(s) ? _OFFLINE_CHART_GLOBAL_RE.test(text) : _offlineScriptUsesChartGlobal(text));
+  };
+  // Moving only the MATCHING scripts would invert a dependency THIS ARM creates: an author who
+  // writes `<script>const C = window.Chart;</script><script>new C(el, cfg);</script>` has a first
+  // script this arm selects and a second that names no `Chart` token at all, so the definer would
+  // move below the library while its user stayed above it and threw. So once this arm selects a
+  // script, every LATER movable script that shares its parent goes with it, in document order: the
+  // relative order of that whole run is preserved, and a run of siblings is exactly where scripts
+  // that depend on each other live. Scripts BEFORE the first selected one are untouched and cannot
+  // depend on it. The residual is a dependent in a DIFFERENT parent, which is the same cross-parent
+  // inversion the constructor arm has always had.
+  const hoisted = new Set(movable.filter(constructs));
+  const byParent = new Map();
+  movable.forEach(function (s) {
+    const list = byParent.get(s.parentNode) || [];
+    list.push(s);
+    byParent.set(s.parentNode, list);
+  });
+  byParent.forEach(function (list) {
+    const at = list.findIndex(references);
+    if (at >= 0) list.slice(at).forEach(function (s) { hoisted.add(s); });
+  });
+  // Emit in the DOCUMENT order of the original scan, so scripts drawn from several parents keep the
+  // order the reader would have run them in.
+  movable.forEach(function (s) { if (hoisted.has(s)) place(s); });
 }
 function _offlineRemoveVendoredBundleScript(payload) {
   // EVERY infrastructure payload block, not just the resolved one, and including any parked in a
@@ -2451,7 +2661,20 @@ function _offlineRemoveVendoredBundleScript(payload) {
 // Re-emitting a captured script GRANTS IT EXECUTION in the exported file, and the document reaching
 // here is UNTRUSTED (it may be hand-authored, or crafted), so the `data-cmh-offline-lib` marker is
 // NOT on its own proof that this exporter wrote it. Four provenance gates make an impersonation
-// grant no capability the source document did not already have://   1. it sits in <head>, where this exporter appends it and never in the authored content root;
+// grant no capability the source document did not already have:
+//   1. it sits OUTSIDE the authored content root - in `<head>`, or in the machinery region of the
+//      body, which is where this exporter appends it (CMH-SIZE-05) and where an earlier version's
+//      head-placed copy also still qualifies, so a legacy offline file re-exports unchanged. The
+//      boundary is the one `_offlineResolveVendoredPayload` already uses, resolved the same way: a
+//      `<head>` copy is outside the content region unconditionally (a head cannot contain the
+//      content root), while a BODY copy counts only when exactly one content root can be pinned
+//      down and does not contain it - so an unresolvable boundary captures nothing from the body
+//      rather than capturing from a region it cannot verify. What this gate is FOR is unchanged by
+//      the move: it keeps a copy inside the authored content from being captured, since such a
+//      copy is preserved AS content and re-emitting it would both duplicate it and grant it
+//      execution elsewhere. It was never a strength claim about `<head>` in particular - a crafted
+//      document could always place a marked script there - and gates 2-4 are what make a forgery
+//      grant nothing;
 //   2. it carries EXACTLY the attribute shape this exporter emits - the marker and nothing else.
 //      That is stricter than enumerating disqualifying attributes and cannot be outflanked by one
 //      nobody thought of. It rules out `src` (whose inline text never ran), any `type` (so inert
@@ -2470,12 +2693,13 @@ function _offlineRemoveVendoredBundleScript(payload) {
 //      script/style end tag) re-serializes into an element the parser does not close where the
 //      exporter thinks it does: an HTML comment opener followed by a script start tag puts the
 //      re-parse into the script-data-double-escaped state, so the emitted end tag stops closing
-//      the element and the rest of the head (including the mermaid init shim) is swallowed into
-//      it. `_escClose` neutralizes an end tag but cannot fix that state, so the bytes are rejected
-//      instead. The vendored bundles contain none of these sequences (mermaid does contain a bare
-//      comment opener, which is harmless on its own - the double-escaped state needs a script
-//      start tag too - so the gate deliberately does not look for it). This very comment must
-//      therefore avoid spelling those sequences out: doing so swallowed the whole runtime once.
+//      the element and everything after it in the machinery fence (including the mermaid init
+//      shim) is swallowed into it. `_escClose` neutralizes an end tag but cannot fix that state, so
+//      the bytes are rejected instead. The vendored bundles contain none of these sequences
+//      (mermaid does contain a bare comment opener, which is harmless on its own - the
+//      double-escaped state needs a script start tag too - so the gate deliberately does not look
+//      for it). This very comment must therefore avoid spelling those sequences out: doing so
+//      swallowed the whole runtime once.
 // An adjacent MIT notice is required as well (below), but that is a LICENSING requirement, not
 // authentication: the wording is a public constant and a forgery can copy it. The security
 // argument rests only on gates 1-4.
@@ -2518,9 +2742,21 @@ function _offlineAdjacentLibNotice(script, lib) {
 }
 function _offlineCaptureInlinedRichLibs(doc) {
   const found = { chartjs: "", mermaid: "", chartjsLicense: "", mermaidLicense: "" };
-  const head = doc.head || doc.querySelector("head");
-  if (!head) return found;
-  head.querySelectorAll("script[data-cmh-offline-lib]").forEach(function (s) {
+  // Gate 1, the POSITION gate, expressed as the one shared boundary predicate (see
+  // `_offlineOutsideContentRoot`). `querySelectorAll` deliberately does not descend into a
+  // `<template>` - a parked copy is inert and this exporter never wrote one there - exactly as
+  // payload RESOLUTION does not.
+  const outsideContent = _offlineOutsideContentRoot(doc);
+  Array.prototype.forEach.call(doc.querySelectorAll("script[data-cmh-offline-lib]"), function (s) {
+    if (!outsideContent(s)) return;
+    // Capture GRANTS EXECUTION, so a block that does not run WHERE IT IS must never be promoted to
+    // one that does. Gate 2 below already rules out `src`, a non-runnable `type` and `nomodule` by
+    // demanding the exact one-attribute shape, but two shapes carry no attribute at all: a script
+    // parked in an HTML `<noscript>` (inert TEXT to the reader, a real element only to this
+    // scripting-disabled parse) and a MathML/foreign-content `<script>`. The head-only gate mostly
+    // hid them; the boundary now reaches the body, so ask the same execution question the hoist and
+    // both strips ask.
+    if (_offlineInHtmlNoscript(s) || !_offlineScriptRunsInlineBody(s)) return;
     const lib = s.getAttribute("data-cmh-offline-lib") || "";
     if (lib !== "chartjs" && lib !== "mermaid") return;
     // A copy this exporter refused for PROVENANCE is remembered separately from one it refused for
@@ -2537,10 +2773,11 @@ function _offlineCaptureInlinedRichLibs(doc) {
     // remember that, because the bundle IS in the file and only the licence blocks re-emitting it -
     // the generic missing-bundle error would send the user looking for the wrong thing.
     if (!license.trim()) { found[lib + "Unlicensed"] = true; return; }
-    // LAST match wins: this exporter appends the library as the head's last child, so a marker
-    // placed earlier must never displace the genuine copy (that would "succeed" with a diagram
-    // that never renders). The flag describes the WINNING copy, so a later licensed copy clears an
-    // earlier unlicensed one rather than leaving a stale reason behind.
+    // LAST match wins, in DOCUMENT order: this exporter appends the library at the TAIL of the
+    // machinery fence, so a marker placed earlier - including one an older version left in the
+    // head - must never displace the genuine copy (that would "succeed" with a diagram that never
+    // renders). The flag describes the WINNING copy, so a later licensed copy clears an earlier
+    // unlicensed one rather than leaving a stale reason behind.
     found[lib] = code;
     found[lib + "License"] = license;
     found[lib + "Unlicensed"] = false;
@@ -2583,14 +2820,12 @@ function _offlineUnsafeLibError(name) {
     + " script-data escape pattern, so they cannot be inlined safely. Re-run the authoring finalize"
     + " step to refresh the vendored payload from the shipped libraries.");
 }
-async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs, payload) {
-  const head = doc.head || doc.querySelector("head");
-  if (!head) return;
+async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs, payload, place) {
   const needMermaid = _offlineDocUsesMermaid(doc);
   const needCharts = _offlineDocNeedsChartLib(doc, referencesChartLib);
   if (!needMermaid && !needCharts) {
     _offlineRemoveVendoredBundleScript(payload);
-    return;
+    return false;
   }
   const bundle = await _offlineVendoredRichLibs(payload);
   const captured = inlinedLibs || {};
@@ -2624,14 +2859,28 @@ async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs, payl
   };
   if (needCharts) {
     const chartjs = lib("chartjs", "Chart.js");
-    _offlineAppendLibNotice(doc, head, "Chart.js", chartjs.license);
-    _offlineAppendInlineScript(doc, head, chartjs.code, { "data-cmh-offline-lib": "chartjs" });
+    _offlineAppendLibNotice(doc, place, "Chart.js", chartjs.license);
+    _offlineAppendInlineScript(doc, place, chartjs.code, { "data-cmh-offline-lib": "chartjs" });
+    // The runtime applies these two defaults in `setupChartContainment`, which only sees the global
+    // when the library is defined BEFORE the runtime - true while the library was appended to
+    // `<head>`, and no longer true now that it is the last thing in the machinery fence. Re-assert
+    // them here, immediately after the bytes and before the author code hoisted after them, so an
+    // offline export sizes its charts exactly as it did before the move. Chart.js reads the
+    // defaults AT CONSTRUCTION, so deferring this to a load event would be too late.
+    _offlineAppendInlineScript(doc, place,
+      "(function(){\n"
+      + "  if (window.Chart && window.Chart.defaults) {\n"
+      + "    window.Chart.defaults.responsive = true;\n"
+      + "    window.Chart.defaults.maintainAspectRatio = false;\n"
+      + "  }\n"
+      + "})();",
+      { "data-cmh-offline-lib-init": "chartjs" });
   }
   if (needMermaid) {
     const mermaid = lib("mermaid", "mermaid");
-    _offlineAppendLibNotice(doc, head, "mermaid", mermaid.license);
-    _offlineAppendInlineScript(doc, head, mermaid.code, { "data-cmh-offline-lib": "mermaid" });
-    _offlineAppendInlineScript(doc, head,
+    _offlineAppendLibNotice(doc, place, "mermaid", mermaid.license);
+    _offlineAppendInlineScript(doc, place, mermaid.code, { "data-cmh-offline-lib": "mermaid" });
+    _offlineAppendInlineScript(doc, place,
       "(function(){\n"
       + "  if (!window.mermaid || !window.mermaid.initialize || !window.mermaid.run) return;\n"
       + "  var isHidden = function (el) { return !(el.offsetWidth || el.offsetHeight || el.getClientRects().length); };\n"
@@ -2717,6 +2966,7 @@ async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs, payl
       { "data-cmh-offline-lib-init": "mermaid" });
   }
   _offlineRemoveVendoredBundleScript(payload);
+  return needCharts;
 }
 async function _buildOfflineHtml(shareableHtml) {
   // Declare the mode BEFORE the document is parsed and neutralized. The neutralizer retypes every
@@ -2749,8 +2999,12 @@ async function _buildOfflineHtml(shareableHtml) {
   // Last of the passes that read a fallback body, because it judges what those passes LEFT: a seam
   // the handler scrub or the CSS strip has just taken away is no longer a disagreement.
   const droppedFallbacks = _stripOfflineStraddlingNoscript(doc);
-  _offlineHoistChartScripts(doc);
-  await _offlineInlineRichLibs(doc, referencesChartLib, inlinedRichLibs, vendoredPayload);
+  // Resolve the machinery-fence anchor ONCE, on the stripped document, and then insert in the order
+  // the exported file has to RUN in: the libraries first, then the author scripts that call them.
+  // Both go to the same anchor, so call order IS source order (CMH-SIZE-05).
+  const placer = _offlineMachineryPlacer(doc);
+  const inlinedChartLib = await _offlineInlineRichLibs(doc, referencesChartLib, inlinedRichLibs, vendoredPayload, placer.place);
+  _offlineHoistChartScripts(doc, placer.placeAuthor, inlinedChartLib);
   _ensureOfflineCsp(doc);
   const html = _serializeOfflineDoc(doc).replace(/\n{3,}/g, "\n\n");
   return {
