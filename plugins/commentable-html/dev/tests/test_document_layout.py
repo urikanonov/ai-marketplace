@@ -144,6 +144,41 @@ class ContentComesFirstTests(unittest.TestCase):
                 self.assertNotIn("BEGIN: commentable-html - COMMENT UI", prefix,
                                  "no comment-UI markup may precede the content")
 
+    def test_nothing_sits_in_the_gap_between_the_content_and_the_fence(self):
+        # Rejecting machinery BEFORE the content is not enough: an element parked between the
+        # CONTENT end marker and the fence would be layer-owned markup outside the trailer this
+        # feature promises. Only the structural closers may live there.
+        for label, html in _documents():
+            with self.subTest(document=label):
+                gap = html[html.index(CONTENT_END) + len(CONTENT_END):html.index(MACHINERY_BEGIN)]
+                gap = re.sub(r"<!--.*?-->", "", gap, flags=re.S)
+                opens = re.findall(r"<([a-zA-Z][\w:-]*)", gap)
+                self.assertEqual([], opens,
+                                 "%s: only closing tags may sit between the content and the "
+                                 "machinery fence, found %s" % (label, opens))
+
+    def test_every_script_and_style_is_inside_the_content_or_inside_the_fence(self):
+        # The five layer REGIONS are not the only machinery a document carries: a per-document
+        # chart loader, its JSON data island and its bootstrap are machinery too. They need no
+        # markers of their own - the fence is what delimits them - but nothing may escape it.
+        for label, html in _documents():
+            with self.subTest(document=label):
+                head_end = html.lower().index("</head>")
+                content = html.index(CONTENT_BEGIN)
+                content_end = html.index(CONTENT_END)
+                fence = html.index(MACHINERY_BEGIN)
+                fence_end = html.index(MACHINERY_END, fence)
+                for m in re.finditer(r"<(script|style|link|noscript)\b", html, re.I):
+                    at = m.start()
+                    if at < head_end:
+                        continue      # the head's own small, budgeted machinery
+                    inside_content = content < at < content_end
+                    inside_fence = fence < at < fence_end
+                    terminator = at < content     # the script-data escape terminator
+                    self.assertTrue(inside_content or inside_fence or terminator,
+                                    "%s: <%s> at %d is outside both the content and the machinery "
+                                    "fence" % (label, m.group(1), at))
+
     def test_a_head_script_data_escape_cannot_swallow_the_content(self):
         # A `<script>` in the HEAD whose bytes open a script-data escape leaves the tokenizer
         # swallowing everything after it until the next `</script>`. With the machinery first that

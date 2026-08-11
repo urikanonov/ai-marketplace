@@ -237,31 +237,41 @@ def _stamp_mermaid_loader(text, shareable_html):
     return text[:tgt[0]] + canonical + text[tgt[1]:]
 
 
-def _first_paint_span(text):
-    """(start, end) of the shell-baked FIRST PAINT guard block, or None.
+def _first_paint_span(text, what="document"):
+    """(start, end) of the shell-baked FIRST PAINT guard block, or None when it has none.
 
     Line-anchored through the shared marker matcher and required to be a single well-ordered
     pair: a raw `find` would anchor on any earlier QUOTATION of the marker (a pre-`<html>`
     documentation comment, say) and the re-emit would then splice from there through the real END
     marker, replacing the doctype, the metas and the title of a shipped example.
+
+    ABSENT is a no-op; MALFORMED is fatal. A document with no markers at all simply predates the
+    guard, but one that has markers the matcher cannot pair unambiguously would silently stop
+    receiving guard updates for ever - the exact drift this re-emit exists to prevent - so it
+    raises instead of reading as absent.
     """
     begins = _region_marker_matches(text, "BEGIN", "FIRST PAINT")
     ends = _region_marker_matches(text, "END", "FIRST PAINT")
-    if len(begins) != 1 or len(ends) != 1 or ends[0].start() <= begins[0].start():
+    if not begins and not ends:
         return None
+    if len(begins) != 1 or len(ends) != 1 or ends[0].start() <= begins[0].start():
+        raise SystemExit(
+            "build: the FIRST PAINT guard in %s is ambiguous (%d BEGIN, %d END markers); "
+            "the guard cannot be re-emitted safely" % (what, len(begins), len(ends)))
     start = text.rfind("<!--", 0, begins[0].start())
     close = text.find("-->", ends[0].end())
     if start == -1 or close == -1:
-        return None
+        raise SystemExit(
+            "build: the FIRST PAINT guard in %s is not a well-formed comment block" % what)
     return start, close + 3
 
 
-def _stamp_first_paint_guard(text, shareable_html):
+def _stamp_first_paint_guard(text, shareable_html, what="document"):
     """Re-emit the shell-baked FIRST PAINT guard (CMH-SIZE-07) from SHAREABLE into an example, so
     the guard is single-sourced from the shell exactly like the mermaid loader. No-op when either
-    side has none or it already matches."""
-    tpl = _first_paint_span(shareable_html)
-    tgt = _first_paint_span(text)
+    side has none or it already matches; raises when either side's markers are malformed."""
+    tpl = _first_paint_span(shareable_html, "dist/SHAREABLE.html")
+    tgt = _first_paint_span(text, what)
     if tpl is None or tgt is None:
         return text
     canonical = shareable_html[tpl[0]:tpl[1]]
@@ -379,7 +389,7 @@ def regen_example(example_html, shareable_html, version, mermaid_version, where=
     out = _stamp_content_root_hook(out)
     out = _stamp_generated_date(out, generated_date)
     out = _stamp_mermaid_loader(out, shareable_html)
-    out = _stamp_first_paint_guard(out, shareable_html)
+    out = _stamp_first_paint_guard(out, shareable_html, where)
     out = _MERMAID_CDN_RE.sub(lambda m: m.group(1) + mermaid_version + m.group(2), out)
     return out
 

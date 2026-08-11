@@ -63,9 +63,13 @@ test.describe("content-first document layout", () => {
     await expect(page.locator("#cmhAssetBanner")).toBeHidden();
   });
 
-  test("CMH-SIZE-05: a shipped example opens with zero network and its content first", async ({ page }) => {
+  test("CMH-SIZE-05: a shipped example needs no network to render its content first", async ({ page }) => {
     await denyExternalNetwork(page);
-    const file = path.join(EXAMPLES, "report-triage.html");
+    // report-notes is the prose-only demo, so nothing in it can legitimately reach the network:
+    // the whole document - content, layer stylesheet and runtime - is self-contained. (The rich
+    // demos deliberately load mermaid or Chart.js from a CDN when online, so they could not
+    // carry this claim; their offline exports are what CMH-OFFLINE covers.)
+    const file = path.join(EXAMPLES, "report-notes.html");
     const html = fs.readFileSync(file, "utf8");
     expect(html.indexOf("BEGIN: commentable-html - CONTENT"))
       .toBeLessThan(html.indexOf("BEGIN: commentable-html - MACHINERY"));
@@ -73,5 +77,11 @@ test.describe("content-first document layout", () => {
     await ready(page);
     await expect(page.locator("html")).not.toHaveClass(/cmh-awaiting-style/);
     await expect(page.locator("#commentRoot h1").first()).toBeVisible();
+    // The layer stylesheet, now parsed after the content, really is applied.
+    expect(await page.evaluate(() =>
+      getComputedStyle(document.querySelector(".cm-sidebar")).position)).toBe("fixed");
+    // denyExternalNetwork only RECORDS what it aborted, so asserting the recording is what makes
+    // the no-network claim mean anything at all.
+    expect(page.__external).toEqual([]);
   });
 });
