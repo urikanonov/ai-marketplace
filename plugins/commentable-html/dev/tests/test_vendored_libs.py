@@ -759,6 +759,25 @@ class PerLibraryPayloadTests(unittest.TestCase):
         self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"chartjs"})
         self.assertLess(len(out), len(wounded), "the orphan mermaid bytes must be gone")
 
+    def test_complementary_partial_duplicates_are_merged_rather_than_one_being_chosen(self):
+        # The hardest duplicate case: two copies that are individually incomplete but JOINTLY
+        # sufficient - one carrying only mermaid, the other only Chart.js. Picking either would
+        # delete bytes nothing else can supply when no template is reachable, so the survivor is
+        # built from both.
+        fragment = MERMAID + '<figure class="chart"><canvas class="cmh-chart"></canvas></figure>'
+        full, _ = vendored_libs.apply(_doc(fragment), self.blob)
+        span = vendored_libs.find_blob(full)
+        obj = vendored_libs.payload_object(full[span[0]:span[1]])
+        mermaid_only = vendored_libs.payload_script(vendored_libs.reconcile(obj, {"mermaid"}))
+        chart_only = vendored_libs.payload_script(vendored_libs.reconcile(obj, {"chartjs"}))
+        split = full[:span[0]] + mermaid_only + "\n" + chart_only + full[span[1]:]
+        self.assertEqual(split.count('id="cmhVendoredRichLibs"'), 2, "fixture premise")
+        out, changed = vendored_libs.apply(split, None)
+        self.assertTrue(changed)
+        self.assertEqual(out.count('id="cmhVendoredRichLibs"'), 1)
+        self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"mermaid", "chartjs"},
+                         "jointly sufficient copies must be merged, not chosen between")
+
     def test_collapsing_duplicates_keeps_the_copy_that_can_satisfy_the_document(self):
         # Once payloads can be partial, a stale refresh can leave a COMPLETE copy followed by a
         # right-sized one. Blindly keeping the last would throw away the only bytes that could

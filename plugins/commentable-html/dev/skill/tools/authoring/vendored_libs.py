@@ -297,10 +297,10 @@ def _needed_libs(scan):
                                   ("chartjs", scan.uses_charts)) if used}
 
 
-def _carried_at(html, scan, index):
-    """The libraries the payload copy at `index` carries, for choosing between duplicates."""
+def _inner_text(html, scan, index):
+    """The raw JSON text inside the payload copy at `index`."""
     start, end = scan.blob_inner_spans[index]
-    return vendored_payload.carried_libs(vendored_payload.parse_payload(html[start:end]))
+    return html[start:end]
 
 
 def _sourced_script(source_blob, needed):
@@ -401,18 +401,39 @@ def apply(html, source_blob=None):
         # UNUSED branch above already collapses - would hand back a finalized document that cannot
         # be exported.
         #
-        # Keep the RICHEST copy, not simply the last one. Once payloads can be partial, a stale
-        # refresh can leave a COMPLETE copy followed by a right-sized one, and blindly keeping the
-        # last would throw away the only bytes that could satisfy the document - permanently, when
-        # no template is reachable to restore from. Position is not lost by choosing on content:
-        # the single-copy path below relocates whichever copy survives. Ties go to the LAST, which
-        # is the canonical after-content position when one is already there.
-        best = max(range(len(scan.blob_spans)),
-                   key=lambda i: (len(_carried_at(html, scan, i) & needed), i))
-        out = html
-        for index, (start, end) in reversed(list(enumerate(scan.blob_spans))):
-            if index != best:
-                out = out[:start] + out[end:]
+        # MERGE the copies rather than picking one. Once payloads can be partial, a stale refresh
+        # can leave copies that are individually incomplete but jointly sufficient - one carrying
+        # only mermaid, another only Chart.js. Choosing either would delete bytes nothing else can
+        # supply when no template is reachable, so the survivor is built from all of them. Later
+        # copies win a conflict, matching the canonical after-content position; unknown keys are
+        # preserved the same way reconciliation preserves them.
+        merged = {}
+        for index in range(len(scan.blob_spans)):
+            copy = vendored_payload.parse_payload(_inner_text(html, scan, index))
+            if not isinstance(copy, dict):
+                continue
+            for lib in vendored_payload.LIBRARIES:
+                if lib in vendored_payload.carried_libs(copy):
+                    for key in vendored_payload.LIB_FIELDS[lib]:
+                        merged[key] = copy[key]
+            for key, value in copy.items():
+                if key not in vendored_payload.CANONICAL_KEYS or key == "encoding":
+                    merged[key] = value
+        keep = len(scan.blob_spans) - 1
+        start, end = scan.blob_spans[keep]
+        inner_start, inner_end = scan.blob_inner_spans[keep]
+        survivor = html[start:end]
+        try:
+            survivor = (html[start:inner_start] + vendored_payload.serialize_payload(merged)
+                        + html[inner_end:end])
+        except ValueError:
+            pass
+        out = html[:start] + survivor + html[end:]
+        for index, (dup_start, dup_end) in reversed(list(enumerate(scan.blob_spans))):
+            if index != keep:
+                out = out[:dup_start] + out[dup_end:]
+        # `changed` is unconditionally True: bytes were removed here even when the recursive call
+        # finds nothing further to do.
         return apply(out, source_blob)[0], True
 
     if not scan.blob_spans:
