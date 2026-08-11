@@ -1,0 +1,708 @@
+{
+  "generatedBy": "tools/cold_tier_perf.mjs",
+  "about": "Recorded baseline for CMH-COLD-09. Reference-machine numbers, not a CI gate: re-run the harness to reproduce them on your own hardware. Committed so every figure quoted in CMH-COLD-05 and CMH-COLD-09 has a checkable source. Raw per-iteration samples are omitted for size; the paired statistics the spec quotes are kept in each run verdict.",
+  "runs": [
+    {
+      "note": "shipped defaults (min_rows 40, keep_rows 20)",
+      "recordedAt": "2026-08-11T05:17:47.053Z",
+      "platform": "win32 x64",
+      "cpus": "16 x AMD EPYC 7763 64-Core Processor                ",
+      "node": "v24.18.0",
+      "chromium": "149.0.7827.55",
+      "iterations": 10,
+      "ttiBudgetMs": 150,
+      "alpha": 0.05,
+      "minRows": null,
+      "keepRows": null,
+      "schedule": "15 off-first, 15 on-first",
+      "rows": [
+        {
+          "name": "sm-report",
+          "largest": false,
+          "compressed": true,
+          "bytesOff": 2228860,
+          "bytesOn": 2208458,
+          "bodyBytes": 33043,
+          "off": {
+            "cold": {
+              "n": 10,
+              "fmpN": 10,
+              "ttiN": 10,
+              "fmp": 200,
+              "fmpP75": 212,
+              "tti": 160.70000004768372,
+              "longTaskMax": 116,
+              "longTaskTotal": 128,
+              "domContentLoaded": 187.10000002384186,
+              "domInteractive": 186.30000007152557,
+              "paintMargin": -32,
+              "fmpSpread": 208,
+              "ttiSpread": 225.20000004768372,
+              "deferredPaints": 5,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 200,
+              "rowsMax": 200
+            },
+            "warm": {
+              "n": 10,
+              "fmpN": 10,
+              "ttiN": 10,
+              "fmp": 60,
+              "fmpP75": 96,
+              "tti": 76.10000002384186,
+              "longTaskMax": 0,
+              "longTaskTotal": 0,
+              "domContentLoaded": 95.35000014305115,
+              "domInteractive": 94.80000007152557,
+              "paintMargin": -37.25,
+              "fmpSpread": 56,
+              "ttiSpread": 23.700000047683716,
+              "deferredPaints": 4,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 200,
+              "rowsMax": 200
+            }
+          },
+          "on": {
+            "cold": {
+              "n": 10,
+              "fmpN": 10,
+              "ttiN": 10,
+              "fmp": 208,
+              "fmpP75": 220,
+              "tti": 164.94999992847443,
+              "longTaskMax": 132,
+              "longTaskTotal": 132,
+              "domContentLoaded": 193.04999995231628,
+              "domInteractive": 192.25,
+              "paintMargin": 16.700000047683716,
+              "fmpSpread": 224,
+              "ttiSpread": 234.69999980926514,
+              "deferredPaints": 7,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 200,
+              "rowsMax": 200
+            },
+            "warm": {
+              "n": 10,
+              "fmpN": 10,
+              "ttiN": 10,
+              "fmp": 106,
+              "fmpP75": 112,
+              "tti": 78.60000002384186,
+              "longTaskMax": 0,
+              "longTaskTotal": 0,
+              "domContentLoaded": 98.25000011920929,
+              "domInteractive": 97.80000007152557,
+              "paintMargin": 8.299999952316284,
+              "fmpSpread": 72,
+              "ttiSpread": 12.600000143051147,
+              "deferredPaints": 6,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 200,
+              "rowsMax": 200
+            }
+          }
+        },
+        {
+          "name": "md-report",
+          "largest": false,
+          "compressed": true,
+          "bytesOff": 2976677,
+          "bytesOn": 2410687,
+          "bodyBytes": 780860,
+          "off": {
+            "cold": {
+              "n": 10,
+              "fmpN": 10,
+              "ttiN": 10,
+              "fmp": 136,
+              "fmpP75": 260,
+              "tti": 1050.8499999046326,
+              "longTaskMax": 639,
+              "longTaskTotal": 2160,
+              "domContentLoaded": 1500.8999998569489,
+              "domInteractive": 1497.0499999523163,
+              "paintMargin": -1285.3000000715256,
+              "fmpSpread": 236,
+              "ttiSpread": 233.09999990463257,
+              "deferredPaints": 0,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 3600,
+              "rowsMax": 3600
+            },
+            "warm": {
+              "n": 10,
+              "fmpN": 10,
+              "ttiN": 10,
+              "fmp": 132,
+              "fmpP75": 136,
+              "tti": 906.7999999523163,
+              "longTaskMax": 570,
+              "longTaskTotal": 2007.5,
+              "domContentLoaded": 1301.0499999523163,
+              "domInteractive": 1298.3000000715256,
+              "paintMargin": -1170.9500000476837,
+              "fmpSpread": 52,
+              "ttiSpread": 225.50000023841858,
+              "deferredPaints": 0,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 3600,
+              "rowsMax": 3600
+            }
+          },
+          "on": {
+            "cold": {
+              "n": 10,
+              "fmpN": 10,
+              "ttiN": 10,
+              "fmp": 902,
+              "fmpP75": 1552,
+              "tti": 1084.25,
+              "longTaskMax": 1012.5,
+              "longTaskTotal": 2207,
+              "domContentLoaded": 1495.3000000715256,
+              "domInteractive": 1492.3000000715256,
+              "paintMargin": -638.4000000953674,
+              "fmpSpread": 1632,
+              "ttiSpread": 259.69999980926514,
+              "deferredPaints": 5,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 3600,
+              "rowsMax": 3600
+            },
+            "warm": {
+              "n": 10,
+              "fmpN": 10,
+              "ttiN": 10,
+              "fmp": 70,
+              "fmpP75": 72,
+              "tti": 870.5499999523163,
+              "longTaskMax": 814,
+              "longTaskTotal": 2014,
+              "domContentLoaded": 1294.6500000953674,
+              "domInteractive": 1291.9000000953674,
+              "paintMargin": -1205.950000166893,
+              "fmpSpread": 1304,
+              "ttiSpread": 189.09999990463257,
+              "deferredPaints": 1,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 3600,
+              "rowsMax": 3600
+            }
+          }
+        },
+        {
+          "name": "xl-tree",
+          "largest": true,
+          "compressed": true,
+          "bytesOff": 5546695,
+          "bytesOn": 3086070,
+          "bodyBytes": 3350878,
+          "off": {
+            "cold": {
+              "n": 10,
+              "fmpN": 10,
+              "ttiN": 10,
+              "fmp": 174,
+              "fmpP75": 304,
+              "tti": 4570,
+              "longTaskMax": 2704,
+              "longTaskTotal": 9155.5,
+              "domContentLoaded": 6060.449999928474,
+              "domInteractive": 6052.950000047684,
+              "paintMargin": -5836.399999976158,
+              "fmpSpread": 252,
+              "ttiSpread": 705.2999999523163,
+              "deferredPaints": 0,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 11500,
+              "rowsMax": 11500
+            },
+            "warm": {
+              "n": 10,
+              "fmpN": 10,
+              "ttiN": 10,
+              "fmp": 176,
+              "fmpP75": 184,
+              "tti": 4721.049999952316,
+              "longTaskMax": 2514,
+              "longTaskTotal": 9398,
+              "domContentLoaded": 6318.699999928474,
+              "domInteractive": 6310.899999976158,
+              "paintMargin": -6134.899999976158,
+              "fmpSpread": 76,
+              "ttiSpread": 775.8000001907349,
+              "deferredPaints": 0,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 11500,
+              "rowsMax": 11500
+            }
+          },
+          "on": {
+            "cold": {
+              "n": 10,
+              "fmpN": 10,
+              "ttiN": 10,
+              "fmp": 5048,
+              "fmpP75": 5148,
+              "tti": 3473.350000023842,
+              "longTaskMax": 3451.5,
+              "longTaskTotal": 8229.5,
+              "domContentLoaded": 5053.450000047684,
+              "domInteractive": 5045.899999976158,
+              "paintMargin": 14.049999952316284,
+              "fmpSpread": 7140,
+              "ttiSpread": 1769.2000000476837,
+              "deferredPaints": 7,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 11500,
+              "rowsMax": 11500
+            },
+            "warm": {
+              "n": 10,
+              "fmpN": 10,
+              "ttiN": 10,
+              "fmp": 106,
+              "fmpP75": 144,
+              "tti": 2860.9500000476837,
+              "longTaskMax": 2766,
+              "longTaskTotal": 7818.5,
+              "domContentLoaded": 4494.349999904633,
+              "domInteractive": 4483.849999904633,
+              "paintMargin": -4377.849999904633,
+              "fmpSpread": 80,
+              "ttiSpread": 1426.5999999046326,
+              "deferredPaints": 0,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 11500,
+              "rowsMax": 11500
+            }
+          }
+        }
+      ],
+      "verdict": {
+        "ok": false,
+        "alpha": 0.05,
+        "documents": [
+          {
+            "name": "sm-report",
+            "largest": false,
+            "budget": 150,
+            "stats": {
+              "cold": {
+                "fmpDelta": 0,
+                "fmpDeltaP75": 100,
+                "fmpWorsePairs": "4/8",
+                "fmpSignP": 0.6367,
+                "ttiDelta": 5.1,
+                "pairs": 10,
+                "blankOff": 5,
+                "blankOn": 7,
+                "blankOnlyOn": 3,
+                "blankOnlyOff": 1,
+                "blankSignP": 0.3125
+              },
+              "warm": {
+                "fmpDelta": 4,
+                "fmpDeltaP75": 16,
+                "fmpWorsePairs": "5/9",
+                "fmpSignP": 0.5,
+                "ttiDelta": 3.3,
+                "pairs": 10,
+                "blankOff": 4,
+                "blankOn": 6,
+                "blankOnlyOn": 2,
+                "blankOnlyOff": 0,
+                "blankSignP": 0.25
+              }
+            },
+            "notes": [
+              "sm-report cold: paint is nominally slower (paired median 0 ms, p75 100 ms) but not significantly so (4/8 slower, p=0.6367) - inconclusive at this sample size, not counted as a regression",
+              "sm-report warm: paint is nominally slower (paired median 4 ms, p75 16 ms) but not significantly so (5/9 slower, p=0.5) - inconclusive at this sample size, not counted as a regression"
+            ],
+            "failures": [],
+            "ok": true
+          },
+          {
+            "name": "md-report",
+            "largest": false,
+            "budget": 150,
+            "stats": {
+              "cold": {
+                "fmpDelta": 606,
+                "fmpDeltaP75": 1384,
+                "fmpWorsePairs": "6/10",
+                "fmpSignP": 0.377,
+                "ttiDelta": 62.9,
+                "pairs": 10,
+                "blankOff": 0,
+                "blankOn": 5,
+                "blankOnlyOn": 5,
+                "blankOnlyOff": 0,
+                "blankSignP": 0.0313
+              },
+              "warm": {
+                "fmpDelta": -60,
+                "fmpDeltaP75": -52,
+                "fmpWorsePairs": "1/10",
+                "fmpSignP": 0.999,
+                "ttiDelta": -30.7,
+                "pairs": 10,
+                "blankOff": 0,
+                "blankOn": 1,
+                "blankOnlyOn": 1,
+                "blankOnlyOff": 0,
+                "blankSignP": 0.5
+              }
+            },
+            "notes": [],
+            "failures": [
+              "md-report cold: blank-until-parsed loads rose from 0/10 to 5/10 (5 loads blank only with the tier on, 0 only with it off, sign test p=0.0313) - the reader saw nothing until the document was parsed"
+            ],
+            "ok": false
+          },
+          {
+            "name": "xl-tree",
+            "largest": true,
+            "budget": 0,
+            "stats": {
+              "cold": {
+                "fmpDelta": 4828,
+                "fmpDeltaP75": 5020,
+                "fmpWorsePairs": "7/10",
+                "fmpSignP": 0.1719,
+                "ttiDelta": -1006.1,
+                "pairs": 10,
+                "blankOff": 0,
+                "blankOn": 7,
+                "blankOnlyOn": 7,
+                "blankOnlyOff": 0,
+                "blankSignP": 0.0078
+              },
+              "warm": {
+                "fmpDelta": -54,
+                "fmpDeltaP75": -20,
+                "fmpWorsePairs": "1/10",
+                "fmpSignP": 0.999,
+                "ttiDelta": -1798.7,
+                "pairs": 10,
+                "blankOff": 0,
+                "blankOn": 0,
+                "blankOnlyOn": 0,
+                "blankOnlyOff": 0,
+                "blankSignP": 1
+              }
+            },
+            "notes": [],
+            "failures": [
+              "xl-tree cold: blank-until-parsed loads rose from 0/10 to 7/10 (7 loads blank only with the tier on, 0 only with it off, sign test p=0.0078) - the reader saw nothing until the document was parsed"
+            ],
+            "ok": false
+          }
+        ],
+        "failures": [
+          "md-report cold: blank-until-parsed loads rose from 0/10 to 5/10 (5 loads blank only with the tier on, 0 only with it off, sign test p=0.0313) - the reader saw nothing until the document was parsed",
+          "xl-tree cold: blank-until-parsed loads rose from 0/10 to 7/10 (7 loads blank only with the tier on, 0 only with it off, sign test p=0.0078) - the reader saw nothing until the document was parsed"
+        ],
+        "notes": [
+          "sm-report cold: paint is nominally slower (paired median 0 ms, p75 100 ms) but not significantly so (4/8 slower, p=0.6367) - inconclusive at this sample size, not counted as a regression",
+          "sm-report warm: paint is nominally slower (paired median 4 ms, p75 16 ms) but not significantly so (5/9 slower, p=0.5) - inconclusive at this sample size, not counted as a regression"
+        ]
+      }
+    },
+    {
+      "note": "threshold sweep: --keep-rows 1000 --min-rows 1001, testing whether a larger plain head restores early paint (see issue #1273)",
+      "recordedAt": "2026-08-11T05:24:36.019Z",
+      "platform": "win32 x64",
+      "cpus": "16 x AMD EPYC 7763 64-Core Processor                ",
+      "node": "v24.18.0",
+      "chromium": "149.0.7827.55",
+      "iterations": 8,
+      "ttiBudgetMs": 150,
+      "alpha": 0.05,
+      "minRows": 1001,
+      "keepRows": 1000,
+      "schedule": "8 off-first, 8 on-first",
+      "rows": [
+        {
+          "name": "md-report",
+          "largest": false,
+          "compressed": false,
+          "bytesOff": 2976677,
+          "bytesOn": 2976677,
+          "bodyBytes": 780860,
+          "off": {
+            "cold": {
+              "n": 8,
+              "fmpN": 8,
+              "ttiN": 8,
+              "fmp": 320,
+              "fmpP75": 324,
+              "tti": 1027.4500000476837,
+              "longTaskMax": 686,
+              "longTaskTotal": 2115,
+              "domContentLoaded": 1487.5999999046326,
+              "domInteractive": 1485,
+              "paintMargin": -1192.7999999523163,
+              "fmpSpread": 232,
+              "ttiSpread": 333.59999990463257,
+              "deferredPaints": 0,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 3600,
+              "rowsMax": 3600
+            },
+            "warm": {
+              "n": 8,
+              "fmpN": 8,
+              "ttiN": 8,
+              "fmp": 122,
+              "fmpP75": 132,
+              "tti": 867.75,
+              "longTaskMax": 577,
+              "longTaskTotal": 1931.5,
+              "domContentLoaded": 1256.6500000953674,
+              "domInteractive": 1253.6000000238419,
+              "paintMargin": -1139.5499999523163,
+              "fmpSpread": 52,
+              "ttiSpread": 310.2999999523163,
+              "deferredPaints": 0,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 3600,
+              "rowsMax": 3600
+            }
+          },
+          "on": {
+            "cold": {
+              "n": 8,
+              "fmpN": 8,
+              "ttiN": 8,
+              "fmp": 208,
+              "fmpP75": 284,
+              "tti": 1026.7500001192093,
+              "longTaskMax": 648.5,
+              "longTaskTotal": 2116.5,
+              "domContentLoaded": 1472.9500000476837,
+              "domInteractive": 1470.4000000953674,
+              "paintMargin": -1221.4000000953674,
+              "fmpSpread": 196,
+              "ttiSpread": 253.50000023841858,
+              "deferredPaints": 0,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 3600,
+              "rowsMax": 3600
+            },
+            "warm": {
+              "n": 8,
+              "fmpN": 8,
+              "ttiN": 8,
+              "fmp": 126,
+              "fmpP75": 132,
+              "tti": 877.8999999761581,
+              "longTaskMax": 552.5,
+              "longTaskTotal": 1890,
+              "domContentLoaded": 1254.75,
+              "domInteractive": 1252.3499999046326,
+              "paintMargin": -1124.3499999046326,
+              "fmpSpread": 16,
+              "ttiSpread": 206.10000014305115,
+              "deferredPaints": 0,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 3600,
+              "rowsMax": 3600
+            }
+          }
+        },
+        {
+          "name": "xl-tree",
+          "largest": true,
+          "compressed": true,
+          "bytesOff": 5546695,
+          "bytesOn": 3295594,
+          "bodyBytes": 3350878,
+          "off": {
+            "cold": {
+              "n": 8,
+              "fmpN": 8,
+              "ttiN": 8,
+              "fmp": 360,
+              "fmpP75": 396,
+              "tti": 4685.899999856949,
+              "longTaskMax": 2693,
+              "longTaskTotal": 9384.5,
+              "domContentLoaded": 6393.999999880791,
+              "domInteractive": 6384.449999809265,
+              "paintMargin": -6050.849999904633,
+              "fmpSpread": 416,
+              "ttiSpread": 1094.1000001430511,
+              "deferredPaints": 0,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 11500,
+              "rowsMax": 11500
+            },
+            "warm": {
+              "n": 8,
+              "fmpN": 8,
+              "ttiN": 8,
+              "fmp": 178,
+              "fmpP75": 188,
+              "tti": 4857.100000023842,
+              "longTaskMax": 2569,
+              "longTaskTotal": 9714.5,
+              "domContentLoaded": 6354.800000071526,
+              "domInteractive": 6347.100000023842,
+              "paintMargin": -6179.100000023842,
+              "fmpSpread": 80,
+              "ttiSpread": 1424,
+              "deferredPaints": 0,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 11500,
+              "rowsMax": 11500
+            }
+          },
+          "on": {
+            "cold": {
+              "n": 8,
+              "fmpN": 8,
+              "ttiN": 8,
+              "fmp": 228,
+              "fmpP75": 352,
+              "tti": 3297.5,
+              "longTaskMax": 3020,
+              "longTaskTotal": 7967.5,
+              "domContentLoaded": 4882.849999904633,
+              "domInteractive": 4875.299999952316,
+              "paintMargin": -4555.699999928474,
+              "fmpSpread": 5708,
+              "ttiSpread": 724.6000001430511,
+              "deferredPaints": 2,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 11500,
+              "rowsMax": 11500
+            },
+            "warm": {
+              "n": 8,
+              "fmpN": 8,
+              "ttiN": 8,
+              "fmp": 174,
+              "fmpP75": 180,
+              "tti": 2925.0499999523163,
+              "longTaskMax": 2672.5,
+              "longTaskTotal": 7749.5,
+              "domContentLoaded": 4636.799999952316,
+              "domInteractive": 4629.200000047684,
+              "paintMargin": -4455.200000047684,
+              "fmpSpread": 88,
+              "ttiSpread": 897.5,
+              "deferredPaints": 0,
+              "fmpSources": [
+                "first-contentful-paint"
+              ],
+              "rowsMin": 11500,
+              "rowsMax": 11500
+            }
+          }
+        }
+      ],
+      "verdict": {
+        "ok": false,
+        "alpha": 0.05,
+        "documents": [
+          {
+            "name": "md-report",
+            "largest": false,
+            "budget": 150,
+            "stats": {},
+            "notes": [],
+            "failures": [
+              "md-report: the tier declined to compress this document, so nothing was measured"
+            ],
+            "ok": false
+          },
+          {
+            "name": "xl-tree",
+            "largest": true,
+            "budget": 0,
+            "stats": {
+              "cold": {
+                "fmpDelta": -64,
+                "fmpDeltaP75": -4,
+                "fmpWorsePairs": "2/8",
+                "fmpSignP": 0.9648,
+                "ttiDelta": -1504.3,
+                "pairs": 8,
+                "blankOff": 0,
+                "blankOn": 2,
+                "blankOnlyOn": 2,
+                "blankOnlyOff": 0,
+                "blankSignP": 0.25
+              },
+              "warm": {
+                "fmpDelta": 4,
+                "fmpDeltaP75": 12,
+                "fmpWorsePairs": "4/7",
+                "fmpSignP": 0.5,
+                "ttiDelta": -1855.6,
+                "pairs": 8,
+                "blankOff": 0,
+                "blankOn": 0,
+                "blankOnlyOn": 0,
+                "blankOnlyOff": 0,
+                "blankSignP": 1
+              }
+            },
+            "notes": [
+              "xl-tree warm: paint is nominally slower (paired median 4 ms, p75 12 ms) but not significantly so (4/7 slower, p=0.5) - inconclusive at this sample size, not counted as a regression"
+            ],
+            "failures": [],
+            "ok": true
+          }
+        ],
+        "failures": [
+          "md-report: the tier declined to compress this document, so nothing was measured"
+        ],
+        "notes": [
+          "xl-tree warm: paint is nominally slower (paired median 4 ms, p75 12 ms) but not significantly so (4/7 slower, p=0.5) - inconclusive at this sample size, not counted as a regression"
+        ]
+      }
+    }
+  ]
+}

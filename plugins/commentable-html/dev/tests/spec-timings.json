@@ -107,6 +107,7 @@
   "82-highlight-inference.spec.js": 2888,
   "83-mermaid-render-check.spec.js": 7332,
   "85-cold-tier.spec.js": 5300,
+  "86-cold-tier-perf.spec.js": 4300,
   "90-section-review.spec.js": 32458,
   "91-upgrade-review.spec.js": 3629,
   "92-threads.spec.js": 37293,
