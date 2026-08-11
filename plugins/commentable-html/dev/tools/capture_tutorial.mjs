@@ -217,6 +217,22 @@ async function waitForStableLayout(page, frames = 2) {
       previous = next;
       if (performance.now() > deadline) throw new Error("page layout did not settle");
     }
+    // SNAP the settled floating chrome to whole CSS pixels. Waiting for it to stop moving is not
+    // enough on its own: the composer is positioned from measured geometry (the selection's client
+    // rect, then cmhClampIntoViewport), so its final `top` is FRACTIONAL and the fraction can come
+    // out slightly different from one run to the next. Every offset inside the box is a constant,
+    // so that fraction is the only run-varying input to where a glyph's line box rounds - and half
+    // a pixel there flips the drag-grip onto a different device pixel, which is what made
+    // garden-15-format-toolbar the one non-deterministic shot (issues #1275, #1277). Rounding the
+    // box's own origin removes the input rather than trying to out-wait it. It is a CAPTURE-time
+    // normalization only: it moves the panel by at most half a pixel, changes nothing the reader
+    // sees, and never touches the shipped runtime.
+    for (const el of document.querySelectorAll(".cm-composer, .cm-help-overlay")) {
+      const rect = el.getBoundingClientRect();
+      el.style.top = Math.round(rect.top) + "px";
+      el.style.left = Math.round(rect.left) + "px";
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
   }, { wantedFrames: frames, deadlineMs: 3000 * SETTLE_SCALE });
 }
 
