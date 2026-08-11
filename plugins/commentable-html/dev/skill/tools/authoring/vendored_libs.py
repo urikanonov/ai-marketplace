@@ -33,11 +33,20 @@ _toolpath.ensure()
 import _atomic_io  # noqa: E402
 import _browser_attrs  # noqa: E402
 import new_document  # noqa: E402
+import _vendored_payload as vendored_payload  # noqa: E402
+from _vendored_payload import (  # noqa: E402,F401  (re-exported: one definition, two callers)
+    CANONICAL_KEYS, LIB_FIELDS, LIBRARIES, carried_libs, payload_matches, reconcile,
+    serialize_payload)
 
 BLOB_ID = "cmhVendoredRichLibs"
 
-RUNTIME_SELECTORS = ("pre.mermaid", "div.mermaid", "figure.chart canvas", "canvas.cmh-chart",
-                     "canvas[data-cmh-chart-points]", "canvas[data-cmh-chart-source]")
+MERMAID_SELECTORS = ("pre.mermaid", "div.mermaid")
+CHART_SELECTORS = ("figure.chart canvas", "canvas.cmh-chart",
+                   "canvas[data-cmh-chart-points]", "canvas[data-cmh-chart-source]")
+# Each family is pinned to the runtime's OWN constant (CMH_MERMAID_SEL / CMH_CHART_CANVAS_SEL) by
+# the parity tests, and their union is what CMH_RICH_CONTENT_SEL declares. Splitting them is what
+# lets the payload be right-sized per library rather than kept or dropped as a unit.
+RUNTIME_SELECTORS = MERMAID_SELECTORS + CHART_SELECTORS
 
 USES = "uses"
 UNUSED = "unused"
@@ -78,14 +87,22 @@ class _DocScan(_browser_attrs.BrowserTagNames):
         self._stack = []
         self.root_span = None          # inner span of <main id="commentRoot">
         self.blob_spans = []           # outer spans of payload <script>s OUTSIDE the root
-        self.uses = False
+        self.blob_inner_spans = []     # the RAW-TEXT span inside each of those elements
+        self.uses_mermaid = False
+        self.uses_charts = False
         self.body_end = None           # offset of the REAL </body>, parser-recorded
         self._root_depth = None
         self._root_inner_start = None
         self._blob_start = None
+        self._blob_inner_start = None
         self._pending_blob = False
         self._root_has_chart_figure = False
         self._root_has_canvas = False
+
+    @property
+    def uses(self):
+        """The document-level question, unchanged: does the content use ANY rich library."""
+        return self.uses_mermaid or self.uses_charts
 
     # -- offsets -------------------------------------------------------------
     def _offset(self):
@@ -111,25 +128,29 @@ class _DocScan(_browser_attrs.BrowserTagNames):
             # treating that as the payload and cutting it out is silent data loss (review found
             # exactly that, twice - once via an HTML comment, once as a real authored element).
             self._blob_start = self._offset()
+            # The INNER span comes from the parser, never from a find(">") after the opening tag:
+            # `<script ... title="a > b">` would defeat that search, which is the same blindness
+            # that made the original regex detector delete authored content.
+            self._blob_inner_start = self._end_of_current_tag()
             self._pending_blob = True
         if self._in_root():
             if tag in ("pre", "div") and "mermaid" in classes:
-                self.uses = True
+                self.uses_mermaid = True
             elif tag == "figure" and "chart" in classes:
                 self._root_has_chart_figure = True
             elif tag == "canvas":
                 self._root_has_canvas = True
                 if "cmh-chart" in classes:
-                    self.uses = True
+                    self.uses_charts = True
                 elif any(t == "figure" and "chart" in c for t, c in self._stack):
-                    self.uses = True
+                    self.uses_charts = True
                 elif any(name in ("data-cmh-chart-points", "data-cmh-chart-source") for name in attrs):
                     # The runtime's own chart selector list (assets/js/03-selectors.js) includes
                     # `canvas[data-cmh-chart-points], canvas[data-cmh-chart-source]`: those are the
                     # canvases the LIVE renderer draws, with or without the `cmh-chart` class, and
                     # the exporter provisions the library for exactly the same set. This is now
                     # parity with the runtime, not the deliberate superset it used to be.
-                    self.uses = True
+                    self.uses_charts = True
         if tag not in _VOID:
             self._stack.append((tag, classes))
 
@@ -144,10 +165,11 @@ class _DocScan(_browser_attrs.BrowserTagNames):
         if tag == "script" and self._pending_blob:
             # Find the REAL end of the closing tag rather than assuming `len("</script>")`:
             # `</script   >` is valid and a hardcoded length would leave orphaned bytes behind
-            # when the span is cut out.
+            # when the span is cut out. The raw-text span ends where the closing tag begins.
             close = self._html.find(">", self._offset())
             end = (close + 1) if close != -1 else (self._offset() + len("</script>"))
             self.blob_spans.append((self._blob_start, end))
+            self.blob_inner_spans.append((self._blob_inner_start, self._offset()))
             self._pending_blob = False
         if tag == "body":
             self.body_end = self._offset()
@@ -174,14 +196,17 @@ def _scan(html):
         # An UNCLOSED content root: a browser closes it at end of input, so recover the same way
         # rather than reporting UNKNOWN and refusing to act on a document that renders fine.
         scan.root_span = (scan._root_inner_start, len(html))
-    if scan.root_span is not None and not scan.uses:
+    if scan.root_span is not None and not scan.uses_charts:
         # Nesting-TOLERANT fallback. `figure.chart canvas` is a descendant selector, but a
         # browser REPAIRS misnested markup (`<p><figure class="chart"></p><canvas></canvas>`
         # puts the canvas back inside the figure) while a token stack does not. If the root
         # holds both a chart figure and a canvas, treat it as usage regardless of how the two
         # nest - a false positive only keeps bytes, a false negative breaks an offline export.
+        # Gated on `uses_charts` ALONE, never on the combined verdict: a document that also has a
+        # diagram would otherwise satisfy the combined flag, skip this repair, and lose the chart
+        # half of its payload to markup the browser renders as a chart.
         if scan._root_has_chart_figure and scan._root_has_canvas:
-            scan.uses = True
+            scan.uses_charts = True
     if scan.body_end is None:
         scan.body_end = len(html)
     return scan
@@ -228,6 +253,77 @@ def find_blob(html):
     return scan.blob_spans[0]
 
 
+def _inner_span(text):
+    """The RAW-TEXT span inside the first payload element of `text`, or None.
+
+    Parser-recorded, so a `>` inside a quoted attribute of the opening tag and a padded `</script >`
+    closing tag are both read the way a browser reads them.
+    """
+    scan = _scan(text)
+    if not scan or not scan.blob_inner_spans:
+        return None
+    return scan.blob_inner_spans[0]
+
+
+def payload_object(script_text):
+    """The parsed payload object of a payload ELEMENT string, or None when it is unusable."""
+    span = _inner_span(script_text)
+    if span is None:
+        return None
+    return vendored_payload.parse_payload(script_text[span[0]:span[1]])
+
+
+def payload_script(obj):
+    """A payload element carrying `obj`, serialized the way the build serializes it."""
+    return ('<script id="%s" type="application/json">%s</script>'
+            % (BLOB_ID, vendored_payload.serialize_payload(obj)))
+
+
+def _rebuilt_inner(obj, needed, source_obj):
+    """The new raw text for a payload that must carry exactly `needed`, or None to leave it be."""
+    rebuilt = vendored_payload.reconcile(obj, needed, source_obj)
+    if rebuilt is None:
+        return None
+    try:
+        return vendored_payload.serialize_payload(rebuilt)
+    except ValueError:
+        # Unserializable is a reason to leave the document exactly as it is, never to write
+        # something unsafe and never to raise into finalize.
+        return None
+
+
+def _needed_libs(scan):
+    return {lib for lib, used in (("mermaid", scan.uses_mermaid),
+                                  ("chartjs", scan.uses_charts)) if used}
+
+
+def _inner_text(html, scan, index):
+    """The raw JSON text inside the payload copy at `index`."""
+    start, end = scan.blob_inner_spans[index]
+    return html[start:end]
+
+
+def _sourced_script(source_blob, needed):
+    """A payload element built from `source_blob` carrying exactly `needed`, or None."""
+    if not source_blob:
+        return None
+    span = _inner_span(source_blob)
+    if span is None:
+        return None
+    # Parse the inner text directly rather than calling payload_object(), which would re-run the
+    # HTML scan over the same multi-megabyte string a second time.
+    source_obj = vendored_payload.parse_payload(source_blob[span[0]:span[1]])
+    if source_obj is None:
+        return None
+    # Reconcile the SOURCE against itself so its own unknown keys are preserved too. Passing an
+    # empty object here would take the library pairs but silently drop anything else the template
+    # carried - the same loss the preservation rule exists to prevent, just in the other direction.
+    inner = _rebuilt_inner(source_obj, needed, source_obj)
+    if inner is None:
+        return None
+    return (source_blob[:span[0]] + inner + source_blob[span[1]:]).strip("\r\n \t") + "\n"
+
+
 def blob_script(source_html):
     """Return the payload script element (with a trailing newline) taken from a built template."""
     span = find_blob(source_html)
@@ -263,18 +359,30 @@ def _insert_before_body_end(html, script, body_end=None):
 
 
 def apply(html, source_blob=None):
-    """Add, remove, or leave the payload so the document carries it exactly when it can use it.
+    """Add, remove, right-size, or leave the payload so it carries exactly the libraries the
+    document's CONTENT can use.
 
-    `source_blob` is the payload script to restore with (see `blob_script`); pass None when only
+    `source_blob` is the payload script to restore from (see `blob_script`); pass None when only
     removal is wanted or no built template is reachable. Returns (html, changed) and is
     idempotent: a document already in the right state is returned byte-identical.
 
-    One parser pass answers every question (classification, payload location, body end), so a
-    2.5 MB document costs a single ~20 ms scan rather than one per query.
+    The decision is PER LIBRARY. It used to be all-or-nothing, so a chart-only document carried the
+    ~1,265 KB mermaid half it could never call. Three properties keep the trim safe:
+
+    - An UNCLASSIFIABLE document is returned untouched by the FIRST branch, before any key-set
+      logic runs. That ordering is load-bearing: such a document has neither usage flag set, so a
+      needed-set computed for it would be EMPTY and would strip a payload its runtime still wants
+      (the runtime falls back to <body> when there is no content root).
+    - Placement and CONTENT are independent questions. A payload whose key set is already right is
+      still relocated out of the head, and a payload that cannot be parsed is still relocated -
+      structural repair never depends on understanding the JSON.
+    - Rewriting and relocating are ONE splice against ONE scan's offsets. Editing in place first
+      would shift every later offset, including the parser-recorded end of body.
     """
     scan = _scan(html)
     if scan is None or scan.root_span is None:
-        # Cannot classify: touch nothing. Never grow a document that may not even be one of ours.
+        # Cannot classify: touch nothing. Never grow a document that may not even be one of ours,
+        # and never trim one either - fail-safe means "leave it alone" in BOTH directions.
         return html, False
     if not scan.uses:
         if not scan.blob_spans:
@@ -285,33 +393,75 @@ def apply(html, source_blob=None):
         for start, end in sorted(scan.blob_spans, reverse=True):
             out = out[:start] + out[end:]
         return out, True
-    span = scan.blob_spans[0] if scan.blob_spans else None
+    needed = _needed_libs(scan)
     if len(scan.blob_spans) > 1:
         # A rich document keeps exactly ONE payload. The runtime resolves the payload as
         # infrastructure and refuses to guess between two candidates (it fails the Offline export
         # loudly rather than inflate the wrong one), so leaving a stale second copy here - which the
         # UNUSED branch above already collapses - would hand back a finalized document that cannot
-        # be exported. Keep the LAST copy (the canonical after-content position when one is already
-        # there) and drop the rest, back to front so earlier offsets stay valid, then let the
-        # single-copy path below place it.
-        out = html
-        for start, end in sorted(scan.blob_spans[:-1], reverse=True):
-            out = out[:start] + out[end:]
+        # be exported.
+        #
+        # MERGE the copies rather than picking one. Once payloads can be partial, a stale refresh
+        # can leave copies that are individually incomplete but jointly sufficient - one carrying
+        # only mermaid, another only Chart.js. Choosing either would delete bytes nothing else can
+        # supply when no template is reachable, so the survivor is built from all of them. Later
+        # copies win a conflict, matching the canonical after-content position; unknown keys are
+        # preserved the same way reconciliation preserves them.
+        merged = {}
+        for index in range(len(scan.blob_spans)):
+            copy = vendored_payload.parse_payload(_inner_text(html, scan, index))
+            if not isinstance(copy, dict):
+                continue
+            for lib in vendored_payload.LIBRARIES:
+                if lib in vendored_payload.carried_libs(copy):
+                    for key in vendored_payload.LIB_FIELDS[lib]:
+                        merged[key] = copy[key]
+            for key, value in copy.items():
+                if key not in vendored_payload.CANONICAL_KEYS or key == "encoding":
+                    merged[key] = value
+        keep = len(scan.blob_spans) - 1
+        start, end = scan.blob_spans[keep]
+        inner_start, inner_end = scan.blob_inner_spans[keep]
+        survivor = html[start:end]
+        try:
+            survivor = (html[start:inner_start] + vendored_payload.serialize_payload(merged)
+                        + html[inner_end:end])
+        except ValueError:
+            pass
+        out = html[:start] + survivor + html[end:]
+        for index, (dup_start, dup_end) in reversed(list(enumerate(scan.blob_spans))):
+            if index != keep:
+                out = out[:dup_start] + out[dup_end:]
+        # `changed` is unconditionally True: bytes were removed here even when the recursive call
+        # finds nothing further to do.
         return apply(out, source_blob)[0], True
-    if span:
-        # Already after the content root: leave it exactly as it is. Relocating an
-        # already-placed payload would churn bytes on every finalize.
-        if span[0] >= scan.root_span[1]:
+
+    if not scan.blob_spans:
+        script = _sourced_script(source_blob, needed)
+        if script is None:
             return html, False
-        without = html[:span[0]] + html[span[1]:]
-        shift = span[1] - span[0]
-        body_end = scan.body_end - shift if scan.body_end > span[1] else scan.body_end
-        moved, ok = _insert_before_body_end(
-            without, html[span[0]:span[1]].strip("\r\n \t") + "\n", body_end)
-        return (moved, True) if ok else (html, False)
-    if not source_blob:
+        return _insert_before_body_end(html, script, scan.body_end)
+
+    span = scan.blob_spans[0]
+    inner = scan.blob_inner_spans[0]
+    obj = vendored_payload.parse_payload(html[inner[0]:inner[1]])
+    new_inner = None
+    if obj is not None and not vendored_payload.payload_matches(obj, needed):
+        new_inner = _rebuilt_inner(obj, needed,
+                                   payload_object(source_blob) if source_blob else None)
+    misplaced = span[0] < scan.root_span[1]
+    if new_inner is None and not misplaced:
         return html, False
-    return _insert_before_body_end(html, source_blob, scan.body_end)
+    element = html[span[0]:span[1]]
+    if new_inner is not None:
+        element = html[span[0]:inner[0]] + new_inner + html[inner[1]:span[1]]
+    if not misplaced:
+        return html[:span[0]] + element + html[span[1]:], True
+    without = html[:span[0]] + html[span[1]:]
+    shift = span[1] - span[0]
+    body_end = scan.body_end - shift if scan.body_end > span[1] else scan.body_end
+    moved, ok = _insert_before_body_end(without, element.strip("\r\n \t") + "\n", body_end)
+    return (moved, True) if ok else (html, False)
 
 
 def apply_file(path, source_blob=None):

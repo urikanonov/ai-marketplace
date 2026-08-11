@@ -1804,6 +1804,78 @@ test("Export Offline fails loudly when a rich document has no vendored payload (
   }
 });
 
+test("Export Offline works from a right-sized payload carrying only the library the content uses (CMH-SIZE-01)", async ({ page }) => {
+  // Partial payloads are NEWLY reachable now that the payload is carried per library (CMH-SIZE-01),
+  // and the exporter is their only consumer. The Python tests prove which KEYS survive; this proves
+  // the JS side still exports from such a document - inlining the one library it needs, with its
+  // MIT notice, and never demanding the half that was legitimately dropped.
+  test.setTimeout(60000);
+  const CHART_ONLY = `
+<h1>Chart only</h1>
+<p id="chart-only-note">No diagram anywhere, so the mermaid half of the payload is dropped.</p>
+<figure class="chart" aria-labelledby="chart-only-cap">
+  <div class="chart-wrap cm-skip" style="position: relative; height: 180px; max-height: 180px; overflow: hidden;">
+    <canvas id="chartOnlyCanvas" class="cmh-chart" width="360" height="180" role="img"
+            aria-label="Bar chart"></canvas>
+  </div>
+  <figcaption id="chart-only-cap">A chart the document's own Chart.js draws.</figcaption>
+</figure>
+<script>
+(function () {
+  var el = document.getElementById("chartOnlyCanvas");
+  if (!el || typeof Chart === "undefined") return;
+  new Chart(el, {
+    type: "bar",
+    data: { labels: ["a", "b"], datasets: [{ label: "V", data: [1, 2] }] },
+    options: { animation: false, responsive: false }
+  });
+}());
+</script>
+`;
+  const staged = stageContent(CHART_ONLY, { key: "cmh-offline-partial", source: "offline-partial.html" });
+
+  // Right-size the staged document exactly the way `finalize` does, through the SHIPPED tool, so
+  // this exercises the real artifact rather than a hand-made approximation of one.
+  execFileSync(PYTHON, ["tools/authoring/vendored_libs.py", staged.html], { cwd: SKILL, stdio: "pipe" });
+  const rightSized = fs.readFileSync(staged.html, "utf8");
+  // Assert on the PAYLOAD ELEMENT, not the whole file: the runtime's own JavaScript mentions
+  // `mermaidGzipBase64` as an identifier, so a document-wide check would always find it.
+  const payloadAt = rightSized.indexOf('id="cmhVendoredRichLibs"');
+  expect(payloadAt).toBeGreaterThan(-1);
+  const payloadText = rightSized.slice(payloadAt, rightSized.indexOf("</script>", payloadAt));
+  expect(payloadText).toContain("chartjsGzipBase64");
+  expect(payloadText).not.toContain("mermaidGzipBase64");
+
+  const server = await startStaticServer(staged.dir);
+  try {
+    await routeRichContentLocal(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+
+    await openToolbarMenu(page);
+    await expect(page.locator("#btnExportOfflineTop")).toBeVisible();
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
+    const exportedHtml = await capturedDownloadText(page);
+
+    // The library the content uses is inlined, with the MIT notice that must accompany it.
+    expect(exportedHtml).toContain('data-cmh-offline-lib="chartjs"');
+    expect(exportedHtml).toContain("Chart.js");
+    expect(exportedHtml).toContain("Permission is hereby granted, free of charge");
+    // The dropped half is neither demanded nor inlined.
+    expect(exportedHtml).not.toContain('data-cmh-offline-lib="mermaid"');
+    // Still a zero-network artifact.
+    expect(exportedHtml).not.toContain("cdn.jsdelivr.net/npm/chart.js");
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+  } finally {
+    await server.close();
+  }
+});
+
 test("CMH-OFFLINE-07: re-exporting an already-offline document reuses its inlined libraries", async ({ page, browser }) => {
   test.setTimeout(120000);
   // An Offline export removes the vendored payload it consumed, so the file it produces carries the

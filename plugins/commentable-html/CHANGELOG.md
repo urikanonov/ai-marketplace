@@ -4,6 +4,48 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.835.0] - 2026-08-10
+
+### Changed
+
+- The vendored rich-libraries payload is now carried PER LIBRARY instead of all or nothing. It was
+  one JSON object holding mermaid (~1,265 KB base64) and Chart.js (~92 KB base64), kept or dropped
+  as a unit, so a chart-only document paid for a diagram renderer it could never call and a
+  diagram-only document paid for the chart library. `finalize` now reconciles the payload against
+  what the CONTENT actually uses: it drops the half a document cannot call, and - the direction that
+  matters - COMPLETES a half when the content gains that library, which the old code could not do at
+  all because it returned early for any already-placed payload without reading its contents.
+  Measured on the shipped example fixtures, a chart-only report sheds more than 1,000 KB
+  (`CMH-SIZE-01`).
+- A library counts as carried only when its BYTES and its MIT NOTICE are both present and non-blank,
+  and a payload holding one without the other is reconciled rather than retained, so orphan bytes
+  are dropped whenever a source pair is reachable. When the content needs a library neither the
+  document nor a reachable template can supply, the document is left byte-identical instead, so the
+  export fails loudly rather than a half-written payload looking healthy.
+- The serialize-and-escape rule for that payload now has ONE definition
+  (`skill/tools/authoring/_vendored_payload.py`, standard library only) that both `build.py` and the
+  shipped authoring tool import, so the build-time and author-time bytes cannot drift. It refuses a
+  payload that would still contain a raw `</script>` after escaping, and it signals with `ValueError`
+  so an authoring run can degrade instead of aborting an agent's write-back.
+
+### Fixed
+
+- An unclassifiable document is left ENTIRELY alone in the TRIM direction as well as the insert
+  direction. Such a document has no content root, so a per-library "needed" set computed for it
+  would be empty and would have stripped a payload its runtime still wants (the runtime falls back
+  to `<body>` when there is no content root).
+- Markup a browser REPAIRS (`<p><figure class="chart"></p>...<canvas>`) keeps the chart half even
+  when the same document also has a diagram. The nesting-tolerant repair is now gated on the chart
+  verdict alone; gating it on the combined verdict would have let a diagram satisfy the flag, skip
+  the repair, and drop a half the document needs.
+- The payload element's inner text is located by the PARSER, so a `>` inside a quoted attribute of
+  its opening tag and a padded `</script   >` closing tag are both read the way a browser reads
+  them. Rewriting and relocating are one splice against one scan's offsets, so an in-place edit can
+  never shift the recorded end of body.
+- A payload that cannot be parsed is left byte-for-byte intact but is still relocated out of the
+  head: structural placement never depends on understanding the JSON, and `apply()` runs from
+  `finalize` before validation so it must never raise on a hand-edited document.
+
 ## [1.834.0] - 2026-08-10
 
 ### Changed
