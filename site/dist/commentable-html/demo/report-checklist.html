@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.840.0" />
+<meta name="commentable-html-version" content="1.841.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.840.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.841.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Release readiness review</title>
 
@@ -1072,7 +1072,23 @@ user-select: none;
 }
 .cm-composer-handle:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 .cm-composer.dragging .cm-composer-handle { cursor: grabbing; background: var(--cp-accent-soft); color: var(--cp-accent); }
-.cm-composer-handle .grip { letter-spacing: 1px; font-weight: 700; font-size: 0.9rem; line-height: 1; }
+
+.cm-composer-handle .grip { flex: none; position: relative; width: 6px; height: 10px; }
+.cm-composer-handle .grip::before {
+content: ""; position: absolute; left: 0; top: 0; width: 2px; height: 2px;
+border-radius: 50%; background: currentColor;
+box-shadow: 0 4px currentColor, 0 8px currentColor,
+4px 0 currentColor, 4px 4px currentColor, 4px 8px currentColor;
+}
+@media (forced-colors: active) {
+
+.cm-composer-handle .grip::before {
+forced-color-adjust: none;
+background: CanvasText;
+box-shadow: 0 4px CanvasText, 0 8px CanvasText,
+4px 0 CanvasText, 4px 4px CanvasText, 4px 8px CanvasText;
+}
+}
 .cm-composer-handle .label { opacity: 0.75; }
 @keyframes cm-composer-flash {
 0% { box-shadow: var(--cp-shadow); }
@@ -4598,7 +4614,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.840.0";
+const CMH_VERSION= "1.841.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -10359,7 +10375,7 @@ el.setAttribute("role","group");
 el.setAttribute("aria-label","Review comment composer");
 el.innerHTML=`
     <div class="cm-composer-handle" title="Drag to move">
-      <span class="grip" aria-hidden="true">&#x22EE;&#x22EE;</span>
+      <span class="grip" aria-hidden="true"></span>
       <span class="label">drag to move</span>
     </div>
     <div class="quote"></div>
