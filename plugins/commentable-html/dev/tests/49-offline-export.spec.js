@@ -318,6 +318,225 @@ test("Export Offline embeds vendored mermaid and Chart.js for zero-network reope
   }
 });
 
+test("CMH-SIZE-05: an Offline export keeps its inlined libraries out of the head, inside the machinery fence", async ({ page, browser }) => {
+  test.setTimeout(90000);
+  // The Offline export inlines ~1 MB of minified mermaid + Chart.js. Appending that to `<head>`
+  // regrew exactly the megabyte-before-the-title head the content-first layout exists to remove, so
+  // a tool reading the first 50 KB of an offline file met the bundle instead of the prose. The
+  // libraries, their MIT notices and any hoisted author chart script now go AFTER the authored
+  // content, inside the machinery fence, in an order that still defines a library before the author
+  // code that calls it.
+  const staged = stageContent(CONTENT, { key: "cmh-offline-fence", source: "offline-fence.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    await routeRichContentLocal(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await page.waitForFunction(() => !!document.querySelector("#commentRoot pre.mermaid svg"), null, { timeout: 20000 });
+
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const html = await capturedDownloadText(page);
+
+    // Nothing this exporter generates lands in the head any more.
+    const headEnd = html.search(/<\/head>/i);
+    expect(headEnd).toBeGreaterThan(-1);
+    const head = html.slice(0, headEnd);
+    expect(head).not.toContain("data-cmh-offline-lib");
+    expect(head).not.toContain("Third-party notice - ");
+    // The CSP meta is still the head's FIRST child: a policy is not retroactive, so anything the
+    // parser sees before it is unpoliced.
+    expect(html).toMatch(/<head\b[^>]*>\s*<meta\s+http-equiv="Content-Security-Policy"/i);
+
+    const fenceBegin = html.indexOf("BEGIN: commentable-html - MACHINERY");
+    const fenceEnd = html.indexOf("<!-- END: commentable-html - MACHINERY -->");
+    const contentEnd = html.indexOf(CONTENT_END);
+    expect(contentEnd).toBeGreaterThan(-1);
+    expect(fenceBegin).toBeGreaterThan(contentEnd);
+    expect(fenceEnd).toBeGreaterThan(fenceBegin);
+    // The runtime this exporter inlines into the file must not QUOTE the fence markers: it ships
+    // verbatim inside every document, so a contiguous literal would make every tool that counts
+    // markers read an ordinary document as carrying two fences.
+    expect((html.match(/BEGIN: commentable-html - MACHINERY/g) || []).length).toBe(1);
+    expect((html.match(/END: commentable-html - MACHINERY/g) || []).length).toBe(1);
+
+    // Each library, its notice, the Chart.js defaults shim and the mermaid init shim sit INSIDE the
+    // fence, after the content.
+    for (const marker of [
+      'data-cmh-offline-lib="chartjs"',
+      'data-cmh-offline-lib="mermaid"',
+      'data-cmh-offline-lib-init="chartjs"',
+      'data-cmh-offline-lib-init="mermaid"',
+      "Third-party notice - Chart.js",
+      "Third-party notice - mermaid",
+    ]) {
+      const at = html.indexOf(marker);
+      expect(at, marker).toBeGreaterThan(fenceBegin);
+      expect(at, marker).toBeLessThan(fenceEnd);
+    }
+    // Each MIT notice still travels immediately before the bytes it licenses.
+    expect(html.indexOf("Third-party notice - Chart.js")).toBeLessThan(html.indexOf('data-cmh-offline-lib="chartjs"'));
+    expect(html.indexOf("Third-party notice - mermaid")).toBeLessThan(html.indexOf('data-cmh-offline-lib="mermaid"'));
+    // The library is DEFINED before the author code that constructs a chart with it, and each init
+    // shim after the bytes it drives.
+    expect(html.indexOf('data-cmh-offline-lib="chartjs"')).toBeLessThan(html.indexOf("new Chart(el, {"));
+    expect(html.indexOf("new Chart(el, {")).toBeLessThan(fenceEnd);
+    expect(html.indexOf('data-cmh-offline-lib="chartjs"')).toBeLessThan(html.indexOf('data-cmh-offline-lib-init="chartjs"'));
+    expect(html.indexOf('data-cmh-offline-lib-init="chartjs"')).toBeLessThan(html.indexOf("new Chart(el, {"));
+    expect(html.indexOf('data-cmh-offline-lib="mermaid"')).toBeLessThan(html.indexOf('data-cmh-offline-lib-init="mermaid"'));
+
+    // The measured property this exists for: the first 50 KB is the title and the opening of the
+    // content, not a minified library or a base64 payload.
+    const first50k = html.slice(0, 50 * 1024);
+    expect(first50k).toContain("<title>");
+    expect(first50k).toContain("<h1>Offline export</h1>");
+    expect(first50k).toContain("This paragraph proves embedded comments travel in the offline file.");
+    expect(first50k).not.toContain("data-cmh-offline-lib");
+    expect(first50k).not.toContain("cmhVendoredRichLibs");
+
+    const exportedPath = path.join(outDir, "offline-fence.html");
+    fs.writeFileSync(exportedPath, html);
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    // Relocating the libraries must not cost the file its zero-network rendering.
+    ctx2 = await browser.newContext({ offline: true });
+    const page2 = await ctx2.newPage();
+    const external = [];
+    page2.on("request", (request) => {
+      if (/^https?:\/\//.test(request.url())) external.push(request.url());
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    await expect(page2.locator("#commentRoot pre.mermaid svg").first()).toBeVisible();
+    expect(await page2.evaluate(() => {
+      const chart = window.Chart && window.Chart.getChart && window.Chart.getChart("offlineChart");
+      return {
+        datasets: chart && chart.data && chart.data.datasets ? chart.data.datasets.length : 0,
+        // The runtime's own `setupChartContainment` only sees the global when the library precedes
+        // it, which the head placement guaranteed and the fence tail does not - so the exporter
+        // re-asserts these two defaults beside the bytes. Assert the EFFECT, not just the marker.
+        responsive: !!(window.Chart && window.Chart.defaults && window.Chart.defaults.responsive),
+        maintainAspectRatio: !!(window.Chart && window.Chart.defaults && window.Chart.defaults.maintainAspectRatio),
+      };
+    })).toEqual({ datasets: 1, responsive: true, maintainAspectRatio: false });
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-SIZE-05: the fence placement keeps its boundaries - the hoist, the notice sweep and the no-fence fallback", async ({ page, browser }) => {
+  test.setTimeout(180000);
+  // Three behaviors the relocation introduces, each with a boundary that has to hold:
+  //   1. a script OUTSIDE the authored content that only REFERENCES the `Chart` global is now
+  //      hoisted after the inlined library (it used to be left alone once it was in the body,
+  //      because the library was in the head and already ran first) - while one INSIDE the content
+  //      that merely mentions the word is left exactly where it is, because moving it would shift
+  //      the text offsets every saved comment anchor is measured against;
+  //   2. the stale-notice sweep reaches the machinery region, but never an authored notice-looking
+  //      comment inside the content;
+  //   3. a document with NO fence (a pre-1.833 or retrofitted host) still exports, with the
+  //      libraries after all authored content at the end of the body.
+  const FENCE_END = "<!-- END: commentable-html - MACHINERY -->";
+  const STALE_NOTICE = "<!-- Third-party notice - mermaid is bundled inline for offline use under the MIT License:\nSTALE FENCE NOTICE\n-->";
+  const AUTHORED_NOTICE = "<!-- Third-party notice - someotherlib is bundled inline for offline use under the MIT License:\nAUTHORED IN CONTENT\n-->";
+  const content = '<script>/* cmh-in-content-mention */ var note = "Chart of accounts";</script>\n'
+    + CONTENT
+    + AUTHORED_NOTICE;
+  const staged = stageContent(content, { key: "cmh-offline-boundaries", source: "offline-boundaries.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    const base = fs.readFileSync(staged.html, "utf8");
+    expect(base).toContain(FENCE_END);
+    // A machinery-region script that only READS the global, plus a stale notice this exporter would
+    // have written on an earlier pass.
+    const machinery = STALE_NOTICE
+      + '\n<script>/* cmh-machinery-config */ if (window.Chart) { Chart.defaults.font.size = 14; }</script>\n'
+      + '<script>/* cmh-alias-define */ const cmhAliasC = window.Chart;</script>\n'
+      + '<script>/* cmh-alias-use */ window.__aliasOk = typeof cmhAliasC === "function";</script>\n';
+    fs.writeFileSync(staged.html, base.replace(FENCE_END, machinery + FENCE_END));
+
+    await routeRichContentLocal(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    await page.waitForFunction(() => !!document.querySelector("#commentRoot pre.mermaid svg"), null, { timeout: 20000 });
+    await openToolbarMenu(page);
+    await page.locator("#btnExportOfflineTop").click();
+    const html = await capturedDownloadText(page);
+
+    const contentEnd = html.indexOf(CONTENT_END);
+    const chartLib = html.indexOf('data-cmh-offline-lib="chartjs"');
+    expect(contentEnd).toBeGreaterThan(-1);
+    expect(chartLib).toBeGreaterThan(-1);
+    // 1. The machinery-region config script moved after the library; the in-content script that only
+    //    MENTIONS the word in a string did not move at all - it sits before any Chart-using sibling,
+    //    so nothing drags it and its text offsets (which every saved comment anchor is measured
+    //    against) are untouched.
+    expect(html.indexOf("cmh-machinery-config")).toBeGreaterThan(chartLib);
+    expect(html.indexOf("cmh-in-content-mention"), "an in-content mention is not relocated")
+      .toBeLessThan(contentEnd);
+    // 1b. A SPLIT alias/use pair keeps its order: the definer matches and moves, and its sibling
+    //     user - which names no `Chart` token at all - goes with it rather than being stranded
+    //     above the library, where `C` would still be in its temporal dead zone.
+    expect(html.indexOf("cmh-alias-define")).toBeGreaterThan(chartLib);
+    expect(html.indexOf("cmh-alias-use")).toBeGreaterThan(html.indexOf("cmh-alias-define"));
+    // 2. The stale machinery notice is gone; the authored one inside the content survives verbatim.
+    expect(html).not.toContain("STALE FENCE NOTICE");
+    expect(html).toContain("AUTHORED IN CONTENT");
+    expect((html.match(/Third-party notice - mermaid/g) || []).length).toBe(1);
+
+    // 3. The same document with its fence markers removed still exports, content-first.
+    const noFence = base
+      .replace(FENCE_END, "")
+      .replace(/^[ \t]*BEGIN: commentable-html - MACHINERY[ \t]*$/m, "     (machinery)");
+    expect(noFence).not.toContain(FENCE_END);
+    const noFencePath = path.join(staged.dir, "no-fence.html");
+    fs.writeFileSync(noFencePath, noFence);
+    await page.goto(server.url + "/no-fence.html");
+    await ready(page);
+    await page.waitForFunction(() => !!document.querySelector("#commentRoot pre.mermaid svg"), null, { timeout: 20000 });
+    await openToolbarMenu(page);
+    await page.locator("#btnExportOfflineTop").click();
+    await page.waitForFunction(() => window.__cmhDownloadTexts && window.__cmhDownloadTexts.length > 0);
+    const fenceless = await capturedDownloadText(page);
+    const felessHead = fenceless.slice(0, fenceless.search(/<\/head>/i));
+    expect(felessHead).not.toContain("data-cmh-offline-lib");
+    expect(fenceless.indexOf('data-cmh-offline-lib="mermaid"')).toBeGreaterThan(fenceless.indexOf(CONTENT_END));
+    expect(networkLoadRefs(fenceless)).toEqual([]);
+
+    const fencelessPath = path.join(outDir, "offline-no-fence.html");
+    fs.writeFileSync(fencelessPath, fenceless);
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", fencelessPath], { cwd: SKILL, stdio: "pipe" });
+    ctx2 = await browser.newContext({ offline: true });
+    const page2 = await ctx2.newPage();
+    const external = [];
+    page2.on("request", (request) => {
+      if (/^https?:\/\//.test(request.url())) external.push(request.url());
+    });
+    await page2.goto(fileUrl(fencelessPath));
+    await ready(page2);
+    await expect(page2.locator("#commentRoot pre.mermaid svg").first()).toBeVisible();
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
 test("Export Offline embeds the MIT license notice beside each inlined library (CMH-LICENSE-02)", async ({ page }) => {
   test.setTimeout(90000);
   const staged = stageContent(CONTENT, { key: "cmh-offline-notice", source: "offline-notice.html" });
@@ -2373,9 +2592,10 @@ test("CMH-OFFLINE-07: a forged inlined-library marker is never re-emitted as exe
   // (`toast`) naming the missing notice and the action, not the generic missing-bundle one.
   const forgeries = [
     {
-      name: "gate 1: a marker outside the head is not captured",
-      // The notice sits immediately before the script, in the body, so ONLY the location gate
-      // rejects this one.
+      name: "gate 1: a marker inside the authored content is not captured",
+      // The notice sits immediately before the script, in the CONTENT region, so ONLY the location
+      // gate rejects this one. A copy inside the content is preserved AS content - re-emitting it
+      // would both duplicate it and grant it execution in the machinery region.
       head: "",
       body: FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid">/* cmh-forged-body */ window.__forged = 1;</script>',
     },
@@ -2442,11 +2662,11 @@ test("CMH-OFFLINE-07: a forged inlined-library marker is never re-emitted as exe
       toast: /missing the vendored mermaid bundle/i,
     },
     {
-      name: "licensing: a marker outside the head is not a candidate, so it does not mask the licence",
-      // Gate 1 is the LOCATION filter that decides what a candidate IS - the exporter only ever
-      // appends to <head> - so a body-placed marker is authored content, not a copy this exporter
-      // refused. It must NOT downgrade the message: the head copy is the only candidate, and
-      // licensing genuinely is the only thing blocking it.
+      name: "licensing: a marker inside the content is not a candidate, so it does not mask the licence",
+      // Gate 1 is the LOCATION filter that decides what a candidate IS - a copy inside the authored
+      // content root is content, not a copy this exporter wrote - so it must NOT downgrade the
+      // message: the head copy is the only candidate, and licensing genuinely is the only thing
+      // blocking it.
       body: FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid">/* cmh-body-marker */ window.__forged = 10;</script>',
       head: '<script data-cmh-offline-lib="mermaid">/* cmh-head-unlicensed */ window.__forged = 11;</script>',
       toast: /inlined mermaid library[\s\S]*no MIT license notice[\s\S]*source document that still carries the vendored payload/i,
@@ -2501,13 +2721,110 @@ test("CMH-OFFLINE-07: a forged inlined-library marker is never re-emitted as exe
   }
 });
 
+test("CMH-OFFLINE-07: an inlined library is captured from the machinery region, and the boundary fails closed", async ({ page }) => {
+  test.setTimeout(120000);
+  // Gate 1 is a POSITION gate, and the position this exporter writes to moved: the libraries now go
+  // into the machinery fence at the end of the body (CMH-SIZE-05), so the boundary is "outside the
+  // authored content root" - the same one payload resolution uses - rather than "in the head". A
+  // copy in the machinery region is therefore a candidate, but only while that boundary can
+  // actually be pinned down: a document whose content root is CONTESTED cannot tell the machinery
+  // region from authored content, so it captures nothing there rather than capturing from a region
+  // it cannot verify. The document also carries an AUTHORED marked script inside its content, which
+  // the same boundary must leave alone - neither captured nor stripped.
+  const FENCE_END = "<!-- END: commentable-html - MACHINERY -->";
+  const cases = [
+    {
+      name: "a copy in the machinery region is captured and re-emitted",
+      extra: "",
+      captured: true,
+    },
+    {
+      name: "a copy that is inert where it sits is not promoted to running code",
+      // Both shapes carry the exact one-attribute marker and a valid notice, so ONLY the execution
+      // check separates them: an HTML `<noscript>` body and a MathML `<script>` are real elements
+      // to this scripting-disabled parse and inert to the reader, so re-emitting either would grant
+      // execution the source document never had.
+      extra: "<noscript>" + FORGED_NOTICE
+        + '\n<script data-cmh-offline-lib="mermaid">/* cmh-noscript-copy */ window.__ns = 1;</script></noscript>\n'
+        + "<math>" + FORGED_NOTICE
+        + '\n<script data-cmh-offline-lib="mermaid">/* cmh-mathml-copy */ window.__ml = 1;</script></math>\n',
+      planted: "",
+      captured: false,
+      toast: /missing the vendored mermaid bundle/i,
+    },
+    {
+      name: "a fence parked in a noscript never anchors the insertion",
+      // The real fence is left in place, so this only pins that the parked pair does not make the
+      // pair AMBIGUOUS and does not become the anchor: the export still succeeds and the library
+      // still lands in the real fence.
+      extra: "<noscript><!-- BEGIN: commentable-html - MACHINERY -->"
+        + "<!-- END: commentable-html - MACHINERY --></noscript>\n",
+      captured: true,
+    },
+    {
+      name: "a contested content root aborts the export rather than guessing the boundary",
+      // A second element carrying the content-root id leaves nothing to be "outside" OF. The
+      // capture gate refuses on its own (a body copy counts only against a single resolvable
+      // root), and the layer's shared export precondition refuses even earlier - so the reachable
+      // behavior is a loud abort naming the duplicate id, never a silent fall back to capturing
+      // from a region this exporter cannot tell apart from authored content.
+      extra: '<div id="commentRoot" hidden></div>\n',
+      captured: false,
+      toast: /more than one element carrying the commentable-html content-root id/i,
+    },
+  ];
+  await page.route(/^https?:\/\//, (route) => route.abort());
+  await installDownloadTextCapture(page);
+  for (const item of cases) {
+    const authored = '\n<script data-cmh-offline-lib="chartjs">/* cmh-authored-in-content */ var demo = 1;</script>';
+    const staged = stageContent(FORGERY_CONTENT + authored, { key: "cmh-offline-fence-capture", source: "offline-fence-capture.html" });
+    const downloads = [];
+    const onDownload = (d) => downloads.push(d);
+    try {
+      const planted = item.planted === undefined
+        ? FORGED_NOTICE + '\n<script data-cmh-offline-lib="mermaid">/* cmh-fence-copy */ window.__fenceCopy = 1;</script>\n'
+        : item.planted;
+      const base = withoutVendoredPayload(fs.readFileSync(staged.html, "utf8"));
+      expect(base).toContain(FENCE_END);
+      fs.writeFileSync(staged.html, base.replace(FENCE_END, item.extra + planted + FENCE_END));
+
+      await page.goto(fileUrl(staged.html));
+      await ready(page);
+      page.on("download", onDownload);
+      await openToolbarMenu(page);
+      await page.locator("#btnExportOfflineTop").click();
+
+      if (item.captured) {
+        // Read the captured blob text rather than racing `waitForEvent("download")` after the
+        // click: the init-script capture is installed before navigation, so polling it cannot miss
+        // a download that fired between the click and the listener.
+        const html = await capturedDownloadText(page);
+        expect(html, item.name).toContain("cmh-fence-copy");
+        expect(html, item.name).toContain("FORGED LICENSE TEXT");
+        expect((html.match(/data-cmh-offline-lib="mermaid"/g) || []).length, item.name).toBe(1);
+        // The same boundary governs the STRIP: the authored copy inside the content region is
+        // neither captured nor deleted, so no content is lost and no anchor after it moves.
+        expect(html, item.name).toContain("cmh-authored-in-content");
+      } else {
+        // No export at all: the refusal is loud, and nothing inert was promoted into a file.
+        await expect(page.locator("#toast"), item.name).toContainText(item.toast, { timeout: 15000 });
+        expect(downloads, item.name).toHaveLength(0);
+      }
+    } finally {
+      page.off("download", onDownload);
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  }
+});
+
 test("CMH-OFFLINE-07: the last qualifying inlined library wins over one planted before it", async ({ page }) => {
   test.setTimeout(90000);
-  // This exporter appends the library as the head's LAST child, so a qualifying copy planted
-  // earlier must never displace the genuine one - that would "succeed" with a diagram that never
-  // renders. The two notice-carrying copies below satisfy every provenance gate, so only the
-  // ordering rule separates them; the leading notice-less copy also pins that an unlicensed capture
-  // does not poison the winning one (it must neither be emitted nor displace the genuine copy).
+  // This exporter appends the library at the TAIL of the machinery fence, so a qualifying copy
+  // planted earlier - here in the head, where an older version put it - must never displace the
+  // genuine one; that would "succeed" with a diagram that never renders. The two notice-carrying
+  // copies below satisfy every provenance gate, so only the ordering rule separates them; the
+  // leading notice-less copy also pins that an unlicensed capture does not poison the winning one
+  // (it must neither be emitted nor displace the genuine copy).
   const staged = stageContent(FORGERY_CONTENT, { key: "cmh-offline-lastwins", source: "offline-lastwins.html" });
   try {
     const unlicensed = '<script data-cmh-offline-lib="mermaid">/* cmh-planted-unlicensed */ window.__unlicensed = 1;</script>';
@@ -2576,7 +2893,7 @@ test("CMH-OFFLINE-07: the vendored payload wins over a copy already in the docum
   }
 });
 
-// The vendored payload is INFRASTRUCTURE, not content: since CMH-SIZE-02 the shell already places
+// The vendored payload is INFRASTRUCTURE, not content: since CMH-SIZE-05 the shell already places
 // it after the authored content, inside the machinery fence, and `tools/authoring/vendored_libs.py`
 // relocates a legacy head-placed one to the same place. This helper reproduces that placement for a
 // fixture, so an authored decoy inside the content region comes FIRST in document order - which is

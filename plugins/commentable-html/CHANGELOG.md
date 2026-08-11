@@ -4,6 +4,32 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.838.0] - 2026-08-11
+
+### Changed
+
+- `Export Offline` now puts the libraries it inlines AFTER the content too. The inlined mermaid /
+  Chart.js bytes, their MIT notices and any author chart script the export reorders used to be
+  appended to `<head>`, so an offline file regrew a large head and a tool reading its first 50 KB
+  met ~1 MB of minified library instead of the title and the opening prose - the one generated
+  artifact the content-first layout deliberately left behind. They now sit at the tail of the same
+  `BEGIN/END: commentable-html - MACHINERY` fence, in an order that still defines a library before
+  the author code that calls it, so the first 50 KB of an offline export is the title and the start
+  of the content.
+- The provenance boundary that decides which already-inlined library an Offline export may reuse
+  moves with it: instead of "in `<head>`", a copy now qualifies when it sits OUTSIDE the authored
+  content root AND runs where it sits. A `<head>` copy still qualifies, so a file an earlier version
+  exported re-exports unchanged; a copy inside the authored content is never captured, and is no
+  longer deleted either, so an authored example survives the export intact; a copy that is inert
+  where it sits (parked in a `<noscript>`, or a MathML script) is never promoted to running code;
+  and a document whose content root is duplicated aborts the export naming the duplicate id rather
+  than guessing the boundary. The MIT notice still travels with the bytes it licenses, and a
+  re-export still carries exactly one copy and one notice per library.
+- An offline export keeps the chart sizing it had before the move: the runtime applies
+  `Chart.defaults.responsive` / `maintainAspectRatio` only when the library is defined before it,
+  which the head placement guaranteed, so the exporter now re-asserts both in a shim emitted
+  immediately after the Chart.js bytes.
+
 ## [1.837.0] - 2026-08-11
 
 ### Changed

@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.837.0" />
+<meta name="commentable-html-version" content="1.838.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.837.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.838.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>NYC Taxi 2014 Report</title>
 
@@ -4806,7 +4806,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.837.0";
+const CMH_VERSION= "1.838.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -15917,6 +15917,10 @@ showToast(`Downloaded ${filename} - one shareable file, ${n} comment${n===1?"":"
 }
 const _OFFLINE_CHART_GLOBAL_RE=/\bChart\b/;
 const _OFFLINE_CHART_CTOR_RE=/\bnew\s+(?:Chart|(?:window|globalThis|self)\.Chart)\s*\(/;
+const _OFFLINE_JS_LITERALS_RE=/\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g;
+function _offlineScriptUsesChartGlobal(text){
+return _OFFLINE_CHART_GLOBAL_RE.test(String(text||"").replace(_OFFLINE_JS_LITERALS_RE," "));
+}
 const _OFFLINE_LAYER_SCRIPT_RE=/__commentableHtmlReady|const CMH_VERSION|COMMENT_KEY = /;
 const _OFFLINE_LAYER_DECL_RE=/const CMH_VERSION\s*=/;
 function _offlineIsInlinedLibScript(s){
@@ -16911,16 +16915,21 @@ _offlineStripPresentationUrl(el);
 return{dropped:dropped,clearedBases:clearedBases,clearedSrcdocs:clearedSrcdocs,preservedSrcdocs:preservedSrcdocs};
 }
 function _stripOfflineRichRenderers(doc,neutralized){
-const head=doc.head||doc.querySelector("head");
-if(head){
-Array.prototype.slice.call(head.childNodes).forEach(function(n){
-if(n.nodeType===8&&_OFFLINE_LIB_NOTICE_ANY_RE.test(n.nodeValue||"")){
-if(n.parentNode)n.parentNode.removeChild(n);
+const outsideContent=_offlineOutsideContentRoot(doc);
+const stripNotices=function(node){
+Array.prototype.slice.call(node.childNodes).forEach(function(n){
+if(n.nodeType===8){
+if(_OFFLINE_LIB_NOTICE_ANY_RE.test(n.nodeValue||"")&&outsideContent(n)&&n.parentNode){
+n.parentNode.removeChild(n);
 }
+return;
+}
+if(n.nodeType===1)stripNotices(n);
 });
-}
+};
+if(doc.documentElement)stripNotices(doc.documentElement);
 doc.querySelectorAll("script[data-cmh-offline-lib], script[data-cmh-offline-lib-init]").forEach(function(s){
-if(_offlineIsInlinedLibScript(s))s.remove();
+if(_offlineIsInlinedLibScript(s)&&outsideContent(s))s.remove();
 });
 doc.querySelectorAll("script[src]").forEach(function(s){
 if(!_offlineScriptSrcFetches(s,neutralized))return;
@@ -16967,6 +16976,14 @@ return found;
 }
 function _offlineContentRoot(d){
 return cmhContentRoot(d);
+}
+function _offlineOutsideContentRoot(doc){
+const head=doc.head||doc.querySelector("head");
+const state=cmhContentRootState(doc);
+return function(node){
+if(head&&head.contains(node))return true;
+return!state.contested&&!!state.root&&!state.root.contains(node);
+};
 }
 function _offlineResolveVendoredPayload(d){
 const contentRoot=_offlineContentRoot(d);
@@ -17089,33 +17106,104 @@ return inline.ok&&_offlineChartDataUsable(inline.value);
 if(!canvases.every(drawnByRuntime))return true;
 return referencesChartLib===undefined?_offlineDocReferencesChartLib(doc):!!referencesChartLib;
 }
-function _offlineAppendInlineScript(doc,head,code,attrs){
+const _OFFLINE_FENCE_NAME= "MACHI"+"NERY";
+function _offlineFenceMarkerRe(kind){
+return new RegExp("^[ \\t]*(?:=+[ \\t]*)?"+kind+": commentable-html - "+_OFFLINE_FENCE_NAME
++"[ \\t]*(?:=+[ \\t]*)?$","m");
+}
+const _OFFLINE_FENCE_BEGIN_RE=_offlineFenceMarkerRe("BEGIN");
+const _OFFLINE_FENCE_END_RE=_offlineFenceMarkerRe("END");
+function _offlineFenceMarkerKind(node){
+if(!node||node.nodeType!==8)return"";
+const text=String(node.nodeValue||"");
+const end=_OFFLINE_FENCE_END_RE.test(text);
+const begin=_OFFLINE_FENCE_BEGIN_RE.test(text);
+if(end&&begin)return"";
+if(end)return"end";
+if(begin)return"begin";
+return"";
+}
+function _offlineCollectFenceMarkers(node,contentRoot,found){
+Array.prototype.forEach.call(node.childNodes,function(child){
+if(child.nodeType===1){
+if(child.namespaceURI&&child.namespaceURI!==_OFFLINE_HTML_NS)return;
+if(_offlineAsciiLower(child.localName||"")=== "noscript")return;
+}
+const kind=_offlineFenceMarkerKind(child);
+if(kind&&!contentRoot.contains(child))found[kind].push(child);
+if(child.nodeType===1)_offlineCollectFenceMarkers(child,contentRoot,found);
+});
+}
+function _offlineMachineryFenceEnd(doc){
+const body=doc.body||doc.querySelector("body");
+if(!body)return null;
+const contentRoot=_offlineContentRoot(doc);
+if(!contentRoot)return null;
+const found={begin:[],end:[]};
+_offlineCollectFenceMarkers(body,contentRoot,found);
+if(found.begin.length!==1||found.end.length!==1)return null;
+if(!(found.begin[0].compareDocumentPosition(found.end[0])&4))return null;
+if(!(contentRoot.compareDocumentPosition(found.begin[0])&4))return null;
+return found.end[0].parentNode?found.end[0]:null;
+}
+function _offlineMachineryPlacer(doc){
+const fenceEnd=_offlineMachineryFenceEnd(doc);
+const body=doc.body||doc.querySelector("body");
+const head=doc.head||doc.querySelector("head");
+const root=_offlineContentRoot(doc);
+const bodyIsOutsideContent=!!(root&&body&&!root.contains(body));
+const parent=fenceEnd?fenceEnd.parentNode:(bodyIsOutsideContent?body:(head||body));
+const place=function(node){
+if(!parent)return;
+if(fenceEnd&&fenceEnd.parentNode===parent)parent.insertBefore(node,fenceEnd);
+else parent.appendChild(node);
+};
+const placeAuthor=(parent&&body&&parent!==head)||!body
+?place
+:function(node){body.appendChild(node);};
+return{place:place,placeAuthor:placeAuthor};
+}
+function _offlineAppendInlineScript(doc,place,code,attrs){
 const s=doc.createElement("script");
 Object.keys(attrs||{}).forEach(function(name){s.setAttribute(name,attrs[name]);});
 s.textContent=_escClose(String(code||""));
-head.appendChild(s);
+place(s);
 }
-function _offlineAppendLibNotice(doc,head,name,license){
+function _offlineAppendLibNotice(doc,place,name,license){
 const text=String(license||"").replace(/-{2,}/g,function(m){return m.split("").join(" ");});
 if(!text.trim())throw new Error("Offline export is missing the MIT notice for the vendored "+name+" bundle.");
-head.appendChild(doc.createComment(
+place(doc.createComment(
 " "+_OFFLINE_LIB_NOTICE_LEAD+name+_OFFLINE_LIB_NOTICE_TAIL+"\n"
 +text+"\n"));
 }
-function _offlineHoistChartScripts(doc){
+function _offlineHoistChartScripts(doc,place,inlinedChartLib){
 const body=doc.body||doc.querySelector("body");
-const head=doc.head||doc.querySelector("head");
-if(!body||!head)return;
-const scripts=Array.from(doc.querySelectorAll("script:not([src])")).filter(function(s){
+if(!body)return;
+const outsideContent=_offlineOutsideContentRoot(doc);
+const movable=Array.prototype.filter.call(doc.querySelectorAll("script:not([src])"),function(s){
 if(_offlineIsInlinedLibScript(s))return false;
 if(_offlineInHtmlNoscript(s))return false;
 if(!_offlineScriptRunsInlineBody(s))return false;
-const text=s.textContent||"";
-if(_OFFLINE_LAYER_DECL_RE.test(text))return false;
-if(_OFFLINE_CHART_CTOR_RE.test(text))return true;
-return head.contains(s)&&_OFFLINE_CHART_GLOBAL_RE.test(text);
+return!_OFFLINE_LAYER_DECL_RE.test(s.textContent||"");
 });
-scripts.forEach(function(s){body.appendChild(s);});
+const constructs=function(s){return _OFFLINE_CHART_CTOR_RE.test(s.textContent||"");};
+const references=function(s){
+const text=s.textContent||"";
+return!!inlinedChartLib
+&&(outsideContent(s)?_OFFLINE_CHART_GLOBAL_RE.test(text):_offlineScriptUsesChartGlobal(text));
+};
+const hoisted=new Set(movable.filter(constructs));
+const byParent=new Map();
+movable.forEach(function(s){
+const list=byParent.get(s.parentNode)||[];
+list.push(s);
+byParent.set(s.parentNode,list);
+});
+byParent.forEach(function(list){
+const at=list.findIndex(references);
+if(at>=0)list.slice(at).forEach(function(s){hoisted.add(s);});
+});
+movable.forEach(function(s){if(hoisted.has(s))place(s);});
 }
 function _offlineRemoveVendoredBundleScript(payload){
 payload.strip.forEach(function(el){el.remove();});
@@ -17135,9 +17223,10 @@ return m[2].replace(/\r?\n$/,"");
 }
 function _offlineCaptureInlinedRichLibs(doc){
 const found={chartjs:"",mermaid:"",chartjsLicense:"",mermaidLicense:""};
-const head=doc.head||doc.querySelector("head");
-if(!head)return found;
-head.querySelectorAll("script[data-cmh-offline-lib]").forEach(function(s){
+const outsideContent=_offlineOutsideContentRoot(doc);
+Array.prototype.forEach.call(doc.querySelectorAll("script[data-cmh-offline-lib]"),function(s){
+if(!outsideContent(s))return;
+if(_offlineInHtmlNoscript(s)||!_offlineScriptRunsInlineBody(s))return;
 const lib=s.getAttribute("data-cmh-offline-lib")||"";
 if(lib!== "chartjs"&&lib!== "mermaid")return;
 if(s.attributes.length!==1){found[lib+"Rejected"]=true;return;}
@@ -17165,14 +17254,12 @@ return new Error("Offline export refused the vendored "+name+" bundle: its bytes
 +" script-data escape pattern, so they cannot be inlined safely. Re-run the authoring finalize"
 +" step to refresh the vendored payload from the shipped libraries.");
 }
-async function _offlineInlineRichLibs(doc,referencesChartLib,inlinedLibs,payload){
-const head=doc.head||doc.querySelector("head");
-if(!head)return;
+async function _offlineInlineRichLibs(doc,referencesChartLib,inlinedLibs,payload,place){
 const needMermaid=_offlineDocUsesMermaid(doc);
 const needCharts=_offlineDocNeedsChartLib(doc,referencesChartLib);
 if(!needMermaid&&!needCharts){
 _offlineRemoveVendoredBundleScript(payload);
-return;
+return false;
 }
 const bundle=await _offlineVendoredRichLibs(payload);
 const captured=inlinedLibs||{};
@@ -17192,14 +17279,22 @@ return{code:code,license:license};
 };
 if(needCharts){
 const chartjs=lib("chartjs","Chart.js");
-_offlineAppendLibNotice(doc,head,"Chart.js",chartjs.license);
-_offlineAppendInlineScript(doc,head,chartjs.code,{"data-cmh-offline-lib":"chartjs"});
+_offlineAppendLibNotice(doc,place,"Chart.js",chartjs.license);
+_offlineAppendInlineScript(doc,place,chartjs.code,{"data-cmh-offline-lib":"chartjs"});
+_offlineAppendInlineScript(doc,place,
+"(function(){\n"
++"  if (window.Chart && window.Chart.defaults) {\n"
++"    window.Chart.defaults.responsive = true;\n"
++"    window.Chart.defaults.maintainAspectRatio = false;\n"
++"  }\n"
++"})();",
+{"data-cmh-offline-lib-init":"chartjs"});
 }
 if(needMermaid){
 const mermaid=lib("mermaid","mermaid");
-_offlineAppendLibNotice(doc,head,"mermaid",mermaid.license);
-_offlineAppendInlineScript(doc,head,mermaid.code,{"data-cmh-offline-lib":"mermaid"});
-_offlineAppendInlineScript(doc,head,
+_offlineAppendLibNotice(doc,place,"mermaid",mermaid.license);
+_offlineAppendInlineScript(doc,place,mermaid.code,{"data-cmh-offline-lib":"mermaid"});
+_offlineAppendInlineScript(doc,place,
 "(function(){\n"
 +"  if (!window.mermaid || !window.mermaid.initialize || !window.mermaid.run) return;\n"
 +"  var isHidden = function (el) { return !(el.offsetWidth || el.offsetHeight || el.getClientRects().length); };\n"
@@ -17285,6 +17380,7 @@ _offlineAppendInlineScript(doc,head,
 {"data-cmh-offline-lib-init":"mermaid"});
 }
 _offlineRemoveVendoredBundleScript(payload);
+return needCharts;
 }
 async function _buildOfflineHtml(shareableHtml){
 const retargeted=_retargetLayerDescriptor(shareableHtml,"offline");
@@ -17299,8 +17395,9 @@ _stripOfflineRichRenderers(doc,neutralizedSet);
 const stripped=_stripOfflineNetworkLoads(doc,neutralizedSet);
 _stripOfflineEventHandlers(doc);
 const droppedFallbacks=_stripOfflineStraddlingNoscript(doc);
-_offlineHoistChartScripts(doc);
-await _offlineInlineRichLibs(doc,referencesChartLib,inlinedRichLibs,vendoredPayload);
+const placer=_offlineMachineryPlacer(doc);
+const inlinedChartLib=await _offlineInlineRichLibs(doc,referencesChartLib,inlinedRichLibs,vendoredPayload,placer.place);
+_offlineHoistChartScripts(doc,placer.placeAuthor,inlinedChartLib);
 _ensureOfflineCsp(doc);
 const html=_serializeOfflineDoc(doc).replace(/\n{3,}/g,"\n\n");
 return{
