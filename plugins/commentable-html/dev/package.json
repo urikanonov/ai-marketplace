@@ -24,7 +24,7 @@
     "test:e2e:report": "playwright show-report"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.0",
+    "@playwright/test": "^1.62.1",
     "adm-zip": "^0.6.0",
     "chart.js": "^4.5.1",
     "mermaid": "^11.16.1",
