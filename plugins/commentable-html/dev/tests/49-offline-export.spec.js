@@ -2285,8 +2285,85 @@ test("CMH-SIZE-08: a library the export cannot download or verify is refused lou
   }
 });
 
-test("CMH-SIZE-08: a stalled download is bounded, so the export fails instead of hanging forever", async ({ page }) => {
+test("CMH-SIZE-08: a half descriptor is refused, never quietly served from the document's own copy", async ({ page }) => {
+  test.setTimeout(120000);
+  // The provenance rule CMH-OFFLINE-07 states is that the payload WINS and there is no silent
+  // fallthrough to a document-supplied ("captured") copy. The descriptor form introduced two new
+  // ways to be half-present that the byte form never had - a URL with no hash, and a hash with no
+  // URL - and treating either as "this payload does not carry the library" would hand the export to
+  // unverified document bytes and produce a downloaded file that LOOKS fine. Each must refuse
+  // loudly instead, even with a perfectly licensed captured copy sitting right there.
+  const cases = [
+    {
+      name: "a URL with no integrity hash",
+      field: "mermaidIntegrity",
+      expected: /incomplete source for the vendored mermaid bundle[\s\S]*URL with no integrity hash/i,
+    },
+    {
+      name: "an integrity hash with no URL",
+      field: "mermaidUrl",
+      expected: /incomplete source for the vendored mermaid bundle[\s\S]*integrity hash with no URL/i,
+    },
+  ];
+
+  for (const c of cases) {
+    const staged = stageContent(FORGERY_CONTENT, { key: "cmh-size-halfdesc", source: "size-halfdesc.html" });
+    try {
+      // A captured copy that clears every provenance gate, so ONLY the refusal keeps it out.
+      const html = withoutPayloadField(fs.readFileSync(staged.html, "utf8"), c.field)
+        .replace("</head>", capturedMermaidCopy("cmh-half-descriptor-fallback", true) + "\n</head>");
+      fs.writeFileSync(staged.html, html);
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+      await page.route(/^https?:\/\//, (route) => route.abort());
+      await routeVendoredLibs(page);
+      await expectExportRefused(page, staged, c.expected, c.name);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("CMH-SIZE-08: a library the content cannot use is never downloaded, and its broken half cannot fail the export", async ({ page }) => {
   test.setTimeout(90000);
+  // The payload is resolved PER LIBRARY, so a half the content cannot call must be inert: not
+  // fetched (a reader should not spend a megabyte on a renderer this document never calls, and an
+  // unrelated URL going bad must not fail an export) and not even decoded. Both halves are present
+  // and INTACT here, so the guard is exercised against a live descriptor rather than against
+  // absence - a right-sized document would have dropped the key and proved nothing.
+  const staged = stageContent(CHART_ONLY_CONTENT, { key: "cmh-size-unneeded", source: "size-unneeded.html" });
+  try {
+    // ...and the unneeded half is also CORRUPT, in the legacy byte form. Decoding it would throw
+    // and take the whole export down, which is exactly what happened while the needs gate sat
+    // below the byte branch instead of above it.
+    const html = withLegacyPayloadBytes(fs.readFileSync(staged.html, "utf8"), "mermaid", "!!!not-base64!!!");
+    fs.writeFileSync(staged.html, html);
+
+    const requested = [];
+    page.on("request", (request) => {
+      if (/cdn\.jsdelivr\.net\/npm\/mermaid@/.test(request.url())) requested.push(request.url());
+    });
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await routeVendoredLibs(page);
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+
+    expect(exportedHtml, "the library the content uses travels").toContain('data-cmh-offline-lib="chartjs"');
+    expect(exportedHtml, "the unusable half does not").not.toContain('data-cmh-offline-lib="mermaid"');
+    expect(requested, "an unusable library is never downloaded").toEqual([]);
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-SIZE-08: a stalled download is bounded, so the export fails instead of hanging forever", async ({ page }) => {
   // `fetch` has no default timeout, so without an explicit bound a CDN that accepts the connection
   // and then never answers leaves the reader clicking Export Offline and watching nothing happen -
   // no download, no error, no way to tell it apart from a slow one. The budget is generous in
@@ -3209,6 +3286,20 @@ function withPayloadField(html, key, value) {
   const payload = JSON.parse(html.slice(openEnd, closeAt));
   if (!(key in payload)) throw new Error("fixture payload has no " + key);
   payload[key] = value;
+  return html.slice(0, openEnd) + JSON.stringify(payload) + html.slice(closeAt);
+}
+
+// Remove ONE field from the real payload - the shape a hand edit or a partial refresh leaves
+// behind, and the one that turns a complete descriptor into a half of one.
+function withoutPayloadField(html, key) {
+  const idAt = html.indexOf('id="cmhVendoredRichLibs"');
+  if (idAt < 0) throw new Error("fixture has no vendored payload to edit");
+  const openEnd = html.indexOf(">", idAt) + 1;
+  const closeAt = html.indexOf("</script>", openEnd);
+  if (openEnd <= 0 || closeAt < openEnd) throw new Error("could not bound the vendored payload");
+  const payload = JSON.parse(html.slice(openEnd, closeAt));
+  if (!(key in payload)) throw new Error("fixture payload has no " + key);
+  delete payload[key];
   return html.slice(0, openEnd) + JSON.stringify(payload) + html.slice(closeAt);
 }
 

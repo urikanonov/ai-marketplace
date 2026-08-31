@@ -853,6 +853,34 @@ class PerLibraryPayloadTests(unittest.TestCase):
         self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"mermaid", "chartjs"},
                          "the surviving copy must still satisfy the document with no template")
 
+    def test_a_legacy_duplicate_does_not_re_inflate_a_descriptor_document(self):
+        # CMH-SIZE-08. A stale byte-carrying copy left beside a current descriptor copy used to
+        # merge into ONE payload holding both forms, because the merge copied whichever keys each
+        # copy happened to have and the two forms' keys are disjoint - so "later copies win a
+        # conflict" never fired. `_lib_source` then prefers the bytes forever, which silently undoes
+        # the whole point of the descriptor and can pair the newer copy's licence with the older
+        # copy's code. The later copy has to replace the library's whole FORM.
+        full, _ = vendored_libs.apply(_doc(MERMAID), self.blob)
+        span = vendored_libs.find_blob(full)
+        current = vendored_libs.payload_object(full[span[0]:span[1]])
+        self.assertIn("mermaidUrl", current, "fixture premise: the built payload is a descriptor")
+        legacy = dict(current)
+        del legacy["mermaidUrl"]
+        del legacy["mermaidIntegrity"]
+        legacy["mermaidGzipBase64"] = "STALELEGACYBYTES"
+        doubled = (full[:span[0]] + vendored_libs.payload_script(legacy) + "\n"
+                   + full[span[0]:span[1]] + full[span[1]:])
+        self.assertEqual(doubled.count('id="cmhVendoredRichLibs"'), 2, "fixture premise")
+        out, changed = vendored_libs.apply(doubled, None)
+        self.assertTrue(changed)
+        self.assertEqual(out.count('id="cmhVendoredRichLibs"'), 1)
+        merged = self._payload(out)
+        self.assertEqual(vendored_libs.carried_libs(merged), {"mermaid"})
+        self.assertNotIn("mermaidGzipBase64", merged,
+                         "the later descriptor must win outright, not sit beside stale bytes")
+        self.assertIn("mermaidUrl", merged)
+        self.assertNotIn("STALELEGACYBYTES", out)
+
     def test_a_payload_we_cannot_serialize_portably_leaves_the_document_alone(self):
         # Python's json emits bare `NaN` by default, which is not JSON and which a browser's
         # JSON.parse REFUSES - and a browser is the payload's only consumer. Rather than write a
@@ -7278,6 +7306,58 @@ class ByteFreeDescriptorTests(unittest.TestCase):
         self.assertTrue(obj["mermaidLicense"].strip())
         self.assertLess(len(text), 8000,
                         "the descriptor must stay tiny - it replaced 1,357 KB of base64")
+
+
+class MixedFormPayloadTests(unittest.TestCase):
+    """CMH-SIZE-08: a library is carried as BYTES or as a DESCRIPTOR, never as both at once.
+
+    Only one form can ever be used - `_lib_source` prefers the bytes - so a payload holding both
+    keeps a right-sized document paying for the megabyte it was supposed to have shed, and pairs a
+    newer copy's licence with an older copy's code. The two places that can produce the shape are
+    a hand edit and the duplicate-payload merge in `vendored_libs.apply`, so both are pinned here.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(_paths.DEV, "skill", "tools", "authoring"))
+        import _vendored_payload
+        self.payload = _vendored_payload
+
+    def _mixed(self):
+        return {
+            "encoding": self.payload.DEFAULT_ENCODING,
+            "mermaidGzipBase64": "LEGACYBYTES",
+            "mermaidUrl": "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js",
+            "mermaidIntegrity": "sha384-" + "m" * 64,
+            "mermaidLicense": "MIT mermaid",
+        }
+
+    def test_a_library_carrying_both_forms_is_a_mismatch(self):
+        # `carried_libs` alone says "mermaid" for this payload, so without the extra rule
+        # `payload_matches` would call it settled and `apply` would leave the dead form in the file
+        # forever. It has to route through `reconcile`, which collapses it to one form.
+        obj = self._mixed()
+        self.assertEqual(self.payload.carried_libs(obj), {"mermaid"})
+        self.assertFalse(self.payload.payload_matches(obj, {"mermaid"}))
+
+    def test_reconciling_a_mixed_payload_keeps_exactly_one_form(self):
+        out = self.payload.reconcile(self._mixed(), {"mermaid"})
+        self.assertIsNotNone(out)
+        self.assertIn("mermaidGzipBase64", out)
+        self.assertNotIn("mermaidUrl", out)
+        self.assertNotIn("mermaidIntegrity", out)
+
+    def test_lib_source_keys_reports_the_form_actually_in_use(self):
+        # The public accessor `vendored_libs.apply` uses to move a library as a WHOLE form.
+        self.assertEqual(self.payload.lib_source_keys(self._mixed(), "mermaid"),
+                         ("mermaidGzipBase64",))
+        descriptor = {
+            "mermaidUrl": "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js",
+            "mermaidIntegrity": "sha384-" + "m" * 64,
+            "mermaidLicense": "MIT mermaid",
+        }
+        self.assertEqual(self.payload.lib_source_keys(descriptor, "mermaid"),
+                         ("mermaidUrl", "mermaidIntegrity"))
+        self.assertIsNone(self.payload.lib_source_keys({"mermaidUrl": "https://x/y.js"}, "mermaid"))
 
 
 if __name__ == "__main__":

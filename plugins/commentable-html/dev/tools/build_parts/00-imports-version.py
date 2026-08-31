@@ -277,8 +277,11 @@ def read_mermaid_version(package_json=None):
 
 def read_chartjs_version(package_json=None):
     """The vendored Chart.js version, pinned from the dev package.json's chart.js dependency using
-    the same exact/caret/tilde rule as read_mermaid_version. Used only to STAMP the shipped notices,
-    never a CDN URL."""
+    the same exact/caret/tilde rule as read_mermaid_version. Stamps the shipped notices AND, since
+    CMH-SIZE-08, builds the pinned `chartjsUrl` an Offline export downloads - so this value and the
+    bytes in `assets/vendor/chart.umd.min.js` (which `chartjsIntegrity` hashes) must describe the
+    SAME release, or every chart document's export fails the integrity check. `CMH-BUILD-25` in
+    `tests/01-vendor-provenance.spec.js` is what holds the two in step."""
     package_json = PACKAGE_JSON if package_json is None else package_json
     with open(package_json, "r", encoding="utf-8") as fh:
         data = json.load(fh)
@@ -347,9 +350,12 @@ _LZSTRING_LICENSE = (
 def build_third_party_notices(assets_dir):
     """Assemble the shipped THIRD_PARTY_NOTICES.md from the vendored upstream license files, so the
     MIT copyright and permission notices for the bundled third-party libraries travel with every
-    distribution of the skill. mermaid and Chart.js ship gzipped inside the built templates and are
-    inlined into Offline exports; lz-string is baked into the runtime JS. Single-sourced from
-    assets/vendor/*.LICENSE (plus the inline lz-string notice) and the versions pinned in package.json."""
+    distribution of the skill. A generated document carries these NOTICES; since CMH-SIZE-08 it
+    names the mermaid and Chart.js builds by pinned URL plus SRI hash rather than embedding their
+    bytes, and Export Offline downloads, verifies, and inlines them (a document generated before
+    that release, or one built with `--vendor-bytes`, carries the bytes gzipped instead).
+    lz-string is baked into the runtime JS. Single-sourced from assets/vendor/*.LICENSE (plus the
+    inline lz-string notice) and the versions pinned in package.json."""
     vendor_dir = os.path.join(assets_dir, "vendor")
     versions = {"mermaid": read_mermaid_version(), "Chart.js": read_chartjs_version()}
     parts = [

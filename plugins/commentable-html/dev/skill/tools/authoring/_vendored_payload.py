@@ -128,6 +128,17 @@ def _lib_source(obj, lib):
     return None
 
 
+def lib_source_keys(obj, lib):
+    """Public alias of `_lib_source`, for a caller that must copy one library as a whole FORM.
+
+    A library is carried as BYTES or as a URL+integrity descriptor, never both, so anything that
+    rebuilds a payload from several copies has to move the winning copy's form as a unit rather than
+    key by key - otherwise the two forms coexist and the byte-preferring `_lib_source` makes the
+    loser win (`vendored_libs.apply`, the duplicate-payload merge).
+    """
+    return _lib_source(obj, lib)
+
+
 def payload_matches(obj, needed):
     """True when the payload carries EXACTLY `needed` and nothing belonging to any other library.
 
@@ -136,10 +147,19 @@ def payload_matches(obj, needed):
     the two sets would agree and the reconciler would leave ~1,265 KB of unlicensed bytes sitting in
     the file forever. An orphan field is therefore a mismatch, which sends the payload through
     `reconcile` and drops it.
+
+    A library carrying BOTH forms at once is a mismatch too. Only one of them can ever be used
+    (`_lib_source` prefers the bytes), so the other is dead weight - and when it is the bytes that
+    win, a document that was right-sized to a descriptor would keep paying for the megabyte it was
+    supposed to have shed. Sending it through `reconcile` collapses it back to one form.
     """
     if carried_libs(obj) != needed:
         return False
     obj = obj if isinstance(obj, dict) else {}
+    if any(_field(obj, LIB_BYTES[lib]) is not None
+           and all(_field(obj, key) is not None for key in LIB_SOURCE[lib])
+           for lib in needed):
+        return False
     return not any(key in obj
                    for lib in LIBRARIES if lib not in needed
                    for key in LIB_FIELDS[lib])
