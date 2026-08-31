@@ -280,8 +280,9 @@ def read_chartjs_version(package_json=None):
     the same exact/caret/tilde rule as read_mermaid_version. Stamps the shipped notices AND, since
     CMH-SIZE-08, builds the pinned `chartjsUrl` an Offline export downloads - so this value and the
     bytes in `assets/vendor/chart.umd.min.js` (which `chartjsIntegrity` hashes) must describe the
-    SAME release, or every chart document's export fails the integrity check. `CMH-BUILD-25` in
-    `tests/01-vendor-provenance.spec.js` is what holds the two in step."""
+    SAME release, or every chart document's export fails the integrity check. The Chart.js half of
+    `tests/01-vendor-provenance.spec.js` (named under `CMH-SIZE-08`) is what holds the two in step;
+    `CMH-BUILD-25` in the same file is the mermaid equivalent."""
     package_json = PACKAGE_JSON if package_json is None else package_json
     with open(package_json, "r", encoding="utf-8") as fh:
         data = json.load(fh)

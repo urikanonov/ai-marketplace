@@ -2178,11 +2178,14 @@ test("CMH-SIZE-08: a generated document names its libraries instead of embedding
     expect(payloadText.length).toBeLessThan(10 * 1024);
 
     // Count the downloads on the pinned URLs: this is the direct evidence that the FETCH supplied
-    // the bytes, rather than some copy still hiding in the document.
+    // the bytes, rather than some copy still hiding in the document. The REFERRER is captured with
+    // them, because the export must not tell the CDN which document is being exported.
     const fetched = [];
+    const referrers = [];
     page.on("request", (request) => {
       if (/cdn\.jsdelivr\.net\/npm\/(mermaid@[^/]+\/dist\/mermaid\.min\.js|chart\.js@[^/]+\/dist\/chart\.umd\.min\.js)$/.test(request.url())) {
         fetched.push(request.url());
+        referrers.push(request.headers()["referer"]);
       }
     });
     await routeRichContentLocal(page);
@@ -2202,6 +2205,10 @@ test("CMH-SIZE-08: a generated document names its libraries instead of embedding
     const exportedHtml = await capturedDownloadText(page);
     expect(fetched.filter((u) => /mermaid/.test(u)), "exporting downloads mermaid once").toHaveLength(1);
     expect(fetched.filter((u) => /chart\.js/.test(u)), "exporting downloads Chart.js once").toHaveLength(1);
+    // No referrer on either download: the CDN learns the pinned version it was asked for, never
+    // which document the reader is exporting.
+    expect(referrers.filter((r) => r !== undefined && r !== ""),
+      "the library download sends no referrer").toEqual([]);
 
     // The verified bytes are inlined with their notices, and the result is still zero-network.
     expect(exportedHtml).toContain('data-cmh-offline-lib="mermaid"');
@@ -2269,6 +2276,47 @@ test("CMH-SIZE-08: a library the export cannot download or verify is refused lou
       route: routeVendoredLibs,
       expected: /refused a non-https source for the vendored mermaid bundle/i,
     },
+    {
+      name: "an https URL that redirects to http",
+      // The pre-fetch check only covers the RECORDED string, and `redirect: "follow"` means an
+      // https URL could still land on http. Chromium refuses that downgrade at the network layer
+      // before the response is handed back, so what this pins is the OUTCOME - a loud refusal and
+      // no file - rather than which layer produced it; the post-fetch `response.url` re-check is
+      // the backstop for any engine that does hand such a response back.
+      route: async (page) => {
+        await page.route(/cdn\.jsdelivr\.net\/npm\/mermaid@[^/]+\/dist\/mermaid\.min\.js$/, async (route) => {
+          await route.fulfill({
+            status: 302,
+            headers: { location: "http://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js" },
+            body: "",
+          });
+        });
+        // Serve the redirect TARGET successfully, so nothing but the scheme of the address the
+        // bytes would have come from can refuse this export.
+        await page.route(/^http:\/\/cdn\.jsdelivr\.net\/npm\/mermaid@/, async (route) => {
+          await route.fulfill({
+            body: fs.readFileSync(path.join(DEV, "assets", "vendor", "mermaid.min.js")),
+            contentType: "text/javascript",
+            headers: { "access-control-allow-origin": "*" },
+          });
+        });
+      },
+      expected: /(redirected to a non-https address|could not download the vendored mermaid bundle)/i,
+    },
+    {
+      name: "the payload is not an object at all",
+      // A present but non-object payload is a BROKEN infrastructure block, not an absent one:
+      // reading its (always undefined) fields would resolve every library to nothing and hand the
+      // export to the document's own unverified copies.
+      build: (html) => {
+        const idAt = html.indexOf('id="cmhVendoredRichLibs"');
+        const openEnd = html.indexOf(">", idAt) + 1;
+        const closeAt = html.indexOf("</script>", openEnd);
+        return html.slice(0, openEnd) + "[1,2,3]" + html.slice(closeAt);
+      },
+      route: routeVendoredLibs,
+      expected: /payload is not an object/i,
+    },
   ];
 
   for (const c of cases) {
@@ -2304,14 +2352,25 @@ test("CMH-SIZE-08: a half descriptor is refused, never quietly served from the d
       field: "mermaidUrl",
       expected: /incomplete source for the vendored mermaid bundle[\s\S]*integrity hash with no URL/i,
     },
+    {
+      // Chart.js runs the identical code, but its descriptor is the one this change turned into a
+      // live CDN URL, so drive that branch rather than trusting the shared call site by inspection.
+      name: "the Chart.js branch refuses a half descriptor too",
+      content: CHART_ONLY_CONTENT,
+      field: "chartjsIntegrity",
+      captured: false,
+      expected: /incomplete source for the vendored chartjs bundle[\s\S]*URL with no integrity hash/i,
+    },
   ];
 
   for (const c of cases) {
-    const staged = stageContent(FORGERY_CONTENT, { key: "cmh-size-halfdesc", source: "size-halfdesc.html" });
+    const staged = stageContent(c.content || FORGERY_CONTENT, { key: "cmh-size-halfdesc", source: "size-halfdesc.html" });
     try {
       // A captured copy that clears every provenance gate, so ONLY the refusal keeps it out.
-      const html = withoutPayloadField(fs.readFileSync(staged.html, "utf8"), c.field)
-        .replace("</head>", capturedMermaidCopy("cmh-half-descriptor-fallback", true) + "\n</head>");
+      let html = withoutPayloadField(fs.readFileSync(staged.html, "utf8"), c.field);
+      if (c.captured !== false) {
+        html = html.replace("</head>", capturedMermaidCopy("cmh-half-descriptor-fallback", true) + "\n</head>");
+      }
       fs.writeFileSync(staged.html, html);
       await page.unrouteAll({ behavior: "ignoreErrors" });
       await page.route(/^https?:\/\//, (route) => route.abort());

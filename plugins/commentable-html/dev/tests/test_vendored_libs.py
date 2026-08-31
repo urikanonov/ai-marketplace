@@ -7340,11 +7340,31 @@ class MixedFormPayloadTests(unittest.TestCase):
         self.assertFalse(self.payload.payload_matches(obj, {"mermaid"}))
 
     def test_reconciling_a_mixed_payload_keeps_exactly_one_form(self):
+        # The DESCRIPTOR wins, not the bytes. `_lib_source` prefers bytes because that is what the
+        # runtime would use, but collapsing a mixed payload onto them would make the megabyte
+        # canonical and permanent for a document that had already been right-sized - the opposite of
+        # what reconciling it is for.
         out = self.payload.reconcile(self._mixed(), {"mermaid"})
         self.assertIsNotNone(out)
-        self.assertIn("mermaidGzipBase64", out)
+        self.assertNotIn("mermaidGzipBase64", out)
+        self.assertIn("mermaidUrl", out)
+        self.assertIn("mermaidIntegrity", out)
+        self.assertEqual(out["mermaidLicense"], "MIT mermaid")
+        # And the result is settled, so finalize does not rewrite it again on the next run.
+        self.assertTrue(self.payload.payload_matches(out, {"mermaid"}))
+
+    def test_reconciling_a_bytes_only_payload_keeps_the_bytes(self):
+        # The other direction of the same rule: a legacy document is not stripped of the only source
+        # it has just because a descriptor would be preferable.
+        legacy = {
+            "encoding": self.payload.DEFAULT_ENCODING,
+            "mermaidGzipBase64": "LEGACYBYTES",
+            "mermaidLicense": "MIT mermaid",
+        }
+        out = self.payload.reconcile(legacy, {"mermaid"})
+        self.assertIsNotNone(out)
+        self.assertEqual(out["mermaidGzipBase64"], "LEGACYBYTES")
         self.assertNotIn("mermaidUrl", out)
-        self.assertNotIn("mermaidIntegrity", out)
 
     def test_lib_source_keys_reports_the_form_actually_in_use(self):
         # The public accessor `vendored_libs.apply` uses to move a library as a WHOLE form.

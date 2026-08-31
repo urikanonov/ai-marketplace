@@ -16916,10 +16916,17 @@ return _offlineVendoredRichLibsCache.promise;
 }
 const pending=(async function(){
 const payload=JSON.parse(text||"{}");
+if(!payload||typeof payload!== "object"||Array.isArray(payload)){
+throw _offlineLibSourceError("Offline export could not read the vendored rich-content bundle:"
++" its payload is not an object. Re-run the authoring finalize step to refresh it.");
+}
 const deadline=_offlineLibFetchDeadline();
+const mermaid=_offlineResolveVendoredLib(payload,"mermaid",!!want.mermaid,deadline);
+const chartjs=_offlineResolveVendoredLib(payload,"chartjs",!!want.chartjs,deadline);
+chartjs.catch(function(){});
 return{
-mermaid:await _offlineResolveVendoredLib(payload,"mermaid",!!want.mermaid,deadline),
-chartjs:await _offlineResolveVendoredLib(payload,"chartjs",!!want.chartjs,deadline),
+mermaid:await mermaid,
+chartjs:await chartjs,
 mermaidLicense:_offlinePayloadLicense(payload.mermaidLicense),
 chartjsLicense:_offlinePayloadLicense(payload.chartjsLicense),
 };
@@ -16935,9 +16942,12 @@ return promise;
 }
 async function _offlineResolveVendoredLib(payload,lib,needed,deadline){
 if(!needed)return"";
-const bytes=String(payload[lib+"GzipBase64"]||"").trim();
+const bytes=_offlinePayloadString(payload[lib+"GzipBase64"]);
 if(bytes)return _offlineInflateVendoredScript(bytes);
 return _offlineFetchVendoredScript(payload,lib,deadline);
+}
+function _offlinePayloadString(value){
+return typeof value=== "string"?value.trim():"";
 }
 const _OFFLINE_LIB_FETCH_TIMEOUT_MS=120000;
 function _offlineLibFetchTimeoutMs(){
@@ -16945,18 +16955,19 @@ const override=typeof window!== "undefined"?Number(window.__cmhLibFetchTimeoutMs
 return isFinite(override)&&override>0?override:_OFFLINE_LIB_FETCH_TIMEOUT_MS;
 }
 async function _offlineFetchVendoredScript(payload,lib,deadline){
-const url=String(payload[lib+"Url"]||"").trim();
-const integrity=String(payload[lib+"Integrity"]||"").trim();
+const url=_offlinePayloadString(payload[lib+"Url"]);
+const integrity=_offlinePayloadString(payload[lib+"Integrity"]);
 if(!url&&!integrity)return"";
 if(!url||!integrity){
 throw _offlineLibSourceError("Offline export found an incomplete source for the vendored "+lib
 +" bundle: it names "+(url?"a URL with no integrity hash":"an integrity hash with no URL")
-+", so the download cannot be verified. Re-run the authoring finalize step to refresh the"
-+" vendored payload.");
++", so the download cannot be verified. Ask the document's author to re-run the authoring"
++" finalize step to refresh the vendored payload.");
 }
 if(!/^sha384-[A-Za-z0-9+/]+={0,2}$/.test(integrity)){
 throw _offlineLibSourceError("Offline export found a malformed integrity hash for the vendored "
-+lib+" bundle, so it cannot verify what it downloads.");
++lib+" bundle, so it cannot verify what it downloads. Ask the document's author to re-run"
++" the authoring finalize step to refresh the vendored payload.");
 }
 let parsed;
 try{parsed=new URL(url,document.baseURI);}catch(e){parsed=null;}
@@ -16970,7 +16981,8 @@ throw _offlineLibSourceError("Offline export cannot verify the vendored "+lib
 +" it needs. Open the document as a local file, or serve it over https, and export again.");
 }
 const controller=typeof AbortController=== "function"?new AbortController():null;
-const remaining=Math.max(1,(deadline||(_offlineNow()+_offlineLibFetchTimeoutMs()))-_offlineNow());
+const remaining=(deadline||(_offlineNow()+_offlineLibFetchTimeoutMs()))-_offlineNow();
+if(remaining<=0)throw _offlineFetchLibError(lib);
 const timer=controller?setTimeout(function(){controller.abort();},remaining):0;
 try{
 let response;
@@ -17004,7 +17016,8 @@ try{
 digest=await crypto.subtle.digest("SHA-384",buffer);
 }catch(e){
 throw _offlineLibSourceError("Offline export could not hash the vendored "+lib
-+" bundle it downloaded, so it could not be verified and was not inlined.");
++" bundle it downloaded, so it could not be verified and was not inlined. This is"
++" unusual - try again, or open the document in a different browser.");
 }
 const actual= "sha384-"+btoa(String.fromCharCode.apply(null,new Uint8Array(digest)));
 if(actual!==integrity){
@@ -17039,16 +17052,20 @@ throw new Error("Offline export needs DecompressionStream support to unpack its 
 }
 const hit=_offlineInflatedScriptCache[raw];
 if(hit)return hit;
+if(Object.keys(_offlineInflatedScriptCache).length>=2){
+_offlineInflatedScriptCache=Object.create(null);
+}
 const pending=(async function(){
 const bytes=Uint8Array.from(atob(raw),function(ch){return ch.charCodeAt(0);});
 const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
 return new Response(stream).text();
 })();
-_offlineInflatedScriptCache[raw]=pending.catch(function(e){
-if(_offlineInflatedScriptCache[raw])delete _offlineInflatedScriptCache[raw];
+const guarded=pending.catch(function(e){
+if(_offlineInflatedScriptCache[raw]===guarded)delete _offlineInflatedScriptCache[raw];
 throw e;
 });
-return _offlineInflatedScriptCache[raw];
+_offlineInflatedScriptCache[raw]=guarded;
+return guarded;
 }
 async function _offlineVendoredRichLibs(resolved,needs){
 if(resolved.ambiguous){
@@ -17073,7 +17090,7 @@ let payload;
 try{payload=JSON.parse(resolved.text);}catch(e){return;}
 if(!payload||typeof payload!== "object")return;
 ["mermaid","chartjs"].forEach(function(lib){
-const bytes=String(payload[lib+"GzipBase64"]||"").trim();
+const bytes=_offlinePayloadString(payload[lib+"GzipBase64"]);
 if(bytes)_offlineInflateVendoredScript(bytes).catch(function(){});
 });
 };

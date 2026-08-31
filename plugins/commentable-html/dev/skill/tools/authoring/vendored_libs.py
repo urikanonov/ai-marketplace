@@ -477,8 +477,18 @@ def apply(html, source_blob=None):
         start, end = scan.blob_spans[keep]
         inner_start, inner_end = scan.blob_inner_spans[keep]
         survivor = html[start:end]
+        # Emit in CANONICAL order, not in the order the duplicates happened to be encountered.
+        # `reconcile` rebuilds that way for a reason - a payload has to be a pure function of
+        # (content, template bytes) rather than of the document's finalize history - and this path
+        # bypasses it whenever the merged result already `payload_matches`, so without this two
+        # documents with identical content could differ byte for byte purely because one of them
+        # once carried its duplicates in the other order.
+        ordered = {key: merged[key] for key in vendored_payload.CANONICAL_KEYS if key in merged}
+        for key, value in merged.items():
+            if key not in ordered:
+                ordered[key] = value
         try:
-            survivor = (html[start:inner_start] + vendored_payload.serialize_payload(merged)
+            survivor = (html[start:inner_start] + vendored_payload.serialize_payload(ordered)
                         + html[inner_end:end])
         except ValueError:
             pass

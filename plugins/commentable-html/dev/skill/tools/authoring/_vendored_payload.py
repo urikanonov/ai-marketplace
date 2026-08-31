@@ -139,6 +139,21 @@ def lib_source_keys(obj, lib):
     return _lib_source(obj, lib)
 
 
+def _reconcile_source_keys(obj, lib):
+    """Like `_lib_source`, but preferring the DESCRIPTOR when a source carries both forms.
+
+    `_lib_source` answers "which form would be USED", and the runtime uses the bytes, so it must
+    keep preferring them. Reconciliation answers a different question - "which form should this
+    document KEEP" - and there the descriptor is the right answer: it is the smaller, verifiable,
+    current form, and collapsing a mixed payload onto its bytes would make the megabyte canonical
+    and permanent for a document that had already been right-sized.
+    """
+    descriptor = LIB_SOURCE[lib]
+    if all(_field(obj, key) is not None for key in descriptor):
+        return descriptor
+    return _lib_source(obj, lib)
+
+
 def payload_matches(obj, needed):
     """True when the payload carries EXACTLY `needed` and nothing belonging to any other library.
 
@@ -205,8 +220,11 @@ def reconcile(obj, needed, source_obj=None):
             return None
         # Copy the form this source actually carries - a descriptor stays a descriptor, so a
         # right-sized document is never re-inflated back to the megabyte it just shed - plus the
-        # notice, which travels with the library in either form.
-        for key in _lib_source(source, lib) + (LIB_LICENSE[lib],):
+        # notice, which travels with the library in either form. When a source carries BOTH forms
+        # (only a hand edit or a stale merge produces that), the DESCRIPTOR wins here even though
+        # `_lib_source` prefers bytes elsewhere: collapsing to the bytes would make the megabyte
+        # canonical and permanent, which is the opposite of what reconciling a mixed payload is for.
+        for key in _reconcile_source_keys(source, lib) + (LIB_LICENSE[lib],):
             out[key] = source[key]
     rebuilt = {key: out[key] for key in CANONICAL_KEYS if key in out}
     schema = set(CANONICAL_KEYS)
