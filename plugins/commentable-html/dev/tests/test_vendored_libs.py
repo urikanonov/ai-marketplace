@@ -593,7 +593,13 @@ class StripAndRestoreTests(unittest.TestCase):
         out, changed = vendored_libs.apply(html, self.blob)
         self.assertTrue(changed)
         self.assertIsNone(vendored_libs.find_blob(out))
-        self.assertLess(len(out), len(html) - 1000 * 1024, "the saving must be the real payload")
+        # Prove the element physically LEFT, not just that the finder stopped seeing it. Since
+        # CMH-SIZE-08 the payload is a ~2.5 KB descriptor rather than 1,357 KB of base64, so the
+        # bulk of what must go is the two MIT notices; the mermaid copyright line is the distinctive
+        # marker for one of them.
+        self.assertIn("Knut Sveidqvist", html)
+        self.assertNotIn("Knut Sveidqvist", out, "the saving must be the real payload")
+        self.assertLess(len(out), len(html) - 2000, "the saving must be the real payload")
 
     def test_the_blob_is_kept_for_a_document_that_uses_charts(self):
         html = _doc(CHART)
@@ -741,11 +747,16 @@ class PerLibraryPayloadTests(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"mermaid"})
 
-    def test_a_chart_only_document_sheds_the_real_mermaid_bytes(self):
-        # Prove the SAVING, not just the key set: the mermaid half is ~1,265 KB base64.
+    def test_a_chart_only_document_sheds_the_real_mermaid_half(self):
+        # Prove the SAVING, not just the key set: a reconciler that rebuilt the payload but left the
+        # old text behind would pass the carried_libs check above and save nothing. Since
+        # CMH-SIZE-08 the mermaid half is a descriptor rather than ~1,265 KB of base64, so its MIT
+        # notice is the bulk of it - and its copyright line is what must physically leave the file.
         html = _doc(CHART)
         out, _ = vendored_libs.apply(html, self.blob)
-        self.assertLess(len(out), len(html) - 1000 * 1024)
+        self.assertIn("Knut Sveidqvist", html)
+        self.assertNotIn("Knut Sveidqvist", out)
+        self.assertLess(len(out), len(html) - 1000)
 
     def test_a_partial_payload_is_completed_when_the_document_gains_the_other_library(self):
         # THE regression guard. Once a payload can be partial, "restore when the content GAINS a
@@ -841,6 +852,34 @@ class PerLibraryPayloadTests(unittest.TestCase):
         self.assertEqual(out.count('id="cmhVendoredRichLibs"'), 1)
         self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"mermaid", "chartjs"},
                          "the surviving copy must still satisfy the document with no template")
+
+    def test_a_legacy_duplicate_does_not_re_inflate_a_descriptor_document(self):
+        # CMH-SIZE-08. A stale byte-carrying copy left beside a current descriptor copy used to
+        # merge into ONE payload holding both forms, because the merge copied whichever keys each
+        # copy happened to have and the two forms' keys are disjoint - so "later copies win a
+        # conflict" never fired. `_lib_source` then prefers the bytes forever, which silently undoes
+        # the whole point of the descriptor and can pair the newer copy's licence with the older
+        # copy's code. The later copy has to replace the library's whole FORM.
+        full, _ = vendored_libs.apply(_doc(MERMAID), self.blob)
+        span = vendored_libs.find_blob(full)
+        current = vendored_libs.payload_object(full[span[0]:span[1]])
+        self.assertIn("mermaidUrl", current, "fixture premise: the built payload is a descriptor")
+        legacy = dict(current)
+        del legacy["mermaidUrl"]
+        del legacy["mermaidIntegrity"]
+        legacy["mermaidGzipBase64"] = "STALELEGACYBYTES"
+        doubled = (full[:span[0]] + vendored_libs.payload_script(legacy) + "\n"
+                   + full[span[0]:span[1]] + full[span[1]:])
+        self.assertEqual(doubled.count('id="cmhVendoredRichLibs"'), 2, "fixture premise")
+        out, changed = vendored_libs.apply(doubled, None)
+        self.assertTrue(changed)
+        self.assertEqual(out.count('id="cmhVendoredRichLibs"'), 1)
+        merged = self._payload(out)
+        self.assertEqual(vendored_libs.carried_libs(merged), {"mermaid"})
+        self.assertNotIn("mermaidGzipBase64", merged,
+                         "the later descriptor must win outright, not sit beside stale bytes")
+        self.assertIn("mermaidUrl", merged)
+        self.assertNotIn("STALELEGACYBYTES", out)
 
     def test_a_payload_we_cannot_serialize_portably_leaves_the_document_alone(self):
         # Python's json emits bare `NaN` by default, which is not JSON and which a browser's
@@ -7184,6 +7223,195 @@ class RuntimeParityTests(unittest.TestCase):
                 re.search(r"<\/?script|<\/style", code, re.IGNORECASE),
                 "%s now contains a script-data escape sequence, so both offline inline paths "
                 "would reject the genuine library." % name)
+
+
+class ByteFreeDescriptorTests(unittest.TestCase):
+    """CMH-SIZE-08: a generated document names the libraries it needs instead of carrying them.
+
+    The viewer never reads the payload - it imports mermaid from the CDN and an authored Chart.js
+    arrives as its own CDN script - so the bytes existed only to pre-stage a possible future Offline
+    export. They are now fetched at export time and verified against a recorded SRI hash, which is
+    why the descriptor must carry a URL and an integrity hash but no base64.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(_paths.DEV, "skill", "tools", "authoring"))
+        import _vendored_payload
+        self.payload = _vendored_payload
+
+    def _descriptor(self):
+        return {
+            "encoding": self.payload.DEFAULT_ENCODING,
+            "mermaidUrl": "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js",
+            "mermaidIntegrity": "sha384-" + "m" * 64,
+            "chartjsUrl": "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js",
+            "chartjsIntegrity": "sha384-" + "c" * 64,
+            "mermaidLicense": "MIT mermaid",
+            "chartjsLicense": "MIT chartjs",
+        }
+
+    def test_a_url_and_integrity_pair_counts_as_carrying_the_library(self):
+        # The whole point of the change: a document that names the library carries it, so the
+        # reconciler must not treat a byte-free document as one that needs bytes restored.
+        self.assertEqual(self.payload.carried_libs(self._descriptor()), {"mermaid", "chartjs"})
+
+    def test_a_url_without_an_integrity_hash_does_not_count(self):
+        # Fail-safe: an unverifiable source is not a source. Accepting it would let an export inline
+        # whatever the network returned, which is strictly worse than refusing.
+        obj = self._descriptor()
+        del obj["mermaidIntegrity"]
+        self.assertEqual(self.payload.carried_libs(obj), {"chartjs"})
+
+    def test_a_descriptor_without_its_mit_notice_does_not_count(self):
+        # MIT compliance must never depend on the network, so the notice stays embedded and a
+        # descriptor missing it carries nothing - same rule the bytes always obeyed.
+        obj = self._descriptor()
+        del obj["mermaidLicense"]
+        self.assertEqual(self.payload.carried_libs(obj), {"chartjs"})
+
+    def test_a_legacy_payload_carrying_bytes_is_still_honoured(self):
+        # Documents already in the wild keep exporting with zero network; the bytes remain a valid
+        # way to carry a library, they are simply no longer the way new documents do it.
+        legacy = {
+            "encoding": self.payload.DEFAULT_ENCODING,
+            "mermaidGzipBase64": "AAAA",
+            "chartjsGzipBase64": "BBBB",
+            "mermaidLicense": "MIT mermaid",
+            "chartjsLicense": "MIT chartjs",
+        }
+        self.assertEqual(self.payload.carried_libs(legacy), {"mermaid", "chartjs"})
+
+    def test_reconcile_keeps_the_descriptor_rather_than_restoring_bytes(self):
+        # Reconciliation rebuilds from the canonical key order; a descriptor-shaped document must
+        # come back descriptor-shaped, or every finalize would re-inflate the megabyte it just shed.
+        out = self.payload.reconcile(self._descriptor(), {"mermaid", "chartjs"})
+        self.assertIsNotNone(out)
+        self.assertNotIn("mermaidGzipBase64", out)
+        self.assertEqual(out["mermaidUrl"],
+                         "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js")
+        self.assertEqual(out["mermaidLicense"], "MIT mermaid")
+
+    def test_the_build_emits_a_descriptor_with_no_library_bytes(self):
+        # The measured win: the four mermaid-carrying examples each shed about 1,265 KB. Asserted on
+        # the BUILD's own output so a future change that re-adds the bytes fails here.
+        sys.path.insert(0, os.path.join(_paths.DEV, "tools"))
+        import build as build_mod
+        text = build_mod.build_vendored_rich_libs_json(os.path.join(_paths.DEV, "assets"))
+        obj = json.loads(text.replace("\\u003C", "<").replace("\\u003E", ">")
+                         .replace("\\u0026", "&"))
+        self.assertNotIn("mermaidGzipBase64", obj)
+        self.assertNotIn("chartjsGzipBase64", obj)
+        self.assertTrue(obj["mermaidUrl"].startswith("https://cdn.jsdelivr.net/npm/mermaid@"))
+        self.assertTrue(obj["mermaidIntegrity"].startswith("sha384-"))
+        self.assertTrue(obj["mermaidLicense"].strip())
+        self.assertLess(len(text), 8000,
+                        "the descriptor must stay tiny - it replaced 1,357 KB of base64")
+
+
+class MixedFormPayloadTests(unittest.TestCase):
+    """CMH-SIZE-08: a library is carried as BYTES or as a DESCRIPTOR, never as both at once.
+
+    Only one form can ever be used - `_lib_source` prefers the bytes - so a payload holding both
+    keeps a right-sized document paying for the megabyte it was supposed to have shed, and pairs a
+    newer copy's licence with an older copy's code. The two places that can produce the shape are
+    a hand edit and the duplicate-payload merge in `vendored_libs.apply`, so both are pinned here.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(_paths.DEV, "skill", "tools", "authoring"))
+        import _vendored_payload
+        self.payload = _vendored_payload
+
+    def _mixed(self):
+        return {
+            "encoding": self.payload.DEFAULT_ENCODING,
+            "mermaidGzipBase64": "LEGACYBYTES",
+            "mermaidUrl": "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js",
+            "mermaidIntegrity": "sha384-" + "m" * 64,
+            "mermaidLicense": "MIT mermaid",
+        }
+
+    def test_a_library_carrying_both_forms_is_a_mismatch(self):
+        # `carried_libs` alone says "mermaid" for this payload, so without the extra rule
+        # `payload_matches` would call it settled and `apply` would leave the dead form in the file
+        # forever. It has to route through `reconcile`, which collapses it to one form.
+        obj = self._mixed()
+        self.assertEqual(self.payload.carried_libs(obj), {"mermaid"})
+        self.assertFalse(self.payload.payload_matches(obj, {"mermaid"}))
+
+    def test_reconciling_a_mixed_payload_keeps_exactly_one_form(self):
+        # The DESCRIPTOR wins, not the bytes. `_lib_source` prefers bytes because that is what the
+        # runtime would use, but collapsing a mixed payload onto them would make the megabyte
+        # canonical and permanent for a document that had already been right-sized - the opposite of
+        # what reconciling it is for.
+        out = self.payload.reconcile(self._mixed(), {"mermaid"})
+        self.assertIsNotNone(out)
+        self.assertNotIn("mermaidGzipBase64", out)
+        self.assertIn("mermaidUrl", out)
+        self.assertIn("mermaidIntegrity", out)
+        self.assertEqual(out["mermaidLicense"], "MIT mermaid")
+        # And the result is settled, so finalize does not rewrite it again on the next run.
+        self.assertTrue(self.payload.payload_matches(out, {"mermaid"}))
+
+    def test_reconciling_a_bytes_only_payload_keeps_the_bytes(self):
+        # The other direction of the same rule: a legacy document is not stripped of the only source
+        # it has just because a descriptor would be preferable.
+        legacy = {
+            "encoding": self.payload.DEFAULT_ENCODING,
+            "mermaidGzipBase64": "LEGACYBYTES",
+            "mermaidLicense": "MIT mermaid",
+        }
+        out = self.payload.reconcile(legacy, {"mermaid"})
+        self.assertIsNotNone(out)
+        self.assertEqual(out["mermaidGzipBase64"], "LEGACYBYTES")
+        self.assertNotIn("mermaidUrl", out)
+
+    def test_lib_source_keys_reports_the_form_actually_in_use(self):
+        # The public accessor `vendored_libs.apply` uses to move a library as a WHOLE form.
+        self.assertEqual(self.payload.lib_source_keys(self._mixed(), "mermaid"),
+                         ("mermaidGzipBase64",))
+        descriptor = {
+            "mermaidUrl": "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js",
+            "mermaidIntegrity": "sha384-" + "m" * 64,
+            "mermaidLicense": "MIT mermaid",
+        }
+        self.assertEqual(self.payload.lib_source_keys(descriptor, "mermaid"),
+                         ("mermaidUrl", "mermaidIntegrity"))
+        self.assertIsNone(self.payload.lib_source_keys({"mermaidUrl": "https://x/y.js"}, "mermaid"))
+
+    def test_a_descriptor_the_runtime_would_refuse_does_not_count_as_a_source(self):
+        # PARITY WITH THE RUNTIME. `68-export-offline.js` refuses a non-https URL outright and
+        # requires exactly `sha384-<base64>`. If this side called such a descriptor usable,
+        # `payload_matches` would report the document settled, `finalize` would leave it alone, and
+        # the export would keep failing while its own message told the author to re-run finalize -
+        # advice that could never work. Treating it as NO source sends it through `reconcile`, which
+        # replaces it from the canonical template.
+        for bad in ({"mermaidUrl": "http://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"},
+                    {"mermaidUrl": "ftp://cdn.example/mermaid.min.js"},
+                    {"mermaidIntegrity": "sha384-a b"},
+                    {"mermaidIntegrity": "sha256-" + "m" * 64},
+                    {"mermaidIntegrity": "not-a-hash"}):
+            obj = self._descriptor_only()
+            obj.update(bad)
+            self.assertIsNone(self.payload.lib_source_keys(obj, "mermaid"), bad)
+            self.assertNotIn("mermaid", self.payload.carried_libs(obj))
+            self.assertFalse(self.payload.payload_matches(obj, {"mermaid"}), bad)
+
+    def test_a_well_formed_descriptor_still_counts(self):
+        # The guard above must not reject the shape the build actually emits.
+        obj = self._descriptor_only()
+        self.assertEqual(self.payload.lib_source_keys(obj, "mermaid"),
+                         ("mermaidUrl", "mermaidIntegrity"))
+        self.assertEqual(self.payload.carried_libs(obj), {"mermaid"})
+        self.assertTrue(self.payload.payload_matches(obj, {"mermaid"}))
+
+    def _descriptor_only(self):
+        return {
+            "encoding": self.payload.DEFAULT_ENCODING,
+            "mermaidUrl": "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js",
+            "mermaidIntegrity": "sha384-" + "m" * 64,
+            "mermaidLicense": "MIT mermaid",
+        }
 
 
 if __name__ == "__main__":

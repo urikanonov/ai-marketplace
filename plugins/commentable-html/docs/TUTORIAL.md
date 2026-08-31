@@ -193,7 +193,7 @@ Reload the file the agent hands back. Comments it marked handled are pruned auto
 
 To share the review with another person instead, use the export menu's **Shareable** action to bake the comments into a single self-contained copy, or **Plain HTML** to hand over a clean copy with the commenting layer removed.
 
-Use **Export Offline** for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Shareable export, strips remote loaders, conditionally inlines vendored Mermaid / Chart.js, and reopens with the **Offline** badge while keeping live diagrams and chart tooltips.
+Use **Export Offline** for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Shareable export, strips remote loaders, conditionally inlines Mermaid / Chart.js, and reopens with the **Offline** badge while keeping live diagrams and chart tooltips. The export itself downloads the library it inlines once and checks it against a hash recorded when the document was generated, so this one step needs a connection - it sends no referrer, and if the download fails or does not match you get an error and no file rather than a copy whose diagrams cannot render. The file it writes needs no network at all.
 
 ## 20. Review a board document
 

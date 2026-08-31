@@ -79,6 +79,68 @@ test("the vendored mermaid bundle is the npm tarball the lockfile pins (CMH-BUIL
   ).toBe(true);
 });
 
+// CMH-SIZE-08 made Chart.js provenance load-bearing in a way it never was before. The vendored
+// `chart.umd.min.js` used to be EMBEDDED in every document, so its only requirement was "be a
+// working Chart.js". Now the payload names `chart.js@<read_chartjs_version()>` as a jsDelivr URL
+// while `chartjsIntegrity` hashes these local BYTES, and the export refuses anything that does not
+// match - so the version string and the bytes must describe the same release or EVERY chart
+// document's offline export fails permanently, with a message ("regenerate the payload") that
+// regenerating cannot fix.
+//
+// The failure shape is concrete: `read_chartjs_version` parses the package.json RANGE BASE
+// (`^4.5.1` -> `4.5.1`), but `npm ci` installs the LOCKFILE version. A lockfile-only bump to 4.5.2
+// followed by a re-vendor per UPSTREAM.md would hash 4.5.2's bytes under a 4.5.1 URL. Nothing else
+// in the repo would notice: the Playwright route stubs match `chart.js@[^/]+` and serve the local
+// vendored file whatever version is asked for, so the hermetic tests stay green by construction.
+//
+// Same structure and same rationale as CMH-BUILD-25 for mermaid, including the announced skip when
+// the dependency is not installed.
+test("the vendored Chart.js bundle is the npm tarball the lockfile pins (CMH-SIZE-08)", () => {
+  const installedDir = path.join(DEV, "node_modules", "chart.js");
+  const installedPkg = path.join(installedDir, "package.json");
+  if (!fs.existsSync(installedPkg)) {
+    console.warn("CMH-SIZE-08: SKIPPED - chart.js is not installed (run npm ci). The vendored bytes were NOT verified against the npm tarball.");
+  }
+  test.skip(!fs.existsSync(installedPkg), "chart.js is not installed (run npm ci)");
+
+  const declared = JSON.parse(fs.readFileSync(path.join(DEV, "package.json"), "utf8"));
+  const spec = (declared.devDependencies || {})["chart.js"] || (declared.dependencies || {})["chart.js"];
+  const pinned = String(spec).replace(/^[\^~]/, "");
+  const installed = JSON.parse(fs.readFileSync(installedPkg, "utf8")).version;
+
+  // A FAILURE, not a skip, for the same reason as mermaid's: this exact disagreement is what would
+  // put the wrong version in the descriptor URL.
+  expect(
+    installed,
+    `package.json pins chart.js ${pinned} but ${installed} is installed (npm ci installs the ` +
+    `package-lock.json version). The vendored payload's chartjsUrl is built from the package.json ` +
+    `pin while chartjsIntegrity hashes assets/vendor/chart.umd.min.js, so a disagreement here ` +
+    `ships a URL and a hash for different releases and every chart document's Offline export ` +
+    `fails verification. Bump the pin and re-vendor per assets/vendor/UPSTREAM.md.`
+  ).toBe(pinned);
+
+  const vendored = fs.readFileSync(path.join(VENDOR, "chart.umd.min.js"));
+  const fromTarball = fs.readFileSync(path.join(installedDir, "dist", "chart.umd.min.js"));
+  expect(
+    vendored.equals(fromTarball),
+    `assets/vendor/chart.umd.min.js does not match node_modules/chart.js/dist/chart.umd.min.js ` +
+    `for chart.js@${installed}. That file's hash is what an Offline export checks the downloaded ` +
+    `jsDelivr copy against, so it must be the tarball npm verified against package-lock.json's ` +
+    `integrity hash. Re-copy it per assets/vendor/UPSTREAM.md and rerun ` +
+    `'python tools/build.py --regen-vendor-gz'.`
+  ).toBe(true);
+
+  const vendoredLicence = fs.readFileSync(path.join(VENDOR, "chart.umd.LICENSE"));
+  const tarballLicence = fs.readFileSync(path.join(installedDir, "LICENSE.md"));
+  expect(
+    vendoredLicence.equals(tarballLicence),
+    `assets/vendor/chart.umd.LICENSE does not match node_modules/chart.js/LICENSE.md for ` +
+    `chart.js@${installed}. The notice is embedded in every document and emitted beside the ` +
+    `inlined library, so a stale copy misstates the terms the shipped bytes travel under. ` +
+    `Re-copy it per assets/vendor/UPSTREAM.md and rebuild.`
+  ).toBe(true);
+});
+
 // The refusal DECISION (CMH-BUILD-24) exercised directly, rather than asserted about as source
 // text: the capture reads three versions and must (a) proceed on agreement, (b) tell a maintainer
 // with a stale install to run `npm ci`, and (c) NOT say that when the lockfile itself has moved

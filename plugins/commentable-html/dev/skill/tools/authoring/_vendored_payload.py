@@ -28,16 +28,53 @@ Two invariants live here.
 """
 
 import json
+import re
 
 # The exact order `build_vendored_rich_libs_json` emits. Reconciliation rebuilds in this order so a
 # payload is a pure function of (content, template bytes) rather than of the document's finalize
 # history - otherwise two identical documents could differ byte for byte.
 CANONICAL_KEYS = ("encoding", "mermaidGzipBase64", "chartjsGzipBase64",
+                  "mermaidUrl", "mermaidIntegrity", "chartjsUrl", "chartjsIntegrity",
                   "mermaidLicense", "chartjsLicense")
 
+# A library can be carried two ways. BYTES are the legacy form, still honoured so documents already
+# in the wild keep exporting with no network at all. A SOURCE descriptor - a pinned URL plus the
+# SRI hash to verify what comes back - is what new documents carry, because the viewer never reads
+# the payload (it imports mermaid from the CDN) and the bytes were pre-staging a possible future
+# Offline export at a cost of ~1,265 KB on every reader.
+LIB_BYTES = {"mermaid": "mermaidGzipBase64", "chartjs": "chartjsGzipBase64"}
+
+LIB_SOURCE = {"mermaid": ("mermaidUrl", "mermaidIntegrity"),
+              "chartjs": ("chartjsUrl", "chartjsIntegrity")}
+
+LIB_LICENSE = {"mermaid": "mermaidLicense", "chartjs": "chartjsLicense"}
+
+# What the RUNTIME will actually accept, mirrored here so the two sides cannot disagree about the
+# same document. `68-export-offline.js` refuses a non-https URL outright and requires the integrity
+# to be exactly `sha384-<base64>`; if this module called such a descriptor usable, `payload_matches`
+# would report the document settled, `finalize` would leave it alone, and the export would keep
+# failing while its own message told the author to re-run finalize - advice that could never work.
+# Treating an invalid descriptor as NO source instead sends it through `reconcile`, which replaces
+# it from the canonical template.
+_HTTPS_URL = re.compile(r"(?i)\Ahttps://[^\s/?#]+[^\s]*\Z")
+_SRI_SHA384 = re.compile(r"\Asha384-[A-Za-z0-9+/]+={0,2}\Z")
+
+
+def _descriptor_ok(obj, lib):
+    """True when this library's URL and integrity are both present AND runtime-acceptable."""
+    url_key, integrity_key = LIB_SOURCE[lib]
+    url = _field(obj, url_key)
+    integrity = _field(obj, integrity_key)
+    if url is None or integrity is None:
+        return False
+    return bool(_HTTPS_URL.match(url.strip())) and bool(_SRI_SHA384.match(integrity.strip()))
+
+# Every key that BELONGS to a library, in canonical order. `payload_matches` reads this to decide
+# whether a payload holds anything belonging to a library the content cannot use, so a new field
+# added above must appear here or an orphan of it would survive reconciliation forever.
 LIB_FIELDS = {
-    "mermaid": ("mermaidGzipBase64", "mermaidLicense"),
-    "chartjs": ("chartjsGzipBase64", "chartjsLicense"),
+    lib: (LIB_BYTES[lib],) + LIB_SOURCE[lib] + (LIB_LICENSE[lib],)
+    for lib in ("mermaid", "chartjs")
 }
 
 LIBRARIES = ("mermaid", "chartjs")
@@ -89,11 +126,51 @@ def _field(obj, key):
 
 
 def carried_libs(obj):
-    """The libraries this payload actually carries - both fields present, string, and non-blank."""
+    """The libraries this payload actually carries - a usable source AND a non-blank MIT notice.
+
+    A library is carried when its notice is present and EITHER its bytes are, or a complete source
+    descriptor (URL plus SRI hash) is. Both halves are required in each case: bytes with no notice
+    are orphans the reconciler must drop rather than ship unlicensed, and a URL with no integrity
+    hash is unverifiable, so accepting it would let an export inline whatever the network returned.
+    """
     if not isinstance(obj, dict):
         return set()
     return {lib for lib in LIBRARIES
-            if all(_field(obj, key) is not None for key in LIB_FIELDS[lib])}
+            if _field(obj, LIB_LICENSE[lib]) is not None and _lib_source(obj, lib) is not None}
+
+
+def _lib_source(obj, lib):
+    """The KEYS supplying this library's code, or None when neither form is complete."""
+    if _field(obj, LIB_BYTES[lib]) is not None:
+        return (LIB_BYTES[lib],)
+    if _descriptor_ok(obj, lib):
+        return LIB_SOURCE[lib]
+    return None
+
+
+def lib_source_keys(obj, lib):
+    """Public alias of `_lib_source`, for a caller that must copy one library as a whole FORM.
+
+    A library is carried as BYTES or as a URL+integrity descriptor, never both, so anything that
+    rebuilds a payload from several copies has to move the winning copy's form as a unit rather than
+    key by key - otherwise the two forms coexist and the byte-preferring `_lib_source` makes the
+    loser win (`vendored_libs.apply`, the duplicate-payload merge).
+    """
+    return _lib_source(obj, lib)
+
+
+def _reconcile_source_keys(obj, lib):
+    """Like `_lib_source`, but preferring the DESCRIPTOR when a source carries both forms.
+
+    `_lib_source` answers "which form would be USED", and the runtime uses the bytes, so it must
+    keep preferring them. Reconciliation answers a different question - "which form should this
+    document KEEP" - and there the descriptor is the right answer: it is the smaller, verifiable,
+    current form, and collapsing a mixed payload onto its bytes would make the megabyte canonical
+    and permanent for a document that had already been right-sized.
+    """
+    if _descriptor_ok(obj, lib):
+        return LIB_SOURCE[lib]
+    return _lib_source(obj, lib)
 
 
 def payload_matches(obj, needed):
@@ -104,10 +181,18 @@ def payload_matches(obj, needed):
     the two sets would agree and the reconciler would leave ~1,265 KB of unlicensed bytes sitting in
     the file forever. An orphan field is therefore a mismatch, which sends the payload through
     `reconcile` and drops it.
+
+    A library carrying BOTH forms at once is a mismatch too. Only one of them can ever be used
+    (`_lib_source` prefers the bytes), so the other is dead weight - and when it is the bytes that
+    win, a document that was right-sized to a descriptor would keep paying for the megabyte it was
+    supposed to have shed. Sending it through `reconcile` collapses it back to one form.
     """
     if carried_libs(obj) != needed:
         return False
     obj = obj if isinstance(obj, dict) else {}
+    if any(_field(obj, LIB_BYTES[lib]) is not None and _descriptor_ok(obj, lib)
+           for lib in needed):
+        return False
     return not any(key in obj
                    for lib in LIBRARIES if lib not in needed
                    for key in LIB_FIELDS[lib])
@@ -151,7 +236,13 @@ def reconcile(obj, needed, source_obj=None):
             source = source_obj
         else:
             return None
-        for key in LIB_FIELDS[lib]:
+        # Copy the form this source actually carries - a descriptor stays a descriptor, so a
+        # right-sized document is never re-inflated back to the megabyte it just shed - plus the
+        # notice, which travels with the library in either form. When a source carries BOTH forms
+        # (only a hand edit or a stale merge produces that), the DESCRIPTOR wins here even though
+        # `_lib_source` prefers bytes elsewhere: collapsing to the bytes would make the megabyte
+        # canonical and permanent, which is the opposite of what reconciling a mixed payload is for.
+        for key in _reconcile_source_keys(source, lib) + (LIB_LICENSE[lib],):
             out[key] = source[key]
     rebuilt = {key: out[key] for key in CANONICAL_KEYS if key in out}
     schema = set(CANONICAL_KEYS)

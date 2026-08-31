@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.841.0" />
+<meta name="commentable-html-version" content="1.842.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.841.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.842.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Release readiness review</title>
 
@@ -79,7 +79,7 @@ html.cmh-awaiting-style body { visibility: hidden; }
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-generated="2026-08-11" id="commentRoot" data-cmh-content-root data-comment-key="cmh-132b5c6f45a0" data-doc-label="Release readiness review" data-doc-source="report-checklist.html">
+<main data-generated="2026-08-31" id="commentRoot" data-cmh-content-root data-comment-key="cmh-132b5c6f45a0" data-doc-label="Release readiness review" data-doc-source="report-checklist.html">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
 <header class="cmh-lede">
@@ -4614,7 +4614,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.841.0";
+const CMH_VERSION= "1.842.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -16808,51 +16808,182 @@ function _offlineLiveDocNeedsRichLibs(){
 return!!root.querySelector(CMH_RICH_CONTENT_SEL);
 }
 let _offlineVendoredRichLibsCache=null;
-function _offlineInflateVendoredPayload(text){
-if(_offlineVendoredRichLibsCache&&_offlineVendoredRichLibsCache.text===text){
+function _offlineNow(){
+return typeof Date!== "undefined"&&Date.now?Date.now():new Date().getTime();
+}
+function _offlineLibFetchDeadline(){
+return _offlineNow()+_offlineLibFetchTimeoutMs();
+}
+function _offlineInflateVendoredPayload(text,needs){
+const want=needs||{};
+const key=text+"\u0000"+(want.mermaid?"m":"")+(want.chartjs?"c":"");
+if(_offlineVendoredRichLibsCache&&_offlineVendoredRichLibsCache.key===key){
 return _offlineVendoredRichLibsCache.promise;
 }
 const pending=(async function(){
 const payload=JSON.parse(text||"{}");
+if(!payload||typeof payload!== "object"||Array.isArray(payload)){
+throw _offlineLibSourceError("Offline export could not read the vendored rich-content bundle:"
++" its payload is not an object. Re-run the authoring finalize step to refresh it.");
+}
+const deadline=_offlineLibFetchDeadline();
+const mermaid=_offlineResolveVendoredLib(payload,"mermaid",!!want.mermaid,deadline);
+const chartjs=_offlineResolveVendoredLib(payload,"chartjs",!!want.chartjs,deadline);
+chartjs.catch(function(){});
 return{
-mermaid:await _offlineInflateVendoredScript(payload.mermaidGzipBase64),
-chartjs:await _offlineInflateVendoredScript(payload.chartjsGzipBase64),
+mermaid:await mermaid,
+chartjs:await chartjs,
 mermaidLicense:_offlinePayloadLicense(payload.mermaidLicense),
 chartjsLicense:_offlinePayloadLicense(payload.chartjsLicense),
 };
 })();
 const promise=pending.catch(function(e){
-if(_offlineVendoredRichLibsCache&&_offlineVendoredRichLibsCache.text===text){
+if(_offlineVendoredRichLibsCache&&_offlineVendoredRichLibsCache.key===key){
 _offlineVendoredRichLibsCache=null;
 }
 throw e;
 });
-_offlineVendoredRichLibsCache={text:text,promise:promise};
+_offlineVendoredRichLibsCache={key:key,promise:promise};
 return promise;
+}
+async function _offlineResolveVendoredLib(payload,lib,needed,deadline){
+if(!needed)return"";
+const bytes=_offlinePayloadString(payload[lib+"GzipBase64"]);
+if(bytes)return _offlineInflateVendoredScript(bytes);
+return _offlineFetchVendoredScript(payload,lib,deadline);
+}
+function _offlinePayloadString(value){
+return typeof value=== "string"?value.trim():"";
+}
+const _OFFLINE_LIB_FETCH_TIMEOUT_MS=120000;
+function _offlineLibFetchTimeoutMs(){
+const override=typeof window!== "undefined"?Number(window.__cmhLibFetchTimeoutMs):NaN;
+return isFinite(override)&&override>0?override:_OFFLINE_LIB_FETCH_TIMEOUT_MS;
+}
+async function _offlineFetchVendoredScript(payload,lib,deadline){
+const url=_offlinePayloadString(payload[lib+"Url"]);
+const integrity=_offlinePayloadString(payload[lib+"Integrity"]);
+if(!url&&!integrity)return"";
+if(!url||!integrity){
+throw _offlineLibSourceError("Offline export found an incomplete source for the vendored "+lib
++" bundle: it names "+(url?"a URL with no integrity hash":"an integrity hash with no URL")
++", so the download cannot be verified. Ask the document's author to re-run the authoring"
++" finalize step to refresh the vendored payload.");
+}
+if(!/^sha384-[A-Za-z0-9+/]+={0,2}$/.test(integrity)){
+throw _offlineLibSourceError("Offline export found a malformed integrity hash for the vendored "
++lib+" bundle, so it cannot verify what it downloads. Ask the document's author to re-run"
++" the authoring finalize step to refresh the vendored payload.");
+}
+let parsed;
+try{parsed=new URL(url,document.baseURI);}catch(e){parsed=null;}
+if(!parsed||parsed.protocol!== "https:"){
+throw _offlineLibSourceError("Offline export refused a non-https source for the vendored "
++lib+" bundle.");
+}
+if(typeof crypto=== "undefined"||!crypto.subtle||!crypto.subtle.digest){
+throw _offlineLibSourceError("Offline export cannot verify the vendored "+lib
++" bundle here: this page is not a secure context, so the browser withholds the cryptography"
++" it needs. Open the document as a local file, or serve it over https, and export again.");
+}
+const controller=typeof AbortController=== "function"?new AbortController():null;
+const remaining=(deadline||(_offlineNow()+_offlineLibFetchTimeoutMs()))-_offlineNow();
+if(remaining<=0)throw _offlineFetchLibError(lib);
+const timer=controller?setTimeout(function(){controller.abort();},remaining):0;
+try{
+let response;
+try{
+response=await fetch(parsed.href,{
+credentials:"omit",
+redirect:"follow",
+referrerPolicy:"no-referrer",
+signal:controller?controller.signal:undefined,
+});
+}catch(e){
+throw _offlineFetchLibError(lib);
+}
+if(!response||!response.ok)throw _offlineFetchLibError(lib);
+if(response.url){
+let landed;
+try{landed=new URL(response.url);}catch(e){landed=null;}
+if(!landed||landed.protocol!== "https:"){
+throw _offlineLibSourceError("Offline export refused the vendored "+lib
++" bundle: the download was redirected to a non-https address.");
+}
+}
+let buffer;
+try{
+buffer=await response.arrayBuffer();
+}catch(e){
+throw _offlineFetchLibError(lib);
+}
+let digest;
+try{
+digest=await crypto.subtle.digest("SHA-384",buffer);
+}catch(e){
+throw _offlineLibSourceError("Offline export could not hash the vendored "+lib
++" bundle it downloaded, so it could not be verified and was not inlined. This is"
++" unusual - try again, or open the document in a different browser.");
+}
+const actual= "sha384-"+btoa(String.fromCharCode.apply(null,new Uint8Array(digest)));
+if(actual!==integrity){
+throw _offlineLibSourceError("Offline export could not verify the vendored "+lib
++" bundle it downloaded: its contents do not match the integrity hash recorded when this"
++" document was generated, so it was not inlined.");
+}
+return new TextDecoder("utf-8").decode(buffer);
+}finally{
+if(timer)clearTimeout(timer);
+}
+}
+function _offlineLibSourceError(message){
+const err=new Error(message);
+err.cmhLibSourceFailure=true;
+return err;
+}
+function _offlineFetchLibError(lib){
+return _offlineLibSourceError("Offline export could not download the vendored "+lib
++" bundle. This export needs network access once, to fetch the library it will inline; the"
++" exported file itself stays fully offline. Check your connection and try again.");
 }
 function _offlinePayloadLicense(value){
 return typeof value=== "string"?value:"";
 }
+let _offlineInflatedScriptCache=Object.create(null);
 async function _offlineInflateVendoredScript(b64){
 const raw=String(b64||"").trim();
 if(!raw)return"";
 if(typeof DecompressionStream!== "function"){
 throw new Error("Offline export needs DecompressionStream support to unpack its vendored rich-content bundle.");
 }
+const hit=_offlineInflatedScriptCache[raw];
+if(hit)return hit;
+if(Object.keys(_offlineInflatedScriptCache).length>=2){
+_offlineInflatedScriptCache=Object.create(null);
+}
+const pending=(async function(){
 const bytes=Uint8Array.from(atob(raw),function(ch){return ch.charCodeAt(0);});
 const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
 return new Response(stream).text();
+})();
+const guarded=pending.catch(function(e){
+if(_offlineInflatedScriptCache[raw]===guarded)delete _offlineInflatedScriptCache[raw];
+throw e;
+});
+_offlineInflatedScriptCache[raw]=guarded;
+return guarded;
 }
-async function _offlineVendoredRichLibs(resolved){
+async function _offlineVendoredRichLibs(resolved,needs){
 if(resolved.ambiguous){
 const err=new Error(_OFFLINE_PAYLOAD_UNRESOLVED);
 err.cmhPayloadUnresolved=true;
 throw err;
 }
 if(!resolved.text)return{};
-try{return await _offlineInflateVendoredPayload(resolved.text);}
+try{return await _offlineInflateVendoredPayload(resolved.text,needs);}
 catch(e){
 if(e&&e.cmhPayloadUnresolved)throw e;
+if(e&&e.cmhLibSourceFailure)throw e;
 throw new Error("Offline export could not parse the vendored rich-content bundle.");
 }
 }
@@ -16861,7 +16992,13 @@ if(!_offlineLiveDocNeedsRichLibs())return;
 const warm=function(){
 const resolved=_offlineResolveVendoredPayload(document);
 if(!resolved.text)return;
-_offlineInflateVendoredPayload(resolved.text).catch(function(){});
+let payload;
+try{payload=JSON.parse(resolved.text);}catch(e){return;}
+if(!payload||typeof payload!== "object")return;
+["mermaid","chartjs"].forEach(function(lib){
+const bytes=_offlinePayloadString(payload[lib+"GzipBase64"]);
+if(bytes)_offlineInflateVendoredScript(bytes).catch(function(){});
+});
 };
 if(typeof requestIdleCallback=== "function")requestIdleCallback(warm,{timeout:2000});
 else setTimeout(warm,0);
@@ -17069,7 +17206,8 @@ if(!needMermaid&&!needCharts){
 _offlineRemoveVendoredBundleScript(payload);
 return false;
 }
-const bundle=await _offlineVendoredRichLibs(payload);
+const bundle=await _offlineVendoredRichLibs(payload,
+{mermaid:needMermaid,chartjs:needCharts});
 const captured=inlinedLibs||{};
 const lib=function(key,name){
 const source=bundle[key]?bundle:captured;
@@ -17577,7 +17715,7 @@ T('Shareable or Not shareable',
 T('Exporting and sharing',
 '<ul>'+
 '<li><strong>Export as Shareable</strong> downloads one self-contained HTML (named with a <code>-shareable</code> suffix) with the comments, and any external assets, embedded so the review travels with the file.</li>'+
-'<li><strong>Export Offline</strong> downloads a <code>-offline</code> HTML copy that first builds the shareable file, then inlines the vendored mermaid and Chart.js bundles only when the document uses them, with remote loaders removed.</li>'+
+'<li><strong>Export Offline</strong> downloads a <code>-offline</code> HTML copy that first builds the shareable file, then inlines the vendored mermaid and Chart.js bundles only when the document uses them, with remote loaders removed. The bundles are fetched once at export time and checked against a hash recorded when the document was generated, so this one export needs a connection; the file it produces needs none. If the download fails or does not match, you get an error and no file, never a copy whose diagrams cannot render.</li>'+
 '<li><strong>Export to Plain HTML</strong> downloads a copy with the commenting layer removed but all of your content and styling intact.</li>'+
 '<li><strong>Export to Markdown</strong> downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>'+
 '<li><strong>Save as PDF</strong> opens the browser&#x27;s own print dialog (choose "Save as PDF", or print to paper). The printout hides the review UI, prints on a clean light theme, expands collapsed sections, and appends your current comments at the end. <kbd>Ctrl/Cmd+P</kbd> does the same thing.</li>'+

@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Carry the vendored rich-libraries payload only in documents that can actually use it.
 
-`cmhVendoredRichLibs` is a gzip+base64 bundle of mermaid and Chart.js that the OFFLINE EXPORT
-inlines so a shared file renders diagrams and charts with no network. It was stamped into the
-HEAD of every document unconditionally: measured on the shipped examples it is 1,363 KB, 55 to
-61 percent of a 2.3 MB file, and it landed on line 7 - so a prose-and-code review document paid
-for a renderer it could never call, and any tool that reads the head of the file hit a
-megabyte-long line immediately.
+`cmhVendoredRichLibs` names the mermaid and Chart.js builds that the OFFLINE EXPORT inlines so a
+shared file renders diagrams and charts with no network. Since CMH-SIZE-08 it is a byte-free
+DESCRIPTOR of about 2.5 KB - the pinned CDN URL plus the SRI hash to verify what comes back, and
+the MIT notices - and the export downloads and verifies the bytes at export time. It used to be a
+gzip+base64 BUNDLE of both libraries, which remains a valid form: documents generated before that
+release still carry it, and `build.py --vendor-bytes` still produces it, so every function here
+handles both.
+
+It was stamped into the HEAD of every document unconditionally: measured on the shipped examples
+the bundle was 1,363 KB, 55 to 61 percent of a 2.3 MB file, and it landed on line 7 - so a
+prose-and-code review document paid for a renderer it could never call, and any tool that reads the
+head of the file hit a megabyte-long line immediately.
 
 This module decides, keeps, drops, and (re-)places that payload. Two properties matter:
 
@@ -452,7 +458,17 @@ def apply(html, source_blob=None):
                 continue
             for lib in vendored_payload.LIBRARIES:
                 if lib in vendored_payload.carried_libs(copy):
+                    # A library is carried as BYTES or as a URL+integrity descriptor, never both, so
+                    # a later copy has to REPLACE the whole form rather than merge key by key.
+                    # Copying only the keys this copy happens to have would leave an earlier copy's
+                    # bytes sitting beside this copy's descriptor: `_lib_source` prefers bytes, so
+                    # the later copy would silently lose, the megabyte it replaced would survive, and
+                    # a right-sized document could be re-inflated - the opposite of "later copies
+                    # win a conflict".
                     for key in vendored_payload.LIB_FIELDS[lib]:
+                        merged.pop(key, None)
+                    for key in vendored_payload.lib_source_keys(copy, lib) + (
+                            vendored_payload.LIB_LICENSE[lib],):
                         merged[key] = copy[key]
             for key, value in copy.items():
                 if key not in vendored_payload.CANONICAL_KEYS or key == "encoding":
@@ -461,8 +477,18 @@ def apply(html, source_blob=None):
         start, end = scan.blob_spans[keep]
         inner_start, inner_end = scan.blob_inner_spans[keep]
         survivor = html[start:end]
+        # Emit in CANONICAL order, not in the order the duplicates happened to be encountered.
+        # `reconcile` rebuilds that way for a reason - a payload has to be a pure function of
+        # (content, template bytes) rather than of the document's finalize history - and this path
+        # bypasses it whenever the merged result already `payload_matches`, so without this two
+        # documents with identical content could differ byte for byte purely because one of them
+        # once carried its duplicates in the other order.
+        ordered = {key: merged[key] for key in vendored_payload.CANONICAL_KEYS if key in merged}
+        for key, value in merged.items():
+            if key not in ordered:
+                ordered[key] = value
         try:
-            survivor = (html[start:inner_start] + vendored_payload.serialize_payload(merged)
+            survivor = (html[start:inner_start] + vendored_payload.serialize_payload(ordered)
                         + html[inner_end:end])
         except ValueError:
             pass

@@ -2285,15 +2285,52 @@ function _offlineLiveDocNeedsRichLibs() {
 // runs; keying on the text means a live-document prewarm is reused only when the export resolves
 // byte-identical payload text, and anything else is resolved and inflated afresh.
 let _offlineVendoredRichLibsCache = null;
-function _offlineInflateVendoredPayload(text) {
-  if (_offlineVendoredRichLibsCache && _offlineVendoredRichLibsCache.text === text) {
+function _offlineNow() {
+  return typeof Date !== "undefined" && Date.now ? Date.now() : new Date().getTime();
+}
+// One budget for the whole export, not one per library: the two downloads happen in sequence (so
+// the failure a reader is shown is always the same one for the same document), and charging each
+// its own budget would double the worst case a stalled CDN can cost.
+function _offlineLibFetchDeadline() {
+  return _offlineNow() + _offlineLibFetchTimeoutMs();
+}
+function _offlineInflateVendoredPayload(text, needs) {
+  const want = needs || {};
+  // The cache key carries the NEEDS as well as the text, because a prewarm that resolved nothing
+  // for a library must never be reused as "this library is unavailable" by a later export that
+  // actually needs it and would fetch. The expensive part - the gunzip of a legacy payload - is
+  // memoized separately on the BYTES (`_offlineInflateVendoredScript`), which is needs-independent,
+  // so the prewarm still pays that cost while the reader is idle even though this key differs.
+  const key = text + "\u0000" + (want.mermaid ? "m" : "") + (want.chartjs ? "c" : "");
+  if (_offlineVendoredRichLibsCache && _offlineVendoredRichLibsCache.key === key) {
     return _offlineVendoredRichLibsCache.promise;
   }
   const pending = (async function () {
     const payload = JSON.parse(text || "{}");
+    // A payload that is present but is not an OBJECT - `null`, an array, a string, a number - is a
+    // broken infrastructure block, not an absent one. Reading its (always undefined) fields would
+    // resolve every library to nothing and hand the export to the document's own unverified copies,
+    // the same silent substitution the half-descriptor refusal closes; the authoring side already
+    // rejects a non-dict root outright (`_vendored_payload.parse_payload`).
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      throw _offlineLibSourceError("Offline export could not read the vendored rich-content bundle:"
+        + " its payload is not an object. Re-run the authoring finalize step to refresh it.");
+    }
+    const deadline = _offlineLibFetchDeadline();
+    // START both resolutions before awaiting either. They then OVERLAP, so sharing one deadline is
+    // fair: charging each its own budget doubles the worst case a stalled CDN can cost, but running
+    // them in sequence under a shared one is worse still - a slow but working first download would
+    // leave the second almost no budget and fail an export that was going to succeed. Awaiting them
+    // in a FIXED order keeps the error a reader sees deterministic for a given document, which the
+    // refusal tests depend on.
+    const mermaid = _offlineResolveVendoredLib(payload, "mermaid", !!want.mermaid, deadline);
+    const chartjs = _offlineResolveVendoredLib(payload, "chartjs", !!want.chartjs, deadline);
+    // If mermaid rejects, chartjs is never awaited - so give it a handler now or its rejection is
+    // unhandled and some environments treat that as a fatal error.
+    chartjs.catch(function () {});
     return {
-      mermaid: await _offlineInflateVendoredScript(payload.mermaidGzipBase64),
-      chartjs: await _offlineInflateVendoredScript(payload.chartjsGzipBase64),
+      mermaid: await mermaid,
+      chartjs: await chartjs,
       mermaidLicense: _offlinePayloadLicense(payload.mermaidLicense),
       chartjsLicense: _offlinePayloadLicense(payload.chartjsLicense),
     };
@@ -2302,13 +2339,165 @@ function _offlineInflateVendoredPayload(text) {
   // prewarm that raced a half-loaded document, say - stick for the rest of the session, so every
   // later export keeps failing on a document that is fine.
   const promise = pending.catch(function (e) {
-    if (_offlineVendoredRichLibsCache && _offlineVendoredRichLibsCache.text === text) {
+    if (_offlineVendoredRichLibsCache && _offlineVendoredRichLibsCache.key === key) {
       _offlineVendoredRichLibsCache = null;
     }
     throw e;
   });
-  _offlineVendoredRichLibsCache = { text: text, promise: promise };
+  _offlineVendoredRichLibsCache = { key: key, promise: promise };
   return promise;
+}
+// A library reaches the export either as BYTES the document carries (the legacy, zero-network form,
+// still honoured so documents already in the wild export exactly as before) or as a pinned URL the
+// document NAMES. The viewer never used those bytes - it imports mermaid from the CDN - so carrying
+// them cost every reader ~1,265 KB to pre-stage an export they may never run.
+async function _offlineResolveVendoredLib(payload, lib, needed, deadline) {
+  // Never touch a library this document cannot use, before doing ANY work on it: an unrelated
+  // library's URL going bad must not fail an export that was never going to inline it, and neither
+  // must an unrelated library's corrupt legacy bytes - which is why this is the first thing here
+  // rather than a guard after the byte branch. It also spares a right-sized reader a megabyte of
+  // gunzip for a half they cannot call.
+  if (!needed) return "";
+  const bytes = _offlinePayloadString(payload[lib + "GzipBase64"]);
+  if (bytes) return _offlineInflateVendoredScript(bytes);
+  return _offlineFetchVendoredScript(payload, lib, deadline);
+}
+// Only a STRING counts, exactly as the authoring side's `_field` decides it (`_vendored_payload.py`).
+// Coercing whatever the JSON held would make the two disagree about the same document: a payload
+// carrying a valid descriptor plus a non-string `mermaidGzipBase64` (a number, say) is SETTLED to
+// the authoring tool, which sees no bytes and keeps the descriptor - but `String(1234 || "")` is
+// "1234", so a coercing runtime would take that as the bytes, fail to inflate them, and refuse an
+// export the tool considers perfectly fine.
+function _offlinePayloadString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+// Fetch the pinned build and PROVE it is the one this document was built against before any of it
+// becomes executable. The SRI hash is recorded at build time from the same vendored bytes, so a
+// substituted or corrupted response fails closed rather than being inlined.
+// The budget is deliberately generous: mermaid's UMD build is ~3.5 MB, and killing a slow but
+// working download would be a worse failure than the hang it prevents. `window.__cmhLibFetchTimeoutMs`
+// overrides it, because a spec cannot afford to sit out two minutes to prove the bound exists (the
+// layer is bundled inside an IIFE, so there is no other way to reach the value from a page script).
+const _OFFLINE_LIB_FETCH_TIMEOUT_MS = 120000;
+function _offlineLibFetchTimeoutMs() {
+  const override = typeof window !== "undefined" ? Number(window.__cmhLibFetchTimeoutMs) : NaN;
+  return isFinite(override) && override > 0 ? override : _OFFLINE_LIB_FETCH_TIMEOUT_MS;
+}
+async function _offlineFetchVendoredScript(payload, lib, deadline) {
+  const url = _offlinePayloadString(payload[lib + "Url"]);
+  const integrity = _offlinePayloadString(payload[lib + "Integrity"]);
+  // Neither half present is ABSENCE - the payload legitimately does not carry this library (it was
+  // right-sized out, or this is a re-export of an already-offline file), and the caller's ordinary
+  // missing-bundle handling takes over. Exactly ONE half present is a BROKEN descriptor, and it must
+  // fail loudly here: returning "" would make it indistinguishable from absence, and the caller
+  // would then fall through to the document's own unverified copy - the silent substitution
+  // CMH-OFFLINE-07 exists to prevent.
+  if (!url && !integrity) return "";
+  if (!url || !integrity) {
+    throw _offlineLibSourceError("Offline export found an incomplete source for the vendored " + lib
+      + " bundle: it names " + (url ? "a URL with no integrity hash" : "an integrity hash with no URL")
+      + ", so the download cannot be verified. Ask the document's author to re-run the authoring"
+      + " finalize step to refresh the vendored payload.");
+  }
+  if (!/^sha384-[A-Za-z0-9+/]+={0,2}$/.test(integrity)) {
+    throw _offlineLibSourceError("Offline export found a malformed integrity hash for the vendored "
+      + lib + " bundle, so it cannot verify what it downloads. Ask the document's author to re-run"
+      + " the authoring finalize step to refresh the vendored payload.");
+  }
+  // https only. The bytes become an inline script in the exported file, so a downgrade to a
+  // tamperable transport is refused even though the hash would also catch it.
+  let parsed;
+  try { parsed = new URL(url, document.baseURI); } catch (e) { parsed = null; }
+  if (!parsed || parsed.protocol !== "https:") {
+    throw _offlineLibSourceError("Offline export refused a non-https source for the vendored "
+      + lib + " bundle.");
+  }
+  if (typeof crypto === "undefined" || !crypto.subtle || !crypto.subtle.digest) {
+    // SubtleCrypto is restricted to SECURE CONTEXTS, so this is not an exotic browser - it is an
+    // ordinary document served over plain http from something other than localhost. Say which
+    // contexts work, because "needs SubtleCrypto" tells the reader nothing they can act on.
+    throw _offlineLibSourceError("Offline export cannot verify the vendored " + lib
+      + " bundle here: this page is not a secure context, so the browser withholds the cryptography"
+      + " it needs. Open the document as a local file, or serve it over https, and export again.");
+  }
+  // A stalled connection must not stall the export forever. `fetch` has no default timeout, and
+  // this is the one step of the export that leaves the machine, so bound it explicitly: aborting
+  // the signal cancels the body read as well as the request, and surfaces as the same actionable
+  // "could not download" message a refused connection produces. The budget is SHARED across the
+  // whole export (see `_offlineLibFetchDeadline`), so a document needing both libraries waits one
+  // budget rather than two.
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  // Refuse FAST when the shared budget is already spent, rather than starting a request that a
+  // 1 ms timer is certain to abort - the reader gets the same message either way, but not after
+  // watching a download that never had a chance.
+  const remaining = (deadline || (_offlineNow() + _offlineLibFetchTimeoutMs())) - _offlineNow();
+  if (remaining <= 0) throw _offlineFetchLibError(lib);
+  const timer = controller ? setTimeout(function () { controller.abort(); }, remaining) : 0;
+  try {
+    let response;
+    try {
+      response = await fetch(parsed.href, {
+        credentials: "omit",
+        redirect: "follow",
+        // The export must not tell the CDN which document is being exported; a report's own URL can
+        // be sensitive on its own.
+        referrerPolicy: "no-referrer",
+        signal: controller ? controller.signal : undefined,
+      });
+    } catch (e) {
+      throw _offlineFetchLibError(lib);
+    }
+    if (!response || !response.ok) throw _offlineFetchLibError(lib);
+    // Re-check the scheme the bytes ACTUALLY arrived over. The check above only covers the recorded
+    // URL, and `redirect: "follow"` means an https URL can still land on http - so without this the
+    // https-only refusal above would be a claim the code does not keep.
+    if (response.url) {
+      let landed;
+      try { landed = new URL(response.url); } catch (e) { landed = null; }
+      if (!landed || landed.protocol !== "https:") {
+        throw _offlineLibSourceError("Offline export refused the vendored " + lib
+          + " bundle: the download was redirected to a non-https address.");
+      }
+    }
+    let buffer;
+    try {
+      buffer = await response.arrayBuffer();
+    } catch (e) {
+      throw _offlineFetchLibError(lib);
+    }
+    let digest;
+    try {
+      digest = await crypto.subtle.digest("SHA-384", buffer);
+    } catch (e) {
+      // Unmarked, this would be flattened into "could not parse the vendored rich-content bundle" -
+      // the misleading message the marked errors exist to avoid.
+      throw _offlineLibSourceError("Offline export could not hash the vendored " + lib
+        + " bundle it downloaded, so it could not be verified and was not inlined. This is"
+        + " unusual - try again, or open the document in a different browser.");
+    }
+    const actual = "sha384-" + btoa(String.fromCharCode.apply(null, new Uint8Array(digest)));
+    if (actual !== integrity) {
+      throw _offlineLibSourceError("Offline export could not verify the vendored " + lib
+        + " bundle it downloaded: its contents do not match the integrity hash recorded when this"
+        + " document was generated, so it was not inlined.");
+    }
+    return new TextDecoder("utf-8").decode(buffer);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+// Marked so the message survives: `_offlineVendoredRichLibs` flattens an unrecognised failure into
+// "could not parse the vendored rich-content bundle", which would be actively misleading for a
+// download or verification problem the reader can actually act on.
+function _offlineLibSourceError(message) {
+  const err = new Error(message);
+  err.cmhLibSourceFailure = true;
+  return err;
+}
+function _offlineFetchLibError(lib) {
+  return _offlineLibSourceError("Offline export could not download the vendored " + lib
+    + " bundle. This export needs network access once, to fetch the library it will inline; the"
+    + " exported file itself stays fully offline. Check your connection and try again.");
 }
 // A notice read out of the payload JSON is untrusted input, so only a STRING counts. Coercing
 // whatever the JSON held would turn `{}` or `true` into "[object Object]" / "true" - text that is
@@ -2317,28 +2506,57 @@ function _offlineInflateVendoredPayload(text) {
 function _offlinePayloadLicense(value) {
   return typeof value === "string" ? value : "";
 }
+// Memoized on the BYTES, not on the payload text or the export's needs, because gunzipping a
+// ~1.3 MB legacy half is the single expensive step and it is a pure function of its input. That is
+// what lets the idle prewarm below actually pay for itself: the prewarm and the real export ask
+// different questions of the payload, so they resolve different cache keys upstream, but they hand
+// the same base64 to this function and the second call is free.
+let _offlineInflatedScriptCache = Object.create(null);
 async function _offlineInflateVendoredScript(b64) {
   const raw = String(b64 || "").trim();
   if (!raw) return "";
   if (typeof DecompressionStream !== "function") {
     throw new Error("Offline export needs DecompressionStream support to unpack its vendored rich-content bundle.");
   }
-  const bytes = Uint8Array.from(atob(raw), function (ch) { return ch.charCodeAt(0); });
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-  return new Response(stream).text();
+  const hit = _offlineInflatedScriptCache[raw];
+  if (hit) return hit;
+  // A payload carries at most two halves, so anything beyond that is a document whose payload text
+  // changed under us; drop the lot rather than retain a growing set of inflated megabytes for
+  // bytes no live document names any more.
+  if (Object.keys(_offlineInflatedScriptCache).length >= 2) {
+    _offlineInflatedScriptCache = Object.create(null);
+  }
+  const pending = (async function () {
+    const bytes = Uint8Array.from(atob(raw), function (ch) { return ch.charCodeAt(0); });
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return new Response(stream).text();
+  })();
+  // Only a SUCCESS is worth keeping, for the same reason the payload memo drops a rejection: one
+  // bad moment must not make a fine document fail for the rest of the session. Guarded on identity,
+  // so a later call that replaced this entry (or cleared the cache) is not clobbered by an older
+  // rejection settling afterwards.
+  const guarded = pending.catch(function (e) {
+    if (_offlineInflatedScriptCache[raw] === guarded) delete _offlineInflatedScriptCache[raw];
+    throw e;
+  });
+  _offlineInflatedScriptCache[raw] = guarded;
+  return guarded;
 }
-async function _offlineVendoredRichLibs(resolved) {
+async function _offlineVendoredRichLibs(resolved, needs) {
   if (resolved.ambiguous) {
     const err = new Error(_OFFLINE_PAYLOAD_UNRESOLVED);
     err.cmhPayloadUnresolved = true;
     throw err;
   }
   if (!resolved.text) return {};
-  try { return await _offlineInflateVendoredPayload(resolved.text); }
+  try { return await _offlineInflateVendoredPayload(resolved.text, needs); }
   catch (e) {
     // An unresolvable payload is a different failure from a corrupt one, and saying so is what makes
-    // the fail-closed path actionable instead of misleading.
+    // the fail-closed path actionable instead of misleading. A download or verification failure is
+    // already a precise, actionable message, so it travels unchanged rather than being flattened
+    // into "could not parse".
     if (e && e.cmhPayloadUnresolved) throw e;
+    if (e && e.cmhLibSourceFailure) throw e;
     throw new Error("Offline export could not parse the vendored rich-content bundle.");
   }
 }
@@ -2347,7 +2565,17 @@ function _primeOfflineVendoredRichLibs() {
   const warm = function () {
     const resolved = _offlineResolveVendoredPayload(document);
     if (!resolved.text) return;
-    _offlineInflateVendoredPayload(resolved.text).catch(function () {});
+    let payload;
+    try { payload = JSON.parse(resolved.text); } catch (e) { return; }
+    if (!payload || typeof payload !== "object") return;
+    // Prewarm only the GUNZIP of a legacy embedded payload, straight into the bytes-keyed memo the
+    // export reads. A descriptor-only document has nothing to inflate, and speculatively
+    // DOWNLOADING a megabyte for an export the reader may never run is not a warm-up, it is a
+    // surprise on their connection.
+    ["mermaid", "chartjs"].forEach(function (lib) {
+      const bytes = _offlinePayloadString(payload[lib + "GzipBase64"]);
+      if (bytes) _offlineInflateVendoredScript(bytes).catch(function () {});
+    });
   };
   if (typeof requestIdleCallback === "function") requestIdleCallback(warm, { timeout: 2000 });
   else setTimeout(warm, 0);
@@ -2827,7 +3055,8 @@ async function _offlineInlineRichLibs(doc, referencesChartLib, inlinedLibs, payl
     _offlineRemoveVendoredBundleScript(payload);
     return false;
   }
-  const bundle = await _offlineVendoredRichLibs(payload);
+  const bundle = await _offlineVendoredRichLibs(payload,
+    { mermaid: needMermaid, chartjs: needCharts });
   const captured = inlinedLibs || {};
   // The payload wins when it carries the library (a fresh copy of the vendored bytes); the captured
   // copy is the fallback for a document that no longer has a payload. Whichever source is chosen,
