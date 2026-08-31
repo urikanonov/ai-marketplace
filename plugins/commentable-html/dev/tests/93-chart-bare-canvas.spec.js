@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import {
   PYTHON, SKILL, fileUrl, ready, stageContent, denyExternalNetwork, openToolbarMenu,
-  mutateStoredComments,
+  mutateStoredComments, routeVendoredLibs,
 } from "./helpers.js";
 import { execFileSync } from "child_process";
 
@@ -107,6 +107,10 @@ test("CMH-CHART-12: a legacy image comment still resolves when a bare canvas bec
 
 async function exportOffline(page, html) {
   await denyExternalNetwork(page);
+  // Since CMH-SIZE-08 the export DOWNLOADS the pinned library rather than reading bytes the
+  // document embeds, so serve those two URLs from `assets/vendor/`. Registered after the deny-all
+  // so it wins for exactly those URLs and everything else stays blocked.
+  await routeVendoredLibs(page);
   await page.addInitScript(() => {
     window.__cmhDownloadTexts = [];
     const original = URL.createObjectURL.bind(URL);

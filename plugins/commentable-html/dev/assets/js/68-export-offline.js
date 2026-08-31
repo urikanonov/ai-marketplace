@@ -2330,6 +2330,15 @@ async function _offlineResolveVendoredLib(payload, lib, needed) {
 // Fetch the pinned build and PROVE it is the one this document was built against before any of it
 // becomes executable. The SRI hash is recorded at build time from the same vendored bytes, so a
 // substituted or corrupted response fails closed rather than being inlined.
+// The budget is deliberately generous: mermaid's UMD build is ~3.5 MB, and killing a slow but
+// working download would be a worse failure than the hang it prevents. `window.__cmhLibFetchTimeoutMs`
+// overrides it, because a spec cannot afford to sit out two minutes to prove the bound exists (the
+// layer is bundled inside an IIFE, so there is no other way to reach the value from a page script).
+const _OFFLINE_LIB_FETCH_TIMEOUT_MS = 120000;
+function _offlineLibFetchTimeoutMs() {
+  const override = typeof window !== "undefined" ? Number(window.__cmhLibFetchTimeoutMs) : NaN;
+  return isFinite(override) && override > 0 ? override : _OFFLINE_LIB_FETCH_TIMEOUT_MS;
+}
 async function _offlineFetchVendoredScript(payload, lib) {
   const url = String(payload[lib + "Url"] || "").trim();
   const integrity = String(payload[lib + "Integrity"] || "").trim();
@@ -2350,22 +2359,41 @@ async function _offlineFetchVendoredScript(payload, lib) {
     throw _offlineLibSourceError("Offline export needs SubtleCrypto to verify the vendored "
       + lib + " bundle.");
   }
-  let response;
+  // A stalled connection must not stall the export forever. `fetch` has no default timeout, and
+  // this is the one step of the export that leaves the machine, so bound it explicitly: aborting
+  // the signal cancels the body read as well as the request, and surfaces as the same actionable
+  // "could not download" message a refused connection produces.
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = controller ? setTimeout(function () { controller.abort(); }, _offlineLibFetchTimeoutMs()) : 0;
   try {
-    response = await fetch(parsed.href, { credentials: "omit", redirect: "follow" });
-  } catch (e) {
-    throw _offlineFetchLibError(lib);
+    let response;
+    try {
+      response = await fetch(parsed.href, {
+        credentials: "omit",
+        redirect: "follow",
+        signal: controller ? controller.signal : undefined,
+      });
+    } catch (e) {
+      throw _offlineFetchLibError(lib);
+    }
+    if (!response || !response.ok) throw _offlineFetchLibError(lib);
+    let buffer;
+    try {
+      buffer = await response.arrayBuffer();
+    } catch (e) {
+      throw _offlineFetchLibError(lib);
+    }
+    const digest = await crypto.subtle.digest("SHA-384", buffer);
+    const actual = "sha384-" + btoa(String.fromCharCode.apply(null, new Uint8Array(digest)));
+    if (actual !== integrity) {
+      throw _offlineLibSourceError("Offline export could not verify the vendored " + lib
+        + " bundle it downloaded: its contents do not match the integrity hash recorded when this"
+        + " document was generated, so it was not inlined.");
+    }
+    return new TextDecoder("utf-8").decode(buffer);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  if (!response || !response.ok) throw _offlineFetchLibError(lib);
-  const buffer = await response.arrayBuffer();
-  const digest = await crypto.subtle.digest("SHA-384", buffer);
-  const actual = "sha384-" + btoa(String.fromCharCode.apply(null, new Uint8Array(digest)));
-  if (actual !== integrity) {
-    throw _offlineLibSourceError("Offline export could not verify the vendored " + lib
-      + " bundle it downloaded: its contents do not match the integrity hash recorded when this"
-      + " document was generated, so it was not inlined.");
-  }
-  return new TextDecoder("utf-8").decode(buffer);
 }
 // Marked so the message survives: `_offlineVendoredRichLibs` flattens an unrecognised failure into
 // "could not parse the vendored rich-content bundle", which would be actively misleading for a

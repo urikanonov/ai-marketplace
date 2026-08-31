@@ -443,14 +443,14 @@ def _orphan_examples(examples_dir):
             if _EXAMPLE_NAME_RE.match(name) and name not in sources]
 
 
-def build_all(assets_dir=None, out_dir=None, examples_dir=None):
+def build_all(assets_dir=None, out_dir=None, examples_dir=None, vendor_bytes=False):
     out_dir = HERE if out_dir is None else out_dir
     examples_dir = os.path.join(out_dir, "examples") if examples_dir is None else examples_dir
     dist_dir = os.path.join(out_dir, "dist")
     css, js, shell, version = load_sources(assets_dir)
     mermaid_version = read_mermaid_version()
     generated_date = read_release_date(version)
-    vendored_rich_libs_json = build_vendored_rich_libs_json(assets_dir or ASSETS)
+    vendored_rich_libs_json = build_vendored_rich_libs_json(assets_dir or ASSETS, vendor_bytes=vendor_bytes)
     js = _stamp_const(js, version, "commentable-html.js")
     # Strip the developer commentary and layout whitespace from the bytes that SHIP (see
     # tools/build_parts/05-minify.py). It happens here, after the version stamp, so the stamp still

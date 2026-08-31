@@ -724,7 +724,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.841.0";
+const CMH_VERSION= "1.842.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -12948,6 +12948,11 @@ if(bytes)return _offlineInflateVendoredScript(bytes);
 if(!needed)return"";
 return _offlineFetchVendoredScript(payload,lib);
 }
+const _OFFLINE_LIB_FETCH_TIMEOUT_MS=120000;
+function _offlineLibFetchTimeoutMs(){
+const override=typeof window!== "undefined"?Number(window.__cmhLibFetchTimeoutMs):NaN;
+return isFinite(override)&&override>0?override:_OFFLINE_LIB_FETCH_TIMEOUT_MS;
+}
 async function _offlineFetchVendoredScript(payload,lib){
 const url=String(payload[lib+"Url"]||"").trim();
 const integrity=String(payload[lib+"Integrity"]||"").trim();
@@ -12966,14 +12971,26 @@ if(typeof crypto=== "undefined"||!crypto.subtle||!crypto.subtle.digest){
 throw _offlineLibSourceError("Offline export needs SubtleCrypto to verify the vendored "
 +lib+" bundle.");
 }
+const controller=typeof AbortController=== "function"?new AbortController():null;
+const timer=controller?setTimeout(function(){controller.abort();},_offlineLibFetchTimeoutMs()):0;
+try{
 let response;
 try{
-response=await fetch(parsed.href,{credentials:"omit",redirect:"follow"});
+response=await fetch(parsed.href,{
+credentials:"omit",
+redirect:"follow",
+signal:controller?controller.signal:undefined,
+});
 }catch(e){
 throw _offlineFetchLibError(lib);
 }
 if(!response||!response.ok)throw _offlineFetchLibError(lib);
-const buffer=await response.arrayBuffer();
+let buffer;
+try{
+buffer=await response.arrayBuffer();
+}catch(e){
+throw _offlineFetchLibError(lib);
+}
 const digest=await crypto.subtle.digest("SHA-384",buffer);
 const actual= "sha384-"+btoa(String.fromCharCode.apply(null,new Uint8Array(digest)));
 if(actual!==integrity){
@@ -12982,6 +12999,9 @@ throw _offlineLibSourceError("Offline export could not verify the vendored "+lib
 +" document was generated, so it was not inlined.");
 }
 return new TextDecoder("utf-8").decode(buffer);
+}finally{
+if(timer)clearTimeout(timer);
+}
 }
 function _offlineLibSourceError(message){
 const err=new Error(message);
@@ -13742,7 +13762,7 @@ T('Shareable or Not shareable',
 T('Exporting and sharing',
 '<ul>'+
 '<li><strong>Export as Shareable</strong> downloads one self-contained HTML (named with a <code>-shareable</code> suffix) with the comments, and any external assets, embedded so the review travels with the file.</li>'+
-'<li><strong>Export Offline</strong> downloads a <code>-offline</code> HTML copy that first builds the shareable file, then inlines the vendored mermaid and Chart.js bundles only when the document uses them, with remote loaders removed.</li>'+
+'<li><strong>Export Offline</strong> downloads a <code>-offline</code> HTML copy that first builds the shareable file, then inlines the vendored mermaid and Chart.js bundles only when the document uses them, with remote loaders removed. The bundles are fetched once at export time and checked against a hash recorded when the document was generated, so this one export needs a connection; the file it produces needs none. If the download fails or does not match, you get an error and no file, never a copy whose diagrams cannot render.</li>'+
 '<li><strong>Export to Plain HTML</strong> downloads a copy with the commenting layer removed but all of your content and styling intact.</li>'+
 '<li><strong>Export to Markdown</strong> downloads a <code>.md</code> file; each block maps to a fixed Markdown form and your comments are appended as a section.</li>'+
 '<li><strong>Save as PDF</strong> opens the browser&#x27;s own print dialog (choose "Save as PDF", or print to paper). The printout hides the review UI, prints on a clean light theme, expands collapsed sections, and appends your current comments at the end. <kbd>Ctrl/Cmd+P</kbd> does the same thing.</li>'+

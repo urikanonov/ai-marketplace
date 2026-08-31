@@ -593,7 +593,13 @@ class StripAndRestoreTests(unittest.TestCase):
         out, changed = vendored_libs.apply(html, self.blob)
         self.assertTrue(changed)
         self.assertIsNone(vendored_libs.find_blob(out))
-        self.assertLess(len(out), len(html) - 1000 * 1024, "the saving must be the real payload")
+        # Prove the element physically LEFT, not just that the finder stopped seeing it. Since
+        # CMH-SIZE-08 the payload is a ~2.5 KB descriptor rather than 1,357 KB of base64, so the
+        # bulk of what must go is the two MIT notices; the mermaid copyright line is the distinctive
+        # marker for one of them.
+        self.assertIn("Knut Sveidqvist", html)
+        self.assertNotIn("Knut Sveidqvist", out, "the saving must be the real payload")
+        self.assertLess(len(out), len(html) - 2000, "the saving must be the real payload")
 
     def test_the_blob_is_kept_for_a_document_that_uses_charts(self):
         html = _doc(CHART)
@@ -741,11 +747,16 @@ class PerLibraryPayloadTests(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual(vendored_libs.carried_libs(self._payload(out)), {"mermaid"})
 
-    def test_a_chart_only_document_sheds_the_real_mermaid_bytes(self):
-        # Prove the SAVING, not just the key set: the mermaid half is ~1,265 KB base64.
+    def test_a_chart_only_document_sheds_the_real_mermaid_half(self):
+        # Prove the SAVING, not just the key set: a reconciler that rebuilt the payload but left the
+        # old text behind would pass the carried_libs check above and save nothing. Since
+        # CMH-SIZE-08 the mermaid half is a descriptor rather than ~1,265 KB of base64, so its MIT
+        # notice is the bulk of it - and its copyright line is what must physically leave the file.
         html = _doc(CHART)
         out, _ = vendored_libs.apply(html, self.blob)
-        self.assertLess(len(out), len(html) - 1000 * 1024)
+        self.assertIn("Knut Sveidqvist", html)
+        self.assertNotIn("Knut Sveidqvist", out)
+        self.assertLess(len(out), len(html) - 1000)
 
     def test_a_partial_payload_is_completed_when_the_document_gains_the_other_library(self):
         # THE regression guard. Once a payload can be partial, "restore when the content GAINS a
@@ -7187,7 +7198,7 @@ class RuntimeParityTests(unittest.TestCase):
 
 
 class ByteFreeDescriptorTests(unittest.TestCase):
-    """CMH-SIZE-03: a generated document names the libraries it needs instead of carrying them.
+    """CMH-SIZE-08: a generated document names the libraries it needs instead of carrying them.
 
     The viewer never reads the payload - it imports mermaid from the CDN and an authored Chart.js
     arrives as its own CDN script - so the bytes existed only to pre-stage a possible future Offline

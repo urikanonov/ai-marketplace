@@ -43,6 +43,9 @@ class VendoredGzipReproTests(unittest.TestCase):
     def test_blob_reads_committed_gz_not_recompressed(self):
         # Commit a .gz produced at a DIFFERENT compression level than the build's regen (level 9).
         # If the build recompressed, the blob would differ from these committed bytes; it must not.
+        # Byte-carrying is the `--vendor-bytes` escape hatch since CMH-SIZE-08 (a generated document
+        # names its libraries instead), so drive it explicitly - this is also the coverage that the
+        # escape hatch still produces a usable payload.
         with tempfile.TemporaryDirectory() as tmp:
             vendor = self._vendor(tmp)
             committed = {}
@@ -51,13 +54,25 @@ class VendoredGzipReproTests(unittest.TestCase):
                 with open(os.path.join(vendor, name + ".gz"), "wb") as fh:
                     fh.write(gz)
                 committed[name] = gz
-            js = build.build_vendored_rich_libs_json(tmp)
+            js = build.build_vendored_rich_libs_json(tmp, vendor_bytes=True)
             payload = json.loads(js)
             self.assertEqual(payload["encoding"], "gzip+base64")
             self.assertEqual(payload["mermaidGzipBase64"],
                              base64.b64encode(committed["mermaid.min.js"]).decode("ascii"))
             self.assertEqual(payload["chartjsGzipBase64"],
                              base64.b64encode(committed["chart.umd.min.js"]).decode("ascii"))
+            # And the DEFAULT reads no .gz at all, so a stale or missing one cannot affect the
+            # payload a real document carries.
+            default = json.loads(build.build_vendored_rich_libs_json(tmp))
+            self.assertNotIn("mermaidGzipBase64", default)
+            self.assertNotIn("chartjsGzipBase64", default)
+
+    def test_check_refuses_the_vendor_bytes_escape_hatch(self):
+        # The committed build never embeds the bytes, so --check would report drift on every file.
+        # Refusing the combination outright is clearer than a build that always "fails".
+        with self.assertRaises(SystemExit) as caught:
+            build.main(["build.py", "--check", "--vendor-bytes"])
+        self.assertNotEqual(caught.exception.code, 0)
 
     def test_drift_guard_detects_missing_and_stale_gz(self):
         with tempfile.TemporaryDirectory() as tmp:

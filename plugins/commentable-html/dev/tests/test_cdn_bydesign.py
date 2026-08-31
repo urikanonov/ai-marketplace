@@ -45,19 +45,28 @@ def _mermaid_base_version():
 class CdnByDesignTests(unittest.TestCase):
     def test_runtime_mermaid_import_is_pinned_jsdelivr(self):
         base = _mermaid_base_version()
-        expected = "https://cdn.jsdelivr.net/npm/mermaid@%s/dist/mermaid.esm.min.mjs" % base
+        # TWO pinned URLs are legitimate, both on the same jsDelivr version pin. The runtime imports
+        # the ESM entry to render (the accepted risk this row is about); since CMH-SIZE-08 the
+        # vendored payload also NAMES the UMD build, which Export Offline downloads and then
+        # verifies against a build-recorded SHA-384 before inlining - so that second reference
+        # carries an integrity guarantee the dynamic import cannot.
+        allowed = {
+            "https://cdn.jsdelivr.net/npm/mermaid@%s/dist/mermaid.esm.min.mjs" % base,
+            "https://cdn.jsdelivr.net/npm/mermaid@%s/dist/mermaid.min.js" % base,
+        }
+        esm = "https://cdn.jsdelivr.net/npm/mermaid@%s/dist/mermaid.esm.min.mjs" % base
         url_re = re.compile(r'https?://[^\s"\'()<>]+')
         # The accepted-risk property is that EVERY remote mermaid reference in each built runtime
-        # template is exactly the pinned jsDelivr URL - not merely that the pinned URL appears
+        # template is one of those pinned jsDelivr URLs - not merely that a pinned URL appears
         # somewhere. A presence-only check would stay green if the active import moved to unpkg, a
         # bare host, or mermaid@latest while the expected string lingered in a comment or dead code.
         for path in (BUILT_SHAREABLE, BUILT_NONSHAREABLE):
             built = _read(path)
             mermaid_urls = [u for u in url_re.findall(built) if "mermaid" in u.lower()]
-            self.assertTrue(mermaid_urls, "no remote mermaid import found in %s" % path)
+            self.assertIn(esm, mermaid_urls, "no remote mermaid import found in %s" % path)
             for u in mermaid_urls:
-                self.assertEqual(
-                    u, expected,
+                self.assertIn(
+                    u, allowed,
                     "unexpected/unpinned mermaid CDN URL in %s: %r" % (os.path.basename(path), u))
         # The source shell keeps the single-source placeholder + jsDelivr host, so the pin can only
         # ever come from package.json via build.py, never a hardcoded floating tag.

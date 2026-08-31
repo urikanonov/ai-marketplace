@@ -40,6 +40,11 @@ def main(argv):
     parser.add_argument("--check-fixtures", action="store_true",
                         help="with --check, also verify the Playwright fixtures are in sync "
                              "(runs generate.mjs --check; skipped when node is absent)")
+    parser.add_argument("--vendor-bytes", action="store_true",
+                        help="ESCAPE HATCH: embed the library BYTES in every generated document "
+                             "instead of the pinned URL plus integrity hash, so an Offline export "
+                             "needs no network at all. Costs about 1,357 KB per document; the "
+                             "committed build never uses it, so --check will report drift")
     parser.add_argument("--assets-dir", default=None,
                         help="directory holding the canonical sources (default: <skill>/assets)")
     parser.add_argument("--out-dir", default=None,
@@ -51,6 +56,9 @@ def main(argv):
                         help="directory that receives the built example reports/prompts "
                              "(default: <out-dir>/examples)")
     ns = parser.parse_args(argv[1:])
+    if ns.check and ns.vendor_bytes:
+        parser.error("--vendor-bytes is a troubleshooting escape hatch and the committed build "
+                     "never uses it, so --check would always report drift")
     assets_dir = ASSETS if ns.assets_dir is None else os.path.abspath(ns.assets_dir)
     out_dir = HERE if ns.out_dir is None else os.path.abspath(ns.out_dir)
     if ns.regen_vendor_gz:
@@ -63,8 +71,13 @@ def main(argv):
     examples_dir = (os.path.abspath(ns.examples_dir) if ns.examples_dir
                     else os.path.join(out_dir, "examples"))
     dist_dir = os.path.join(out_dir, "dist")
-    outputs, version = build_all(assets_dir, out_dir, examples_dir)
-    budget_lines, budget_failures = size_budget_check(outputs, out_dir)
+    outputs, version = build_all(assets_dir, out_dir, examples_dir, vendor_bytes=ns.vendor_bytes)
+    if ns.vendor_bytes:
+        # The ceilings budget the RIGHT-SIZED document. Re-embedding the library bytes deliberately
+        # blows them, so enforcing the budget here would just make the escape hatch unusable.
+        budget_lines, budget_failures = ["size budget: not enforced (--vendor-bytes)"], []
+    else:
+        budget_lines, budget_failures = size_budget_check(outputs, out_dir)
     js_name = os.path.join(dist_dir, _names()[1])
     syntax_msg = verify_js_syntax(outputs[js_name], "dist/" + _names()[1]) if js_name in outputs else None
     stamps = source_stamps(version, assets_dir, out_dir, pkg_dir)

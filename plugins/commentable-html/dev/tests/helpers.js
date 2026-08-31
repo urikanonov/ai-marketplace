@@ -466,6 +466,47 @@ export async function startStaticServer(dir) {
   return { url: `http://localhost:${port}`, close };
 }
 
+// The two pinned UMD builds an Offline export downloads (CMH-SIZE-08), each mapped to the file in
+// `assets/vendor/` the build computed its SRI hash from. Serving these EXACT bytes is what lets a
+// hermetic spec exercise the fetch-and-verify path; any other copy (node_modules' unminified
+// `chart.umd.js`, say) fails the integrity check, correctly.
+const VENDORED_LIB_ROUTES = [
+  [/cdn\.jsdelivr\.net\/npm\/mermaid@[^/]+\/dist\/mermaid\.min\.js$/, "mermaid.min.js"],
+  [/cdn\.jsdelivr\.net\/npm\/chart\.js@[^/]+\/dist\/chart\.umd\.min\.js$/, "chart.umd.min.js"],
+];
+
+// Serve the export's library fetch from `assets/vendor/`, so a spec that otherwise blocks the
+// network still reaches the behavior it is actually testing. Registered LAST so it wins over a
+// broad deny-all route the spec installed first (Playwright runs the most recently added handler
+// first), and it matches only those two URLs, so everything else still falls to the deny-all.
+export async function routeVendoredLibs(page) {
+  const vendorDir = path.join(DEV, "assets", "vendor");
+  for (const [pattern, name] of VENDORED_LIB_ROUTES) {
+    await page.route(pattern, async (route) => {
+      await route.fulfill({
+        body: fs.readFileSync(path.join(vendorDir, name)),
+        contentType: "text/javascript",
+        headers: { "access-control-allow-origin": "*" },
+      });
+    });
+  }
+}
+
+// Serve the export's library fetch with TAMPERED bytes: a well-formed response that cannot match
+// the SRI hash the build recorded, so a spec can prove verification is what refuses it rather than
+// the download failing.
+export async function routeTamperedVendoredLibs(page) {
+  for (const [pattern] of VENDORED_LIB_ROUTES) {
+    await page.route(pattern, async (route) => {
+      await route.fulfill({
+        body: "/* cmh-tampered-lib */ window.__cmhTamperedLib = 1;",
+        contentType: "text/javascript",
+        headers: { "access-control-allow-origin": "*" },
+      });
+    });
+  }
+}
+
 // Block the export's library fetch so a spec can assert the LOUD failure path: no download, and a
 // visible error naming the download rather than a misleading parse error.
 export async function blockVendoredLibs(page) {
