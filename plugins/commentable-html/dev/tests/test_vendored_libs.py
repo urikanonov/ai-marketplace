@@ -7379,6 +7379,40 @@ class MixedFormPayloadTests(unittest.TestCase):
                          ("mermaidUrl", "mermaidIntegrity"))
         self.assertIsNone(self.payload.lib_source_keys({"mermaidUrl": "https://x/y.js"}, "mermaid"))
 
+    def test_a_descriptor_the_runtime_would_refuse_does_not_count_as_a_source(self):
+        # PARITY WITH THE RUNTIME. `68-export-offline.js` refuses a non-https URL outright and
+        # requires exactly `sha384-<base64>`. If this side called such a descriptor usable,
+        # `payload_matches` would report the document settled, `finalize` would leave it alone, and
+        # the export would keep failing while its own message told the author to re-run finalize -
+        # advice that could never work. Treating it as NO source sends it through `reconcile`, which
+        # replaces it from the canonical template.
+        for bad in ({"mermaidUrl": "http://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"},
+                    {"mermaidUrl": "ftp://cdn.example/mermaid.min.js"},
+                    {"mermaidIntegrity": "sha384-a b"},
+                    {"mermaidIntegrity": "sha256-" + "m" * 64},
+                    {"mermaidIntegrity": "not-a-hash"}):
+            obj = self._descriptor_only()
+            obj.update(bad)
+            self.assertIsNone(self.payload.lib_source_keys(obj, "mermaid"), bad)
+            self.assertNotIn("mermaid", self.payload.carried_libs(obj))
+            self.assertFalse(self.payload.payload_matches(obj, {"mermaid"}), bad)
+
+    def test_a_well_formed_descriptor_still_counts(self):
+        # The guard above must not reject the shape the build actually emits.
+        obj = self._descriptor_only()
+        self.assertEqual(self.payload.lib_source_keys(obj, "mermaid"),
+                         ("mermaidUrl", "mermaidIntegrity"))
+        self.assertEqual(self.payload.carried_libs(obj), {"mermaid"})
+        self.assertTrue(self.payload.payload_matches(obj, {"mermaid"}))
+
+    def _descriptor_only(self):
+        return {
+            "encoding": self.payload.DEFAULT_ENCODING,
+            "mermaidUrl": "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js",
+            "mermaidIntegrity": "sha384-" + "m" * 64,
+            "mermaidLicense": "MIT mermaid",
+        }
+
 
 if __name__ == "__main__":
     unittest.main()

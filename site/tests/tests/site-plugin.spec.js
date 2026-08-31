@@ -228,6 +228,27 @@ test("the plugin page has a Private by design section emphasizing local-only dat
 });
 
 
+test("the plugin page discloses that Export Offline downloads and verifies each library it inlines (SITE-PLUGIN-14)", async ({ page }) => {
+  // A generated document NAMES its rendering libraries rather than embedding them (CMH-SIZE-08), so
+  // the export fetches them. Saying only "Export Offline strips the CDN dependency" would leave a
+  // reader in exactly the air-gapped or regulated setting this section addresses believing an
+  // export needs no network. Pin the disclosure itself, not generic offline wording: the previous
+  // assertion (/Export Offline|zero network|air-gapped/) passes with or without it.
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const privacy = page.locator("#privacy");
+  await expect(privacy).toContainText(/downloads each library the document actually needs/i);
+  await expect(privacy).toContainText(/hash recorded when the document was generated/i);
+  await expect(privacy).toContainText(/send no referrer/i);
+  // ...and the file it produces is still the zero-network artifact the section promises.
+  await expect(privacy).toContainText(/opens with zero network/i);
+
+  // The size card must not contradict it by still claiming the libraries travel inside the file.
+  const features = page.locator("#features");
+  await expect(features).toContainText(/NAMES the Mermaid and Chart\.js builds/i);
+  await expect(features).not.toContainText(/Mermaid and Chart\.js travel inside the file/i);
+});
+
+
 test("the features section pitches no extension, all-HTML, and cross-platform support (SITE-PLUGIN-21)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const card = page.locator("#features .grid > .card.feature", { hasText: "No extension" });
@@ -826,12 +847,17 @@ test("the plugin page explains that the rich-content renderer only ships when it
   });
   await expect(card).toHaveCount(1);
   const body = (await card.locator("p").innerText()).replace(/\s+/g, " ");
-  // The three promises a reader is being made: it ships only when used, the saving is real and
-  // quantified, and the payload is not in the head. Pin each, so the card cannot quietly lose
-  // the substance and keep the heading.
-  expect(body).toMatch(/only in a document that actually has one/i);
-  expect(body).toMatch(/59 percent/i);
+  // The three promises a reader is being made: a document NAMES the renderer rather than carrying
+  // it (CMH-SIZE-08 - so the old "ships only when used" framing understates it: a document with a
+  // diagram no longer carries the renderer either), the saving is real and quantified, and what
+  // remains is not in the head. Pin each, so the card cannot quietly lose the substance and keep
+  // the heading.
+  expect(body).toMatch(/NAMES the Mermaid and Chart\.js builds/i);
+  expect(body).toMatch(/names nothing at all/i);
+  expect(body).toMatch(/60 percent/i);
   expect(body).toMatch(/out of the head/i);
+  // The superseded claim must be gone, not merely outnumbered: it is the one a reader would act on.
+  expect(body).not.toMatch(/travel inside the file/i);
 });
 
 

@@ -28,6 +28,7 @@ Two invariants live here.
 """
 
 import json
+import re
 
 # The exact order `build_vendored_rich_libs_json` emits. Reconciliation rebuilds in this order so a
 # payload is a pure function of (content, template bytes) rather than of the document's finalize
@@ -47,6 +48,26 @@ LIB_SOURCE = {"mermaid": ("mermaidUrl", "mermaidIntegrity"),
               "chartjs": ("chartjsUrl", "chartjsIntegrity")}
 
 LIB_LICENSE = {"mermaid": "mermaidLicense", "chartjs": "chartjsLicense"}
+
+# What the RUNTIME will actually accept, mirrored here so the two sides cannot disagree about the
+# same document. `68-export-offline.js` refuses a non-https URL outright and requires the integrity
+# to be exactly `sha384-<base64>`; if this module called such a descriptor usable, `payload_matches`
+# would report the document settled, `finalize` would leave it alone, and the export would keep
+# failing while its own message told the author to re-run finalize - advice that could never work.
+# Treating an invalid descriptor as NO source instead sends it through `reconcile`, which replaces
+# it from the canonical template.
+_HTTPS_URL = re.compile(r"(?i)\Ahttps://[^\s/?#]+[^\s]*\Z")
+_SRI_SHA384 = re.compile(r"\Asha384-[A-Za-z0-9+/]+={0,2}\Z")
+
+
+def _descriptor_ok(obj, lib):
+    """True when this library's URL and integrity are both present AND runtime-acceptable."""
+    url_key, integrity_key = LIB_SOURCE[lib]
+    url = _field(obj, url_key)
+    integrity = _field(obj, integrity_key)
+    if url is None or integrity is None:
+        return False
+    return bool(_HTTPS_URL.match(url.strip())) and bool(_SRI_SHA384.match(integrity.strip()))
 
 # Every key that BELONGS to a library, in canonical order. `payload_matches` reads this to decide
 # whether a payload holds anything belonging to a library the content cannot use, so a new field
@@ -122,9 +143,8 @@ def _lib_source(obj, lib):
     """The KEYS supplying this library's code, or None when neither form is complete."""
     if _field(obj, LIB_BYTES[lib]) is not None:
         return (LIB_BYTES[lib],)
-    descriptor = LIB_SOURCE[lib]
-    if all(_field(obj, key) is not None for key in descriptor):
-        return descriptor
+    if _descriptor_ok(obj, lib):
+        return LIB_SOURCE[lib]
     return None
 
 
@@ -148,9 +168,8 @@ def _reconcile_source_keys(obj, lib):
     current form, and collapsing a mixed payload onto its bytes would make the megabyte canonical
     and permanent for a document that had already been right-sized.
     """
-    descriptor = LIB_SOURCE[lib]
-    if all(_field(obj, key) is not None for key in descriptor):
-        return descriptor
+    if _descriptor_ok(obj, lib):
+        return LIB_SOURCE[lib]
     return _lib_source(obj, lib)
 
 
@@ -171,8 +190,7 @@ def payload_matches(obj, needed):
     if carried_libs(obj) != needed:
         return False
     obj = obj if isinstance(obj, dict) else {}
-    if any(_field(obj, LIB_BYTES[lib]) is not None
-           and all(_field(obj, key) is not None for key in LIB_SOURCE[lib])
+    if any(_field(obj, LIB_BYTES[lib]) is not None and _descriptor_ok(obj, lib)
            for lib in needed):
         return False
     return not any(key in obj
