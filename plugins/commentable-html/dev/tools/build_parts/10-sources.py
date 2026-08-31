@@ -95,17 +95,55 @@ def _shipped_payload_module():
     return importlib.import_module("_vendored_payload")
 
 
-def build_vendored_rich_libs_json(assets_dir):
+def _vendored_sri(path):
+    """The SRI hash of a vendored file, in the `sha384-<base64>` form an `integrity` attribute uses.
+
+    Computed from the SAME bytes the CDN serves for the pinned version, so the export can verify
+    what it fetched against a hash this build recorded rather than trusting the network.
+    """
+    import hashlib
+    with open(path, "rb") as fh:
+        digest = hashlib.sha384(fh.read()).digest()
+    return "sha384-" + base64.b64encode(digest).decode("ascii")
+
+
+def build_vendored_rich_libs_json(assets_dir, vendor_bytes=False):
+    """The payload a generated document carries.
+
+    By default this is a byte-free DESCRIPTOR: the pinned CDN URL for each library plus the SRI hash
+    that verifies it, and the MIT notices. The viewer never reads this payload - it imports mermaid
+    from the CDN and an authored Chart.js arrives as its own CDN script - so the ~1,357 KB of base64
+    that used to live here was pre-staging a possible future Offline export on every reader. The
+    Offline export now fetches and verifies those bytes at export time instead.
+
+    `vendor_bytes=True` restores the old self-contained form. It is the escape hatch for an
+    air-gapped author who must export with no network at all.
+    """
     vendor_dir = os.path.join(assets_dir, "vendor")
+    mermaid_version = read_mermaid_version()
+    chartjs_version = read_chartjs_version()
     payload = {
         "encoding": "gzip+base64",
-        "mermaidGzipBase64": base64.b64encode(read_vendored_gz(vendor_dir, "mermaid.min.js")).decode("ascii"),
-        "chartjsGzipBase64": base64.b64encode(read_vendored_gz(vendor_dir, "chart.umd.min.js")).decode("ascii"),
-        # MIT notices travel with the inlined library bytes so an Offline export is a compliant
-        # redistribution (68-export-offline.js emits them as an HTML comment beside each inlined lib).
-        "mermaidLicense": read_vendored_license(vendor_dir, "mermaid.LICENSE"),
-        "chartjsLicense": read_vendored_license(vendor_dir, "chart.umd.LICENSE"),
     }
+    if vendor_bytes:
+        payload["mermaidGzipBase64"] = base64.b64encode(
+            read_vendored_gz(vendor_dir, "mermaid.min.js")).decode("ascii")
+        payload["chartjsGzipBase64"] = base64.b64encode(
+            read_vendored_gz(vendor_dir, "chart.umd.min.js")).decode("ascii")
+    else:
+        # The UMD build, deliberately - NOT the ESM the viewer imports. The exporter drives
+        # `window.mermaid` as a classic global, and a UMD file is self-contained, whereas the ESM
+        # entry would still lazy-fetch its per-diagram chunks and so could not go offline.
+        payload["mermaidUrl"] = ("https://cdn.jsdelivr.net/npm/mermaid@%s/dist/mermaid.min.js"
+                                 % mermaid_version)
+        payload["mermaidIntegrity"] = _vendored_sri(os.path.join(vendor_dir, "mermaid.min.js"))
+        payload["chartjsUrl"] = ("https://cdn.jsdelivr.net/npm/chart.js@%s/dist/chart.umd.min.js"
+                                 % chartjs_version)
+        payload["chartjsIntegrity"] = _vendored_sri(os.path.join(vendor_dir, "chart.umd.min.js"))
+    # MIT notices stay EMBEDDED in either form, so compliance never depends on the network: the
+    # exporter emits them beside each inlined library (68-export-offline.js).
+    payload["mermaidLicense"] = read_vendored_license(vendor_dir, "mermaid.LICENSE")
+    payload["chartjsLicense"] = read_vendored_license(vendor_dir, "chart.umd.LICENSE")
     try:
         return _shipped_payload_module().serialize_payload(payload)
     except ValueError as exc:

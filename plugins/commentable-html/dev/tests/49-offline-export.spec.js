@@ -7,7 +7,7 @@ import zlib from "zlib";
 import {
   DEV, SKILL, PYTHON, fileUrl, ready, stageContent, startStaticServer,
   installClipboardCapture, openToolbarMenu, openSidebarExportMenu, addTextComment, readDownload, stageNonShareable,
-  clickSidebarExport, srcsetCandidates,
+  clickSidebarExport, srcsetCandidates, blockVendoredLibs,
 } from "./helpers.js";
 
 const CONTENT = `
@@ -53,10 +53,28 @@ async function routeRichContentLocal(page) {
   const mermaidRoot = path.join(DEV, "node_modules", "mermaid");
   const mermaidVersion = JSON.parse(fs.readFileSync(path.join(mermaidRoot, "package.json"), "utf8")).version;
   const chartRoot = path.join(DEV, "node_modules", "chart.js");
+  const vendorDir = path.join(DEV, "assets", "vendor");
+  // The OFFLINE EXPORT fetches the UMD builds and verifies them against the SRI hash the build
+  // recorded from `assets/vendor/`, so those exact URLs must be served from those exact FILES.
+  // node_modules' unminified `chart.umd.js` would fail that check - correctly, which is why the
+  // export's URLs are matched before the viewer's looser per-library branches below.
+  const vendored = [
+    [/cdn\.jsdelivr\.net\/npm\/mermaid@[^/]+\/dist\/mermaid\.min\.js$/, "mermaid.min.js"],
+    [/cdn\.jsdelivr\.net\/npm\/chart\.js@[^/]+\/dist\/chart\.umd\.min\.js$/, "chart.umd.min.js"],
+  ];
   await page.route(/^https?:\/\//, async (route) => {
     const url = route.request().url();
     if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(url)) return route.fallback();
     const u = new URL(url);
+    for (const [pattern, name] of vendored) {
+      if (pattern.test(u.href)) {
+        return route.fulfill({
+          body: fs.readFileSync(path.join(vendorDir, name)),
+          contentType: "text/javascript",
+          headers: { "access-control-allow-origin": "*" },
+        });
+      }
+    }
     if (/cdn\.jsdelivr\.net\/npm\/mermaid@/.test(url)) {
       const reqMajor = (u.pathname.match(/mermaid@(\d+)/) || [])[1];
       if (reqMajor && reqMajor !== String(mermaidVersion).split(".")[0]) {
@@ -1994,8 +2012,13 @@ test("Export Offline fails loudly when a rich document has no vendored payload (
   expect(openAt).toBeGreaterThan(-1);
   expect(closeAt).toBeGreaterThan(openAt);
   const stripped = before.slice(0, openAt) + before.slice(closeAt + "</script>".length);
-  expect(stripped.length).toBeLessThan(before.length - 1000000);
+  // The document no longer CARRIES the libraries, so removing the payload no longer sheds a
+  // megabyte - it sheds a descriptor. Assert the two things that actually matter: the generated
+  // document never held library bytes (CMH-SIZE-03), and the payload element is now gone.
+  expect(before).not.toContain("mermaidGzipBase64");
+  expect(before).toContain("mermaidUrl");
   expect(stripped).not.toContain('id="cmhVendoredRichLibs">{"encoding"');
+  expect(stripped).not.toContain("mermaidUrl");
   fs.writeFileSync(staged.html, stripped);
 
   const server = await startStaticServer(staged.dir);

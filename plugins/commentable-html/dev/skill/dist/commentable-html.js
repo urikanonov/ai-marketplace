@@ -12918,27 +12918,80 @@ function _offlineLiveDocNeedsRichLibs(){
 return!!root.querySelector(CMH_RICH_CONTENT_SEL);
 }
 let _offlineVendoredRichLibsCache=null;
-function _offlineInflateVendoredPayload(text){
-if(_offlineVendoredRichLibsCache&&_offlineVendoredRichLibsCache.text===text){
+function _offlineInflateVendoredPayload(text,needs){
+const want=needs||{};
+const key=text+"\u0000"+(want.mermaid?"m":"")+(want.chartjs?"c":"");
+if(_offlineVendoredRichLibsCache&&_offlineVendoredRichLibsCache.key===key){
 return _offlineVendoredRichLibsCache.promise;
 }
 const pending=(async function(){
 const payload=JSON.parse(text||"{}");
 return{
-mermaid:await _offlineInflateVendoredScript(payload.mermaidGzipBase64),
-chartjs:await _offlineInflateVendoredScript(payload.chartjsGzipBase64),
+mermaid:await _offlineResolveVendoredLib(payload,"mermaid",!!want.mermaid),
+chartjs:await _offlineResolveVendoredLib(payload,"chartjs",!!want.chartjs),
 mermaidLicense:_offlinePayloadLicense(payload.mermaidLicense),
 chartjsLicense:_offlinePayloadLicense(payload.chartjsLicense),
 };
 })();
 const promise=pending.catch(function(e){
-if(_offlineVendoredRichLibsCache&&_offlineVendoredRichLibsCache.text===text){
+if(_offlineVendoredRichLibsCache&&_offlineVendoredRichLibsCache.key===key){
 _offlineVendoredRichLibsCache=null;
 }
 throw e;
 });
-_offlineVendoredRichLibsCache={text:text,promise:promise};
+_offlineVendoredRichLibsCache={key:key,promise:promise};
 return promise;
+}
+async function _offlineResolveVendoredLib(payload,lib,needed){
+const bytes=String(payload[lib+"GzipBase64"]||"").trim();
+if(bytes)return _offlineInflateVendoredScript(bytes);
+if(!needed)return"";
+return _offlineFetchVendoredScript(payload,lib);
+}
+async function _offlineFetchVendoredScript(payload,lib){
+const url=String(payload[lib+"Url"]||"").trim();
+const integrity=String(payload[lib+"Integrity"]||"").trim();
+if(!url||!integrity)return"";
+if(!/^sha384-[A-Za-z0-9+/]+={0,2}$/.test(integrity)){
+throw _offlineLibSourceError("Offline export found a malformed integrity hash for the vendored "
++lib+" bundle, so it cannot verify what it downloads.");
+}
+let parsed;
+try{parsed=new URL(url,document.baseURI);}catch(e){parsed=null;}
+if(!parsed||parsed.protocol!== "https:"){
+throw _offlineLibSourceError("Offline export refused a non-https source for the vendored "
++lib+" bundle.");
+}
+if(typeof crypto=== "undefined"||!crypto.subtle||!crypto.subtle.digest){
+throw _offlineLibSourceError("Offline export needs SubtleCrypto to verify the vendored "
++lib+" bundle.");
+}
+let response;
+try{
+response=await fetch(parsed.href,{credentials:"omit",redirect:"follow"});
+}catch(e){
+throw _offlineFetchLibError(lib);
+}
+if(!response||!response.ok)throw _offlineFetchLibError(lib);
+const buffer=await response.arrayBuffer();
+const digest=await crypto.subtle.digest("SHA-384",buffer);
+const actual= "sha384-"+btoa(String.fromCharCode.apply(null,new Uint8Array(digest)));
+if(actual!==integrity){
+throw _offlineLibSourceError("Offline export could not verify the vendored "+lib
++" bundle it downloaded: its contents do not match the integrity hash recorded when this"
++" document was generated, so it was not inlined.");
+}
+return new TextDecoder("utf-8").decode(buffer);
+}
+function _offlineLibSourceError(message){
+const err=new Error(message);
+err.cmhLibSourceFailure=true;
+return err;
+}
+function _offlineFetchLibError(lib){
+return _offlineLibSourceError("Offline export could not download the vendored "+lib
++" bundle. This export needs network access once, to fetch the library it will inline; the"
++" exported file itself stays fully offline. Check your connection and try again.");
 }
 function _offlinePayloadLicense(value){
 return typeof value=== "string"?value:"";
@@ -12953,16 +13006,17 @@ const bytes=Uint8Array.from(atob(raw),function(ch){return ch.charCodeAt(0);});
 const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
 return new Response(stream).text();
 }
-async function _offlineVendoredRichLibs(resolved){
+async function _offlineVendoredRichLibs(resolved,needs){
 if(resolved.ambiguous){
 const err=new Error(_OFFLINE_PAYLOAD_UNRESOLVED);
 err.cmhPayloadUnresolved=true;
 throw err;
 }
 if(!resolved.text)return{};
-try{return await _offlineInflateVendoredPayload(resolved.text);}
+try{return await _offlineInflateVendoredPayload(resolved.text,needs);}
 catch(e){
 if(e&&e.cmhPayloadUnresolved)throw e;
+if(e&&e.cmhLibSourceFailure)throw e;
 throw new Error("Offline export could not parse the vendored rich-content bundle.");
 }
 }
@@ -12971,7 +13025,7 @@ if(!_offlineLiveDocNeedsRichLibs())return;
 const warm=function(){
 const resolved=_offlineResolveVendoredPayload(document);
 if(!resolved.text)return;
-_offlineInflateVendoredPayload(resolved.text).catch(function(){});
+_offlineInflateVendoredPayload(resolved.text,{}).catch(function(){});
 };
 if(typeof requestIdleCallback=== "function")requestIdleCallback(warm,{timeout:2000});
 else setTimeout(warm,0);
@@ -13179,7 +13233,8 @@ if(!needMermaid&&!needCharts){
 _offlineRemoveVendoredBundleScript(payload);
 return false;
 }
-const bundle=await _offlineVendoredRichLibs(payload);
+const bundle=await _offlineVendoredRichLibs(payload,
+{mermaid:needMermaid,chartjs:needCharts});
 const captured=inlinedLibs||{};
 const lib=function(key,name){
 const source=bundle[key]?bundle:captured;

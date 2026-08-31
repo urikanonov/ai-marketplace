@@ -7186,5 +7186,88 @@ class RuntimeParityTests(unittest.TestCase):
                 "would reject the genuine library." % name)
 
 
+class ByteFreeDescriptorTests(unittest.TestCase):
+    """CMH-SIZE-03: a generated document names the libraries it needs instead of carrying them.
+
+    The viewer never reads the payload - it imports mermaid from the CDN and an authored Chart.js
+    arrives as its own CDN script - so the bytes existed only to pre-stage a possible future Offline
+    export. They are now fetched at export time and verified against a recorded SRI hash, which is
+    why the descriptor must carry a URL and an integrity hash but no base64.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(_paths.DEV, "skill", "tools", "authoring"))
+        import _vendored_payload
+        self.payload = _vendored_payload
+
+    def _descriptor(self):
+        return {
+            "encoding": self.payload.DEFAULT_ENCODING,
+            "mermaidUrl": "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js",
+            "mermaidIntegrity": "sha384-" + "m" * 64,
+            "chartjsUrl": "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js",
+            "chartjsIntegrity": "sha384-" + "c" * 64,
+            "mermaidLicense": "MIT mermaid",
+            "chartjsLicense": "MIT chartjs",
+        }
+
+    def test_a_url_and_integrity_pair_counts_as_carrying_the_library(self):
+        # The whole point of the change: a document that names the library carries it, so the
+        # reconciler must not treat a byte-free document as one that needs bytes restored.
+        self.assertEqual(self.payload.carried_libs(self._descriptor()), {"mermaid", "chartjs"})
+
+    def test_a_url_without_an_integrity_hash_does_not_count(self):
+        # Fail-safe: an unverifiable source is not a source. Accepting it would let an export inline
+        # whatever the network returned, which is strictly worse than refusing.
+        obj = self._descriptor()
+        del obj["mermaidIntegrity"]
+        self.assertEqual(self.payload.carried_libs(obj), {"chartjs"})
+
+    def test_a_descriptor_without_its_mit_notice_does_not_count(self):
+        # MIT compliance must never depend on the network, so the notice stays embedded and a
+        # descriptor missing it carries nothing - same rule the bytes always obeyed.
+        obj = self._descriptor()
+        del obj["mermaidLicense"]
+        self.assertEqual(self.payload.carried_libs(obj), {"chartjs"})
+
+    def test_a_legacy_payload_carrying_bytes_is_still_honoured(self):
+        # Documents already in the wild keep exporting with zero network; the bytes remain a valid
+        # way to carry a library, they are simply no longer the way new documents do it.
+        legacy = {
+            "encoding": self.payload.DEFAULT_ENCODING,
+            "mermaidGzipBase64": "AAAA",
+            "chartjsGzipBase64": "BBBB",
+            "mermaidLicense": "MIT mermaid",
+            "chartjsLicense": "MIT chartjs",
+        }
+        self.assertEqual(self.payload.carried_libs(legacy), {"mermaid", "chartjs"})
+
+    def test_reconcile_keeps_the_descriptor_rather_than_restoring_bytes(self):
+        # Reconciliation rebuilds from the canonical key order; a descriptor-shaped document must
+        # come back descriptor-shaped, or every finalize would re-inflate the megabyte it just shed.
+        out = self.payload.reconcile(self._descriptor(), {"mermaid", "chartjs"})
+        self.assertIsNotNone(out)
+        self.assertNotIn("mermaidGzipBase64", out)
+        self.assertEqual(out["mermaidUrl"],
+                         "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js")
+        self.assertEqual(out["mermaidLicense"], "MIT mermaid")
+
+    def test_the_build_emits_a_descriptor_with_no_library_bytes(self):
+        # The measured win: the four mermaid-carrying examples each shed about 1,265 KB. Asserted on
+        # the BUILD's own output so a future change that re-adds the bytes fails here.
+        sys.path.insert(0, os.path.join(_paths.DEV, "tools"))
+        import build as build_mod
+        text = build_mod.build_vendored_rich_libs_json(os.path.join(_paths.DEV, "assets"))
+        obj = json.loads(text.replace("\\u003C", "<").replace("\\u003E", ">")
+                         .replace("\\u0026", "&"))
+        self.assertNotIn("mermaidGzipBase64", obj)
+        self.assertNotIn("chartjsGzipBase64", obj)
+        self.assertTrue(obj["mermaidUrl"].startswith("https://cdn.jsdelivr.net/npm/mermaid@"))
+        self.assertTrue(obj["mermaidIntegrity"].startswith("sha384-"))
+        self.assertTrue(obj["mermaidLicense"].strip())
+        self.assertLess(len(text), 8000,
+                        "the descriptor must stay tiny - it replaced 1,357 KB of base64")
+
+
 if __name__ == "__main__":
     unittest.main()

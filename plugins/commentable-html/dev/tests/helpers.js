@@ -466,6 +466,14 @@ export async function startStaticServer(dir) {
   return { url: `http://localhost:${port}`, close };
 }
 
+// Block the export's library fetch so a spec can assert the LOUD failure path: no download, and a
+// visible error naming the download rather than a misleading parse error.
+export async function blockVendoredLibs(page) {
+  await page.route(/cdn\.jsdelivr\.net\/npm\/(mermaid|chart\.js)@[^/]+\/dist\//, async (route) => {
+    await route.abort();
+  });
+}
+
 // Serve mermaid's CDN import (and its chunk imports) from the locally vendored
 // node_modules/mermaid/dist, so mermaid renders from the vendored files. The local
 // main module imports its own relative chunks, which resolve against the CDN base

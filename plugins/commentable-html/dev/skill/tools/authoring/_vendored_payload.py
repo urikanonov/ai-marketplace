@@ -33,11 +33,27 @@ import json
 # payload is a pure function of (content, template bytes) rather than of the document's finalize
 # history - otherwise two identical documents could differ byte for byte.
 CANONICAL_KEYS = ("encoding", "mermaidGzipBase64", "chartjsGzipBase64",
+                  "mermaidUrl", "mermaidIntegrity", "chartjsUrl", "chartjsIntegrity",
                   "mermaidLicense", "chartjsLicense")
 
+# A library can be carried two ways. BYTES are the legacy form, still honoured so documents already
+# in the wild keep exporting with no network at all. A SOURCE descriptor - a pinned URL plus the
+# SRI hash to verify what comes back - is what new documents carry, because the viewer never reads
+# the payload (it imports mermaid from the CDN) and the bytes were pre-staging a possible future
+# Offline export at a cost of ~1,265 KB on every reader.
+LIB_BYTES = {"mermaid": "mermaidGzipBase64", "chartjs": "chartjsGzipBase64"}
+
+LIB_SOURCE = {"mermaid": ("mermaidUrl", "mermaidIntegrity"),
+              "chartjs": ("chartjsUrl", "chartjsIntegrity")}
+
+LIB_LICENSE = {"mermaid": "mermaidLicense", "chartjs": "chartjsLicense"}
+
+# Every key that BELONGS to a library, in canonical order. `payload_matches` reads this to decide
+# whether a payload holds anything belonging to a library the content cannot use, so a new field
+# added above must appear here or an orphan of it would survive reconciliation forever.
 LIB_FIELDS = {
-    "mermaid": ("mermaidGzipBase64", "mermaidLicense"),
-    "chartjs": ("chartjsGzipBase64", "chartjsLicense"),
+    lib: (LIB_BYTES[lib],) + LIB_SOURCE[lib] + (LIB_LICENSE[lib],)
+    for lib in ("mermaid", "chartjs")
 }
 
 LIBRARIES = ("mermaid", "chartjs")
@@ -89,11 +105,27 @@ def _field(obj, key):
 
 
 def carried_libs(obj):
-    """The libraries this payload actually carries - both fields present, string, and non-blank."""
+    """The libraries this payload actually carries - a usable source AND a non-blank MIT notice.
+
+    A library is carried when its notice is present and EITHER its bytes are, or a complete source
+    descriptor (URL plus SRI hash) is. Both halves are required in each case: bytes with no notice
+    are orphans the reconciler must drop rather than ship unlicensed, and a URL with no integrity
+    hash is unverifiable, so accepting it would let an export inline whatever the network returned.
+    """
     if not isinstance(obj, dict):
         return set()
     return {lib for lib in LIBRARIES
-            if all(_field(obj, key) is not None for key in LIB_FIELDS[lib])}
+            if _field(obj, LIB_LICENSE[lib]) is not None and _lib_source(obj, lib) is not None}
+
+
+def _lib_source(obj, lib):
+    """The KEYS supplying this library's code, or None when neither form is complete."""
+    if _field(obj, LIB_BYTES[lib]) is not None:
+        return (LIB_BYTES[lib],)
+    descriptor = LIB_SOURCE[lib]
+    if all(_field(obj, key) is not None for key in descriptor):
+        return descriptor
+    return None
 
 
 def payload_matches(obj, needed):
@@ -151,7 +183,10 @@ def reconcile(obj, needed, source_obj=None):
             source = source_obj
         else:
             return None
-        for key in LIB_FIELDS[lib]:
+        # Copy the form this source actually carries - a descriptor stays a descriptor, so a
+        # right-sized document is never re-inflated back to the megabyte it just shed - plus the
+        # notice, which travels with the library in either form.
+        for key in _lib_source(source, lib) + (LIB_LICENSE[lib],):
             out[key] = source[key]
     rebuilt = {key: out[key] for key in CANONICAL_KEYS if key in out}
     schema = set(CANONICAL_KEYS)

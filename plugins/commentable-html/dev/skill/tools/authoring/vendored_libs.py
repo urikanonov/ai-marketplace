@@ -452,8 +452,12 @@ def apply(html, source_blob=None):
                 continue
             for lib in vendored_payload.LIBRARIES:
                 if lib in vendored_payload.carried_libs(copy):
+                    # Only the fields this copy actually has: a library may be carried as BYTES or
+                    # as a URL+integrity descriptor, so copying the whole field list blindly would
+                    # KeyError on whichever form is absent.
                     for key in vendored_payload.LIB_FIELDS[lib]:
-                        merged[key] = copy[key]
+                        if key in copy:
+                            merged[key] = copy[key]
             for key, value in copy.items():
                 if key not in vendored_payload.CANONICAL_KEYS or key == "encoding":
                     merged[key] = value
