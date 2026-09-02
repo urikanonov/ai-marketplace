@@ -90,7 +90,7 @@
           <a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg">View source</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version -->v1.3.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version -->v1.4.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -289,12 +289,25 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.4.0] - 2026-09-02</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The default panel is now <strong>4 ducks</strong>, not 8 (MDUCK-COUNT-13). Every duck is a full model context reading the same bundle, so the old default spent twice the tokens a routine review needs. Four is the smallest panel that still keeps the prisms guarantee - 2 ducks per aspect, on different model families - and it covers the first two aspects (correctness, and edge cases and error handling). The 1..12 clamp is unchanged, so a large or high-stakes change still asks for a wider panel explicitly, and naming a concern in <code>guidance</code> still promotes it to aspect 1 so it is always double-covered.</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>An <code>effort</code> input picks which TIER of models the panel is drawn from, and the per-duck reasoning-effort floor (MDUCK-EFFORT-14). Two levels: <code>high</code> (the flagship roster at a <code>high</code> floor - the default, for a large, unfamiliar, security-sensitive, or about-to-ship change) and <code>medium</code> (a mid-tier roster at a <code>medium</code> floor - materially cheaper and faster, for a small or routine change, an early round, or a deliberately token-light review). The skill now carries both example rosters, each front-loading one model per provider family. A tier changes only how deep each reviewer is: the modes, the 2-ducks-per-aspect cross-family pairing, and the hard rules are identical, a run never mixes tiers, and spending less means lowering the tier or the count - never the number of families.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.3.0] - 2026-08-06</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Raised the bar for turning a panel finding into a tracked issue (MDUCK-SCOPE-12). A duck&#x27;s scope is the CHANGE under review, so a PRE-EXISTING defect noticed incidentally - one equally present on the base revision - now goes to <code>SCOPED-OUT:</code> rather than <code>FINDINGS:</code>, unless it is user-observable breakage, data loss, or a security issue reachable under the declared threat model. Incidental pre-existing findings were 47 percent of the issues filed in one two-day window and were what held the issue branching factor at 1.52 - above the 1.0 at which a backlog stops growing - so a panel was manufacturing work faster than it could be done. The boundary is drawn carefully: a defect the change newly makes REACHABLE, triggers, or relocates stays in scope even when the defective line itself is untouched, so a latent fault that only a newly added caller can reach is still reported.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.2.0] - 2026-08-04</h3></div>
             <div class="group-label">Added</div>
@@ -302,8 +315,6 @@
               <li>The panel now respects a project&#x27;s DECLARED threat model instead of rediscovering its non-goals on every run (MDUCK-SCOPE-12). Bundle assembly collects the repo&#x27;s written threat model, trust boundaries, and accepted residual risks into <code>context.md</code>, together with the list that stays in scope regardless (a weakened enforcement layer, a false positive that breaks benign input, and drift that makes a tool emit output its own validator rejects). Every duck&#x27;s hard rules forbid reporting a finding whose attacker the project declares trusted, whose effect a named enforcement layer already blocks unconditionally, or which is one more instance of an already-accepted residual; a duck that disagrees with a non-goal raises it under <code>QUESTIONS:</code> rather than as a finding. Consolidation records such a finding as <code>Dismissed-as-out-of-scope</code> and does not open a follow-up issue for it. This closes the loop where each reviewed fix spawned its own successors.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 4 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.1.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>

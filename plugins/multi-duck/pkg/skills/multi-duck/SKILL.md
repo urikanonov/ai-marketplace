@@ -2,14 +2,14 @@
 name: multi-duck
 description: >-
   Run a panel of independent rubber-duck reviewers over whatever is in flight (the diff, PR, plan,
-  tests, and active commentable-HTML plans with their open inline comments), each on a different
-  model, all in parallel, then consolidate the findings and act on the safe ones autonomously. Two
-  modes: prisms (each aspect gets two differently-modeled ducks) or consensus (every duck
-  chases the same goal so cross-model agreement is meaningful). Use when the user says multi-duck,
-  run N ducks, duck this, rubber duck this flow, get a panel, review with ducks, consensus
-  ducks, or ensemble review, or asks for several independent model perspectives on the current work.
-  Runs with no extra prompt (auto-discovers what to review; defaults to 8 ducks) and works on Claude
-  Code and the Copilot CLI.
+  tests, and commentable-HTML plans with their open comments), each on a different model, all in
+  parallel, then consolidate the findings and act on the safe ones autonomously. Two modes: prisms
+  (each aspect gets two differently-modeled ducks) or consensus (every duck chases the same goal so
+  cross-model agreement is meaningful). Use when the user says multi-duck, run N ducks, duck this,
+  rubber duck this flow, get a panel, review with ducks, or ensemble review, or asks for several
+  independent model perspectives on the current work. Runs with no extra prompt (auto-discovers the
+  target; defaults to 4 ducks, and an effort input picks high or medium tier models) on Claude Code
+  and the Copilot CLI.
 ---
 
 # multi-duck
@@ -45,11 +45,15 @@ Invoke when the user wants multiple independent expert perspectives on whatever 
 
 ## Inputs
 
-- `count` (optional, default **8**): how many ducks to run. Parse from the invocation ("run 3 ducks", "multi-duck 8", "duck this x4"). Clamp to 1..12. If a number is not given, use 8. Prisms mode needs at least 2 ducks (the 2-per-aspect invariant cannot hold with one), so if the effective count is 1 run consensus mode instead, or hand a genuine single-review request to the plain `rubber-duck` agent. In prisms mode an even count is preferred so aspects pair cleanly; an odd count is fine (the leftover duck becomes a third opinion on aspect 1).
+- `count` (optional, default **4**): how many ducks to run. Parse from the invocation ("run 3 ducks", "multi-duck 8", "duck this x4"). Clamp to 1..12. If a number is not given, use 4: every duck is a full model context reading the same bundle, so the default is the SMALLEST panel that still keeps the prisms guarantee (2 ducks per aspect, on different families) and it costs about half what an 8-duck panel does. Raise it deliberately for a large, unfamiliar, or high-stakes change, or when weaker models join the roster (see "Repeated runs"). Prisms mode needs at least 2 ducks (the 2-per-aspect invariant cannot hold with one), so if the effective count is 1 run consensus mode instead, or hand a genuine single-review request to the plain `rubber-duck` agent. In prisms mode an even count is preferred so aspects pair cleanly; an odd count is fine (the leftover duck becomes a third opinion on aspect 1).
 - `mode` (optional, default **prisms**): how the panel divides the work.
   - **`prisms`** (a.k.a. diverse / different aspects / split by aspect): ducks are grouped by review aspect, and **every aspect gets at least 2 ducks on different models (different families where possible)** so each aspect has two independent opinions. Each duck reviews primarily and deeply for its assigned aspect. Best for a broad, high-coverage review of a large or unfamiliar change. This is the default.
   - **`consensus`** (a.k.a. same-goal / ensemble): every duck gets the *identical* prompt and chases the same goal (a full holistic review, or the specific `guidance` question). Because all models review the same scope, cross-model agreement (k/N) is a strong confidence signal. Use it for a focused question ("is this migration safe?") or high-confidence verification.
   Parse the mode from the invocation: "diverse / prisms / different aspects / split by aspect / two opinions per aspect" -> prisms; "same goal / consensus / all the same / ensemble / everyone reviews everything" -> consensus. If not stated, use prisms.
+- `effort` (optional, default **high**): which TIER of models the panel is drawn from, and the per-duck reasoning-effort floor. There are exactly two levels.
+  - **`high`**: the high-tier (flagship) roster at a `high` reasoning-effort floor. The strongest panel and the most expensive one. Use it for a large, unfamiliar, security-sensitive, or about-to-ship change. This is the default.
+  - **`medium`**: the medium-tier roster at a `medium` reasoning-effort floor. Materially cheaper and faster per duck, and it keeps the property that makes a panel worth running - one voice per provider family, so the reviewers are still independent; what drops is the raw depth of each reviewer, not the diversity. Use it for a small or routine change, an early round on work still in motion, or when the user asks for a cheap, quick, or token-light panel.
+  Parse from the invocation: "high effort / high tier / flagship / deep / thorough / strongest / best models" -> high; "medium effort / medium tier / cheap / cheaper / light / quick / budget / save tokens" -> medium. If not stated, use high. Draw every duck in a run from the SAME tier: a medium duck paired with a flagship is presented as an equal second opinion when it is not, which is exactly the false confidence the panel exists to avoid. To spend less, lower the tier or the `count` - never the number of families.
 - `guidance` (optional): free text narrowing what to review ("focus on the retry logic", "only the KQL", "is the migration safe?"). If absent, review the whole flow. In prisms mode, a concern named here is inserted as aspect 1 (shifting the standard aspects down) so it is always double-covered.
 - `target` (optional): an explicit thing to review (a PR URL, a path, a branch). If absent, auto-discover (Step 1).
 
@@ -152,11 +156,13 @@ The panel's value comes from *independent* reviewers whose blind spots do not ov
 1. Enumerate the strongest reviewing models your host currently exposes (Copilot: the `model` values the `task` tool accepts; Claude Code: the models your rubber-duck subagents are bound to).
 2. Group them by provider family (Anthropic, OpenAI, Google, and any others such as Microsoft MAI).
 3. Front-load one model per family before taking a second from any family, so the first ducks are as different from each other as possible.
-4. Take the first `count`. For `count` below the roster size, truncate from the end. For `count` above the number of distinct models available, reuse the strongest models but give each reused duck a *different* aspect and, where the host allows, a higher reasoning effort so it still behaves differently.
+4. Take the first `count` **from the tier `effort` selects**. For `count` below the roster size, truncate from the end. For `count` above the number of distinct models available, reuse the strongest models of that tier but give each reused duck a *different* aspect and, where the host allows, a higher reasoning effort so it still behaves differently.
 
-Run every duck at a **high** reasoning effort or better where the host exposes a per-call effort setting (the Copilot CLI does); that is the floor. For a deeper pass, raise flagship reviewers to `xhigh`/`max` where the host supports it. On Claude Code the effort is whatever the chosen subagent or model is configured for, so there is no per-call floor to set. Do not deliberately choose a low-effort reviewer.
+Run every duck at the **reasoning-effort floor its tier sets**, where the host exposes a per-call effort setting (the Copilot CLI does): `high` tier -> `high` or better, `medium` tier -> `medium`. That is a floor, not a ceiling - on a `high`-tier deep pass, raise flagship reviewers to `xhigh`/`max` where the host supports it. On Claude Code the effort is whatever the chosen subagent or model is configured for, so there is no per-call floor to set. Never drop a duck below its tier's floor: a low-effort reviewer is a duck that has not really read the change.
 
-The concrete IDs below are a **current example roster for the GitHub Copilot CLI**. The models a host offers change over time and differ between Copilot and Claude Code, so treat this as an illustration of the strategy, not a fixed list, and substitute the equivalents your host exposes:
+The concrete IDs below are a **current example roster for the GitHub Copilot CLI**, given as the two tiers `effort` chooses between. The models a host offers change over time and differ between Copilot and Claude Code, so treat these as an illustration of the strategy, not a fixed list, and substitute the equivalents your host exposes:
+
+**High tier** (`effort: high`, the default) - the flagships:
 
 | # | example model | family |
 |---|----------------|--------|
@@ -169,7 +175,20 @@ The concrete IDs below are a **current example roster for the GitHub Copilot CLI
 | 7 | `claude-opus-4.8` | Anthropic Opus (prior generation) |
 | 8 | `gpt-5.5` | OpenAI (prior generation) |
 
-Rows 7 and 8 illustrate the tail of the rule: once a family's newest flagship is on the panel (row 1 leads with Anthropic's `claude-opus-5`), its prior generation - here `claude-opus-4.8` - is still a strong, usefully-different reviewer. Extend the same way past 8, always preferring a distinct model over reusing one. Row 6 (`gpt-5.6-terra`) is a *sibling variant* of the row 2 flagship (both are OpenAI 5.6): it is a valid extra OpenAI voice, but a different generation or sub-family (a code-focused `gpt-5.3-codex`, or a prior generation such as `gpt-5.4`) is stronger diversity than a same-generation sibling, so prefer one of those when a genuinely independent OpenAI opinion matters. The example's row 4 is a lighter, faster model included only as a distinct fourth-family voice, not for raw reviewing strength; when only the strongest reviewers matter, drop it or move it to the tail and pull up the next flagship. Substitute the equivalents your host exposes: some strong reviewers are on other hosts, not the Copilot CLI (for example xAI's Grok or Moonshot's Kimi flagships on hosts that offer them), and the Copilot roster also offers lighter distinct-family voices you can rotate in, such as Google's `gemini-3.6-flash`.
+Rows 7 and 8 illustrate the tail of the rule: once a family's newest flagship is on the panel (row 1 leads with Anthropic's `claude-opus-5`), its prior generation - here `claude-opus-4.8` - is still a strong, usefully-different reviewer. Extend the same way past 8, always preferring a distinct model over reusing one. Row 6 (`gpt-5.6-terra`) is a *sibling variant* of the row 2 flagship (both are OpenAI 5.6): it is a valid extra OpenAI voice, but a different generation or sub-family (a code-focused `gpt-5.3-codex`, or a prior generation such as `gpt-5.4`) is stronger diversity than a same-generation sibling, so prefer one of those when a genuinely independent OpenAI opinion matters. The example's row 4 is a lighter, faster model included only as a distinct fourth-family voice, not for raw reviewing strength; when only the strongest reviewers matter, drop it or move it to the tail and pull up the next flagship. Substitute the equivalents your host exposes: some strong reviewers are on other hosts, not the Copilot CLI (for example xAI's Grok or Moonshot's Kimi flagships on hosts that offer them).
+
+**Medium tier** (`effort: medium`) - mid-tier models that cost a fraction of the flagships:
+
+| # | example medium-tier model | family |
+|---|---------------------------|--------|
+| 1 | `claude-sonnet-5` | Anthropic Sonnet |
+| 2 | `gpt-5.4` | OpenAI (prior generation) |
+| 3 | `gemini-3.6-flash` | Google (flash) |
+| 4 | `mai-code-1.1-flash` | Microsoft MAI (flash) |
+| 5 | `claude-haiku-4.5` | Anthropic Haiku |
+| 6 | `gpt-5.4-mini` | OpenAI (mini) |
+
+Same rule one tier down: front-load one model per family, then extend. The tier is the ONLY thing that changes - a medium panel still runs the same modes, the same 2-ducks-per-aspect pairing, and the same hard rules, so its findings are read the same way. What it gives up is depth per duck, so if a medium run comes back thin on a change that matters, re-run at `high` rather than promoting one duck to a flagship mid-panel.
 
 On **Claude Code**, apply the identical strategy to whatever models your rubber-duck subagents can run (see Hosts): if they are all one model, define several subagents pinned to different available models and rotate through them, or fall back to prisms mode for aspect-and-context diversity.
 
@@ -177,10 +196,10 @@ On **Claude Code**, apply the identical strategy to whatever models your rubber-
 
 The panel is often run more than once on the same work (for example the two rounds a feature PR needs, or a re-run after applying fixes). Across those runs the goal shifts from "the single strongest panel" to "the widest *combined* coverage", so vary the panel each time rather than replaying the identical roster:
 
-- **Keep the top flagships every run.** The strongest reviewers - `claude-opus-5` and `gpt-5.6-sol` above, and whatever your host's current equivalents are - stay pinned on every run; they are the anchor, not the thing you rotate out. Rotation happens in the *rest* of the roster.
-- **Rotate the tail between runs.** Refresh the non-anchor rows each run by swapping to the next distinct models your host exposes - a prior-generation flagship, a different sub-family (Opus vs Sonnet), a code-focused variant, or a lighter distinct-family voice - so run 2 sees the change through models run 1 did not use. Draw the fresh voices from models NOT already in this run's roster (for example `gpt-5.3-codex`, `claude-opus-4.7`, `gpt-5.4`, or `gemini-3.6-flash` relative to the example above). Prefer a model no earlier run has used before reusing one; only reuse a model once the distinct pool is exhausted.
+- **Keep the top flagships every run.** The strongest reviewers of the tier you are running - `claude-opus-5` and `gpt-5.6-sol` at `high`, their medium-tier equivalents at `medium`, and whatever your host's current equivalents are - stay pinned on every run; they are the anchor, not the thing you rotate out. Rotation happens in the *rest* of the roster.
+- **Rotate the tail between runs.** Refresh the non-anchor rows each run by swapping to the next distinct models your host exposes IN THE SAME TIER - a prior-generation flagship, a different sub-family (Opus vs Sonnet), a code-focused variant - so run 2 sees the change through models run 1 did not use. Draw the fresh voices from models NOT already in this run's roster (for example `gpt-5.3-codex` or `claude-opus-4.7` relative to the high-tier example above). Prefer a model no earlier run has used before reusing one; only reuse a model once the distinct pool is exhausted. Rotating is not an excuse to mix tiers: change the whole panel's `effort` if you want a cheaper run.
 - **In prisms mode, also rotate which model reviews which aspect.** If run 1 paired `claude-opus-5` on correctness, put it on a different aspect in run 2 (still paired across families) so each aspect accumulates opinions from more than two models over the runs.
-- **Widen the panel when weaker models take part.** If a run pulls in lighter or lower-tier models for diversity (a flash-class model, an older generation), *increase `count`* for that run so the extra breadth is not bought at the cost of depth - add ducks rather than displacing the flagships. A practical rule: raise `count` by roughly one duck per weaker model added (staying within the 1..12 clamp), and keep both anchor flagships in the enlarged panel. The point is additive diversity: more independent voices, with the strongest ones always present.
+- **Widen the panel when weaker models take part.** If a run pulls a lighter or lower-tier model into an otherwise stronger panel for extra diversity, *increase `count`* for that run so the extra breadth is not bought at the cost of depth - add ducks rather than displacing the anchors. A practical rule: raise `count` by roughly one duck per weaker model added (staying within the 1..12 clamp), and keep both anchors in the enlarged panel. This does NOT apply to a uniform `effort: medium` run, which is deliberately cheaper end to end and keeps the default `count`; widening it would spend back exactly what the tier was chosen to save.
 
 Note which models each run used by keeping a short list in your final report (which stays in the conversation): the per-duck tracking store holds only the CURRENT run - you reset it before each run (see Step 0), Claude Code's `panel.json` is also removed with the scratch bundle after the summary - so the durable cross-run record is the list you carry forward, letting a later run deliberately pick models the earlier runs did not.
 
@@ -195,33 +214,29 @@ Priority-ordered review aspects. In prisms mode the panel covers the first `A = 
 5. performance, scalability & resource-use (deep pass)
 6. backward-compat, migration, rollout & operability
 
-At the default `count=8`, `A=4`, so the panel covers aspects 1-4, each by 2 differently-modeled ducks; `count=12` covers all six at 2 ducks each. Aspect 5 is a deeper performance and scalability pass beyond aspect 4's lighter performance coverage, reached only at higher counts, so the two do not overlap in practice. If `guidance` names a specific concern (e.g. "focus on performance"), insert it as aspect 1 and shift the standard aspects down by one (so the lowest-priority aspect that would have been within the first `A` drops off), keeping the named concern always double-covered.
+At the default `count=4`, `A=2`, so the panel covers aspects 1-2, each by 2 differently-modeled ducks; `count=8` reaches aspects 1-4 and `count=12` covers all six at 2 ducks each. That is the trade the default makes: a 4-duck panel goes deep on correctness and edge cases for half the tokens, so name the concern you care about in `guidance` (it becomes aspect 1) or raise `count` when a change needs the security or test aspects covered too. Aspect 5 is a deeper performance and scalability pass beyond aspect 4's lighter performance coverage, reached only at higher counts, so the two do not overlap in practice. If `guidance` names a specific concern (e.g. "focus on performance"), insert it as aspect 1 and shift the standard aspects down by one (so the lowest-priority aspect that would have been within the first `A` drops off), keeping the named concern always double-covered.
 
 ### Assign work by mode
 
 - **consensus mode**: ignore the aspect list. Assign the first `count` models from the roster; set every duck's `lens` to "shared goal". Coverage comes from many models independently examining everything.
 - **prisms mode**: cover `A = max(1, floor(count / 2))` aspects, **2 ducks each**, and pair them **across model families** so the two opinions are genuinely independent. If a same-family pairing is unavoidable (few families left), use different sub-families (Opus vs Sonnet) or generations. If `count` is odd, the leftover duck becomes a 3rd opinion on aspect 1 (never a lone singleton - the 2-per-aspect invariant holds for every count >= 2; a count of 1 runs consensus instead, per Inputs). Record each pair's shared aspect in `aspect_group`.
 
-**Example 8-duck prisms assignment** (the Copilot example roster above; 4 aspects x 2 cross-family ducks):
+**Example 4-duck prisms assignment** (the default `count`, high tier; 2 aspects x 2 cross-family ducks):
 
 | duck | model | family | aspect |
 |------|-------|--------|--------|
 | 1 | `claude-opus-5` | Anthropic | correctness & logic bugs |
 | 2 | `gpt-5.6-sol` | OpenAI | correctness & logic bugs |
 | 3 | `gemini-3.1-pro-preview` | Google | edge cases, error handling & input validation |
-| 4 | `gpt-5.6-terra` | OpenAI | edge cases, error handling & input validation |
-| 5 | `claude-sonnet-5` | Anthropic | security, data safety & privacy |
-| 6 | `gpt-5.5` | OpenAI | security, data safety & privacy |
-| 7 | `mai-code-1-flash-picker` | Microsoft MAI | tests, performance & design/maintainability |
-| 8 | `claude-opus-4.8` | Anthropic | tests, performance & design/maintainability |
+| 4 | `mai-code-1-flash-picker` | Microsoft MAI | edge cases, error handling & input validation |
 
-Every aspect above is reviewed by two different-family models, so each aspect gets two independent opinions. Record each duck's `model`, `lens`/aspect, `aspect_group`, and (once launched) its subagent handle in your tracking store.
+Every aspect above is reviewed by two different-family models, so each aspect gets two independent opinions. At `effort: medium` the same assignment is drawn from the medium-tier roster (`claude-sonnet-5`, `gpt-5.4`, `gemini-3.6-flash`, `mai-code-1.1-flash`), and a larger `count` extends both the roster and the aspect list in the same order - at `count=8` the panel takes roster rows 5-8 and covers aspects 3-4 as well. Record each duck's `model`, `lens`/aspect, `aspect_group`, and (once launched) its subagent handle in your tracking store.
 
 The **aspect** matters only in **prisms** mode, where it is the duck's deep focus: the duck goes exhaustive on its aspect and may still flag an egregious issue elsewhere, while its pair-mate on a different model gives the second opinion. In **consensus** mode there are no per-duck aspects - every duck does the same full holistic review, and coverage comes from all models independently examining everything.
 
 ## Step 3. Launch all ducks in parallel (background)
 
-In a **single response (Copilot CLI) or message (Claude Code)**, launch `count` reviewer subagents in parallel, one per roster row. On the Copilot CLI use the `task` tool with `agent_type: "rubber-duck"` (a built-in, read-only reviewer agent) and `mode: "background"`, plus the per-duck `model` and `reasoning_effort`. On Claude Code issue one `Task` call per duck with `subagent_type: "rubber-duck"`, each bound to its assigned model (see Hosts). Record each subagent's handle in your tracking store.
+In a **single response (Copilot CLI) or message (Claude Code)**, launch `count` reviewer subagents in parallel, one per roster row. On the Copilot CLI use the `task` tool with `agent_type: "rubber-duck"` (a built-in, read-only reviewer agent) and `mode: "background"`, plus the per-duck `model` and the `reasoning_effort` its tier floors at (Step 2). On Claude Code issue one `Task` call per duck with `subagent_type: "rubber-duck"`, each bound to its assigned model (see Hosts). Record each subagent's handle in your tracking store.
 
 The prompt depends on the **mode**. Both variants share the same hard rules and output shape (below); only the opening mandate differs. Each prompt is fully self-contained and read-only. Vary the model, the assigned aspect, and the duck number per roster row.
 
@@ -260,7 +275,7 @@ Once the ducks are in, merge their findings into one ranked list:
 
 1. **Cluster** findings that refer to the same underlying issue (same file/region + same root cause), even if worded differently across models.
 2. **Agreement**, interpreted by mode:
-   - **consensus mode**: every duck reviewed the same scope, so agreement (k/N) is a strong confidence signal - a Critical raised by 4/8 ducks is near-certain; a Low raised by 1/8 is likely noise.
+   - **consensus mode**: every duck reviewed the same scope, so agreement (k/N) is a strong confidence signal - a Critical raised by 3/4 ducks is near-certain; a Low raised by 1/4 is likely noise. A smaller panel makes each vote coarser, so weigh a lone finding on its argument rather than on its k/N.
    - **prisms mode**: ducks had *different* scopes, so the meaningful signal is **intra-aspect agreement within each 2-duck pair**, not k/N across the whole panel. If both ducks on an aspect independently raise the same issue (2/2), confidence is high. A finding from only one of the pair is still credible - that duck owns the aspect - but treat the pair-mate's silence or disagreement as a flag to adjudicate yourself. Cross-aspect corroboration from a non-owner duck is a bonus, and low panel-wide agreement is *expected*, not evidence of noise.
 3. **Rank** by severity first, then: in consensus mode by agreement then confidence; in prisms mode by the owning pair's agreement (2/2 > 1/2) and confidence, using cross-aspect corroboration only as a tie-breaker.
 4. **Surface conflicts** explicitly: where one duck says a thing is fine and another flags it (especially the two ducks on the same aspect), note the disagreement and adjudicate it yourself by reading the code (you are the tie-breaker).
@@ -292,7 +307,7 @@ If nothing is safely auto-fixable, that is a valid outcome - report the findings
 
 Give one consolidated report:
 
-1. **Panel**: the mode that ran (prisms or consensus) and the `count` ducks, each model with its verdict (e.g. `opus-5: ship-with-fixes`). In prisms mode, group ducks by aspect so each aspect shows its two opinions; in consensus mode just list them. Note any duck that failed.
+1. **Panel**: the mode that ran (prisms or consensus), the `effort` tier, and the `count` ducks, each model with its verdict (e.g. `opus-5: ship-with-fixes`). In prisms mode, group ducks by aspect so each aspect shows its two opinions; in consensus mode just list them. Note any duck that failed, and say plainly when a `medium`-tier panel produced the verdict so the reader can weigh it.
 2. **Consensus**: the overall verdict (ship / ship-with-fixes / do-not-ship) and the top 3 agreed risks.
 3. **Findings table**: severity, agreement (k/m; m = the ducks on that aspect in prisms, or N = count in consensus), location, issue, and status (Fixed / Deferred / Dismissed-as-noise / Dismissed-as-out-of-scope). Proposed action is not repeated here - it is covered by the sections below.
 4. **What I changed**: files touched, a one-line why per fix, and the verification result (tests/build).
@@ -314,7 +329,8 @@ Keep the prose tight; the tables carry the detail.
 ## Notes
 
 - The panel deliberately mixes Anthropic, OpenAI, Google, and Microsoft MAI models so their failure modes are uncorrelated - that is where the extra bugs come from.
-- Two modes: **prisms** (default) splits the panel by aspect with at least 2 differently-modeled ducks per aspect, so every aspect gets two independent opinions and coverage is wide; **consensus** points every duck at the same goal so cross-model agreement (k/N) is meaningful. Default count is 8, which in prisms mode covers 4 aspects at 2 ducks each.
+- Two modes: **prisms** (default) splits the panel by aspect with at least 2 differently-modeled ducks per aspect, so every aspect gets two independent opinions and coverage is wide; **consensus** points every duck at the same goal so cross-model agreement (k/N) is meaningful. Default count is 4, which in prisms mode covers 2 aspects at 2 ducks each - the smallest panel that keeps the guarantee, and about half the tokens of the 8-duck panel it replaced. Raise `count` for a big or high-stakes change.
+- Two effort tiers pick the roster: **`high`** (default) draws flagships at a `high` reasoning-effort floor; **`medium`** draws mid-tier models at a `medium` floor for a cheaper, faster panel. The tier changes the reviewers' depth, never the cross-family diversity or any other guarantee, and a run never mixes the two.
 - Store the context bundle and each duck's raw output under `<scratch>/multi-duck/` so a restart can resume consolidation without re-running the panel.
 - For Azure DevOps PRs, call the ADO REST API for the PR and its comment threads with a bearer token (`az account get-access-token`) or a PAT.
 - Commentable HTML plans are recognized by `BEGIN: commentable-html v2` banners, `id="commentRoot"`, and the `<script id="embeddedComments">` / `<script id="handledCommentIds">` blocks; open comments = embedded minus handled. See the `commentable-html` skill for the full artifact format.

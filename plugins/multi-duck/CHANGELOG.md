@@ -4,6 +4,30 @@ All notable changes to the multi-duck plugin are documented here. The format fol
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to semantic
 versioning.
 
+## [1.4.0] - 2026-09-02
+
+### Changed
+
+- The default panel is now **4 ducks**, not 8 (MDUCK-COUNT-13). Every duck is a full model context
+  reading the same bundle, so the old default spent twice the tokens a routine review needs. Four is
+  the smallest panel that still keeps the prisms guarantee - 2 ducks per aspect, on different model
+  families - and it covers the first two aspects (correctness, and edge cases and error handling).
+  The 1..12 clamp is unchanged, so a large or high-stakes change still asks for a wider panel
+  explicitly, and naming a concern in `guidance` still promotes it to aspect 1 so it is always
+  double-covered.
+
+### Added
+
+- An `effort` input picks which TIER of models the panel is drawn from, and the per-duck
+  reasoning-effort floor (MDUCK-EFFORT-14). Two levels: `high` (the flagship roster at a `high`
+  floor - the default, for a large, unfamiliar, security-sensitive, or about-to-ship change) and
+  `medium` (a mid-tier roster at a `medium` floor - materially cheaper and faster, for a small or
+  routine change, an early round, or a deliberately token-light review). The skill now carries both
+  example rosters, each front-loading one model per provider family. A tier changes only how deep
+  each reviewer is: the modes, the 2-ducks-per-aspect cross-family pairing, and the hard rules are
+  identical, a run never mixes tiers, and spending less means lowering the tier or the count - never
+  the number of families.
+
 ## [1.3.0] - 2026-08-06
 
 ### Changed

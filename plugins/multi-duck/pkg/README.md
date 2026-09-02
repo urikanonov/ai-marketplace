@@ -37,12 +37,24 @@ autonomously applies the fixes that are safe to apply, leaving the risky ones fo
 - **consensus**: every duck chases the same goal, so cross-model agreement (k of N) is a strong
   signal. Best for a focused question or a high-confidence go/no-go.
 
+## Two effort tiers
+
+- **high** (default): flagship models at a high reasoning-effort floor. The strongest panel; use it
+  for a large, unfamiliar, security-sensitive, or about-to-ship change.
+- **medium**: mid-tier models at a medium floor - a cheaper, faster panel that still puts one voice
+  per provider family on the change, so the reviewers stay independent and only their depth drops.
+  Use it for a small or routine change, an early round, or a deliberately token-light review.
+
+The panel defaults to **4 ducks** (two review aspects, two cross-family opinions each) - the
+smallest panel that keeps that guarantee. Ask for more ("run 8 ducks") when a change deserves a
+wider one.
+
 ## How it works
 
 1. **Discover** the work in flight (diff, PR, plan, tests, commentable-HTML plans and their open
    comments) and build one self-contained context bundle every duck can read.
-2. **Pick a model-diverse roster** - the strongest, most different models your host exposes, one per
-   family first - and assign each duck a lens (prisms) or the shared goal (consensus).
+2. **Pick a model-diverse roster** - the most different models the chosen tier exposes on your host,
+   one per family first - and assign each duck a lens (prisms) or the shared goal (consensus).
 3. **Launch every duck in parallel** as review-only subagents.
 4. **Consolidate**: cluster findings, weigh agreement, rank by severity, and adjudicate conflicts.
 5. **Act**: apply the safe fixes and verify them with the narrowest test/build; defer the risky ones

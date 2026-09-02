@@ -193,13 +193,17 @@ class MultiDuckSkillTests(unittest.TestCase):
                          "got %r" % (distinct, front))
         self.assertEqual(families[0], "Anthropic")  # opus-5 leads
 
-        # Every prisms aspect is covered by two ducks on DIFFERENT families.
+        # Every prisms aspect is covered by two ducks on DIFFERENT families. Asserted from the table
+        # itself rather than against a hardcoded panel size, so changing the DEFAULT count (which is
+        # what the worked example illustrates) cannot redden this row: the invariant is 2 ducks per
+        # aspect on different families, not any particular number of ducks.
         prisms = _md_table_rows(t, "| duck | model | family | aspect |")
-        self.assertEqual(len(prisms), 8, "expected the 8-duck prisms example")
+        self.assertGreaterEqual(len(prisms), 4, "prisms example table not found or too short")
+        self.assertEqual(len(prisms) % 2, 0, "the prisms example must pair every aspect")
         by_aspect = {}
         for _duck, _model, family, aspect in ((r[0], r[1], r[2], r[3]) for r in prisms):
             by_aspect.setdefault(aspect, []).append(_base_family(family))
-        self.assertEqual(len(by_aspect), 4, "expected 4 aspects, 2 ducks each")
+        self.assertEqual(len(by_aspect), len(prisms) // 2, "expected 2 ducks per aspect")
         for aspect, fams in by_aspect.items():
             self.assertEqual(len(fams), 2, "aspect %r must have exactly 2 ducks" % aspect)
             self.assertNotEqual(fams[0], fams[1],
@@ -343,6 +347,73 @@ class MultiDuckScopeGateTests(unittest.TestCase):
             "unless it is user-observable breakage, data loss, or a security issue reachable under"
             " the declared threat model", t,
         )
+
+
+class MultiDuckPanelBudgetTests(unittest.TestCase):
+    def test_the_default_panel_is_four_ducks(self):
+        # MDUCK-COUNT-13: a duck is a whole model context over the same bundle, so the default panel
+        # is the SMALLEST one that still keeps the prisms guarantee (2 ducks per aspect, different
+        # families): 4, not 8. Every place the doc states the default has to agree, or an agent
+        # reading one section launches a panel twice the size the next section describes.
+        t = _read(SKILL)
+        self.assertIn("`count` (optional, default **4**)", t)
+        self.assertIn("If a number is not given, use 4", t)
+        self.assertIn("Clamp to 1..12", t)  # the range itself is unchanged
+        self.assertIn("At the default `count=4`, `A=2`", t)
+        self.assertIn("Default count is 4", t)
+        self.assertIn("defaults to 4 ducks", _front_matter(t))
+        # No stale statement of the old default survives anywhere in the doc.
+        for stale in ("defaults to 8 ducks", "default **8**", "Default count is 8",
+                      "At the default `count=8`"):
+            self.assertNotIn(stale, t, "stale 8-duck default still stated: %r" % stale)
+        # The worked prisms example illustrates the DEFAULT panel, so it is a 4-duck table.
+        prisms = _md_table_rows(t, "| duck | model | family | aspect |")
+        self.assertEqual(len(prisms), 4, "the worked prisms example must show the default panel")
+
+    def test_effort_selects_one_of_exactly_two_model_tiers(self):
+        # MDUCK-EFFORT-14: `effort` picks WHICH TIER of models the roster is drawn from (and the
+        # per-call reasoning-effort floor), so a routine change can be reviewed cheaply without
+        # editing the skill. Exactly two levels, defaulting to high, and neither tier is allowed to
+        # buy its cheapness by collapsing the cross-family independence the panel exists for.
+        t = _read(SKILL)
+        self.assertIn("`effort` (optional, default **high**)", t)
+        self.assertIn("**`high`**:", t)
+        self.assertIn("**`medium`**:", t)
+        self.assertIn("If not stated, use high.", t)
+        # The tier sets a per-call reasoning-effort floor on hosts that expose one.
+        self.assertIn("reasoning-effort floor", t)
+        self.assertIn("`high` tier -> `high` or better", t)
+        self.assertIn("`medium` tier -> `medium`", t)
+        # A run does not mix tiers: a medium duck paired with a flagship reads as an equal second
+        # opinion when it is not.
+        self.assertIn("Draw every duck in a run from the SAME tier", t)
+
+        # Both tiers are real, distinct rosters that obey the same diversity-first rule.
+        tiers = {
+            "high": _md_table_rows(t, "| # | example model | family |"),
+            "medium": _md_table_rows(t, "| # | example medium-tier model | family |"),
+        }
+        for tier, rows in tiers.items():
+            self.assertGreaterEqual(len(rows), 4, "%s-tier roster not found or too short" % tier)
+            families = [_base_family(r[2]) for r in rows]
+            distinct = len(set(families))
+            self.assertGreaterEqual(
+                distinct, 4,
+                "the %s-tier roster must span at least 4 provider families, got %r"
+                % (tier, sorted(set(families))))
+            self.assertEqual(
+                len(set(families[:distinct])), distinct,
+                "the %s-tier roster must front-load one model per family, got %r"
+                % (tier, families[:distinct]))
+        # `effort: medium` must actually be cheaper: the medium roster may share a high tier's TAIL
+        # (a strong mid model is legitimately both), but it may never replay the flagships the high
+        # tier front-loads - a "medium" panel made of flagships is the default panel with a new name.
+        high = tiers["high"]
+        high_families = [_base_family(r[2]) for r in high]
+        flagships = {r[1] for r in high[:len(set(high_families))]}
+        replayed = flagships & {r[1] for r in tiers["medium"]}
+        self.assertFalse(replayed, "the medium tier replays high-tier flagships: %r"
+                         % sorted(replayed))
 
 
 class MultiDuckHouseStyleTests(unittest.TestCase):
