@@ -295,7 +295,11 @@ class ExampleNoInlinedLibraryTests(unittest.TestCase):
     # Big enough that no ordinary authored snippet reaches it, small enough to catch a minified
     # library: the real ones are 205 KB (Chart.js) and 3.5 MB (mermaid).
     LIBRARY_BYTES = 50000
-    SCRIPT = re.compile(r"<script([^>]*)>([\s\S]*?)</script>", re.I)
+    # `</script >` is a legal end tag and `<SCRIPT` a legal start tag, so both spellings are
+    # accepted: a guard that a library body can slip past by changing its case or adding a space
+    # is not a guard. (Flagged by CodeQL's bad-HTML-filtering-regexp rule.)
+    SCRIPT = re.compile(r"<script([^>]*)>([\s\S]*?)</script\s*>", re.I)
+    SCRIPT_OPEN = re.compile(r"<script([^>]*)>", re.I)
     # Vendor banners the minified bundles carry.
     BANNERS = re.compile(r"Chart\.js v[\d.]+|mermaid@[\d.]+|/\*!\s*Chart\.js", re.I)
 
@@ -322,6 +326,24 @@ class ExampleNoInlinedLibraryTests(unittest.TestCase):
             "checks, and it WINS over the verified copy in an export. Use the pinned CDN loader "
             "with SRI, as report-metrics and report-triage do. Offenders: " + "; ".join(offenders))
 
+    def test_the_script_scanner_is_not_evaded_by_case_or_spacing(self):
+        # The rule is only as good as its scanner. `<SCRIPT>` and `</script >` are both legal HTML,
+        # so a library body written either way must still be seen - otherwise the guard is
+        # cosmetic. Exercised on synthetic markup rather than on the corpus, which by construction
+        # contains no offender to find.
+        body = "/*! Chart.js v9.9.9 */" + ("x" * self.LIBRARY_BYTES)
+        for name, html in (
+            ("upper-case tags", "<SCRIPT>%s</SCRIPT>" % body),
+            ("spaced end tag", "<script>%s</script >" % body),
+            ("mixed case and spacing", "<ScRiPt>%s</ScRiPt  >" % body),
+        ):
+            found = [b for _, b in self.SCRIPT.findall(html)
+                     if len(b) >= self.LIBRARY_BYTES and self.BANNERS.search(b)]
+            self.assertEqual(len(found), 1, "%s evaded the library-body scanner" % name)
+        opens = self.SCRIPT_OPEN.findall('<SCRIPT src="https://cdn.jsdelivr.net/npm/chart.js@1.2.3/'
+                                         'dist/chart.umd.min.js"></SCRIPT>')
+        self.assertEqual(len(opens), 1, "an upper-case loader tag evaded the loader scanner")
+
     def test_the_chart_examples_still_load_chartjs_somehow(self):
         # The companion assertion, so the rule above can never be satisfied by simply deleting the
         # library and leaving the charts dead. Every example that constructs a Chart must still
@@ -338,7 +360,7 @@ class ExampleNoInlinedLibraryTests(unittest.TestCase):
             name = os.path.basename(path)
             tag = None
             tag_at = None
-            for m in re.finditer(r"<script([^>]*)>", html):
+            for m in self.SCRIPT_OPEN.finditer(html):
                 if "cdn.jsdelivr.net/npm/chart.js@" in m.group(1):
                     tag = m.group(1)
                     tag_at = m.start()
