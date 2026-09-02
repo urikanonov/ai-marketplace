@@ -21,6 +21,7 @@ import {
 } from "./shot_compare.mjs";
 import { freezeBuildStamps, STAMP_DATE, STAMP_VERSION } from "./shot_stamps.mjs";
 import { pinnedVersion, lockedVersion, pinMismatchMessage, NOT_INSTALLED_MESSAGE } from "./mermaid_pin.mjs";
+import { vendoredChartJsVersion, chartJsRoutePattern } from "./chartjs_pin.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The in-browser layout/scroll settle loops throw on a wall-clock deadline that was sized for a
@@ -288,12 +289,15 @@ async function routeVendoredChartJs(context) {
     throw new Error("capture: assets/vendor/chart.umd.min.js is missing; the tutorial chart shot "
       + "would capture a blank canvas.");
   }
-  // ONLY the minified build, which is the byte-identical vendored file. Matching every
-  // `chart.js@*/dist/` path would serve these 4.5.1 bytes to a document asking for a different
-  // version or the unminified build (report-triage asks for `chart.js@4.4.0/dist/chart.umd.js`),
-  // and the reply would fail that document's `integrity` check - a silently blank chart instead of
-  // the honest abort the catch-all gives it. Anything else falls through to that catch-all.
-  await context.route(/^https:\/\/cdn\.jsdelivr\.net\/npm\/chart\.js@[^/]+\/dist\/chart\.umd\.min\.js$/,
+  // ONLY this exact version's minified build, which is the byte-identical vendored file. A wider
+  // route would serve these bytes to a document asking for a different version or the unminified
+  // build (report-triage asks for `chart.js@4.4.0/dist/chart.umd.js`), and the reply would fail
+  // that document's `integrity` check - a silently blank chart instead of the honest abort the
+  // catch-all gives it. The version is DERIVED from the bundle, so re-vendoring moves the route
+  // with it and there is no literal to forget. The capture can be pointed at an arbitrary example,
+  // so a document on another Chart.js version is reachable rather than hypothetical.
+  const version = vendoredChartJsVersion(fs.readFileSync(vendored, "utf8").slice(0, 4000));
+  await context.route(chartJsRoutePattern(version),
     async (route) => {
       await route.fulfill({ path: vendored, contentType: "application/javascript" });
     });

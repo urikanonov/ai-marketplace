@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { pinnedVersion, lockedVersion, pinMismatchMessage } from "../tools/mermaid_pin.mjs";
+import { vendoredChartJsVersion, chartJsRoutePattern } from "../tools/chartjs_pin.mjs";
 
 const DEV = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const VENDOR = path.join(DEV, "assets", "vendor");
@@ -174,4 +175,36 @@ test("the mermaid pin-agreement decision covers match, stale install and lockfil
   const noLock = pinMismatchMessage({ pinned: "11.16.1", installed: "11.17.0", locked: null });
   expect(noLock).toContain("npm ci");
   expect(noLock).not.toContain("Bump the package.json pin");
+});
+
+test("the tutorial capture's Chart.js route pins the vendored version and nothing else (CMH-SIZE-09)", () => {
+  // Behavioral, not source-text: the route is BUILT from the vendored bundle, so what matters is
+  // which URLs it answers. Serving the vendored bytes to a document that asked for another version
+  // fails that document's `integrity` check, and the `typeof Chart === "undefined"` guard turns
+  // that into a silently blank canvas in a committed screenshot - so every near-miss below must
+  // fall through to the capture's deny-all abort instead.
+  const vendored = fs.readFileSync(path.join(DEV, "assets", "vendor", "chart.umd.min.js"), "utf8").slice(0, 4000);
+  const version = vendoredChartJsVersion(vendored);
+  expect(version, "the vendored bundle reports an exact version").toMatch(/^\d+\.\d+\.\d+$/);
+
+  const re = chartJsRoutePattern(version);
+  const base = "https://cdn.jsdelivr.net/npm/chart.js@";
+  expect(re.test(base + version + "/dist/chart.umd.min.js"), "the vendored build is served").toBe(true);
+
+  for (const [why, url] of [
+    ["another version's minified build", base + "4.4.0/dist/chart.umd.min.js"],
+    ["the unminified build report-triage asks for", base + version + "/dist/chart.umd.js"],
+    ["a floating major specifier", base + "4/dist/chart.umd.min.js"],
+    ["a different package", "https://cdn.jsdelivr.net/npm/chart.js-plugin@" + version + "/dist/chart.umd.min.js"],
+    ["a different host", "https://evil.example/npm/chart.js@" + version + "/dist/chart.umd.min.js"],
+    ["a suffixed path", base + version + "/dist/chart.umd.min.js.map"],
+  ]) {
+    expect(re.test(url), why + " must fall through to the deny-all abort").toBe(false);
+  }
+
+  // A non-exact version can never become a route: a wildcard built by accident is the whole bug.
+  for (const bad of ["4", "4.5", "4.5.x", "", "*", "[^/]+"]) {
+    expect(() => chartJsRoutePattern(bad), JSON.stringify(bad) + " must be refused").toThrow();
+  }
+  expect(() => vendoredChartJsVersion("no banner here"), "a bundle with no banner is refused").toThrow();
 });

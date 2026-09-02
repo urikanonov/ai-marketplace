@@ -450,37 +450,23 @@ class CaptureChartRouteTests(unittest.TestCase):
                          "the capture never AWAITS the chart route, so the chart shot would be "
                          "blank (a declaration alone installs nothing)")
 
-    def test_the_route_is_anchored_to_the_minified_bundle_only(self):
-        # Source-anchored rather than round-tripping the JS regex literal through Python: the
-        # literal contains a `[^/]` character class, so any generic "read the pattern out of the
-        # source" parser truncates it and silently tests the wrong route.
-        #
-        # What must hold is that the route ENDS at the minified bundle. A route that matched
-        # `chart.js@<any>/dist/` would answer report-metrics' and report-triage's request for
-        # `chart.umd.js@4.4.0` with these 4.5.1 minified bytes; SRI would reject them and the
-        # `typeof Chart === "undefined"` guard would turn that into a silently blank chart in a
-        # committed screenshot, instead of the honest abort the catch-all gives it.
+    def test_the_route_is_built_from_the_pin_module_not_a_wildcard(self):
+        # The route used to be a literal here with a `[^/]+` version, which answered a request for
+        # ANY minified Chart.js with the vendored bytes - and since the capture can be pointed at an
+        # arbitrary example, a document on another version would have had its `integrity` check
+        # reject the reply and its chart go silently blank. It is now built from the vendored
+        # bundle's own banner by `tools/chartjs_pin.mjs`, which is exercised behaviorally in
+        # `tests/01-vendor-provenance.spec.js`. What this asserts is only that the capture still
+        # goes through that module and did not regrow a hand-written pattern.
         src = self._source()
-        # Selected by CONTENT, not by being the first route in the file: the mermaid route shares
-        # the `/^https:` prefix and is declared earlier, so a reformat that wrapped its callback
-        # would make it the first match and fail this test while the chart route was perfectly
-        # correct - a false failure pointing at the wrong file.
-        literals = [m.group(1) for m in re.finditer(r"await context\.route\((/\^https:[^\n]*?/),", src)
-                    if r"chart\.js@" in m.group(1)]
-        self.assertEqual(len(literals), 1,
-                         "expected exactly one Chart.js route literal in capture_tutorial.mjs, "
-                         "found %d" % len(literals))
-        literal = literals[0]
-        # The HOST matters as much as the tail: a route pointed at another origin would never fire,
-        # and the chart would go blank in a committed screenshot with nothing failing.
-        self.assertTrue(
-            literal.startswith(r"/^https:\/\/cdn\.jsdelivr\.net\/npm\/chart\.js@"),
-            "the capture's Chart.js route must be anchored to the jsDelivr chart.js path; got %s"
-            % literal)
-        self.assertTrue(
-            literal.endswith(r"chart\.umd\.min\.js$/"),
-            "the capture's Chart.js route must be anchored to chart.umd.min.js so every other "
-            "chart.js path falls through to the catch-all abort; got %s" % literal)
+        self.assertIn('from "./chartjs_pin.mjs"', src,
+                      "the capture must build its Chart.js route from tools/chartjs_pin.mjs")
+        self.assertRegex(src, r"await context\.route\(chartJsRoutePattern\(",
+                         "the capture must install the pinned route the module builds")
+        self.assertNotRegex(
+            src, r"context\.route\(/\^https[^\n]*chart\\\.js@",
+            "the capture has a hand-written Chart.js route literal again; build it from "
+            "chartJsRoutePattern so the version cannot drift into a wildcard")
 
     def test_no_shipped_example_requests_a_minified_bundle_other_than_the_vendored_one(self):
         # The other half: the route serves ONE file, so any example asking for a different minified
