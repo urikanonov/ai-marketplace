@@ -288,14 +288,15 @@ async function routeVendoredChartJs(context) {
     throw new Error("capture: assets/vendor/chart.umd.min.js is missing; the tutorial chart shot "
       + "would capture a blank canvas.");
   }
-  await context.route(/^https:\/\/cdn\.jsdelivr\.net\/npm\/chart\.js@[^/]+\/dist\//, async (route) => {
-    if (/\/chart\.umd(\.min)?\.js$/.test(new URL(route.request().url()).pathname)) {
+  // ONLY the minified build, which is the byte-identical vendored file. Matching every
+  // `chart.js@*/dist/` path would serve these 4.5.1 bytes to a document asking for a different
+  // version or the unminified build (report-triage asks for `chart.js@4.4.0/dist/chart.umd.js`),
+  // and the reply would fail that document's `integrity` check - a silently blank chart instead of
+  // the honest abort the catch-all gives it. Anything else falls through to that catch-all.
+  await context.route(/^https:\/\/cdn\.jsdelivr\.net\/npm\/chart\.js@[^/]+\/dist\/chart\.umd\.min\.js$/,
+    async (route) => {
       await route.fulfill({ path: vendored, contentType: "application/javascript" });
-      return;
-    }
-    // Fail closed, as above: never let the capture reach the network.
-    await route.abort();
-  });
+    });
 }
 async function expectNoComposer(page) {
   await page.locator(".cm-composer").waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
@@ -426,11 +427,12 @@ async function captureScene(scene, targetDir) {
     await freezeRandom(context);
     // Fail closed: block every remote fetch so capture is hermetic and deterministic. The vendored
     // mermaid route is registered AFTER this (Playwright matches the most-recently-added route
-    // first), so mermaid is still served from node_modules while every other egress - e.g. the
-    // triage example's SRI-pinned Chart.js CDN, which the board shot does not need - is aborted.
+    // first), so mermaid is still served from node_modules, and the garden example's pinned
+    // Chart.js is served from assets/vendor (CMH-SIZE-09), while every other egress - including
+    // the triage example's 4.4.0 Chart.js CDN, which the board shot does not need - is aborted.
     await context.route(/^https?:\/\//, (route) => route.abort());
     await routeVendoredMermaid(context);
-  await routeVendoredChartJs(context);
+    await routeVendoredChartJs(context);
     const page = await context.newPage();
     await page.goto(sceneUrl(scene));
     await ready(page);

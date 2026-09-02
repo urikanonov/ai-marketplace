@@ -4,6 +4,7 @@ import {
   SKILL, fileUrl, ready, lastCopied, installClipboardCapture,
   addTextComment, storedComments, distinctCids,
   startStaticServer, routeMermaidLocal,
+  routeVendoredLibs,
 } from "./helpers.js";
 
 // The second shipped showcase example is a real-data operations report built on the
@@ -14,6 +15,11 @@ const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-taxi.html");
 
 async function openExample(page) {
   await installClipboardCapture(page);
+  // Since CMH-SIZE-09 the example loads Chart.js from the pinned CDN instead of inlining a
+  // 205 KB copy, so serve it from `assets/vendor/` - byte-identical, and the bytes whose
+  // SHA-384 the loader's `integrity` names. Without this the suite would silently depend on
+  // jsDelivr being reachable.
+  await routeVendoredLibs(page);
   await page.goto(fileUrl(EXAMPLE));
   await ready(page);
 }
@@ -115,9 +121,10 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     await expect(toggle).toHaveText("Syntax: on");
   });
 
-  test("the monthly-trips chart renders from the bundled Chart.js script", async ({ page }) => {
+  test("the monthly-trips chart renders from the pinned Chart.js loader", async ({ page }) => {
     await openExample(page);
-    // Chart.js is inlined, so the chart builds directly from the bundled script.
+    // Chart.js arrives from the document's pinned, SRI-guarded loader (CMH-SIZE-09),
+    // served here from assets/vendor so the assertion never depends on the network.
     await page.waitForFunction(
       () => !!(window.Chart && typeof window.Chart.getChart === "function" && window.Chart.getChart("taxiMonthlyChart")),
       null, { timeout: 20000 });
@@ -218,6 +225,7 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     const server = await startStaticServer(path.join(SKILL, "..", ".."));
     try {
       await routeMermaidLocal(page);
+      await routeVendoredLibs(page);
       await installClipboardCapture(page);
       await page.goto(server.url + "/examples/report-taxi.html");
       await ready(page);
@@ -239,6 +247,7 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     const server = await startStaticServer(path.join(SKILL, "..", ".."));
     try {
       await routeMermaidLocal(page);
+      await routeVendoredLibs(page);
       await installClipboardCapture(page);
       await page.goto(server.url + "/examples/report-taxi.html");
       await ready(page);

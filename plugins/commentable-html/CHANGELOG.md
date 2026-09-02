@@ -12,10 +12,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   Chart.js. Each carried a complete `Chart.js v4.4.0` bundle (205,031 bytes) as authored content,
   from the era when a self-contained file had to ship its own renderer. It no longer does: the
   viewer loads the pinned CDN copy, and Export Offline downloads, SRI-verifies and inlines the
-  vendored one. They now use the same pinned, SRI-guarded loader the other chart examples use, which
-  is also what `tools/blocks/chart_block.py` emits. That removes 205 KB from each of the two largest
-  shipped examples and takes a version conflict with it - the authored copy was 4.4.0 while the
-  document's payload pins 4.5.1.
+  vendored one. They now use a pinned, SRI-guarded loader for `chart.js@4.5.1/dist/chart.umd.min.js`.
+  That is deliberately NOT the `chart.js@4.4.0/dist/chart.umd.js` that `tools/blocks/chart_block.py`
+  emits and that `report-metrics` and `report-triage` still use: 4.5.1 minified is the
+  byte-identical copy in `assets/vendor/`, so the loader's integrity hash is that file's own
+  SHA-384 and the version the viewer loads is the version an Offline export inlines. That removes
+  205 KB from each of the two largest shipped examples and takes a version conflict with it - the
+  authored copy was 4.4.0 while the same document's payload pinned 4.5.1.
 - With the authored copy gone, an Offline export of those two documents now contains exactly ONE
   Chart.js, the vendored and hash-verified one. Previously it contained both, and the UNVERIFIED
   authored copy won: the exporter hoists author code below the library it inlines so a constructing

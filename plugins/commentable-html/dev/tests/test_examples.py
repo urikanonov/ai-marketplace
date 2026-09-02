@@ -250,6 +250,24 @@ class ExampleTests(unittest.TestCase):
             self.assertIn("report-taxi.html", r.stdout + r.stderr)
 
 
+def _vendored_chartjs_sri():
+    """The SHA-384 of the vendored Chart.js, in `integrity` form - the single source of truth."""
+    import base64
+    import hashlib
+    with open(os.path.join(_paths.ASSETS, "vendor", "chart.umd.min.js"), "rb") as fh:
+        return "sha384-" + base64.b64encode(hashlib.sha384(fh.read()).digest()).decode("ascii")
+
+
+def _vendored_chartjs_version():
+    """The version the vendored bundle reports about itself (its `Chart.js v<x.y.z>` banner)."""
+    with open(os.path.join(_paths.ASSETS, "vendor", "chart.umd.min.js"), encoding="utf-8",
+              errors="replace") as fh:
+        head = fh.read(4000)
+    m = re.search(r"Chart\.js v(\d+\.\d+\.\d+)", head)
+    assert m, "the vendored chart.umd.min.js has no recognizable version banner"
+    return m.group(1)
+
+
 class ExampleNoInlinedLibraryTests(unittest.TestCase):
     """CMH-SIZE-09: no shipped example carries a third-party library BODY of its own.
 
@@ -299,18 +317,114 @@ class ExampleNoInlinedLibraryTests(unittest.TestCase):
     def test_the_chart_examples_still_load_chartjs_somehow(self):
         # The companion assertion, so the rule above can never be satisfied by simply deleting the
         # library and leaving the charts dead. Every example that constructs a Chart must still
-        # reach one, and the only sanctioned way is the pinned + SRI CDN loader.
+        # reach one, and the only sanctioned way is a version-pinned loader with Subresource
+        # Integrity and `crossorigin` (without which SRI cannot be enforced cross-origin).
+        #
+        # Attributes are matched INDEPENDENTLY rather than in one ordered regex: HTML attribute
+        # order is free, so an ordered pattern would fail a perfectly correct tag that happens to
+        # write `crossorigin` before `integrity`.
         for path in _all_example_docs():
             html = _read(path)
             if "new Chart(" not in html:
                 continue
-            loader = re.search(
-                r'<script[^>]+src="https://cdn\.jsdelivr\.net/npm/chart\.js@[\d.]+/dist/chart\.umd(?:\.min)?\.js"'
-                r'[^>]*integrity="sha384-[^"]+"[^>]*crossorigin=', html)
+            name = os.path.basename(path)
+            tag = None
+            for m in re.finditer(r"<script([^>]*)>", html):
+                if "cdn.jsdelivr.net/npm/chart.js@" in m.group(1):
+                    tag = m.group(1)
+                    break
+            self.assertIsNotNone(tag, "%s constructs a Chart but loads no Chart.js" % name)
+            # A FULL version, never a floating jsDelivr specifier: `@4` and `@4.5` silently follow
+            # upstream releases, which is exactly what an integrity hash cannot survive.
+            src = re.search(r'src="(https://cdn\.jsdelivr\.net/npm/chart\.js@'
+                            r'(\d+\.\d+\.\d+)/dist/chart\.umd(\.min)?\.js)"', tag)
             self.assertIsNotNone(
-                loader,
-                "%s constructs a Chart but has no pinned, SRI-guarded Chart.js loader"
-                % os.path.basename(path))
+                src, "%s: Chart.js loader is not pinned to an exact version: %r" % (name, tag))
+            self.assertRegex(tag, r'integrity="sha384-[A-Za-z0-9+/]+={0,2}"',
+                             "%s: Chart.js loader has no well-formed SHA-384 integrity" % name)
+            self.assertIn("crossorigin=", tag,
+                          "%s: Chart.js loader has no crossorigin, so SRI cannot be enforced" % name)
+
+            # THE POINT of this assertion. A loader that names the MINIFIED build is naming the file
+            # this repository vendors, so its hash must be that file's hash - checked by VALUE, not
+            # by shape. Without this, bumping the vendored Chart.js moves `assets/vendor/`, the
+            # payload descriptor and the CMH-SIZE-08 provenance guard while leaving these loaders
+            # behind; SRI then blocks the script and the `typeof Chart === "undefined"` guard
+            # swallows it, so the charts go blank with no error and no failing test.
+            if src.group(3):
+                self.assertIn(
+                    'integrity="%s"' % _vendored_chartjs_sri(), tag,
+                    "%s: the loader names the vendored minified Chart.js but its integrity is not "
+                    "that file's SHA-384. Recompute it from dev/assets/vendor/chart.umd.min.js "
+                    "(and check the pinned @version still matches)." % name)
+                self.assertIn("chart.js@%s/" % _vendored_chartjs_version(), src.group(1),
+                              "%s: the loader's pinned version does not match the vendored "
+                              "Chart.js bundle" % name)
+
+            # ORDER matters as much as presence. Chart.js is a classic synchronous script and the
+            # init is guarded with `typeof Chart === "undefined"`, so a loader placed AFTER the
+            # first `new Chart(...)` no-ops into a permanently blank canvas with no error - the
+            # precise failure this companion test exists to prevent, and one that "the loader is
+            # somewhere in the file" cannot see.
+            self.assertLess(
+                html.index(src.group(1)), html.index("new Chart("),
+                "%s: the Chart.js loader comes AFTER the first new Chart(...) call, so the init "
+                "runs before the library exists and the canvas stays blank" % name)
+
+
+class CaptureChartRouteTests(unittest.TestCase):
+    """CMH-SIZE-09: the tutorial capture serves Chart.js from the vendored copy, and only that one.
+
+    The capture is hermetic - it aborts every remote request - so until the chart examples stopped
+    inlining Chart.js it never needed a chart route at all. Now it does, and the route has two ways
+    to go quietly wrong, both of which end as a BLANK chart in a committed screenshot rather than as
+    an error: not matching the URL the examples actually request, or matching too much and answering
+    some other document's request with these bytes (which then fails that document's `integrity`).
+    """
+
+    def _source(self):
+        with open(os.path.join(_paths.DEV, "tools", "capture_tutorial.mjs"), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_the_capture_installs_the_chart_route(self):
+        src = self._source()
+        self.assertIn("routeVendoredChartJs(context)", src,
+                      "the capture never installs the chart route, so the chart shot would be blank")
+
+    def test_the_route_is_anchored_to_the_minified_bundle_only(self):
+        # Source-anchored rather than round-tripping the JS regex literal through Python: the
+        # literal contains a `[^/]` character class, so any generic "read the pattern out of the
+        # source" parser truncates it and silently tests the wrong route.
+        #
+        # What must hold is that the route ENDS at the minified bundle. A route that matched
+        # `chart.js@<any>/dist/` would answer report-metrics' and report-triage's request for
+        # `chart.umd.js@4.4.0` with these 4.5.1 minified bytes; SRI would reject them and the
+        # `typeof Chart === "undefined"` guard would turn that into a silently blank chart in a
+        # committed screenshot, instead of the honest abort the catch-all gives it.
+        src = self._source()
+        route = re.search(r"await context\.route\((/\^https:[^\n]*?/),\s*$", src, re.M)
+        self.assertIsNotNone(route, "could not find the chart route literal in capture_tutorial.mjs")
+        literal = route.group(1)
+        self.assertTrue(
+            literal.endswith(r"chart\.umd\.min\.js$/"),
+            "the capture's Chart.js route must be anchored to chart.umd.min.js so every other "
+            "chart.js path falls through to the catch-all abort; got %s" % literal)
+
+    def test_no_shipped_example_requests_a_minified_bundle_other_than_the_vendored_one(self):
+        # The other half: the route serves ONE file, so any example asking for a different minified
+        # build would be answered with the wrong bytes.
+        want = "https://cdn.jsdelivr.net/npm/chart.js@%s/dist/chart.umd.min.js" % _vendored_chartjs_version()
+        for path in _all_example_docs():
+            for url in re.findall(r'src="(https://cdn\.jsdelivr\.net/npm/chart\.js@[^"]+)"', _read(path)):
+                if url.endswith("chart.umd.min.js"):
+                    self.assertEqual(url, want,
+                                     "%s requests a minified Chart.js the capture route does not "
+                                     "serve" % os.path.basename(path))
+    def test_the_route_serves_the_vendored_bundle(self):
+        src = self._source()
+        self.assertIn('"assets", "vendor", "chart.umd.min.js"', src,
+                      "the chart route must serve the vendored bundle, whose SHA-384 the examples' "
+                      "integrity attribute names")
 
 class ExamplePromptTests(unittest.TestCase):
     """CMH-DEMO-02: every shipped example report has a companion example-prompt file
