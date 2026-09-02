@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import {
   SKILL, fileUrl, ready, lastCopied, installClipboardCapture,
-  startStaticServer, routeMermaidLocal,
+  startStaticServer, routeMermaidLocal, routeVendoredLibs,
 } from "./helpers.js";
 
 // The shipped showcase example must exercise every feature end to end, so these tests
@@ -11,6 +11,9 @@ import {
 const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-community-garden.html");
 
 async function openExample(page) {
+  // The example loads Chart.js from the pinned CDN (CMH-SIZE-09), so serve it from the vendored
+  // copy - the bytes its `integrity` names - rather than letting the suite depend on egress.
+  await routeVendoredLibs(page);
   await installClipboardCapture(page);
   await page.goto(fileUrl(EXAMPLE));
   await ready(page);
@@ -102,9 +105,17 @@ test.describe("showcase example: features work on the shipped example HTML", () 
     const server = await startStaticServer(path.join(SKILL, "..", ".."));
     try {
       await routeMermaidLocal(page);
+      // Registered AFTER routeMermaidLocal, whose catch-all aborts every non-mermaid remote
+      // request - including the example's pinned Chart.js. Playwright runs the most recently
+      // added handler first, so this reaches the request; without it the canvas below is blank
+      // and the commentable-media assertion (which is purely structural) still passes.
+      await routeVendoredLibs(page);
       await installClipboardCapture(page);
       await page.goto(server.url + "/examples/report-community-garden.html");
       await ready(page);
+      // The library really loaded, so the assertion below is about a painted chart rather than
+      // an empty canvas element.
+      await page.waitForFunction(() => typeof window.Chart !== "undefined", null, { timeout: 20000 });
       // Chart canvas is commentable media.
       const canvas = page.locator("#wateringNeedsChart");
       await expect(canvas).toHaveClass(/cm-img-commentable/, { timeout: 20000 });

@@ -264,7 +264,13 @@ def _vendored_chartjs_version():
               errors="replace") as fh:
         head = fh.read(4000)
     m = re.search(r"Chart\.js v(\d+\.\d+\.\d+)", head)
-    assert m, "the vendored chart.umd.min.js has no recognizable version banner"
+    if not m:
+        raise RuntimeError(
+            "dev/assets/vendor/chart.umd.min.js carries no `Chart.js v<x.y.z>` banner, so the "
+            "version the shipped loaders must pin cannot be read. If upstream dropped the banner, "
+            "read the version from node_modules/chart.js/package.json here instead, then re-pin "
+            "dev/examples/src/report-taxi.html and report-community-garden.html and recompute "
+            "their integrity from this file.")
     return m.group(1)
 
 
@@ -298,9 +304,11 @@ class ExampleNoInlinedLibraryTests(unittest.TestCase):
         for path in _all_example_docs():
             html = _read(path)
             for attrs, body in self.SCRIPT.findall(html):
-                # A copy the EXPORTER inlined carries the marker and is covered by CMH-OFFLINE-07;
-                # this rule is about a body the document itself ships.
-                if "data-cmh-offline-lib" in attrs:
+                # The vendored-library PAYLOAD is exempt: it is a build artifact with its own
+                # provenance guards (CMH-SIZE-08 for Chart.js, CMH-BUILD-25 for mermaid), and under
+                # the `--vendor-bytes` escape hatch it legitimately carries megabytes of library.
+                # Matched on the id build.py stamps, not on a marker an author could simply add.
+                if 'id="cmhVendoredRichLibs"' in attrs:
                     continue
                 if len(body) >= self.LIBRARY_BYTES and self.BANNERS.search(body):
                     offenders.append("%s: %d bytes, %r"
@@ -329,9 +337,11 @@ class ExampleNoInlinedLibraryTests(unittest.TestCase):
                 continue
             name = os.path.basename(path)
             tag = None
+            tag_at = None
             for m in re.finditer(r"<script([^>]*)>", html):
                 if "cdn.jsdelivr.net/npm/chart.js@" in m.group(1):
                     tag = m.group(1)
+                    tag_at = m.start()
                     break
             self.assertIsNotNone(tag, "%s constructs a Chart but loads no Chart.js" % name)
             # A FULL version, never a floating jsDelivr specifier: `@4` and `@4.5` silently follow
@@ -342,8 +352,18 @@ class ExampleNoInlinedLibraryTests(unittest.TestCase):
                 src, "%s: Chart.js loader is not pinned to an exact version: %r" % (name, tag))
             self.assertRegex(tag, r'integrity="sha384-[A-Za-z0-9+/]+={0,2}"',
                              "%s: Chart.js loader has no well-formed SHA-384 integrity" % name)
-            self.assertIn("crossorigin=", tag,
-                          "%s: Chart.js loader has no crossorigin, so SRI cannot be enforced" % name)
+            # `crossorigin` may legally be written bare (equivalent to `anonymous`), so match the
+            # attribute NAME rather than the `name=` prefix - the ordered-regex trap again.
+            self.assertRegex(tag, r'\bcrossorigin\b',
+                             "%s: Chart.js loader has no crossorigin, so SRI cannot be enforced" % name)
+            # Chart.js is a classic synchronous script and the init runs at parse time, so a
+            # deferred, async or module loader leaves `Chart` undefined when the init looks.
+            self.assertNotRegex(tag, r'\b(defer|async)\b',
+                                "%s: the Chart.js loader is deferred/async, so the parse-time init "
+                                "runs before the library exists" % name)
+            self.assertNotRegex(tag, r'type="module"',
+                                "%s: the Chart.js loader is a module, so it is deferred by "
+                                "definition and the parse-time init runs first" % name)
 
             # THE POINT of this assertion. A loader that names the MINIFIED build is naming the file
             # this repository vendors, so its hash must be that file's hash - checked by VALUE, not
@@ -366,8 +386,21 @@ class ExampleNoInlinedLibraryTests(unittest.TestCase):
             # first `new Chart(...)` no-ops into a permanently blank canvas with no error - the
             # precise failure this companion test exists to prevent, and one that "the loader is
             # somewhere in the file" cannot see.
+            #
+            # Both positions are taken from real SPANS, never from a substring search over the
+            # whole document: `html.index(<url>)` would happily match the same URL inside the
+            # payload descriptor or a comment, and `html.index("new Chart(")` would match the
+            # phrase quoted in prose or in a fenced code sample. Either would flip this into a
+            # false failure whose message reads like a genuine ordering bug.
+            init_at = None
+            for m in self.SCRIPT.finditer(html):
+                if "new Chart(" in m.group(2):
+                    init_at = m.start() + m.group(2).index("new Chart(")
+                    break
+            self.assertIsNotNone(
+                init_at, "%s: `new Chart(` appears only outside a <script> body" % name)
             self.assertLess(
-                html.index(src.group(1)), html.index("new Chart("),
+                tag_at, init_at,
                 "%s: the Chart.js loader comes AFTER the first new Chart(...) call, so the init "
                 "runs before the library exists and the canvas stays blank" % name)
 
@@ -388,8 +421,12 @@ class CaptureChartRouteTests(unittest.TestCase):
 
     def test_the_capture_installs_the_chart_route(self):
         src = self._source()
-        self.assertIn("routeVendoredChartJs(context)", src,
-                      "the capture never installs the chart route, so the chart shot would be blank")
+        # The CALL, not the bare name: `async function routeVendoredChartJs(context)` contains the
+        # name-plus-parens too, so asserting on that alone stays green after the call site is
+        # deleted - a guard that cannot fail is not a guard.
+        self.assertRegex(src, r"(?m)^\s*await routeVendoredChartJs\(context\);\s*$",
+                         "the capture never AWAITS the chart route, so the chart shot would be "
+                         "blank (a declaration alone installs nothing)")
 
     def test_the_route_is_anchored_to_the_minified_bundle_only(self):
         # Source-anchored rather than round-tripping the JS regex literal through Python: the
@@ -402,9 +439,22 @@ class CaptureChartRouteTests(unittest.TestCase):
         # `typeof Chart === "undefined"` guard would turn that into a silently blank chart in a
         # committed screenshot, instead of the honest abort the catch-all gives it.
         src = self._source()
-        route = re.search(r"await context\.route\((/\^https:[^\n]*?/),\s*$", src, re.M)
-        self.assertIsNotNone(route, "could not find the chart route literal in capture_tutorial.mjs")
-        literal = route.group(1)
+        # Selected by CONTENT, not by being the first route in the file: the mermaid route shares
+        # the `/^https:` prefix and is declared earlier, so a reformat that wrapped its callback
+        # would make it the first match and fail this test while the chart route was perfectly
+        # correct - a false failure pointing at the wrong file.
+        literals = [m.group(1) for m in re.finditer(r"await context\.route\((/\^https:[^\n]*?/),", src)
+                    if r"chart\.js@" in m.group(1)]
+        self.assertEqual(len(literals), 1,
+                         "expected exactly one Chart.js route literal in capture_tutorial.mjs, "
+                         "found %d" % len(literals))
+        literal = literals[0]
+        # The HOST matters as much as the tail: a route pointed at another origin would never fire,
+        # and the chart would go blank in a committed screenshot with nothing failing.
+        self.assertTrue(
+            literal.startswith(r"/^https:\/\/cdn\.jsdelivr\.net\/npm\/chart\.js@"),
+            "the capture's Chart.js route must be anchored to the jsDelivr chart.js path; got %s"
+            % literal)
         self.assertTrue(
             literal.endswith(r"chart\.umd\.min\.js$/"),
             "the capture's Chart.js route must be anchored to chart.umd.min.js so every other "
@@ -422,9 +472,11 @@ class CaptureChartRouteTests(unittest.TestCase):
                                      "serve" % os.path.basename(path))
     def test_the_route_serves_the_vendored_bundle(self):
         src = self._source()
-        self.assertIn('"assets", "vendor", "chart.umd.min.js"', src,
-                      "the chart route must serve the vendored bundle, whose SHA-384 the examples' "
-                      "integrity attribute names")
+        # Quote style and inner whitespace are free; the path segments are what matters.
+        self.assertRegex(
+            src, r"""["']assets["'],\s*["']vendor["'],\s*["']chart\.umd\.min\.js["']""",
+            "the chart route must serve the vendored bundle, whose SHA-384 the examples' "
+            "integrity attribute names")
 
 class ExamplePromptTests(unittest.TestCase):
     """CMH-DEMO-02: every shipped example report has a companion example-prompt file

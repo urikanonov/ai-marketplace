@@ -3,10 +3,11 @@ import { execFileSync } from "child_process";
 import crypto from "crypto";
 import fs from "fs";
 import net from "net";
+import os from "os";
 import path from "path";
 import zlib from "zlib";
 import {
-  DEV, SKILL, PYTHON, fileUrl, ready, stageContent, startStaticServer,
+  DEV, SKILL, PYTHON, EXAMPLES, fileUrl, ready, stageContent, startStaticServer,
   installClipboardCapture, openToolbarMenu, openSidebarExportMenu, addTextComment, readDownload, stageNonShareable,
   clickSidebarExport, srcsetCandidates, blockVendoredLibs, routeVendoredLibs, routeTamperedVendoredLibs,
 } from "./helpers.js";
@@ -2146,6 +2147,15 @@ function vendoredSri(name) {
   return "sha384-" + crypto.createHash("sha384").update(fs.readFileSync(path.join(VENDOR_DIR, name))).digest("base64");
 }
 
+// Single-sourced from the vendored bundle's own banner, so a Chart.js bump cannot leave an
+// assertion pinned to a version this repository no longer ships.
+function vendoredChartJsVersion() {
+  const head = fs.readFileSync(path.join(VENDOR_DIR, "chart.umd.min.js"), "utf8").slice(0, 4000);
+  const m = head.match(/Chart\.js v(\d+\.\d+\.\d+)/);
+  if (!m) throw new Error("assets/vendor/chart.umd.min.js carries no `Chart.js v<x.y.z>` banner");
+  return m[1];
+}
+
 test("CMH-SIZE-08: a generated document names its libraries instead of embedding them, and the export downloads and verifies them", async ({ page, browser }) => {
   test.setTimeout(120000);
   // The viewer never read the vendored bytes - it imports mermaid from the CDN, and an authored
@@ -2419,6 +2429,70 @@ test("CMH-SIZE-08: a library the content cannot use is never downloaded, and its
     expect(networkLoadRefs(exportedHtml)).toEqual([]);
   } finally {
     fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-SIZE-09: an Offline export of the shipped taxi example carries exactly one verified Chart.js and draws every chart with no network", async ({ page, context }) => {
+  test.setTimeout(120000);
+  // The mitigation CMH-SIZE-09 CLAIMS, exercised on a real shipped document rather than a
+  // synthetic fixture. Dropping the authored Chart.js made these two examples depend on the export
+  // for charts-without-a-network, so the claim is now load-bearing and needs a test of its own:
+  // before this change the document carried its own library and could not lose its charts offline.
+  //
+  // It also pins the provenance half. The export used to contain TWO Chart.js copies - the
+  // downloaded, hash-verified one and the authored 4.4.0 - and because the exporter hoists author
+  // code BELOW the library it inlines, the UNVERIFIED copy deterministically won `window.Chart`.
+  // "Exactly one, and it is the vendored version" is the invariant that regression would break.
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_size09_"));
+  try {
+    await page.route(/^https?:\/\//, (route) => route.abort());
+    await routeVendoredLibs(page);
+    await page.goto(fileUrl(path.join(EXAMPLES, "report-taxi.html")));
+    await ready(page);
+    await openToolbarMenu(page);
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.locator("#btnExportOfflineTop").click(),
+    ]);
+    const exportedHtml = await readDownload(download);
+
+    const marked = exportedHtml.match(/data-cmh-offline-lib="chartjs"/g) || [];
+    expect(marked, "the export inlines the vendored Chart.js exactly once").toHaveLength(1);
+    const banners = exportedHtml.match(/Chart\.js v\d+\.\d+\.\d+/g) || [];
+    expect(banners, "no second, unverified Chart.js rides along").toHaveLength(1);
+    expect(banners[0], "and the one that ships is the vendored version")
+      .toBe("Chart.js v" + vendoredChartJsVersion());
+    expect(networkLoadRefs(exportedHtml), "the exported file loads nothing remotely").toEqual([]);
+
+    // Re-open the artifact with every remote request aborted and NO vendored route, which is the
+    // reader's situation: the charts must paint from the inlined copy alone.
+    const out = path.join(outDir, "exported-taxi.html");
+    fs.writeFileSync(out, exportedHtml);
+    const offline = await context.newPage();
+    const blocked = [];
+    offline.on("request", (r) => { if (/^https?:/.test(r.url())) blocked.push(r.url()); });
+    await offline.route(/^https?:\/\//, (route) => route.abort());
+    await offline.goto(fileUrl(out));
+    await ready(offline);
+    await offline.waitForFunction(() => typeof window.Chart !== "undefined", null, { timeout: 20000 });
+    const painted = await offline.evaluate(async () => {
+      // Chart.js animates, so settle before sampling rather than racing the first frame.
+      await new Promise((r) => setTimeout(r, 1500));
+      return Array.from(document.querySelectorAll("#commentRoot canvas")).map((c) => {
+        const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+        let ink = 0;
+        for (let i = 3; i < d.length; i += 4) if (d[i] !== 0) ink++;
+        return ink;
+      });
+    });
+    expect(painted.length, "every taxi chart canvas is present").toBe(4);
+    for (const [i, ink] of painted.entries()) {
+      expect(ink, `canvas ${i} is drawn, not blank`).toBeGreaterThan(1000);
+    }
+    expect(blocked, "the exported file made no network request at all").toEqual([]);
+    await offline.close();
+  } finally {
+    fs.rmSync(outDir, { recursive: true, force: true });
   }
 });
 

@@ -80,7 +80,12 @@ If the chart already rendered in the browser, **Export Offline** can also make t
  crossorigin="anonymous"></script>
  ```
 
- (That hash is for `chart.js@4.4.0` UMD - the static `dist/chart.umd.js`, never jsDelivr's on-demand-minified `.min.js`, which must not be used with SRI; regenerate for any other version with
+ (That hash is for `chart.js@4.4.0` UMD - the static `dist/chart.umd.js`. A `.min.js` URL is safe
+ with SRI only when the package PUBLISHES that file in its tarball, so the CDN serves those exact
+ bytes; it is unsafe when jsDelivr has to minify on demand, because the output is not byte-stable.
+ `chart.js` does publish `dist/chart.umd.min.js`, which is why `report-taxi` and
+ `report-community-garden` pin it - it is byte-identical to the copy this skill vendors, so one
+ hash covers both. Regenerate for any other version with
  `curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A`.) Guard the init with `if (typeof Chart === "undefined") return;` so a network-unavailable, CDN-blocked, or SRI-mismatch load degrades to a blank canvas instead of a thrown error. If the report will be served under a
  Content-Security-Policy (internal wiki, SharePoint, portal), a CDN `<script src>` and the inline
  init/style are blocked unless allowlisted: self-host `chart.umd.min.js` next to the file and move

@@ -26,6 +26,12 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   downloaded 4.5.1, so 4.4.0 took `window.Chart` while the verified copy sat inert. Nothing was
   broken by it - every chart rendered, with zero network - but the export's verify-before-inline
   guarantee did not hold in practice for a document that carries its own library.
+- The trade, stated plainly: opened with NO network these two examples now draw blank canvases
+  where they previously rendered charts, matching the long-standing behaviour of `report-metrics`
+  and `report-triage`. Everything else - the prose, the tables, the captions, the mermaid diagrams
+  and the whole comment layer - is unaffected, and Export Offline still produces a chart-bearing
+  file that needs no network to view.
+
 ## [1.842.0] - 2026-08-31
 
 ### Changed
