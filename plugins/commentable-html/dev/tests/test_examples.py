@@ -295,10 +295,11 @@ class ExampleNoInlinedLibraryTests(unittest.TestCase):
     # Big enough that no ordinary authored snippet reaches it, small enough to catch a minified
     # library: the real ones are 205 KB (Chart.js) and 3.5 MB (mermaid).
     LIBRARY_BYTES = 50000
-    # `</script >` is a legal end tag and `<SCRIPT` a legal start tag, so both spellings are
-    # accepted: a guard that a library body can slip past by changing its case or adding a space
-    # is not a guard. (Flagged by CodeQL's bad-HTML-filtering-regexp rule.)
-    SCRIPT = re.compile(r"<script([^>]*)>([\s\S]*?)</script\s*>", re.I)
+    # `</script >`, `</SCRIPT>` and even `</script\n bar>` all close a script element as far as a
+    # browser is concerned, so all of them are accepted here: a guard that a library body can slip
+    # past by changing its case or its spacing is not a guard. `\b` keeps `</scriptfoo>` out.
+    # (Flagged by CodeQL's bad-HTML-filtering-regexp rule.)
+    SCRIPT = re.compile(r"<script([^>]*)>([\s\S]*?)</script\b[^>]*>", re.I)
     SCRIPT_OPEN = re.compile(r"<script([^>]*)>", re.I)
     # Vendor banners the minified bundles carry.
     BANNERS = re.compile(r"Chart\.js v[\d.]+|mermaid@[\d.]+|/\*!\s*Chart\.js", re.I)
@@ -336,10 +337,17 @@ class ExampleNoInlinedLibraryTests(unittest.TestCase):
             ("upper-case tags", "<SCRIPT>%s</SCRIPT>" % body),
             ("spaced end tag", "<script>%s</script >" % body),
             ("mixed case and spacing", "<ScRiPt>%s</ScRiPt  >" % body),
+            ("junk in the end tag", "<script>%s</script\t\n bar>" % body),
         ):
             found = [b for _, b in self.SCRIPT.findall(html)
                      if len(b) >= self.LIBRARY_BYTES and self.BANNERS.search(b)]
             self.assertEqual(len(found), 1, "%s evaded the library-body scanner" % name)
+        # ...but a DIFFERENT element must not be mistaken for the end tag, or a body could be
+        # truncated at the wrong place and scan as too small.
+        self.assertEqual(
+            self.SCRIPT.findall("<script>%s</scriptfoo></script>" % body)[0][1],
+            body + "</scriptfoo>",
+            "`</scriptfoo>` is not a script end tag and must not terminate the body")
         opens = self.SCRIPT_OPEN.findall('<SCRIPT src="https://cdn.jsdelivr.net/npm/chart.js@1.2.3/'
                                          'dist/chart.umd.min.js"></SCRIPT>')
         self.assertEqual(len(opens), 1, "an upper-case loader tag evaded the loader scanner")
