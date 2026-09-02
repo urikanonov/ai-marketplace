@@ -39,15 +39,17 @@ autonomously applies the fixes that are safe to apply, leaving the risky ones fo
 
 ## Two effort tiers
 
-- **high** (default): flagship models at a high reasoning-effort floor. The strongest panel; use it
-  for a large, unfamiliar, security-sensitive, or about-to-ship change.
-- **medium**: mid-tier models at a medium floor - a cheaper, faster panel that still puts one voice
-  per provider family on the change, so the reviewers stay independent and only their depth drops.
-  Use it for a small or routine change, an early round, or a deliberately token-light review.
+- **medium** (default): mid-tier models at a medium reasoning-effort floor - a cheap, fast panel
+  that still puts one voice per provider family on the change, so the reviewers stay independent and
+  only their depth drops. This is what a plain "multi-duck" runs, because most reviews are of a small
+  or routine change, an early round, or a re-run after fixes.
+- **high**: flagship models at a high reasoning-effort floor. Ask for it ("multi-duck, high effort")
+  for a large, unfamiliar, security-sensitive, or about-to-ship change, or after a medium run comes
+  back thin on work that matters.
 
 The panel defaults to **4 ducks** (two review aspects, two cross-family opinions each) - the
-smallest panel that keeps that guarantee. Ask for more ("run 8 ducks") when a change deserves a
-wider one.
+smallest panel that covers both top aspects with two independent opinions each. Ask for more
+("run 8 ducks") when a change deserves a wider one.
 
 ## How it works
 

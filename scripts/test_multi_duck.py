@@ -352,41 +352,108 @@ class MultiDuckScopeGateTests(unittest.TestCase):
 class MultiDuckPanelBudgetTests(unittest.TestCase):
     def test_the_default_panel_is_four_ducks(self):
         # MDUCK-COUNT-13: a duck is a whole model context over the same bundle, so the default panel
-        # is the SMALLEST one that still keeps the prisms guarantee (2 ducks per aspect, different
-        # families): 4, not 8. Every place the doc states the default has to agree, or an agent
-        # reading one section launches a panel twice the size the next section describes.
+        # is the smallest one that covers BOTH top aspects with two cross-family opinions each: 4,
+        # not 8. Every place the doc states the default has to agree, or an agent reading one section
+        # launches a panel twice the size the next section describes.
         t = _read(SKILL)
         self.assertIn("`count` (optional, default **4**)", t)
         self.assertIn("If a number is not given, use 4", t)
         self.assertIn("Clamp to 1..12", t)  # the range itself is unchanged
         self.assertIn("At the default `count=4`, `A=2`", t)
         self.assertIn("Default count is 4", t)
-        self.assertIn("defaults to 4 ducks", _front_matter(t))
-        # No stale statement of the old default survives anywhere in the doc.
-        for stale in ("defaults to 8 ducks", "default **8**", "Default count is 8",
-                      "At the default `count=8`"):
-            self.assertNotIn(stale, t, "stale 8-duck default still stated: %r" % stale)
-        # The worked prisms example illustrates the DEFAULT panel, so it is a 4-duck table.
+        self.assertIn("4 ducks on medium-tier models by default", _front_matter(t))
+        # No OTHER default may be stated in any of the three canonical phrasings: the NUMBER is
+        # matched by shape, so "default **6**" fails without a denylist entry of its own.
+        for phrase, number in re.findall(r"(If a number is not given, use (\d+))", t):
+            self.assertEqual(number, "4", "conflicting default stated: %r" % phrase)
+        for phrase, number in re.findall(r"(Default count is (\d+))", t):
+            self.assertEqual(number, "4", "conflicting default stated: %r" % phrase)
+        for phrase, number in re.findall(r"(`count` \(optional, default \*\*(\d+)\*\*\))", t):
+            self.assertEqual(number, "4", "conflicting default stated: %r" % phrase)
+        self.assertNotIn("defaults to 8 ducks", t)
+
+        # The worked prisms example IS the default panel: 4 ducks over the FIRST TWO aspects of the
+        # priority-ordered aspect list, two ducks each. Grouped BY THE ASPECT CELL rather than by row
+        # position, so re-presenting the same panel in deal order (1,2,1,2 instead of 1,1,2,2) is not
+        # a required-check failure - the invariant is the coverage, not the row order.
         prisms = _md_table_rows(t, "| duck | model | family | aspect |")
         self.assertEqual(len(prisms), 4, "the worked prisms example must show the default panel")
+        aspect_section = t.split("### Aspect list (prisms mode only)", 1)
+        self.assertEqual(len(aspect_section), 2, "the priority-ordered aspect list is missing")
+        # Bounded to THAT section: unbounded, the numbered lists in Steps 5 and 7 pad the match to 20
+        # items and the length guard below stops guarding anything (deleting aspects 5-6 stayed green).
+        aspect_body = aspect_section[1].split("\n### ", 1)[0]
+        aspects = re.findall(r"^\d+\. (.+)$", aspect_body, re.M)
+        self.assertEqual(len(aspects), 6, "expected the 6 priority-ordered aspects, got %d"
+                         % len(aspects))
+        covered = {}
+        for row in prisms:
+            covered.setdefault(row[3], []).append(row[0])
+        self.assertEqual(len(covered), 2, "the default panel must cover exactly 2 aspects, got %r"
+                         % sorted(covered))
+        for i, (reviewed, ducks) in enumerate(sorted(
+                covered.items(), key=lambda kv: min(kv[1]))):
+            self.assertEqual(len(ducks), 2, "aspect %r must have exactly 2 ducks" % reviewed)
+            self.assertTrue(
+                aspects[i].startswith(reviewed),
+                "the panel reviews %r, which is not aspect %d (%r) of the priority list"
+                % (reviewed, i + 1, aspects[i]))
+
+        # The narrower coverage is stated as a trade, with both ways to widen it - drop either and an
+        # agent silently loses the aspects the old default covered. Pinned by shape, not as exact
+        # sentences, so an editorial rewording is not a required-check failure.
+        self.assertRegex(t, r"`guidance`[^.\n]*aspect 1")
+        self.assertRegex(t, r"or (raise|increase) (the )?`count`")
+        # An explicit user count is authoritative - the widening advice must never license quietly
+        # spending more ducks than the user asked for.
+        self.assertRegex(t, r"explicit user count is authoritative")
 
     def test_effort_selects_one_of_exactly_two_model_tiers(self):
         # MDUCK-EFFORT-14: `effort` picks WHICH TIER of models the roster is drawn from (and the
-        # per-call reasoning-effort floor), so a routine change can be reviewed cheaply without
-        # editing the skill. Exactly two levels, defaulting to high, and neither tier is allowed to
-        # buy its cheapness by collapsing the cross-family independence the panel exists for.
+        # per-call reasoning-effort floor), so the routine case is cheap by default and the strongest
+        # panel is one word away. Exactly two levels, defaulting to MEDIUM (the token-light one), and
+        # neither tier may buy its cheapness by collapsing the cross-family independence the panel
+        # exists for.
         t = _read(SKILL)
-        self.assertIn("`effort` (optional, default **high**)", t)
-        self.assertIn("**`high`**:", t)
-        self.assertIn("**`medium`**:", t)
-        self.assertIn("If not stated, use high.", t)
-        # The tier sets a per-call reasoning-effort floor on hosts that expose one.
+        self.assertIn("`effort` (optional, default **medium**)", t)
+        # The declared default is read from the `effort` bullet BLOCK, with flexible trailing
+        # punctuation, and no OTHER value may be declared for it there - a file-wide ordered tuple
+        # reddened on an unrelated input being reworded or reordered, which is a false positive on a
+        # required gate.
+        effort_block = t.split("- `effort` (optional", 1)
+        self.assertEqual(len(effort_block), 2, "the effort input is missing")
+        effort_block = re.split(r"^- `", effort_block[1], maxsplit=1, flags=re.M)[0]
+        declared = re.findall(r"If not stated, use ([a-z]+)\b", effort_block)
+        self.assertEqual(declared, ["medium"],
+                         "the effort input must declare exactly one default, got %r" % declared)
+        # EXACTLY two levels, read from the same block: scanned file-wide this was coupled to the
+        # unrelated `mode` bullets' punctuation, and it missed a third level written without a colon.
+        levels = re.findall(r"^  - \*\*`([a-z]+)`\*\*", effort_block, re.M)
+        self.assertEqual(sorted(levels), ["high", "medium"],
+                         "the effort input must offer exactly two levels, got %r" % levels)
+        self.assertEqual(levels[0], "medium", "the default level is listed first, got %r" % levels)
+        # ...and exactly two roster tables, so an added tier cannot ship without its own spec row.
+        # The header pattern is deliberately loose about the middle column: a third table headed
+        # "| # | low-tier model | family |" must be COUNTED, not slip past on wording.
+        headers = re.findall(r"^\| # \|[^|]*\| family \|$", t, re.M)
+        self.assertEqual(len(headers), 2, "expected exactly two roster tables, got %d" % len(headers))
+        # The tier sets a per-call reasoning-effort floor on hosts that expose one...
         self.assertIn("reasoning-effort floor", t)
         self.assertIn("`high` tier -> `high` or better", t)
         self.assertIn("`medium` tier -> `medium`", t)
-        # A run does not mix tiers: a medium duck paired with a flagship reads as an equal second
-        # opinion when it is not.
-        self.assertIn("Draw every duck in a run from the SAME tier", t)
+        # ...the run's tier and the effort actually applied survive a restart in the tracking store,
+        # and Step 7 discloses both, so a reader always knows how deep a read produced the verdict.
+        self.assertIn("effort_tier", t)
+        self.assertIn("effort_applied", t)
+        self.assertIn("host-default", t)
+        self.assertRegex(t, r"Read the tier and the applied effort from the tracking store")
+        # A run does not mix tiers, and cheapness is never bought from the family count. Pinned by
+        # shape so a reworded but equivalent rule is not a required-check failure.
+        self.assertRegex(t, r"[Dd]raw every duck in a run from the SAME tier")
+        self.assertRegex(t, r"never pair two ducks of the same family on one aspect")
+        self.assertRegex(t, r"[Nn]ever reach into the other tier")
+        self.assertRegex(t, r"beyond the tier's roster")   # the widen carve-out
+        self.assertRegex(t, r"IN THE SAME TIER")           # the rotation limit
 
         # Both tiers are real, distinct rosters that obey the same diversity-first rule.
         tiers = {
@@ -408,10 +475,14 @@ class MultiDuckPanelBudgetTests(unittest.TestCase):
         # `effort: medium` must actually be cheaper: the medium roster may share a high tier's TAIL
         # (a strong mid model is legitimately both), but it may never replay the flagships the high
         # tier front-loads - a "medium" panel made of flagships is the default panel with a new name.
+        # Model ids are unwrapped from their backticks so a reformatted cell cannot dodge the check.
+        def model_ids(rows):
+            return {r[1].strip().strip("`").strip() for r in rows}
+
         high = tiers["high"]
         high_families = [_base_family(r[2]) for r in high]
-        flagships = {r[1] for r in high[:len(set(high_families))]}
-        replayed = flagships & {r[1] for r in tiers["medium"]}
+        flagships = model_ids(high[:len(set(high_families))])
+        replayed = flagships & model_ids(tiers["medium"])
         self.assertFalse(replayed, "the medium tier replays high-tier flagships: %r"
                          % sorted(replayed))
 

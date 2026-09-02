@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="A multi-model rubber-duck review panel for Claude Code and the GitHub Copilot CLI. Diverse models, uncorrelated blind spots, safe fixes applied for you." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/multi-duck.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=d7b83bdbbf46" />
+  <link rel="stylesheet" href="../assets/styles.css?v=894b31d0b0eb" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -247,8 +247,9 @@
         <p class="section-sub">Discover, diversify, launch, consolidate, act - autonomously and safely.</p>
         <div class="steps steps-vertical">
           <div class="step"><h3>Discover the work in flight</h3><p>It gathers the diff, the PR and its open comments, any markdown plan, the tests, and active commentable-HTML plans with their open inline comments into one self-contained bundle every reviewer can read.</p></div>
-          <div class="step"><h3>Pick a model-diverse roster</h3><p>The strongest, most different models your host exposes - one per provider family first - so the ducks are as independent as possible. Each duck gets a review aspect (prisms) or the shared goal (consensus).</p>
-            <p class="roster-caption">Example roster on the GitHub Copilot CLI, in order (substitute the equivalents your host exposes):</p>
+          <div class="step"><h3>Pick a model-diverse roster</h3><p>The most different models your host exposes - one per provider family first - so the ducks are as independent as possible. Each duck gets a review aspect (prisms) or the shared goal (consensus).</p>
+            <p class="roster-tiers">Two effort tiers decide which models those are. <strong>Medium</strong> is the default: mid-tier models, one per family, for a cheap, fast panel on a routine change. Say <code>high effort</code> for the flagship tier below when a change is large, unfamiliar, security-sensitive, or about to ship. A run never mixes the two, so the panel is always four independent voices - the tier changes their depth, never their independence.</p>
+            <p class="roster-caption">Example high-tier roster on the GitHub Copilot CLI, in order (substitute the equivalents your host exposes):</p>
             <ol class="roster-list">
               <li><code>claude-opus-5</code> - Anthropic Opus</li>
               <li><code>gpt-5.6-sol</code> - OpenAI</li>
@@ -293,10 +294,12 @@
             <div class="group-label">Changed</div>
             <ul>
               <li>The default panel is now <strong>4 ducks</strong>, not 8 (MDUCK-COUNT-13). Every duck is a full model context reading the same bundle, so the old default spent twice the tokens a routine review needs. Four is the smallest panel that still keeps the prisms guarantee - 2 ducks per aspect, on different model families - and it covers the first two aspects (correctness, and edge cases and error handling). The 1..12 clamp is unchanged, so a large or high-stakes change still asks for a wider panel explicitly, and naming a concern in <code>guidance</code> still promotes it to aspect 1 so it is always double-covered.</li>
+              <li>Prisms assignment is now deterministic: the tier&#x27;s first <code>2A</code> roster rows are dealt round-robin across the <code>A</code> aspects, then any same-family pair is repaired by a swap. That spreads reviewer strength across the aspects instead of stacking the two strongest on aspect 1, and it gives an agent one executable rule for any <code>count</code> rather than an example to extrapolate from.</li>
+              <li>There is now a single rule for what happens when reviewers cannot be independent: a run whose roster cannot field two families for an aspect is marked <code>diversity_degraded</code> before launch and says so in the report. The Hosts section, the <code>effort</code> input, and the prisms assignment step all defer to it rather than each stating their own fallback.</li>
             </ul>
             <div class="group-label">Added</div>
             <ul>
-              <li>An <code>effort</code> input picks which TIER of models the panel is drawn from, and the per-duck reasoning-effort floor (MDUCK-EFFORT-14). Two levels: <code>high</code> (the flagship roster at a <code>high</code> floor - the default, for a large, unfamiliar, security-sensitive, or about-to-ship change) and <code>medium</code> (a mid-tier roster at a <code>medium</code> floor - materially cheaper and faster, for a small or routine change, an early round, or a deliberately token-light review). The skill now carries both example rosters, each front-loading one model per provider family. A tier changes only how deep each reviewer is: the modes, the 2-ducks-per-aspect cross-family pairing, and the hard rules are identical, a run never mixes tiers, and spending less means lowering the tier or the count - never the number of families.</li>
+              <li>An <code>effort</code> input picks which TIER of models the panel is drawn from, and the per-duck reasoning-effort floor (MDUCK-EFFORT-14). Two levels: <code>medium</code> (a mid-tier roster at a <code>medium</code> floor) is now the DEFAULT, because most reviews are of a small or routine change, an early round, or a re-run after fixes, and paying flagship rates for all of them is what stopped the panel being run as often as it should be; <code>high</code> (the flagship-led roster at a <code>high</code> floor) is one word away (&quot;multi-duck, high effort&quot;) for a large, unfamiliar, security-sensitive, or about-to-ship change. The skill now carries both example rosters, each front-loading one model per provider family. A tier is the TABLE DRAWN FROM, not a property of a model, and a run never mixes the two: the modes, the 2-ducks-per-aspect cross-family pairing, and the hard rules are identical in both, so what a cheaper run gives up is depth per duck and never independence. The tier and the effort actually applied are recorded per duck and disclosed in the final report, so a reader always knows how deep a read produced the verdict.</li>
             </ul>
           </div>
           <div class="release">

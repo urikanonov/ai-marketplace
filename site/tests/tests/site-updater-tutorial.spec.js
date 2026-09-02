@@ -377,14 +377,22 @@ test("the multi-duck page recommends running multiple rounds for complex work (S
 
 
 test("the multi-duck page roster step lists the example roster in SKILL.md order (SITE-MDUCK-06)", async ({ page }) => {
-  // Derive the expected roster (model + family, in order) from the shipped skill's SKILL.md example
+  // Derive the expected roster (model + family, in order) from the shipped skill's HIGH-TIER example
   // roster table, so this test fails if the site page drifts from the skill's roster or its order.
+  // The extraction is anchored to that ONE table rather than to the first 8 numbered rows in the
+  // file: SKILL.md now carries a second numbered roster table (the medium tier), so a positional
+  // slice would silently spill into it if the high-tier table were ever shortened, and start
+  // pinning a mixed-tier list onto the page.
   const fs = require("fs");
   const path = require("path");
   const skill = fs.readFileSync(
     path.resolve(__dirname, "../../../plugins/multi-duck/pkg/skills/multi-duck/SKILL.md"), "utf8");
-  const rows = [...skill.matchAll(/^\|\s*\d+\s*\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|\s*$/gm)].slice(0, 8);
-  expect(rows.length).toBe(8);
+  const header = "| # | example model | family |";
+  const start = skill.indexOf(header);
+  expect(start, "the high-tier roster table header is missing from SKILL.md").toBeGreaterThan(-1);
+  const table = skill.slice(start).split(/\r?\n\s*\r?\n/, 1)[0];
+  const rows = [...table.matchAll(/^\|\s*\d+\s*\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|\s*$/gm)];
+  expect(rows.length, "the high-tier roster table must list 8 models").toBe(8);
   const expected = rows.map((m) => `${m[1]} - ${m[2]}`);
 
   await page.goto("/multi-duck/", { waitUntil: "domcontentloaded" });
@@ -395,6 +403,26 @@ test("the multi-duck page roster step lists the example roster in SKILL.md order
   // The list is framed as a host-dependent example, not an authoritative catalog.
   await expect(step.locator(".roster-caption")).toContainText(
     "substitute the equivalents your host exposes");
+  // ...and as the HIGH-tier one specifically, since a default run uses the medium tier (SITE-MDUCK-10).
+  await expect(step.locator(".roster-caption")).toContainText("high-tier roster");
+});
+
+test("the multi-duck roster step names the two effort tiers and the medium default (SITE-MDUCK-10)", async ({ page }) => {
+  await page.goto("/multi-duck/", { waitUntil: "domcontentloaded" });
+  const step = page.locator(".step", { hasText: "Pick a model-diverse roster" });
+  await expect(step).toBeVisible();
+  const tiers = step.locator(".roster-tiers");
+  await expect(tiers).toHaveCount(1);
+  const text = (await tiers.innerText()).replace(/\s+/g, " ").trim();
+  // Both tiers are named, medium is stated as the default, and the high tier is one instruction away.
+  expect(text).toMatch(/\bMedium\b[^.]*\bdefault\b/i);
+  expect(text).toMatch(/high effort/i);
+  // The tier must not read as a trade against independence - that is the panel's whole premise.
+  expect(text).toMatch(/never mixes/i);
+  expect(text).toMatch(/independen/i);
+  // The roster step's own lead no longer promises the STRONGEST models on every run.
+  const lead = (await step.locator("p").first().innerText()).replace(/\s+/g, " ").trim();
+  expect(lead).not.toMatch(/strongest/i);
 });
 
 test("the multi-duck hero lead is a short one-liner and the long pitch moved below (SITE-MDUCK-07)", async ({ page }) => {

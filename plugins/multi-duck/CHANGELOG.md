@@ -19,14 +19,28 @@ versioning.
 ### Added
 
 - An `effort` input picks which TIER of models the panel is drawn from, and the per-duck
-  reasoning-effort floor (MDUCK-EFFORT-14). Two levels: `high` (the flagship roster at a `high`
-  floor - the default, for a large, unfamiliar, security-sensitive, or about-to-ship change) and
-  `medium` (a mid-tier roster at a `medium` floor - materially cheaper and faster, for a small or
-  routine change, an early round, or a deliberately token-light review). The skill now carries both
-  example rosters, each front-loading one model per provider family. A tier changes only how deep
-  each reviewer is: the modes, the 2-ducks-per-aspect cross-family pairing, and the hard rules are
-  identical, a run never mixes tiers, and spending less means lowering the tier or the count - never
-  the number of families.
+  reasoning-effort floor (MDUCK-EFFORT-14). Two levels: `medium` (a mid-tier roster at a `medium`
+  floor) is now the DEFAULT, because most reviews are of a small or routine change, an early round,
+  or a re-run after fixes, and paying flagship rates for all of them is what stopped the panel being
+  run as often as it should be; `high` (the flagship-led roster at a `high` floor) is one word away
+  ("multi-duck, high effort") for a large, unfamiliar, security-sensitive, or about-to-ship change.
+  The skill now carries both example rosters, each front-loading one model per provider family. A
+  tier is the TABLE DRAWN FROM, not a property of a model, and a run never mixes the two: the modes,
+  the 2-ducks-per-aspect cross-family pairing, and the hard rules are identical in both, so what a
+  cheaper run gives up is depth per duck and never independence. The tier and the effort actually
+  applied are recorded per duck and disclosed in the final report, so a reader always knows how deep
+  a read produced the verdict.
+
+### Changed
+
+- Prisms assignment is now deterministic: the tier's first `2A` roster rows are dealt round-robin
+  across the `A` aspects, then any same-family pair is repaired by a swap. That spreads reviewer
+  strength across the aspects instead of stacking the two strongest on aspect 1, and it gives an
+  agent one executable rule for any `count` rather than an example to extrapolate from.
+- There is now a single rule for what happens when reviewers cannot be independent: a run whose
+  roster cannot field two families for an aspect is marked `diversity_degraded` before launch and
+  says so in the report. The Hosts section, the `effort` input, and the prisms assignment step all
+  defer to it rather than each stating their own fallback.
 
 ## [1.3.0] - 2026-08-06
 
