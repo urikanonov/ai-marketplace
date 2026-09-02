@@ -161,6 +161,10 @@
 /* The multi-duck "Pick a model-diverse roster" step lists an example roster in order. The caption is
    scoped under .step so it beats the ".step p" font-size rule above. */
 .step .roster-caption { color: var(--cp-text-muted); font-size: 0.86rem; margin: 10px 0 4px; }
+.step .roster-caption-medium { color: var(--cp-text-muted); font-size: 0.86rem; margin: 10px 0 4px; }
+.step .roster-tiers { color: var(--cp-text-muted); font-size: 0.9rem; margin: 10px 0 0; }
+.step .roster-list-medium { margin: 0; padding-left: 20px; display: grid; gap: 3px; color: var(--cp-text-muted); font-size: 0.9rem; }
+.step .roster-list-medium code { font-size: 0.86em; }
 .step .roster-list { margin: 0; padding-left: 20px; display: grid; gap: 3px; color: var(--cp-text-muted); font-size: 0.9rem; }
 .step .roster-list code { font-size: 0.86em; }
 

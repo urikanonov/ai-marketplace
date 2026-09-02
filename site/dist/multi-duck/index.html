@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="A multi-model rubber-duck review panel for Claude Code and the GitHub Copilot CLI. Diverse models, uncorrelated blind spots, safe fixes applied for you." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/multi-duck.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=d7b83bdbbf46" />
+  <link rel="stylesheet" href="../assets/styles.css?v=e01d05e065bf" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -90,7 +90,7 @@
           <a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg">View source</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version -->v1.3.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/multi-duck/pkg"><img class="hero-logo" src="../assets/multi-duck.svg" alt="multi-duck logo" /> multi-duck <span class="badge version"><!-- BEGIN:version -->v1.4.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -247,8 +247,16 @@
         <p class="section-sub">Discover, diversify, launch, consolidate, act - autonomously and safely.</p>
         <div class="steps steps-vertical">
           <div class="step"><h3>Discover the work in flight</h3><p>It gathers the diff, the PR and its open comments, any markdown plan, the tests, and active commentable-HTML plans with their open inline comments into one self-contained bundle every reviewer can read.</p></div>
-          <div class="step"><h3>Pick a model-diverse roster</h3><p>The strongest, most different models your host exposes - one per provider family first - so the ducks are as independent as possible. Each duck gets a review aspect (prisms) or the shared goal (consensus).</p>
-            <p class="roster-caption">Example roster on the GitHub Copilot CLI, in order (substitute the equivalents your host exposes):</p>
+          <div class="step"><h3>Pick a model-diverse roster</h3><p>The most different models your host exposes - one per provider family first - so the ducks are as independent as possible. Each duck gets a review aspect (prisms) or the shared goal (consensus).</p>
+            <p class="roster-tiers">Two effort tiers decide which models those are. <strong>Medium</strong> is the default: mid-tier models, one per family, for a cheap, fast panel on a routine change. Say <code>high effort</code> for the flagship tier when a change is large, unfamiliar, security-sensitive, or about to ship. A run never mixes the two, so the tier changes the reviewers' depth and never their independence - a default run is four independent voices, and <code>run 8 ducks</code> is eight.</p>
+            <p class="roster-caption-medium">The default medium-tier panel, in order (substitute the equivalents your host exposes):</p>
+            <ol class="roster-list-medium">
+              <li><code>claude-sonnet-5</code> - Anthropic Sonnet</li>
+              <li><code>gpt-5.4</code> - OpenAI (prior generation)</li>
+              <li><code>gemini-3.6-flash</code> - Google (flash)</li>
+              <li><code>mai-code-1.1-flash</code> - Microsoft MAI (flash)</li>
+            </ol>
+            <p class="roster-caption">Example high-tier roster on the GitHub Copilot CLI, in order (substitute the equivalents your host exposes):</p>
             <ol class="roster-list">
               <li><code>claude-opus-5</code> - Anthropic Opus</li>
               <li><code>gpt-5.6-sol</code> - OpenAI</li>
@@ -289,12 +297,27 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.4.0] - 2026-09-02</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The default panel is now <strong>4 ducks</strong>, not 8 (MDUCK-COUNT-13). Every duck is a full model context reading the same bundle, so the old default spent twice the tokens a routine review needs. Four is the smallest panel that still keeps the prisms guarantee - 2 ducks per aspect, on different model families - and it covers the first two aspects (correctness, and edge cases and error handling). The 1..12 clamp is unchanged, so a large or high-stakes change still asks for a wider panel explicitly, and naming a concern in <code>guidance</code> still promotes it to aspect 1 so it is always double-covered.</li>
+              <li>Prisms assignment is now deterministic: the tier&#x27;s first <code>2A</code> roster rows are dealt round-robin across the <code>A</code> aspects, then any same-family pair is repaired by a swap. That spreads reviewer strength across the aspects instead of stacking the two strongest on aspect 1, and it gives an agent one executable rule for any <code>count</code> rather than an example to extrapolate from.</li>
+              <li>There is now a single rule for what happens when reviewers cannot be independent: a run whose roster cannot field two families for an aspect is marked <code>diversity_degraded</code> before launch and says so in the report. The Hosts section, the <code>effort</code> input, and the prisms assignment step all defer to it rather than each stating their own fallback.</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>An <code>effort</code> input picks which TIER of models the panel is drawn from, and the per-duck reasoning-effort floor (MDUCK-EFFORT-14). Two levels: <code>medium</code> (a mid-tier roster at a <code>medium</code> floor) is now the DEFAULT, because most reviews are of a small or routine change, an early round, or a re-run after fixes, and paying flagship rates for all of them is what stopped the panel being run as often as it should be; <code>high</code> (the flagship-led roster at a <code>high</code> floor) is one word away (&quot;multi-duck, high effort&quot;) for a large, unfamiliar, security-sensitive, or about-to-ship change. The skill now carries both example rosters, each front-loading one model per provider family. A tier is the TABLE DRAWN FROM, not a property of a model, and a run never mixes the two: the modes, the 2-ducks-per-aspect cross-family pairing, and the hard rules are identical in both, so what a cheaper run gives up is depth per duck and never independence. The tier and the effort actually applied are recorded per duck and disclosed in the final report, so a reader always knows how deep a read produced the verdict.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.3.0] - 2026-08-06</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Raised the bar for turning a panel finding into a tracked issue (MDUCK-SCOPE-12). A duck&#x27;s scope is the CHANGE under review, so a PRE-EXISTING defect noticed incidentally - one equally present on the base revision - now goes to <code>SCOPED-OUT:</code> rather than <code>FINDINGS:</code>, unless it is user-observable breakage, data loss, or a security issue reachable under the declared threat model. Incidental pre-existing findings were 47 percent of the issues filed in one two-day window and were what held the issue branching factor at 1.52 - above the 1.0 at which a backlog stops growing - so a panel was manufacturing work faster than it could be done. The boundary is drawn carefully: a defect the change newly makes REACHABLE, triggers, or relocates stays in scope even when the defective line itself is untouched, so a latent fault that only a newly added caller can reach is still reported.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.2.0] - 2026-08-04</h3></div>
             <div class="group-label">Added</div>
@@ -302,8 +325,6 @@
               <li>The panel now respects a project&#x27;s DECLARED threat model instead of rediscovering its non-goals on every run (MDUCK-SCOPE-12). Bundle assembly collects the repo&#x27;s written threat model, trust boundaries, and accepted residual risks into <code>context.md</code>, together with the list that stays in scope regardless (a weakened enforcement layer, a false positive that breaks benign input, and drift that makes a tool emit output its own validator rejects). Every duck&#x27;s hard rules forbid reporting a finding whose attacker the project declares trusted, whose effect a named enforcement layer already blocks unconditionally, or which is one more instance of an already-accepted residual; a duck that disagrees with a non-goal raises it under <code>QUESTIONS:</code> rather than as a finding. Consolidation records such a finding as <code>Dismissed-as-out-of-scope</code> and does not open a follow-up issue for it. This closes the loop where each reviewed fix spawned its own successors.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 4 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.1.0] - 2026-07-25</h3></div>
             <div class="group-label">Changed</div>
