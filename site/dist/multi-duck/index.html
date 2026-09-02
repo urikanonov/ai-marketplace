@@ -22,7 +22,7 @@
   <meta name="twitter:description" content="A multi-model rubber-duck review panel for Claude Code and the GitHub Copilot CLI. Diverse models, uncorrelated blind spots, safe fixes applied for you." />
   <meta name="twitter:image" content="https://urikanonov.github.io/ai-marketplace/assets/og-cover.png" />
   <link rel="icon" type="image/svg+xml" href="../assets/multi-duck.svg" />
-  <link rel="stylesheet" href="../assets/styles.css?v=894b31d0b0eb" />
+  <link rel="stylesheet" href="../assets/styles.css?v=e01d05e065bf" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -248,7 +248,14 @@
         <div class="steps steps-vertical">
           <div class="step"><h3>Discover the work in flight</h3><p>It gathers the diff, the PR and its open comments, any markdown plan, the tests, and active commentable-HTML plans with their open inline comments into one self-contained bundle every reviewer can read.</p></div>
           <div class="step"><h3>Pick a model-diverse roster</h3><p>The most different models your host exposes - one per provider family first - so the ducks are as independent as possible. Each duck gets a review aspect (prisms) or the shared goal (consensus).</p>
-            <p class="roster-tiers">Two effort tiers decide which models those are. <strong>Medium</strong> is the default: mid-tier models, one per family, for a cheap, fast panel on a routine change. Say <code>high effort</code> for the flagship tier below when a change is large, unfamiliar, security-sensitive, or about to ship. A run never mixes the two, so the panel is always four independent voices - the tier changes their depth, never their independence.</p>
+            <p class="roster-tiers">Two effort tiers decide which models those are. <strong>Medium</strong> is the default: mid-tier models, one per family, for a cheap, fast panel on a routine change. Say <code>high effort</code> for the flagship tier when a change is large, unfamiliar, security-sensitive, or about to ship. A run never mixes the two, so the tier changes the reviewers' depth and never their independence - a default run is four independent voices, and <code>run 8 ducks</code> is eight.</p>
+            <p class="roster-caption-medium">The default medium-tier panel, in order (substitute the equivalents your host exposes):</p>
+            <ol class="roster-list-medium">
+              <li><code>claude-sonnet-5</code> - Anthropic Sonnet</li>
+              <li><code>gpt-5.4</code> - OpenAI (prior generation)</li>
+              <li><code>gemini-3.6-flash</code> - Google (flash)</li>
+              <li><code>mai-code-1.1-flash</code> - Microsoft MAI (flash)</li>
+            </ol>
             <p class="roster-caption">Example high-tier roster on the GitHub Copilot CLI, in order (substitute the equivalents your host exposes):</p>
             <ol class="roster-list">
               <li><code>claude-opus-5</code> - Anthropic Opus</li>

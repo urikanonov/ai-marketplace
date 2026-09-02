@@ -454,6 +454,16 @@ class MultiDuckPanelBudgetTests(unittest.TestCase):
         self.assertRegex(t, r"[Nn]ever reach into the other tier")
         self.assertRegex(t, r"beyond the tier's roster")   # the widen carve-out
         self.assertRegex(t, r"IN THE SAME TIER")           # the rotation limit
+        # The invocation-to-tier parsing contract: representative triggers for BOTH tiers must be
+        # documented and land on the right side, or an agent has no way to honour "keep it cheap".
+        parse = re.search(r"Parse from the invocation: (.+?) If not stated", effort_block, re.S)
+        self.assertTrue(parse, "the effort input documents no invocation parsing")
+        high_side, _, medium_side = parse.group(1).partition("-> high;")
+        self.assertIn("-> medium", medium_side)
+        for trigger in ("high effort", "flagship", "thorough"):
+            self.assertIn(trigger, high_side, "%r must map to the high tier" % trigger)
+        for trigger in ("medium effort", "cheap", "save tokens"):
+            self.assertIn(trigger, medium_side, "%r must map to the medium tier" % trigger)
 
         # Both tiers are real, distinct rosters that obey the same diversity-first rule.
         tiers = {
@@ -485,6 +495,45 @@ class MultiDuckPanelBudgetTests(unittest.TestCase):
         replayed = flagships & model_ids(tiers["medium"])
         self.assertFalse(replayed, "the medium tier replays high-tier flagships: %r"
                          % sorted(replayed))
+
+    def test_pairing_is_deterministic_and_degradation_is_never_silent(self):
+        # MDUCK-PAIR-15: two behaviors an agent must not have to invent. (a) Prisms assignment is a
+        # DETERMINISTIC round-robin deal of the tier's first 2A rows across the A aspects, with a
+        # repair swap for any same-family pair, so every count has one executable answer instead of a
+        # worked example to extrapolate from - and so the tier's strongest reviewers are not stacked
+        # on aspect 1, leaving aspect 2 to its weakest. (b) There is ONE rule for what happens when
+        # reviewers cannot be independent: mark the run `diversity_degraded` BEFORE launch and say so
+        # in the report. Three sections used to state their own fallback, so a same-family pair could
+        # be presented as an ordinary one.
+        t = _read(SKILL)
+        # (a) the deal, its formula, and the repair step.
+        self.assertRegex(t, r"round-robin")
+        self.assertRegex(t, r"row `j` goes to aspect `\(\(j - 1\) mod A\) \+ 1`")
+        self.assertRegex(t, r"first `2A` rows")
+        self.assertRegex(t, r"[Tt]hen REPAIR")
+        self.assertRegex(t, r"swap one of them with a duck from another aspect")
+        # (b) the single degraded rule: declared once as THE rule, applied before launch, reported,
+        # and deferred to (not restated with different terms) by the effort input and the assignment
+        # step. `assertRegex` on short phrases so a rewording of the surrounding prose is not a
+        # required-check failure.
+        self.assertRegex(t, r"this is the SINGLE rule")
+        self.assertRegex(t, r"mark the panel `diversity_degraded` BEFORE launching")
+        # Each place that could state its own fallback must instead reference the degraded state, so
+        # the rule is one policy rather than three. Checked per REGION, not as a global count, so
+        # rewording a sentence does not red a required check.
+        for region, marker in (("Model diversity across hosts", "**Model diversity across hosts.**"),
+                               ("the effort input", "- `effort` (optional"),
+                               ("prisms assignment", "- **prisms mode**:"),
+                               ("Step 7", "## Step 7. Present the summary")):
+            body = t.split(marker, 1)
+            self.assertEqual(len(body), 2, "%s section is missing" % region)
+            self.assertIn("diversity_degraded", body[1].split("\n## ", 1)[0],
+                          "%s does not defer to the degraded-run rule" % region)
+        self.assertRegex(t, r"never present a same-family pair as an ordinary one")
+        # It reaches the reader: the Step 7 panel line reports it.
+        summary = t.split("## Step 7. Present the summary", 1)
+        self.assertEqual(len(summary), 2, "Step 7 is missing")
+        self.assertRegex(summary[1], r"`diversity_degraded`")
 
 
 class MultiDuckHouseStyleTests(unittest.TestCase):

@@ -408,9 +408,27 @@ test("the multi-duck page roster step lists the example roster in SKILL.md order
 });
 
 test("the multi-duck roster step names the two effort tiers and the medium default (SITE-MDUCK-10)", async ({ page }) => {
+  // The default medium roster is DERIVED from SKILL.md's medium-tier table (same anchored approach
+  // as SITE-MDUCK-06), so the page cannot drift from the skill's default panel.
+  const fs = require("fs");
+  const path = require("path");
+  const skill = fs.readFileSync(
+    path.resolve(__dirname, "../../../plugins/multi-duck/pkg/skills/multi-duck/SKILL.md"), "utf8");
+  const header = "| # | example medium-tier model | family |";
+  const start = skill.indexOf(header);
+  expect(start, "the medium-tier roster table header is missing from SKILL.md").toBeGreaterThan(-1);
+  const table = skill.slice(start).split(/\r?\n\s*\r?\n/, 1)[0];
+  const rows = [...table.matchAll(/^\|\s*\d+\s*\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|\s*$/gm)];
+  expect(rows.length, "the medium-tier roster table is too short").toBeGreaterThanOrEqual(4);
+  // A default run is 4 ducks, so the page shows the first four rows - the panel it actually runs.
+  const expected = rows.slice(0, 4).map((m) => `${m[1]} - ${m[2]}`);
+
   await page.goto("/multi-duck/", { waitUntil: "domcontentloaded" });
   const step = page.locator(".step", { hasText: "Pick a model-diverse roster" });
   await expect(step).toBeVisible();
+  await expect(step.locator("ol.roster-list-medium > li")).toHaveText(expected);
+  await expect(step.locator(".roster-caption-medium")).toContainText("default medium-tier panel");
+
   const tiers = step.locator(".roster-tiers");
   await expect(tiers).toHaveCount(1);
   const text = (await tiers.innerText()).replace(/\s+/g, " ").trim();
@@ -420,6 +438,10 @@ test("the multi-duck roster step names the two effort tiers and the medium defau
   // The tier must not read as a trade against independence - that is the panel's whole premise.
   expect(text).toMatch(/never mixes/i);
   expect(text).toMatch(/independen/i);
+  // The panel size is stated as the DEFAULT, not as a fixed property: `count` is 1..12, so "always
+  // four voices" would be false the moment a visitor asks for 8 ducks.
+  expect(text).not.toMatch(/always four/i);
+  expect(text).toMatch(/default run is four/i);
   // The roster step's own lead no longer promises the STRONGEST models on every run.
   const lead = (await step.locator("p").first().innerText()).replace(/\s+/g, " ").trim();
   expect(lead).not.toMatch(/strongest/i);
