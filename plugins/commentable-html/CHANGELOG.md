@@ -4,6 +4,25 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.843.0] - 2026-09-02
+
+### Fixed
+
+- `report-community-garden.html` and `report-taxi.html` no longer inline their own copy of
+  Chart.js. Each carried a complete `Chart.js v4.4.0` bundle (205,031 bytes) as authored content,
+  from the era when a self-contained file had to ship its own renderer. It no longer does: the
+  viewer loads the pinned CDN copy, and Export Offline downloads, SRI-verifies and inlines the
+  vendored one. They now use the same pinned, SRI-guarded loader the other chart examples use, which
+  is also what `tools/blocks/chart_block.py` emits. That removes 205 KB from each of the two largest
+  shipped examples and takes a version conflict with it - the authored copy was 4.4.0 while the
+  document's payload pins 4.5.1.
+- With the authored copy gone, an Offline export of those two documents now contains exactly ONE
+  Chart.js, the vendored and hash-verified one. Previously it contained both, and the UNVERIFIED
+  authored copy won: the exporter hoists author code below the library it inlines so a constructing
+  script cannot run before its dependency, and that hoist placed the authored 4.4.0 after the
+  downloaded 4.5.1, so 4.4.0 took `window.Chart` while the verified copy sat inert. Nothing was
+  broken by it - every chart rendered, with zero network - but the export's verify-before-inline
+  guarantee did not hold in practice for a document that carries its own library.
 ## [1.842.0] - 2026-08-31
 
 ### Changed

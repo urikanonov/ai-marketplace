@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.842.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.843.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.843.0] - 2026-09-02</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li><code>report-community-garden.html</code> and <code>report-taxi.html</code> no longer inline their own copy of Chart.js. Each carried a complete <code>Chart.js v4.4.0</code> bundle (205,031 bytes) as authored content, from the era when a self-contained file had to ship its own renderer. It no longer does: the viewer loads the pinned CDN copy, and Export Offline downloads, SRI-verifies and inlines the vendored one. They now use the same pinned, SRI-guarded loader the other chart examples use, which is also what <code>tools/blocks/chart_block.py</code> emits. That removes 205 KB from each of the two largest shipped examples and takes a version conflict with it - the authored copy was 4.4.0 while the document&#x27;s payload pins 4.5.1.</li>
+              <li>With the authored copy gone, an Offline export of those two documents now contains exactly ONE Chart.js, the vendored and hash-verified one. Previously it contained both, and the UNVERIFIED authored copy won: the exporter hoists author code below the library it inlines so a constructing script cannot run before its dependency, and that hoist placed the authored 4.4.0 after the downloaded 4.5.1, so 4.4.0 took <code>window.Chart</code> while the verified copy sat inert. Nothing was broken by it - every chart rendered, with zero network - but the export&#x27;s verify-before-inline guarantee did not hold in practice for a document that carries its own library.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.842.0] - 2026-08-31</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -513,6 +521,8 @@
               <li>A document carrying two vendored payload blocks no longer merges them into one that holds a stale library&#x27;s bytes beside a newer one&#x27;s descriptor. Only one form can ever be used, and the bytes win, so the later block silently lost and a right-sized document could be re-inflated.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.841.0] - 2026-08-11</h3></div>
             <div class="group-label">Fixed</div>
@@ -520,8 +530,6 @@
               <li>The floating composer&#x27;s drag grip is now DRAWN rather than typeset. It was a pair of <code>U+22EE</code> glyphs in a <code>line-height: 1</code> box, so it went through the font pipeline - fallback resolution, the glyph cache, and a text origin snapped to whole device pixels from a font-metric-derived baseline that measured OFF the device grid - and it landed one CSS pixel higher or lower between two otherwise identical renders of the same page in the same digest-pinned container. It was the only region of the tutorial screenshots that was not reproducible, so whichever variant a run happened to commit reddened the exact-pixel drift gate for every pull request that followed, including ones that had never touched the capture path. The precise input that varied between two runs was never reproduced on a quiet host (six sequential and twelve concurrent captures were byte-identical), so the fix removes the whole text-rendering pipeline from the element rather than chasing it: the grip is now a definite 6x10 box of six <code>currentColor</code> dots painted from its own geometry, so there is no glyph to rasterize and no font fallback, glyph cache or text-origin snapping left in the element. It keeps the handle&#x27;s hover and dragging colours, stays <code>aria-hidden</code> decoration beside the <code>drag to move</code> label, and is shorter than that label&#x27;s line box, so the handle and the composer are otherwise unchanged. Under <code>forced-colors: active</code> - where the system palette strips <code>box-shadow</code> and forces backgrounds, and would have erased the dots that the old glyph&#x27;s own repainting survived - the grip opts out and names <code>CanvasText</code> explicitly, so a high-contrast reader keeps the affordance in their own palette rather than in the author&#x27;s grey. The drift budget stays exact (<code>MAX_DIFF_PIXELS</code> 0): the rendering was fixed, not the gate widened.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.840.0] - 2026-08-11</h3></div>
             <div class="group-label">Changed</div>
@@ -571,23 +579,7 @@
               <li>The tier is OPT-IN and is a pure packaging step: <code>finalize.py --cold-tier</code> compresses, and the default (or the explicit <code>--no-cold-tier</code>, which wins) emits today&#x27;s fully-plain structure and EXPANDS any tier a document already carries. <code>compress</code> and <code>expand</code> are exact inverses - expanding reproduces the original bytes - so the escape hatch is real rather than a promise. finalize expands FIRST, before every other phase, and validates and stamps the fully-plain document before compressing last of all, so the validator sees every hidden row. <code>validate.py</code> scans the expanded view and fails closed on a tier it cannot expand; <code>section_hash.py</code> expands at its single hashing entry point, so the validated stamp and every review marker reproduce what the runtime computes after hydration; and the agent edit loop (<code>content_extract.py</code> / <code>content_replace.py</code>) expands before it hands out a fragment or splices one back, then restores the tier the document arrived in. A tier that cannot be put back - in either direction, an orphaned payload or an orphaned placeholder - RAISES instead of reading as &quot;already plain&quot;, while a document carrying no cold-tier marker at all short-circuits before parsing, so this never becomes a second gate in front of the validator. New tool: <code>tools/authoring/cold_tier.py</code>.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.835.0] - 2026-08-10</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The vendored rich-libraries payload is now carried PER LIBRARY instead of all or nothing. It was one JSON object holding mermaid (~1,265 KB base64) and Chart.js (~92 KB base64), kept or dropped as a unit, so a chart-only document paid for a diagram renderer it could never call and a diagram-only document paid for the chart library. <code>finalize</code> now reconciles the payload against what the CONTENT actually uses: it drops the half a document cannot call, and - the direction that matters - COMPLETES a half when the content gains that library, which the old code could not do at all because it returned early for any already-placed payload without reading its contents. Measured on the shipped example fixtures, a chart-only report sheds more than 1,000 KB (<code>CMH-SIZE-01</code>).</li>
-              <li>A library counts as carried only when its BYTES and its MIT NOTICE are both present and non-blank, and a payload holding one without the other is reconciled rather than retained, so orphan bytes are dropped whenever a source pair is reachable. When the content needs a library neither the document nor a reachable template can supply, the document is left byte-identical instead, so the export fails loudly rather than a half-written payload looking healthy.</li>
-              <li>The serialize-and-escape rule for that payload now has ONE definition (<code>skill/tools/authoring/_vendored_payload.py</code>, standard library only) that both <code>build.py</code> and the shipped authoring tool import, so the build-time and author-time bytes cannot drift. It refuses a payload that would still contain a raw <code>&lt;/script&gt;</code> after escaping, and it signals with <code>ValueError</code> so an authoring run can degrade instead of aborting an agent&#x27;s write-back.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>An unclassifiable document is left ENTIRELY alone in the TRIM direction as well as the insert direction. Such a document has no content root, so a per-library &quot;needed&quot; set computed for it would be empty and would have stripped a payload its runtime still wants (the runtime falls back to <code>&lt;body&gt;</code> when there is no content root).</li>
-              <li>Markup a browser REPAIRS (<code>&lt;p&gt;&lt;figure class=&quot;chart&quot;&gt;&lt;/p&gt;...&lt;canvas&gt;</code>) keeps the chart half even when the same document also has a diagram. The nesting-tolerant repair is now gated on the chart verdict alone; gating it on the combined verdict would have let a diagram satisfy the flag, skip the repair, and drop a half the document needs.</li>
-              <li>The payload element&#x27;s inner text is located by the PARSER, so a <code>&gt;</code> inside a quoted attribute of its opening tag and a padded <code>&lt;/script   &gt;</code> closing tag are both read the way a browser reads them. Rewriting and relocating are one splice against one scan&#x27;s offsets, so an in-place edit can never shift the recorded end of body.</li>
-              <li>A payload that cannot be parsed is left byte-for-byte intact but is still relocated out of the head: structural placement never depends on understanding the JSON, and <code>apply()</code> runs from <code>finalize</code> before validation so it must never raise on a hand-edited document.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">402 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">403 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

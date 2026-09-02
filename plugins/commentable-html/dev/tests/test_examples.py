@@ -250,6 +250,68 @@ class ExampleTests(unittest.TestCase):
             self.assertIn("report-taxi.html", r.stdout + r.stderr)
 
 
+class ExampleNoInlinedLibraryTests(unittest.TestCase):
+    """CMH-SIZE-09: no shipped example carries a third-party library BODY of its own.
+
+    Two examples used to inline Chart.js v4.4.0 (205,031 bytes each) as authored content, from the
+    era when a self-contained file had to carry its own renderer. Since CMH-SIZE-01/CMH-SIZE-08 the
+    document does not: the viewer loads a pinned CDN copy and Export Offline downloads, SRI-verifies
+    and inlines the vendored one. So the authored copy was pure weight - it made those two the
+    largest shipped documents - and it was stale: 4.4.0, while the payload pins 4.5.1.
+
+    It also inverted the export's provenance guarantee. The exporter hoists author code BELOW the
+    library it inlines so a constructing script cannot run before its dependency; that hoist put the
+    authored copy after the verified one, so the UNVERIFIED 4.4.0 deterministically won
+    `window.Chart` while the downloaded, hash-checked 4.5.1 sat inert. Measured, not inferred.
+
+    A library body here is anything the vendored-provenance guards (CMH-BUILD-25 for mermaid,
+    CMH-SIZE-08 for Chart.js) do not cover, so nothing checks its version, integrity or licence.
+    """
+
+    # Big enough that no ordinary authored snippet reaches it, small enough to catch a minified
+    # library: the real ones are 205 KB (Chart.js) and 3.5 MB (mermaid).
+    LIBRARY_BYTES = 50000
+    SCRIPT = re.compile(r"<script([^>]*)>([\s\S]*?)</script>", re.I)
+    # Vendor banners the minified bundles carry.
+    BANNERS = re.compile(r"Chart\.js v[\d.]+|mermaid@[\d.]+|/\*!\s*Chart\.js", re.I)
+
+    def test_no_example_inlines_a_third_party_library_body(self):
+        offenders = []
+        for path in _all_example_docs():
+            html = _read(path)
+            for attrs, body in self.SCRIPT.findall(html):
+                # A copy the EXPORTER inlined carries the marker and is covered by CMH-OFFLINE-07;
+                # this rule is about a body the document itself ships.
+                if "data-cmh-offline-lib" in attrs:
+                    continue
+                if len(body) >= self.LIBRARY_BYTES and self.BANNERS.search(body):
+                    offenders.append("%s: %d bytes, %r"
+                                     % (os.path.basename(path), len(body),
+                                        self.BANNERS.search(body).group(0)))
+        self.assertEqual(
+            offenders, [],
+            "a shipped example inlines a third-party library body. The document does not need one: "
+            "the viewer loads the pinned CDN copy and Export Offline inlines the vendored, "
+            "SRI-verified one. An authored copy is unversioned weight that no provenance guard "
+            "checks, and it WINS over the verified copy in an export. Use the pinned CDN loader "
+            "with SRI, as report-metrics and report-triage do. Offenders: " + "; ".join(offenders))
+
+    def test_the_chart_examples_still_load_chartjs_somehow(self):
+        # The companion assertion, so the rule above can never be satisfied by simply deleting the
+        # library and leaving the charts dead. Every example that constructs a Chart must still
+        # reach one, and the only sanctioned way is the pinned + SRI CDN loader.
+        for path in _all_example_docs():
+            html = _read(path)
+            if "new Chart(" not in html:
+                continue
+            loader = re.search(
+                r'<script[^>]+src="https://cdn\.jsdelivr\.net/npm/chart\.js@[\d.]+/dist/chart\.umd(?:\.min)?\.js"'
+                r'[^>]*integrity="sha384-[^"]+"[^>]*crossorigin=', html)
+            self.assertIsNotNone(
+                loader,
+                "%s constructs a Chart but has no pinned, SRI-guarded Chart.js loader"
+                % os.path.basename(path))
+
 class ExamplePromptTests(unittest.TestCase):
     """CMH-DEMO-02: every shipped example report has a companion example-prompt file
     (prompt-<name>.md) with the standard headings and a non-empty blockquote prompt."""

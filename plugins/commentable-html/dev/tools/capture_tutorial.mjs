@@ -276,6 +276,27 @@ async function routeVendoredMermaid(context) {
   });
 }
 
+// Chart.js, the same way and for the same reason. Until CMH-SIZE-09 the chart examples inlined a
+// copy of the library, so the capture never had to serve one; now they load the pinned CDN build,
+// and a capture that cannot reach it renders a BLANK canvas - which is exactly what the shot
+// quality gate caught (garden-03-chart.png, richness 0.013). Served from `assets/vendor/`, which is
+// the byte-identical copy the offline export inlines and whose SHA-384 the loader's `integrity`
+// attribute names, so the bytes satisfy SRI and the capture stays hermetic.
+async function routeVendoredChartJs(context) {
+  const vendored = path.resolve(HERE, "..", "assets", "vendor", "chart.umd.min.js");
+  if (!fs.existsSync(vendored)) {
+    throw new Error("capture: assets/vendor/chart.umd.min.js is missing; the tutorial chart shot "
+      + "would capture a blank canvas.");
+  }
+  await context.route(/^https:\/\/cdn\.jsdelivr\.net\/npm\/chart\.js@[^/]+\/dist\//, async (route) => {
+    if (/\/chart\.umd(\.min)?\.js$/.test(new URL(route.request().url()).pathname)) {
+      await route.fulfill({ path: vendored, contentType: "application/javascript" });
+      return;
+    }
+    // Fail closed, as above: never let the capture reach the network.
+    await route.abort();
+  });
+}
 async function expectNoComposer(page) {
   await page.locator(".cm-composer").waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
 }
@@ -409,6 +430,7 @@ async function captureScene(scene, targetDir) {
     // triage example's SRI-pinned Chart.js CDN, which the board shot does not need - is aborted.
     await context.route(/^https?:\/\//, (route) => route.abort());
     await routeVendoredMermaid(context);
+  await routeVendoredChartJs(context);
     const page = await context.newPage();
     await page.goto(sceneUrl(scene));
     await ready(page);
