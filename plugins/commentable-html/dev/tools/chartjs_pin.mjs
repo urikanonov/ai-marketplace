@@ -37,7 +37,19 @@ export function chartJsRoutePattern(version) {
     throw new Error("capture_tutorial: refusing to build a Chart.js route from the non-exact "
       + "version " + JSON.stringify(version));
   }
-  const escaped = String(version).replace(/\./g, "\\.");
+  const escaped = escapeRegExp(String(version));
   return new RegExp("^https://cdn\\.jsdelivr\\.net/npm/chart\\.js@" + escaped
     + "/dist/chart\\.umd\\.min\\.js$");
+}
+
+/**
+ * Every regex metacharacter escaped, backslash included.
+ *
+ * The version is already constrained to `\d+\.\d+\.\d+` above, so nothing exotic can reach this -
+ * but escaping only `.` was incomplete in isolation (CodeQL's incomplete-string-escaping rule), and
+ * a partial escaper is exactly the thing that turns into a hole the day the validation upstream is
+ * loosened. Backslash is replaced first by being part of the same single pass.
+ */
+export function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

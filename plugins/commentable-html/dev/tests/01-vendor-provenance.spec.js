@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { pinnedVersion, lockedVersion, pinMismatchMessage } from "../tools/mermaid_pin.mjs";
-import { vendoredChartJsVersion, chartJsRoutePattern } from "../tools/chartjs_pin.mjs";
+import { vendoredChartJsVersion, chartJsRoutePattern, escapeRegExp } from "../tools/chartjs_pin.mjs";
 
 const DEV = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const VENDOR = path.join(DEV, "assets", "vendor");
@@ -207,4 +207,13 @@ test("the tutorial capture's Chart.js route pins the vendored version and nothin
     expect(() => chartJsRoutePattern(bad), JSON.stringify(bad) + " must be refused").toThrow();
   }
   expect(() => vendoredChartJsVersion("no banner here"), "a bundle with no banner is refused").toThrow();
+
+  // The escaper is TOTAL, backslash included. Nothing exotic can reach it through the exact-version
+  // check above, but a partial escaper is what becomes a hole the day that check is loosened.
+  for (const meta of [".", "*", "+", "?", "^", "$", "{", "}", "(", ")", "|", "[", "]", "\\\\"]) {
+    expect(new RegExp("^" + escapeRegExp(meta) + "$").test(meta),
+      JSON.stringify(meta) + " must be escaped to match only itself").toBe(true);
+  }
+  expect(new RegExp("^" + escapeRegExp("a.c") + "$").test("abc"),
+    "an escaped dot must not act as a wildcard").toBe(false);
 });
