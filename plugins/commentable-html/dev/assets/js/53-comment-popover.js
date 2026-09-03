@@ -333,6 +333,17 @@ function _renderCommentPopoverView(c) {
   if (!_positionCommentPopover(_popoverAnchorMark)) _clampCommentPopoverIntoViewport();
 }
 
+// Re-stamp the open dialog's timestamp after the display zone changes. An in-progress edit is left
+// alone: its meta line is replaced by the editor, and a re-render would discard the draft.
+function cmhRefreshCommentPopoverTime() {
+  if (!commentPopover || _popoverEditing) return;
+  const meta = commentPopover.querySelector(".cm-comment-popover-meta");
+  const c = _popoverComment();
+  if (!meta || !c) return;
+  meta.innerHTML = "<bdi>" + escapeHtml(formatTime(c.updatedAt || c.createdAt)) + "</bdi>"
+    + (c.updatedAt ? " (edited)" : "");
+}
+
 // Cancel an in-progress edit: back to the note view with focus on Edit, dialog left open (unless
 // its anchor scrolled away meanwhile, in which case the normal clip-aware close applies again).
 function _cancelCommentPopoverEdit() {

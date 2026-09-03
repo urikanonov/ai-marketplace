@@ -67,3 +67,14 @@ function cmhShouldAutoOpenPanel() {
 function cmhShouldAutoOpenPanelOnComment() {
   return autoOpenPanelEnabled() || cmhPanelForcedOnComment();
 }
+
+/* "Show times in UTC": the display zone every rendered timestamp is formatted in. Off by default,
+   so an existing document reads exactly as it always has - local time, now with the local zone
+   named beside it. On, the instant is normalized to UTC and labelled UTC. Cross-document only:
+   a reviewer reads in one zone, whatever document they happen to open. */
+function utcTimesEnabled() {
+  return cmhReadPref(UTC_TIMES_KEY) === CMH_PREF_ON;
+}
+function setUtcTimes(on) {
+  return cmhWritePref(UTC_TIMES_KEY, on ? CMH_PREF_ON : CMH_PREF_OFF);
+}

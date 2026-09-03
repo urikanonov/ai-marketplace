@@ -8,20 +8,66 @@ function formatTime(iso) {
     // date, not an instant: parse it in LOCAL time and render it without a time, so it shows the
     // same day in every timezone. new Date("2026-07-25") parses as UTC midnight, which slides to
     // the previous evening for viewers west of UTC (the "Jul 24 ... 17:00" artifact), so a bare
-    // date must not go through the datetime path below.
+    // date must not go through the datetime path below. It names no zone either: a calendar date
+    // is not an instant, so a zone label would only imply a precision it does not have.
     const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso).trim());
     if (dateOnly) {
       const d = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
       return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
     }
+    const d = new Date(iso);
+    // An unparseable value has no instant to name a zone for; hand the raw value back rather than
+    // rendering "Invalid Date UTC+02:00".
+    if (isNaN(d.getTime())) return iso;
+    const utc = (typeof utcTimesEnabled === "function") && utcTimesEnabled();
     // Month name (not a number) so the date is unambiguous across M/D/Y and D/M/Y
-    // locales (e.g. "Jul 9, 2026, 13:07"). 24-hour time, no AM/PM.
-    return new Date(iso).toLocaleString(undefined, {
+    // locales (e.g. "Jul 9, 2026, 13:07 CEST"). 24-hour time, no AM/PM.
+    const opts = {
       year: "numeric", month: "short", day: "numeric",
       hour: "2-digit", minute: "2-digit", hour12: false
-    });
+    };
+    if (utc) opts.timeZone = "UTC";
+    // The zone is appended here rather than left to timeZoneName, so its separator and (in UTC
+    // mode) its wording are the same in every locale.
+    return d.toLocaleString(undefined, opts) + " " + (utc ? "UTC" : cmhLocalZoneLabel(d));
   }
   catch (e) { return iso; }
+}
+// The viewer's zone as the locale names it ("PST", "GMT+3"), falling back to a computed offset
+// when the engine cannot part out a zone name.
+function cmhLocalZoneLabel(d) {
+  try {
+    const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(d);
+    for (let i = 0; i < parts.length; i++) {
+      if (parts[i].type === "timeZoneName" && parts[i].value) return parts[i].value;
+    }
+  } catch (e) { /* no Intl.formatToParts: fall through to the offset */ }
+  const off = -d.getTimezoneOffset();
+  const abs = Math.abs(off);
+  const pad = (n) => (n < 10 ? "0" : "") + n;
+  return "UTC" + (off < 0 ? "-" : "+") + pad(Math.floor(abs / 60)) + ":" + pad(abs % 60);
+}
+// The document's generation instant: the author's data-generated stamp when there is one
+// (deterministic), else the file's own last-modified time.
+function cmhGeneratedIso() {
+  const g = root.getAttribute("data-generated");
+  if (g) return g;
+  const lm = Date.parse(document.lastModified);
+  return isNaN(lm) ? "" : new Date(lm).toISOString();
+}
+// Re-stamp every ALREADY-RENDERED timestamp after the display zone changes, so the preference
+// takes effect in place instead of on the next load. The print appendix, the Copy all bundle and
+// every export are built on demand, so they pick the new zone up on their own.
+function cmhRefreshTimeLabels() {
+  if (typeof renderComments === "function") renderComments();
+  updateSideInfo();
+  const footer = cmhEl("cmFooter");
+  const genEl = footer && footer.querySelector(".cm-footer-gen");
+  if (genEl) {
+    const g = cmhGeneratedIso();
+    genEl.textContent = "Generated " + (g ? formatTime(g) : "unknown");
+  }
+  if (typeof cmhRefreshCommentPopoverTime === "function") cmhRefreshCommentPopoverTime();
 }
 let commentSort = "pos";
 try { commentSort = localStorage.getItem(COMMENT_KEY + "::commentSort") || "pos"; } catch (e) { /* private mode */ }
@@ -36,8 +82,7 @@ function updateSideInfo() {
   const gen = cmhEl("cmGenerated");
   const last = cmhEl("cmLastComment");
   if (gen) {
-    let g = root.getAttribute("data-generated");
-    if (!g) { const lm = Date.parse(document.lastModified); if (!isNaN(lm)) g = new Date(lm).toISOString(); }
+    const g = cmhGeneratedIso();
     gen.textContent = "Generated on: " + (g ? formatTime(g) : "unknown");
   }
   if (last) {

@@ -714,6 +714,7 @@ document.body.removeAttribute("data-cm-density");
 const SIDEBAR_WIDTH_KEY= "commentable-html::sidebarWidth";
 const AUTO_OPEN_PANEL_KEY= "commentable-html::autoOpenPanelDefault";
 const AUTO_OPEN_PANEL_DOC_KEY=COMMENT_KEY+"::autoOpenPanel";
+const UTC_TIMES_KEY= "commentable-html::utcTimes";
 const CMH_STORE_KEY=COMMENT_KEY+"::z";
 const CMH_STORE_FRAME= "\u0001z";
 const CMH_MAX_STORE_CHARS=8000000;
@@ -724,7 +725,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.844.0";
+const CMH_VERSION= "1.845.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -1473,6 +1474,12 @@ return autoOpenPanelEnabled();
 }
 function cmhShouldAutoOpenPanelOnComment(){
 return autoOpenPanelEnabled()||cmhPanelForcedOnComment();
+}
+function utcTimesEnabled(){
+return cmhReadPref(UTC_TIMES_KEY)===CMH_PREF_ON;
+}
+function setUtcTimes(on){
+return cmhWritePref(UTC_TIMES_KEY,on?CMH_PREF_ON:CMH_PREF_OFF);
 }
 function getTextNodes(){
 if(typeof window!== "undefined"&&window.__cmhPerf)window.__cmhPerf.textScans=(window.__cmhPerf.textScans||0)+1;
@@ -7018,12 +7025,46 @@ if(dateOnly){
 const d=new Date(Number(dateOnly[1]),Number(dateOnly[2])-1,Number(dateOnly[3]));
 return d.toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"});
 }
-return new Date(iso).toLocaleString(undefined,{
+const d=new Date(iso);
+if(isNaN(d.getTime()))return iso;
+const utc=(typeof utcTimesEnabled=== "function")&&utcTimesEnabled();
+const opts={
 year:"numeric",month:"short",day:"numeric",
 hour:"2-digit",minute:"2-digit",hour12:false
-});
+};
+if(utc)opts.timeZone= "UTC";
+return d.toLocaleString(undefined,opts)+" "+(utc?"UTC":cmhLocalZoneLabel(d));
 }
 catch(e){return iso;}
+}
+function cmhLocalZoneLabel(d){
+try{
+const parts=new Intl.DateTimeFormat(undefined,{timeZoneName:"short"}).formatToParts(d);
+for(let i=0;i<parts.length;i++){
+if(parts[i].type=== "timeZoneName"&&parts[i].value)return parts[i].value;
+}
+}catch(e){}
+const off=-d.getTimezoneOffset();
+const abs=Math.abs(off);
+const pad=(n)=>(n<10?"0":"")+n;
+return"UTC"+(off<0?"-":"+")+pad(Math.floor(abs/60))+":"+pad(abs%60);
+}
+function cmhGeneratedIso(){
+const g=root.getAttribute("data-generated");
+if(g)return g;
+const lm=Date.parse(document.lastModified);
+return isNaN(lm)?"":new Date(lm).toISOString();
+}
+function cmhRefreshTimeLabels(){
+if(typeof renderComments=== "function")renderComments();
+updateSideInfo();
+const footer=cmhEl("cmFooter");
+const genEl=footer&&footer.querySelector(".cm-footer-gen");
+if(genEl){
+const g=cmhGeneratedIso();
+genEl.textContent= "Generated "+(g?formatTime(g):"unknown");
+}
+if(typeof cmhRefreshCommentPopoverTime=== "function")cmhRefreshCommentPopoverTime();
 }
 let commentSort= "pos";
 try{commentSort=localStorage.getItem(COMMENT_KEY+"::commentSort")||"pos";}catch(e){}
@@ -7035,8 +7076,7 @@ function updateSideInfo(){
 const gen=cmhEl("cmGenerated");
 const last=cmhEl("cmLastComment");
 if(gen){
-let g=root.getAttribute("data-generated");
-if(!g){const lm=Date.parse(document.lastModified);if(!isNaN(lm))g=new Date(lm).toISOString();}
+const g=cmhGeneratedIso();
 gen.textContent= "Generated on: "+(g?formatTime(g):"unknown");
 }
 if(last){
@@ -8396,6 +8436,14 @@ if(btn){try{btn.focus();}catch(err){}}
 });
 if(!_positionCommentPopover(_popoverAnchorMark))_clampCommentPopoverIntoViewport();
 }
+function cmhRefreshCommentPopoverTime(){
+if(!commentPopover||_popoverEditing)return;
+const meta=commentPopover.querySelector(".cm-comment-popover-meta");
+const c=_popoverComment();
+if(!meta||!c)return;
+meta.innerHTML= "<bdi>"+escapeHtml(formatTime(c.updatedAt||c.createdAt))+"</bdi>"
++(c.updatedAt?" (edited)":"");
+}
 function _cancelCommentPopoverEdit(){
 const cur=_popoverComment();
 if(!cur){closeCommentPopover();return;}
@@ -8701,7 +8749,9 @@ if(!menu.hidden&&!menu.contains(e.target)&&!btn.contains(e.target))setOpen(false
 });
 const prefDefault=menu.querySelector("#btnAutoOpenPanel");
 const prefOverride=menu.querySelector("#btnAutoOpenPanelOverride");
+const prefUtc=menu.querySelector("#btnUtcTimes");
 function syncPrefRows(){
+if(prefUtc)prefUtc.setAttribute("aria-checked",utcTimesEnabled()?"true":"false");
 if(prefDefault)prefDefault.setAttribute("aria-checked",autoOpenPanelDefault()?"true":"false");
 if(!prefOverride)return;
 const pinned=autoOpenPanelOverride();
@@ -8733,9 +8783,16 @@ wirePrefRow(prefDefault,()=>setAutoOpenPanelDefault(!autoOpenPanelDefault()));
 wirePrefRow(prefOverride,()=>{
 return setAutoOpenPanelOverride(autoOpenPanelOverride()===null?!autoOpenPanelDefault():null);
 });
+wirePrefRow(prefUtc,()=>{
+const ok=setUtcTimes(!utcTimesEnabled());
+if(ok!==false)cmhRefreshTimeLabels();
+return ok;
+});
 syncPrefRows();
 window.addEventListener("storage",(e)=>{
-if(!e||e.key==null||e.key===AUTO_OPEN_PANEL_KEY||e.key===AUTO_OPEN_PANEL_DOC_KEY)syncPrefRows();
+if(!e||e.key==null||e.key===AUTO_OPEN_PANEL_KEY||e.key===AUTO_OPEN_PANEL_DOC_KEY
+||e.key===UTC_TIMES_KEY)syncPrefRows();
+if(!e||e.key==null||e.key===UTC_TIMES_KEY)cmhRefreshTimeLabels();
 });
 function items(){
 return Array.prototype.slice.call(menu.querySelectorAll("button:not([disabled])"))
@@ -9102,7 +9159,7 @@ cmhEl("btnCopyAll").addEventListener("click",copyAll);
 cmhEl("btnCopyAllTop").addEventListener("click",copyAll);
 const CMH_INDEX_MAX=200;
 const CMH_BANNER_PREFIX= "commentable-html::assetBannerDismissed::";
-const CMH_GLOBAL_KEYS=[SIDEBAR_WIDTH_KEY,CMH_AUTHOR_KEY,AUTO_OPEN_PANEL_KEY];
+const CMH_GLOBAL_KEYS=[SIDEBAR_WIDTH_KEY,CMH_AUTHOR_KEY,AUTO_OPEN_PANEL_KEY,UTC_TIMES_KEY];
 function _cmhReadIndex(){
 const out=Object.create(null);
 try{
@@ -13813,6 +13870,7 @@ T('The panel and toolbar',
 (hasBrandMark?'<li>The <strong>comment-bubble mark</strong> just left of the <kbd>...</kbd> button in the floating toolbar'+(hasMenuBrandMark?' - and the matching mark at the top of that menu -':'')+' opens the Commentable HTML site in a new tab.</li>':'')+
 '<li><strong>Auto-open panel on comment</strong> (in <em>More &gt; Preferences</em>) decides whether this panel opens <em>itself</em>. It is <strong>on</strong> by default and is your setting for <em>every</em> commentable-html document in this browser, so turning it off once lets you read full width and dip into the panel only when you want it: saving a comment, reopening a document that already has review items, and a first review-note, checklist, or widget layout change all leave the panel exactly where you put it. Your comment is still saved and still highlighted either way, and <strong>Comments</strong> in the floating toolbar always brings the panel back.</li>'+
 '<li><strong>Override for this document</strong>, indented under it, is the exception: leave it unchecked and this document follows the default above; check it and this document keeps its own setting (the label then shows it, for example <em>Override for this document: Off</em>) no matter how you later change the default. Unchecking it makes the document follow the default again.</li>'+
+'<li>Every time shown here - a comment&#39;s timestamp, <em>Generated on</em>, <em>Last comment</em>, the footer, the Copy all bundle and the printed appendix - names the <strong>timezone</strong> it is in, so two reviewers in different places read the same comment the same way. <strong>Show times in UTC</strong> (in <em>More &gt; Preferences</em>) switches every one of them to UTC instead of this computer&#39;s local zone, labelled <em>UTC</em>; it applies immediately, with no reload, and is your setting for every commentable-html document in this browser. A plain calendar date (a <em>Generated on</em> with no time of day) has no zone and is shown as-is.</li>'+
 '</ul>')+
 T('Shareable or Not shareable',
 '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>'+
@@ -15549,8 +15607,7 @@ const f=document.createElement("footer");
 f.id= "cmFooter";
 f.className= "cm-skip cm-footer";
 f.setAttribute("aria-label","About Commentable HTML");
-let gen=root.getAttribute("data-generated");
-if(!gen){const lm=Date.parse(document.lastModified);if(!isNaN(lm))gen=new Date(lm).toISOString();}
+const gen=cmhGeneratedIso();
 const genStr=gen?formatTime(gen):"unknown";
 f.innerHTML=
 cmBrandLink(CMH_ICON_SVG

@@ -131,7 +131,9 @@
      content carrying the same id must never be mistaken for one. */
   const prefDefault = menu.querySelector("#btnAutoOpenPanel");
   const prefOverride = menu.querySelector("#btnAutoOpenPanelOverride");
+  const prefUtc = menu.querySelector("#btnUtcTimes");
   function syncPrefRows() {
+    if (prefUtc) prefUtc.setAttribute("aria-checked", utcTimesEnabled() ? "true" : "false");
     if (prefDefault) prefDefault.setAttribute("aria-checked", autoOpenPanelDefault() ? "true" : "false");
     if (!prefOverride) return;
     const pinned = autoOpenPanelOverride();
@@ -167,11 +169,20 @@
   wirePrefRow(prefOverride, () => {
     return setAutoOpenPanelOverride(autoOpenPanelOverride() === null ? !autoOpenPanelDefault() : null);
   });
+  // A refused write leaves the stored zone unchanged, so only a write that LANDED re-stamps the
+  // already-rendered timestamps.
+  wirePrefRow(prefUtc, () => {
+    const ok = setUtcTimes(!utcTimesEnabled());
+    if (ok !== false) cmhRefreshTimeLabels();
+    return ok;
+  });
   syncPrefRows();
   // Another tab (or another document in this browser) can change the shared default while this
   // menu is open; refresh the rows so an activation never toggles from a stale state.
   window.addEventListener("storage", (e) => {
-    if (!e || e.key == null || e.key === AUTO_OPEN_PANEL_KEY || e.key === AUTO_OPEN_PANEL_DOC_KEY) syncPrefRows();
+    if (!e || e.key == null || e.key === AUTO_OPEN_PANEL_KEY || e.key === AUTO_OPEN_PANEL_DOC_KEY
+      || e.key === UTC_TIMES_KEY) syncPrefRows();
+    if (!e || e.key == null || e.key === UTC_TIMES_KEY) cmhRefreshTimeLabels();
   });
 
   // Roving focus across the menu's items (Up/Down/Home/End) with ONE tab stop, the pattern
