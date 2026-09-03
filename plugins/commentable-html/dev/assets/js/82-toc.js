@@ -345,7 +345,11 @@ function setupTocCollapse() {
     caret.className = "cmh-toc-caret cm-skip";
     cmhMarkLayerChrome(caret);
     if (list) {
-      if (!list.id) list.id = "cmhTocList" + i;
+      if (!list.id) {
+        let n = i;
+        while (cmhEl("cmhTocList" + n)) n++;   // never mint a duplicate id into the document
+        list.id = "cmhTocList" + n;
+      }
       caret.setAttribute("aria-controls", list.id);
     }
     // A list with no title of its own still gets the control, standing alone above the entries.
