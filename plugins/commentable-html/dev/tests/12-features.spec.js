@@ -221,11 +221,23 @@ test.describe("copy all", () => {
     expect(b).toContain("HANDLED_IDS_JSON: [");
   });
 
-  test("Copy all is disabled with zero comments and re-enabled after a comment exists (CMH-COPY-04, CMH-COPY-07)", async ({ page }) => {
+  test("Copy all is disabled without changing its background on hover, then re-enabled after a comment exists (CMH-COPY-04, CMH-COPY-07)", async ({ page }) => {
     await openKitchenSink(page);
     const topCopy = page.locator("#btnCopyAllTop");
     await expect(topCopy).toHaveAttribute("aria-disabled", "true");
     await expect(topCopy).toHaveAttribute("title", "No comments to copy");
+    const accentBackground = await page.evaluate(() => {
+      const probe = document.createElement("div");
+      probe.style.background = "var(--cp-accent)";
+      document.body.appendChild(probe);
+      const color = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return color;
+    });
+    const disabledBackground = await topCopy.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(disabledBackground).toBe(accentBackground);
+    await topCopy.hover();
+    expect(await topCopy.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(disabledBackground);
     await topCopy.focus();
     await expect(page.locator(".cm-tooltip")).toContainText("No comments to copy");
     const emptyToast = await currentToast(page);
@@ -242,6 +254,10 @@ test.describe("copy all", () => {
     await page.locator(".cm-modal .danger").click();
     await expect(sidebarCopy).toHaveAttribute("aria-disabled", "true");
     expect((await sidebarCopy.getAttribute("title")) || (await sidebarCopy.getAttribute("data-cmh-tip"))).toBe("No comments to copy");
+    const sidebarDisabledBackground = await sidebarCopy.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(sidebarDisabledBackground).toBe(accentBackground);
+    await sidebarCopy.hover();
+    expect(await sidebarCopy.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(sidebarDisabledBackground);
   });
 
   test("a code comment emits a fenced block and omits the prose-only context fields", async ({ page }) => {
