@@ -26,6 +26,13 @@ _EXAMPLE_NAME_RE = re.compile(r"^(?:report|deck)-.*\.html$")
 # shipped file. Assembling from an independent source is what lets --check catch a stale or
 # hand-edited shipped prompt instead of comparing it to itself.
 _PROMPT_NAME_RE = re.compile(r"^prompt-.*\.md$")
+
+# Every name shape this build can WRITE into an examples dir, enumerated in one place so a consumer
+# can ask the build itself rather than hand-copying its patterns. `CMH-BUILD-29`'s guard (which
+# keeps build output out of the `dev/examples/` SOURCE directory) reads this tuple, and its test
+# fails if a future `*_NAME_RE` is added without being enrolled here - so a new output shape cannot
+# quietly gain a way to litter that the guard never sees.
+_OUTPUT_NAME_RES = (_EXAMPLE_NAME_RE, _PROMPT_NAME_RE)
 _META_VERSION_RE = re.compile(
     r'(<meta name="commentable-html-version" content=")[0-9]+\.[0-9]+\.[0-9]+(")')
 _LAYER_DESCRIPTOR_RE = re.compile(

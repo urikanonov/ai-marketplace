@@ -514,18 +514,27 @@ class DevExamplesHasNoBuiltCopiesTests(unittest.TestCase):
     `src/` and `images/` are the legitimate contents and are untouched by this rule.
     """
 
-    # Derived from the build's OWN name regexes rather than hand-copied, so teaching build.py a
-    # fourth output shape cannot quietly give it a way to litter here that this guard never sees.
-    # `re.I` widens them: a build writes lower case, but an offender must not escape on case.
-    BUILT = re.compile("(?:%s)|(?:%s)" % (build._EXAMPLE_NAME_RE.pattern,
-                                          build._PROMPT_NAME_RE.pattern), re.I)
+    # The build's OWN compiled regexes, asked for by name rather than hand-copied or re-derived
+    # from their `.pattern` strings: concatenating patterns would renumber a backreference and
+    # could raise at import time, taking the whole module's tests with it.
+    OUTPUT_RES = build._OUTPUT_NAME_RES
+
+    @classmethod
+    def is_built_name(cls, name):
+        """True when `name` is something the build can WRITE into an examples directory.
+
+        Matched case-INSENSITIVELY, which is deliberately wider than the build's own case-sensitive
+        matching: a build writes lower case, but an offender must not escape the guard on case.
+        """
+        lowered = name.lower()
+        return any(r.match(name) or r.match(lowered) for r in cls.OUTPUT_RES)
 
     def test_dev_examples_holds_no_built_documents(self):
         root = os.path.join(_paths.DEV, "examples")
         self.assertTrue(os.path.isdir(root), "dev/examples is missing")
         # No isfile() filter: a DIRECTORY with one of these names is just as wrong, and skipping
         # it would leave the guard a trivially evadable hole.
-        strays = sorted(n for n in os.listdir(root) if self.BUILT.match(n))
+        strays = sorted(n for n in os.listdir(root) if self.is_built_name(n))
         self.assertEqual(
             strays, [],
             "dev/examples holds built documents beside its sources: %s. These are build OUTPUT and "
@@ -545,18 +554,33 @@ class DevExamplesHasNoBuiltCopiesTests(unittest.TestCase):
         self.assertTrue(os.path.isdir(src), "dev/examples/src (the build's content sources) is gone")
         self.assertTrue(os.path.isdir(os.path.join(root, "images")),
                         "dev/examples/images (the garden example's source images) is gone")
-        built = sorted(n for n in os.listdir(src) if self.BUILT.match(n))
+        built = sorted(n for n in os.listdir(src) if self.is_built_name(n))
         self.assertTrue(built, "dev/examples/src has no report/deck/prompt sources left")
 
+    def test_the_guard_consults_every_output_shape_the_build_declares(self):
+        # THE pin, and the reason `build` exposes `_OUTPUT_NAME_RES` at all. Asserting on a
+        # hand-written sample of names would pass just as happily against a hand-copied pattern -
+        # it would restate the rule, not tie it to its source. This instead requires that every
+        # name regex the build module declares is enrolled in the tuple the guard reads, so adding
+        # a fourth output shape (which, going by how `prompt-*.md` arrived, means adding a THIRD
+        # regex rather than widening an existing one) fails here until the guard knows about it.
+        declared = {n for n in dir(build) if n.endswith("_NAME_RE")}
+        self.assertTrue(declared, "build declares no *_NAME_RE; this pin has stopped working")
+        enrolled = {n for n in declared if getattr(build, n) in self.OUTPUT_RES}
+        self.assertEqual(
+            declared, enrolled,
+            "build declares name regex(es) that are not enrolled in build._OUTPUT_NAME_RES, so the "
+            "CMH-BUILD-29 guard cannot see the output shape(s) they describe: %s. Add them to "
+            "_OUTPUT_NAME_RES in tools/build_parts/30-examples.py."
+            % ", ".join(sorted(declared - enrolled)))
+
     def test_the_guard_accepts_every_name_the_build_can_emit(self):
-        # The pattern is derived from build.py's regexes, so this pins the DERIVATION rather than
-        # restating it: every shape the build writes into an examples dir must be caught here, and
-        # an unrelated file must not be.
+        # The behavioral half: what the rule actually does to real names.
         for name in ("report-x.html", "deck-x.html", "prompt-x.md",
                      "REPORT-X.HTML", "Prompt-X.MD"):
-            self.assertTrue(self.BUILT.match(name), "%s should be treated as build output" % name)
+            self.assertTrue(self.is_built_name(name), "%s should be treated as build output" % name)
         for name in ("images", "src", "README.md", "notes.txt", "report.html", "myprompt.md"):
-            self.assertFalse(self.BUILT.match(name), "%s is not build output" % name)
+            self.assertFalse(self.is_built_name(name), "%s is not build output" % name)
 
 
 class ExamplePromptTests(unittest.TestCase):
