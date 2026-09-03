@@ -494,6 +494,52 @@ class CaptureChartRouteTests(unittest.TestCase):
             "the chart route must serve the vendored bundle, whose SHA-384 the examples' "
             "integrity attribute names")
 
+class DevExamplesHasNoBuiltCopiesTests(unittest.TestCase):
+    """CMH-BUILD-29: `dev/examples/` holds SOURCES only - no built report, deck or prompt.
+
+    `build.py` reads its content sources from `dev/examples/src/` and writes the built documents to
+    whatever `--examples-dir` names; the canonical invocation points that at the shipped
+    `../examples`. Point it at `dev/examples` instead and the build quietly fills the source
+    directory with 12.6 MB of its own output beside the sources it reads - which is what happened
+    in #1258 and sat tracked and unreferenced until #1293.
+
+    That is worse than dead weight, because the copies keep the state they were built in. The two
+    chart examples there still inlined two copies of `Chart.js v4.4.0` with no CDN loader long after
+    `CMH-SIZE-09` removed exactly that from the shipped files, so anyone grepping for how an example
+    loads Chart.js found the wrong answer in a bigger, more prominent file.
+
+    `src/` and `images/` are the legitimate contents and are untouched by this rule.
+    """
+
+    # What a BUILT document is named. `build.py` discovers `report-*.html` and `deck-*.html`, and
+    # copies `prompt-*.md` verbatim, so those three shapes are exactly what can land here.
+    BUILT = re.compile(r"^(report|deck)-.*\.html$|^prompt-.*\.md$", re.I)
+
+    def test_dev_examples_holds_no_built_documents(self):
+        root = os.path.join(_paths.DEV, "examples")
+        self.assertTrue(os.path.isdir(root), "dev/examples is missing")
+        strays = sorted(n for n in os.listdir(root)
+                        if os.path.isfile(os.path.join(root, n)) and self.BUILT.match(n))
+        self.assertEqual(
+            strays, [],
+            "dev/examples holds built documents beside its sources: %s. These are build OUTPUT and "
+            "nothing reads them - the shipped tree is plugins/commentable-html/examples, which is "
+            "also what the site copies its demos from. They are almost certainly the result of "
+            "running build.py with --examples-dir pointed at dev/examples instead of ../examples; "
+            "delete them and rebuild with the canonical invocation." % ", ".join(strays))
+
+    def test_the_sources_the_build_actually_reads_are_still_there(self):
+        # The companion, so the rule above can never be satisfied by emptying the directory: the
+        # sources and the garden's source images must survive.
+        root = os.path.join(_paths.DEV, "examples")
+        src = os.path.join(root, "src")
+        self.assertTrue(os.path.isdir(src), "dev/examples/src (the build's content sources) is gone")
+        self.assertTrue(os.path.isdir(os.path.join(root, "images")),
+                        "dev/examples/images (the garden example's source images) is gone")
+        built = sorted(n for n in os.listdir(src) if self.BUILT.match(n))
+        self.assertTrue(built, "dev/examples/src has no report/deck/prompt sources left")
+
+
 class ExamplePromptTests(unittest.TestCase):
     """CMH-DEMO-02: every shipped example report has a companion example-prompt file
     (prompt-<name>.md) with the standard headings and a non-empty blockquote prompt."""
