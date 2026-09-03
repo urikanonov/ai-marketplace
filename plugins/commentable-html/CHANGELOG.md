@@ -22,19 +22,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   every export - pick it up on their own. The setting is cross-document (a zone is a property of the
   reader, not of the document), keyboard operable, storage-guarded with a reporting toast on a
   refused write, re-synced on a cross-tab change, and billed to the storage manager's shared bucket.
+  Exports are unaffected: a Shareable, Offline, Plain HTML or standalone copy carries the raw ISO
+  instant, so the recipient's own preference decides how it renders.
 
 ### Fixed
 
 - `formatTime()` no longer renders an unparseable timestamp as `Invalid Date`, a missing one as
-  `undefined`, or a literal `null` as the Unix epoch: a nullish or empty value renders as empty, a
+  `undefined`, or a literal `null` as the Unix epoch: a nullish, empty, or whitespace-only value
+  renders as empty, an epoch-milliseconds number is accepted as the instant it is, a
   whitespace-padded ISO instant is trimmed and formatted instead of echoed raw, and the return is
-  always a string.
+  always a string. Where a comment has no usable timestamp the surrounding chrome goes with it -
+  no dangling `#3 - ` on a card and no empty `When:` line in the Copy all bundle.
 
 ## [1.844.0] - 2026-09-03
 
 ### Fixed
 
 - Hovering a disabled Copy all control no longer replaces its dimmed crimson background with white.
+
 ## [1.843.0] - 2026-09-02
 
 ### Fixed

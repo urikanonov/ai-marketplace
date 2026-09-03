@@ -169,23 +169,17 @@
   wirePrefRow(prefOverride, () => {
     return setAutoOpenPanelOverride(autoOpenPanelOverride() === null ? !autoOpenPanelDefault() : null);
   });
-  // A refused write leaves the stored zone unchanged, so only a write that LANDED re-stamps the
-  // already-rendered timestamps (cmhApplyTimeZoneChange is a no-op when the zone did not move).
-  wirePrefRow(prefUtc, () => {
-    const ok = setUtcTimes(!utcTimesEnabled());
-    cmhApplyTimeZoneChange();
-    return ok;
-  });
+  // The write itself re-stamps (setUtcTimes -> cmhApplyTimeZoneChange), so this row only reports a
+  // refusal and re-syncs its own state.
+  wirePrefRow(prefUtc, () => setUtcTimes(!utcTimesEnabled()));
   syncPrefRows();
   // Another tab (or another document in this browser) can change the shared default while this
-  // menu is open; refresh the rows so an activation never toggles from a stale state.
+  // menu is open; refresh the rows so an activation never toggles from a stale state. The matching
+  // TIMESTAMP re-stamp is registered in 50-sidebar.js, not here: it must keep working in a document
+  // whose COMMENT UI region has no Preferences rows, where this whole block never runs.
   window.addEventListener("storage", (e) => {
     if (!e || e.key == null || e.key === AUTO_OPEN_PANEL_KEY || e.key === AUTO_OPEN_PANEL_DOC_KEY
       || e.key === UTC_TIMES_KEY) syncPrefRows();
-    // Deliberately NOT keyed on e.key: a localStorage.clear() reports a null key, and on file://
-    // every document shares one origin. Asking whether the zone actually moved covers both without
-    // rebuilding the list for an unrelated key.
-    cmhApplyTimeZoneChange();
   });
 
   // Roving focus across the menu's items (Up/Down/Home/End) with ONE tab stop, the pattern

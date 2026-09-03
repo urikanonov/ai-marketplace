@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { test, expect } from "@playwright/test";
 import {
   fileUrl, ready, stageContent, addTextComment, openSidebarMoreMenu, mutateStoredComments,
-  installClipboardCapture, lastCopied, allCids,
+  installClipboardCapture, lastCopied, allCids, clickSidebarExport, readDownload,
 } from "./helpers.js";
 
 // A fixed zone west of UTC (PST in January), so both the local and the UTC rendering of one
@@ -81,10 +81,101 @@ test("CMH-SIDE-13: the sidebar Generated-on row and the footer name the timezone
 test("CMH-SIDE-13: a date-only generated value stays a bare calendar date with no zone", async ({ page }) => {
   await open(page, "cmh-tz-03", { generated: "2026-01-15" });
   await showSidebar(page);
-  const text = await page.locator("#cmGenerated").innerText();
-  expect(text).toContain("Generated on: Jan 15, 2026");
-  expect(text).not.toMatch(/\d{1,2}:\d{2}/);
-  expect(text).not.toMatch(/PST|PDT|UTC|GMT/);
+  const local = await page.locator("#cmGenerated").innerText();
+  expect(local).toContain("Generated on: Jan 15, 2026");
+  expect(local).not.toMatch(/\d{1,2}:\d{2}/);
+  expect(local).not.toMatch(/PST|PDT|UTC|GMT/);
+  // A calendar date is not an instant, so UTC mode must not give it a time or a zone either.
+  const menu = await openPrefs(page);
+  await menu.locator(UTC_ROW).click();
+  await page.keyboard.press("Escape");
+  const utc = await page.locator("#cmGenerated").innerText();
+  expect(utc).toContain("Generated on: Jan 15, 2026");
+  expect(utc).not.toMatch(/\d{1,2}:\d{2}/);
+  expect(utc).not.toMatch(/PST|PDT|UTC|GMT/);
+});
+
+test("CMH-SIDE-13: replies and the print appendix carry the zone too", async ({ page }) => {
+  // One formatter feeds every surface, so these pin that no call site bypasses it.
+  await seedComment(page, "cmh-tz-13");
+  await page.locator(".cm-card .cm-reply-btn").first().click();
+  await page.locator(".cm-reply-compose").last().locator("textarea").fill("a reply");
+  await page.locator(".cm-reply-compose").last().locator(".cm-reply-save").click();
+  await expect(page.locator(".cm-reply .meta > span").first()).toContainText(/PST|PDT/);
+
+  // The print appendix is materialized for print media and uses the same formatter.
+  await page.emulateMedia({ media: "print" });
+  const appendix = page.locator("#cmhPrintComments");
+  await expect(appendix).toHaveCount(1);
+  expect(await appendix.innerText()).toContain(LOCAL_TEXT);
+  await page.emulateMedia({ media: "screen" });
+});
+
+test("CMH-SIDE-13: the zone formatter is built once per render pass, not once per timestamp", async ({ page }) => {
+  // Reusing one Intl.DateTimeFormat for a whole pass is the perf contract; dropping it between
+  // passes is what lets a changed OS timezone be picked up without a reload.
+  await page.addInitScript(() => {
+    const Real = Intl.DateTimeFormat;
+    window.__cmhZoneFmtCount = 0;
+    function Patched(locale, opts) {
+      if (opts && opts.timeZoneName && !opts.year) window.__cmhZoneFmtCount++;
+      return new Real(locale, opts);
+    }
+    Patched.prototype = Real.prototype;
+    Patched.supportedLocalesOf = Real.supportedLocalesOf.bind(Real);
+    Intl.DateTimeFormat = Patched;
+  });
+  await seedComment(page, "cmh-tz-14");
+  await page.locator(".cm-card .cm-reply-btn").first().click();
+  await page.locator(".cm-reply-compose").last().locator("textarea").fill("a reply");
+  await page.locator(".cm-reply-compose").last().locator(".cm-reply-save").click();
+
+  const before = await page.evaluate(() => { window.__cmhZoneFmtCount = 0; return 0; });
+  expect(before).toBe(0);
+  // One render pass draws a card, a reply and both metadata rows - and builds ONE formatter.
+  await page.click("#btnSort");
+  expect(await page.evaluate(() => window.__cmhZoneFmtCount)).toBe(1);
+  await page.click("#btnSort");
+  expect(await page.evaluate(() => window.__cmhZoneFmtCount)).toBe(2);
+});
+
+test("CMH-SIDE-13: an engine with no zone-name part falls back to a computed UTC offset", async ({ page }) => {
+  // Some engines resolve no timeZoneName part at all; the label must still be true, never absent.
+  await page.addInitScript(() => {
+    const Real = Intl.DateTimeFormat;
+    function Patched(locale, opts) {
+      const f = new Real(locale, opts);
+      if (opts && opts.timeZoneName) {
+        return { formatToParts: () => [{ type: "literal", value: "" }], format: (d) => f.format(d) };
+      }
+      return f;
+    }
+    Patched.prototype = Real.prototype;
+    Patched.supportedLocalesOf = Real.supportedLocalesOf.bind(Real);
+    Intl.DateTimeFormat = Patched;
+  });
+  await seedComment(page, "cmh-tz-15");
+  // America/Los_Angeles in January is UTC-08:00.
+  expect(await cardTime(page)).toContain("Jan 15, 2026, 12:30 UTC-08:00");
+});
+
+test("CMH-MENU-PREF-11: an exported copy carries the instant, not the exporter's zone", async ({ page }) => {
+  // An export must not bake the exporter's display zone into the recipient's copy: the embedded
+  // store keeps the raw ISO instant, so the recipient's own preference decides how it renders.
+  await seedComment(page, "cmh-tz-16");
+  const menu = await openPrefs(page);
+  await menu.locator(UTC_ROW).click();
+  await page.keyboard.press("Escape");
+  expect(await cardTime(page)).toContain(UTC_TEXT);
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    clickSidebarExport(page, "#btnSaveHtml"),
+  ]);
+  const html = await readDownload(download);
+  expect(html).toContain(INSTANT);
+  expect(html).not.toContain(UTC_TEXT);
+  expect(html).not.toContain(LOCAL_TEXT);
 });
 
 test("CMH-MENU-PREF-10: the More menu carries a Show times in UTC row that toggles in place and persists", async ({ page }) => {
@@ -256,26 +347,32 @@ test("CMH-MENU-PREF-11: deleting the shared preferences re-stamps every surface 
 
 test("CMH-SIDE-13: a missing or padded timestamp formats sanely instead of leaking Invalid Date", async ({ page }) => {
   await seedComment(page, "cmh-tz-11");
-  // A comment persisted with no createdAt at all renders an EMPTY time, never "undefined",
-  // "Invalid Date", or new Date(null)'s Unix epoch.
-  await mutateStoredComments(page, (arr) => {
-    arr.forEach((c) => { delete c.createdAt; delete c.updatedAt; });
-  });
-  await page.reload();
-  await ready(page);
-  await showSidebar(page);
-  const empty = await cardTime(page);
-  expect(empty).not.toMatch(/undefined|Invalid Date|1970/);
-  expect(empty.replace(/#\d+\s*-?\s*/, "").trim()).toBe("");
+  const setCreated = async (value) => {
+    await mutateStoredComments(page, (arr) => {
+      arr.forEach((c) => { delete c.updatedAt; if (value === undefined) delete c.createdAt; else c.createdAt = value; });
+    });
+    await page.reload();
+    await ready(page);
+    await showSidebar(page);
+    return cardTime(page);
+  };
+
+  // No timestamp at all renders an EMPTY time - never "undefined", "Invalid Date", or
+  // new Date(null)'s Unix epoch - and drops the dangling "#1 - " separator with it.
+  for (const missing of [undefined, null, "", "   "]) {
+    const shown = await setCreated(missing);
+    expect(shown, String(missing)).not.toMatch(/undefined|Invalid Date|1970|NaN/);
+    expect(shown.trim(), String(missing)).toBe("#1");
+  }
 
   // Whitespace around a real ISO instant is benign: it must still format, not be echoed raw.
-  await mutateStoredComments(page, (arr) => {
-    arr.forEach((c) => { c.createdAt = "  " + INSTANT + "  "; });
-  });
-  await page.reload();
-  await ready(page);
-  await showSidebar(page);
-  expect(await cardTime(page)).toContain(LOCAL_TEXT);
+  expect(await setCreated("  " + INSTANT + "  ")).toContain(LOCAL_TEXT);
+  // An epoch-milliseconds NUMBER is a perfectly good instant and must not be stringified first.
+  expect(await setCreated(Date.parse(INSTANT))).toContain(LOCAL_TEXT);
+  // Something that is genuinely not a date is handed back as its own text, with no zone attached.
+  const junk = await setCreated("  not a date  ");
+  expect(junk).toContain("not a date");
+  expect(junk).not.toMatch(/PST|PDT|UTC|GMT|Invalid Date/);
 });
 
 test("CMH-SIDE-13: an engine that ignores the timeZone option never labels local time as UTC", async ({ page }) => {

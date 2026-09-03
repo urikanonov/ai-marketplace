@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.844.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.845.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,26 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.845.0] - 2026-09-03</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Every timestamp the runtime renders now names the timezone it is in - comment cards and replies, the in-document comment dialog, the board-summary state cards, the sidebar <code>Generated on</code> and <code>Last comment</code> rows, the runtime footer, the Copy all bundle, and the print appendix. The label is the viewer&#x27;s zone as their locale names it (<code>PST</code>, <code>GMT+3</code>), with a computed <code>UTC+HH:MM</code> offset as the fallback. Two reviewers in different zones no longer read the same comment as two different times. A date-only <code>data-generated</code> value stays a bare calendar date with no time and no zone, since a calendar date is not an instant.</li>
+              <li><code>Show times in UTC</code>, a new preference in the comments panel&#x27;s <code>More &gt; Preferences</code> menu: it normalizes every timestamp to UTC and labels it <code>UTC</code> instead of the local zone. It applies immediately to what is already on screen (cards, both metadata rows, the footer, and an open comment dialog) with no reload, and the on-demand surfaces - Copy all, the print appendix, and every export - pick it up on their own. The setting is cross-document (a zone is a property of the reader, not of the document), keyboard operable, storage-guarded with a reporting toast on a refused write, re-synced on a cross-tab change, and billed to the storage manager&#x27;s shared bucket. Exports are unaffected: a Shareable, Offline, Plain HTML or standalone copy carries the raw ISO instant, so the recipient&#x27;s own preference decides how it renders.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li><code>formatTime()</code> no longer renders an unparseable timestamp as <code>Invalid Date</code>, a missing one as <code>undefined</code>, or a literal <code>null</code> as the Unix epoch: a nullish, empty, or whitespace-only value renders as empty, an epoch-milliseconds number is accepted as the instant it is, a whitespace-padded ISO instant is trimmed and formatted instead of echoed raw, and the return is always a string. Where a comment has no usable timestamp the surrounding chrome goes with it - no dangling <code>#3 - </code> on a card and no empty <code>When:</code> line in the Copy all bundle.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.844.0] - 2026-09-03</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Hovering a disabled Copy all control no longer replaces its dimmed crimson background with white.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.843.0] - 2026-09-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -511,8 +525,6 @@
               <li>The trade, stated plainly: opened with NO network these two examples now draw blank canvases where they previously rendered charts, matching the long-standing behaviour of <code>report-metrics</code> and <code>report-triage</code>. Everything else - the prose, the tables, the captions, the mermaid diagrams and the whole comment layer - is unaffected, and Export Offline still produces a chart-bearing file that needs no network to view.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.842.0] - 2026-08-31</h3></div>
             <div class="group-label">Changed</div>
@@ -554,28 +566,7 @@
               <li>An offline export keeps the chart sizing it had before the move: the runtime applies <code>Chart.defaults.responsive</code> / <code>maintainAspectRatio</code> only when the library is defined before it, which the head placement guaranteed, so the exporter now re-asserts both in a shim emitted immediately after the Chart.js bytes.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.837.0] - 2026-08-11</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Documents now put their AUTHORED CONTENT FIRST in source order, and fence everything else. The head keeps only what first paint needs (the metas, the title, the favicon, the theme-detection script, the small layer descriptor, and a first-paint guard); the body opens with <code>#commentRoot</code>; and every generated block - the layer stylesheet, the comment-UI markup, the saved comment state, the mermaid loader, the vendored rich-content payload and the runtime - now lives after the content inside one <code>BEGIN/END: commentable-html - MACHINERY</code> fence, with a one-line &quot;generated machinery, skip this&quot; note ahead of each block. A tool that reads the first 50 KB of a shipped template used to get 1.3 MB of base64 and a large minified runtime before a single sentence of prose; it now reaches the title within 1 KB and the opening of the content within 4 KB. The relative order of the five named regions is unchanged, so a document generated by an earlier version still validates and still upgrades, byte-for-byte, exactly as before.</li>
-              <li>Moving the stylesheet behind the content cannot flash unstyled content: a <code>FIRST PAINT</code> guard in the head hides the body while the trailing stylesheet is unparsed AND paints the theme canvas (light or dark) so a dark-theme document does not flash white, and a one-line reveal script immediately after that stylesheet clears it (with a <code>DOMContentLoaded</code> listener and a timeout as failsafes, and a no-op when scripting is off). <code>visibility: hidden</code> keeps layout boxes, so nothing that measures the document at load sees a different page.</li>
-              <li><code>retrofit.py</code> emits the same content-first layout: it injects nothing ahead of the host document&#x27;s own content and assembles the machinery fence at the end of the body, in both Shareable and NonShareable mode.</li>
-              <li><code>upgrade.py</code> and the example builder now look for the shell-baked mermaid loader in the MACHINERY fence as well as in <code>&lt;head&gt;</code>, so an already-generated document still receives shell bootstrap changes. Both scopes are template-owned, and the fence is located with the shipped line-anchored marker matcher, so authored content that merely quotes a marker cannot be mistaken for the loader.</li>
-              <li>A brand profile&#x27;s <code>&lt;style&gt;</code> is inserted after the layer stylesheet&#x27;s REGION rather than before <code>&lt;/head&gt;</code>, so its tokens keep overriding the layer&#x27;s own <code>:root</code> block in the new layout - in NonShareable mode too, where the region is a <code>&lt;link&gt;</code> with no <code>&lt;/style&gt;</code> after it.</li>
-              <li>The runtime&#x27;s print <code>&lt;style&gt;</code> is appended at the end of the body instead of into <code>&lt;head&gt;</code>: its <code>@page</code> margin and its tall-diagram measurement cap win only by source order, and from the head they would now lose to the layer stylesheet.</li>
-              <li>Because source order decides an equal-specificity tie, a per-document <code>&lt;style&gt;</code> no longer wins from <code>&lt;head&gt;</code>. The shell carries an explicit per-document style slot immediately after the layer stylesheet - which is where the shipped examples&#x27; own styles now live.</li>
-              <li><code>Export standalone</code> inlines the reconstructed stylesheet and runtime IN PLACE of the companion regions they replace, so an exported standalone file keeps the content-first shape instead of hoisting 138 KB of CSS back into <code>&lt;head&gt;</code>.</li>
-              <li>The NonShareable missing-companion banner carries its own inline positioning, so it still pins itself to the top of the viewport in the exact case it reports - the companion stylesheet, which used to be the only thing that positioned it, being absent.</li>
-              <li>Every anchor the new layout depends on - the fence, the CSS region, the first-paint guard, the mermaid-loader scope - is located with the shipped line-anchored marker matcher, required to sit outside the authored content, and made to fail LOUDLY rather than silently when the markers are present but ambiguous. <code>retrofit</code> now refuses a host page that already carries a <code>MACHINERY</code> or <code>FIRST PAINT</code> marker, and warns when the host&#x27;s own CSS would trap the fixed-position review chrome in a containing block of its own.</li>
-              <li>Author guidance updated: <code>references/document-layout.md</code> and <code>references/content-conventions.md</code> now describe the content-first source order, the per-document style slot, and the rule that an authored script must not measure layout at parse time.</li>
-              <li>The layer resolves its OWN chrome through a boundary-aware lookup (<code>cmhEl</code>) rather than <code>document.getElementById</code>. Document order used to make the layer&#x27;s controls win a duplicate id because the chrome came first; with the content first, a content element that merely borrowed a control&#x27;s id would have been handed to the code that drives it.</li>
-              <li>Deck code-block token defaults are declared with <code>:where()</code>, so a per-deck theme block always wins them whatever the source order - a default must never outrank the theme it is a default for.</li>
-              <li>Every document terminates a head-opened script-data escape before its content, with 150 bytes of parse state (a <code>&lt;style&gt;</code> whose CSS comment carries the <code>&lt;/script&gt;</code> bytes). Without it, a <code>&lt;script&gt;</code> in the head whose bytes open such an escape would swallow the authored content that now follows it.</li>
-              <li>Tutorial screenshots regenerated for two composer scenes. The comment-UI markup now follows the content, which moves the composer to a marginally different sub-pixel anchor; the wording, colour and structure of garden-05-composer and garden-15-format-toolbar are unchanged, only the text rasterization phase and a 1px control rounding inside the panel.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">404 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">405 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

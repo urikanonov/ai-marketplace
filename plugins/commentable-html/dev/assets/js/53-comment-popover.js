@@ -279,9 +279,7 @@ function _renderCommentPopoverView(c) {
     _delBtn.setAttribute("aria-label", _delName);
   }
   el.querySelector(".cm-comment-popover-note").innerHTML = renderRichNote(c.note);
-  el.querySelector(".cm-comment-popover-meta").innerHTML =
-    "<bdi>" + escapeHtml(formatTime(c.updatedAt || c.createdAt)) + "</bdi>"
-    + (c.updatedAt ? " (edited)" : "");
+  el.querySelector(".cm-comment-popover-meta").innerHTML = cmhTimeMetaHtml(c);
   el.querySelector('[data-act="edit"]').addEventListener("click", (e) => {
     e.preventDefault(); e.stopPropagation();
     const cur = _popoverComment();
@@ -340,8 +338,7 @@ function cmhRefreshCommentPopoverTime() {
   const meta = commentPopover.querySelector(".cm-comment-popover-meta");
   const c = _popoverComment();
   if (!meta || !c) return;
-  meta.innerHTML = "<bdi>" + escapeHtml(formatTime(c.updatedAt || c.createdAt)) + "</bdi>"
-    + (c.updatedAt ? " (edited)" : "");
+  meta.innerHTML = cmhTimeMetaHtml(c);
 }
 
 // Cancel an in-progress edit: back to the note view with focus on Edit, dialog left open (unless

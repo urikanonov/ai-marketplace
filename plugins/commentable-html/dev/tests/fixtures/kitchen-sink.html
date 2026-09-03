@@ -5397,7 +5397,9 @@ function utcTimesEnabled(){
 return cmhReadPref(UTC_TIMES_KEY)===CMH_PREF_ON;
 }
 function setUtcTimes(on){
-return cmhWritePref(UTC_TIMES_KEY,on?CMH_PREF_ON:CMH_PREF_OFF);
+const ok=cmhWritePref(UTC_TIMES_KEY,on?CMH_PREF_ON:CMH_PREF_OFF);
+if(typeof cmhApplyTimeZoneChange=== "function")cmhApplyTimeZoneChange();
+return ok;
 }
 let _cmhAppliedUtcTimes=utcTimesEnabled();
 function cmhUtcTimesChanged(){
@@ -10946,6 +10948,10 @@ return String(s).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':
 function formatTime(iso){
 try{
 if(iso==null||iso=== "")return"";
+if(typeof iso=== "number"||iso instanceof Date){
+const dn=new Date(iso);
+return isNaN(dn.getTime())?String(iso):cmhFormatInstant(dn);
+}
 const s=String(iso).trim();
 if(!s)return"";
 const dateOnly=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
@@ -10955,6 +10961,21 @@ return d.toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric
 }
 const d=new Date(s);
 if(isNaN(d.getTime()))return s;
+return cmhFormatInstant(d);
+}
+catch(e){return iso==null?"":String(iso).trim();}
+}
+function cmhTimeMetaHtml(c){
+const t=formatTime((c&&(c.updatedAt||c.createdAt))||"");
+const edited=(c&&c.updatedAt)?" (edited)":"";
+if(!t)return edited?edited.replace(/^ /,""):"";
+return"<bdi>"+escapeHtml(t)+"</bdi>"+edited;
+}
+function cmhTimeSuffixHtml(c){
+const html=cmhTimeMetaHtml(c);
+return html?" - "+html:"";
+}
+function cmhFormatInstant(d){
 const utc=(typeof utcTimesEnabled=== "function")&&utcTimesEnabled();
 const opts={
 year:"numeric",month:"short",day:"numeric",
@@ -10966,17 +10987,18 @@ opts.timeZone= "UTC";
 }
 return d.toLocaleString(undefined,opts)+" "+(utc?"UTC":cmhLocalZoneLabel(d));
 }
-catch(e){return iso==null?"":String(iso);}
-}
 const CMH_TZ_OPTION_HONORED=(function(){
 try{
-const probe=new Date(Date.UTC(2020,5,15,12,0,0));
-const asUtc=probe.toLocaleString("en-US",{timeZone:"UTC",hour:"2-digit",minute:"2-digit",hour12:false});
-if(probe.getTimezoneOffset()===0)return asUtc.indexOf("12")!==-1;
-return asUtc!==probe.toLocaleString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
+const opts={timeZone:"UTC",hour:"2-digit",hour12:false};
+const probes=[Date.UTC(2020,0,15,12,0,0),Date.UTC(2020,5,15,12,0,0)];
+for(let i=0;i<probes.length;i++){
+if(new Date(probes[i]).toLocaleString("en-US",opts).indexOf("12")===-1)return false;
+}
+return true;
 }catch(e){return false;}
 })();
 let _cmhZoneFmt=null;
+function cmhForgetZoneFormatter(){_cmhZoneFmt=null;}
 function cmhLocalZoneLabel(d){
 try{
 if(!_cmhZoneFmt)_cmhZoneFmt=new Intl.DateTimeFormat(undefined,{timeZoneName:"short"});
@@ -11011,10 +11033,11 @@ if(typeof cmhRefreshCommentPopoverTime=== "function")cmhRefreshCommentPopoverTim
 }
 function cmhApplyTimeZoneChange(){
 if(typeof cmhUtcTimesChanged!== "function"||!cmhUtcTimesChanged())return false;
-cmhMarkUtcTimesApplied();
 cmhRefreshTimeLabels();
+cmhMarkUtcTimesApplied();
 return true;
 }
+window.addEventListener("storage",function(){cmhApplyTimeZoneChange();});
 let commentSort= "pos";
 try{commentSort=localStorage.getItem(COMMENT_KEY+"::commentSort")||"pos";}catch(e){}
 function commentTimeValue(c){
@@ -11063,6 +11086,7 @@ if(icon&&ICONS[state])icon.innerHTML=ICONS[state];
 if(window.__cmhRefreshTip)window.__cmhRefreshTip(b);
 }
 function renderComments(){
+cmhForgetZoneFormatter();
 if(typeof window!== "undefined"&&window.__cmhPerf)window.__cmhPerf.renders=(window.__cmhPerf.renders||0)+1;
 const _listFocus=_captureListFocus();
 const _openModal=_cmhOpenModalBox();
@@ -11196,7 +11220,7 @@ return`
         <div class="note cmh-rich">${rp}${renderRichNote(r.note)}</div>
         <div class="cmh-note-raw" hidden>${escapeHtml(r.note==null?"":r.note)}</div>
         <div class="meta">
-          <span><bdi>${escapeHtml(formatTime(r.updatedAt||r.createdAt))}</bdi>${r.updatedAt?" (edited)":""}</span>
+          <span>${cmhTimeMetaHtml(r)}</span>
           <span class="acts">
             <button type="button" data-act="reply-edit" title="Edit reply">edit</button>
             <button type="button" class="del" data-act="reply-del" title="Delete reply">delete</button>
@@ -11213,7 +11237,7 @@ return`
         <div class="note cmh-rich">${rootPill}${renderRichNote(c.note)}</div>
         <div class="cmh-note-raw" hidden>${escapeHtml(c.note==null?"":c.note)}</div>
         <div class="meta">
-          <span>#${i+1} - <bdi>${escapeHtml(formatTime(c.updatedAt||c.createdAt))}</bdi>${c.updatedAt?" (edited)":""}</span>
+          <span>#${i+1}${cmhTimeSuffixHtml(c)}</span>
           <span class="acts">
             ${jumpBtn}
             <button type="button" data-act="edit" title="Edit comment">edit</button>
@@ -12343,9 +12367,7 @@ _delBtn.setAttribute("title",_delName);
 _delBtn.setAttribute("aria-label",_delName);
 }
 el.querySelector(".cm-comment-popover-note").innerHTML=renderRichNote(c.note);
-el.querySelector(".cm-comment-popover-meta").innerHTML=
-"<bdi>"+escapeHtml(formatTime(c.updatedAt||c.createdAt))+"</bdi>"
-+(c.updatedAt?" (edited)":"");
+el.querySelector(".cm-comment-popover-meta").innerHTML=cmhTimeMetaHtml(c);
 el.querySelector('[data-act="edit"]').addEventListener("click",(e)=>{
 e.preventDefault();e.stopPropagation();
 const cur=_popoverComment();
@@ -12390,8 +12412,7 @@ if(!commentPopover||_popoverEditing)return;
 const meta=commentPopover.querySelector(".cm-comment-popover-meta");
 const c=_popoverComment();
 if(!meta||!c)return;
-meta.innerHTML= "<bdi>"+escapeHtml(formatTime(c.updatedAt||c.createdAt))+"</bdi>"
-+(c.updatedAt?" (edited)":"");
+meta.innerHTML=cmhTimeMetaHtml(c);
 }
 function _cancelCommentPopoverEdit(){
 const cur=_popoverComment();
@@ -12732,16 +12753,11 @@ wirePrefRow(prefDefault,()=>setAutoOpenPanelDefault(!autoOpenPanelDefault()));
 wirePrefRow(prefOverride,()=>{
 return setAutoOpenPanelOverride(autoOpenPanelOverride()===null?!autoOpenPanelDefault():null);
 });
-wirePrefRow(prefUtc,()=>{
-const ok=setUtcTimes(!utcTimesEnabled());
-cmhApplyTimeZoneChange();
-return ok;
-});
+wirePrefRow(prefUtc,()=>setUtcTimes(!utcTimesEnabled()));
 syncPrefRows();
 window.addEventListener("storage",(e)=>{
 if(!e||e.key==null||e.key===AUTO_OPEN_PANEL_KEY||e.key===AUTO_OPEN_PANEL_DOC_KEY
 ||e.key===UTC_TIMES_KEY)syncPrefRows();
-cmhApplyTimeZoneChange();
 });
 function items(){
 return Array.prototype.slice.call(menu.querySelectorAll("button:not([disabled])"))
@@ -12863,7 +12879,11 @@ const isDocument=c.anchorType=== "document";
 const isSlide=c.anchorType=== "slide";
 lines.push(`## Comment ${i+1}${isMermaid?" (mermaid)":isDiff?" (diff)":isImage?" (image)":isLink?" (link)":isWidget?" (widget)":isDocument?" (document)":isSlide?" (slide)":""}`);
 lines.push(`Id: ${oneLine(c.id)}`);
-lines.push(`When: ${oneLine(formatTime(c.createdAt))}${c.updatedAt?" (edited "+oneLine(formatTime(c.updatedAt))+")":""}`);
+const whenCreated=oneLine(formatTime(c.createdAt));
+const whenEdited=c.updatedAt?oneLine(formatTime(c.updatedAt)):"";
+if(whenCreated||whenEdited){
+lines.push(`When: ${whenCreated}${whenEdited?" (edited "+whenEdited+")":""}`.trim());
+}
 if(c.headingPath&&c.headingPath.length){
 const path=c.headingPath.map(h=>`H${Number(h.level)||0} "${oneLine(h.text)}"`).join(" > ");
 lines.push(`Where: ${path}`);
