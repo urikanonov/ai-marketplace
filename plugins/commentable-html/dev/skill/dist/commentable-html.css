@@ -403,7 +403,7 @@ opacity: 0.58; cursor: not-allowed; box-shadow: none;
 }
 .cm-toolbar #btnCopyAllTop[aria-disabled="true"]:hover,
 .cm-sidebar .head-primary #btnCopyAll[aria-disabled="true"]:hover {
-background: var(--cp-surface); border-color: var(--cp-border); color: var(--cp-text-soft);
+background: var(--cp-accent); border-color: var(--cp-accent); color: var(--cp-accent-fg);
 }
 .cm-sidebar .head-meta .cm-brand-icon { width: 18px; height: 18px; }
 .cm-sidebar .head-meta .cm-head-actions { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--cp-chrome-button-gap); }
