@@ -21,6 +21,7 @@ import {
 } from "./shot_compare.mjs";
 import { freezeBuildStamps, STAMP_DATE, STAMP_VERSION } from "./shot_stamps.mjs";
 import { pinnedVersion, lockedVersion, pinMismatchMessage, NOT_INSTALLED_MESSAGE } from "./mermaid_pin.mjs";
+import { vendoredChartJsVersion, chartJsRoutePattern } from "./chartjs_pin.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The in-browser layout/scroll settle loops throw on a wall-clock deadline that was sized for a
@@ -276,6 +277,31 @@ async function routeVendoredMermaid(context) {
   });
 }
 
+// Chart.js, the same way and for the same reason. Until CMH-SIZE-09 the chart examples inlined a
+// copy of the library, so the capture never had to serve one; now they load the pinned CDN build,
+// and a capture that cannot reach it renders a BLANK canvas - which is exactly what the shot
+// quality gate caught (garden-03-chart.png, richness 0.013). Served from `assets/vendor/`, which is
+// the byte-identical copy the offline export inlines and whose SHA-384 the loader's `integrity`
+// attribute names, so the bytes satisfy SRI and the capture stays hermetic.
+async function routeVendoredChartJs(context) {
+  const vendored = path.resolve(HERE, "..", "assets", "vendor", "chart.umd.min.js");
+  if (!fs.existsSync(vendored)) {
+    throw new Error("capture: assets/vendor/chart.umd.min.js is missing; the tutorial chart shot "
+      + "would capture a blank canvas.");
+  }
+  // ONLY this exact version's minified build, which is the byte-identical vendored file. A wider
+  // route would serve these bytes to a document asking for a different version or the unminified
+  // build (report-triage asks for `chart.js@4.4.0/dist/chart.umd.js`), and the reply would fail
+  // that document's `integrity` check - a silently blank chart instead of the honest abort the
+  // catch-all gives it. The version is DERIVED from the bundle, so re-vendoring moves the route
+  // with it and there is no literal to forget. The capture can be pointed at an arbitrary example,
+  // so a document on another Chart.js version is reachable rather than hypothetical.
+  const version = vendoredChartJsVersion(fs.readFileSync(vendored, "utf8").slice(0, 4000));
+  await context.route(chartJsRoutePattern(version),
+    async (route) => {
+      await route.fulfill({ path: vendored, contentType: "application/javascript" });
+    });
+}
 async function expectNoComposer(page) {
   await page.locator(".cm-composer").waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
 }
@@ -405,10 +431,12 @@ async function captureScene(scene, targetDir) {
     await freezeRandom(context);
     // Fail closed: block every remote fetch so capture is hermetic and deterministic. The vendored
     // mermaid route is registered AFTER this (Playwright matches the most-recently-added route
-    // first), so mermaid is still served from node_modules while every other egress - e.g. the
-    // triage example's SRI-pinned Chart.js CDN, which the board shot does not need - is aborted.
+    // first), so mermaid is still served from node_modules, and the garden example's pinned
+    // Chart.js is served from assets/vendor (CMH-SIZE-09), while every other egress - including
+    // the triage example's 4.4.0 Chart.js CDN, which the board shot does not need - is aborted.
     await context.route(/^https?:\/\//, (route) => route.abort());
     await routeVendoredMermaid(context);
+    await routeVendoredChartJs(context);
     const page = await context.newPage();
     await page.goto(sceneUrl(scene));
     await ready(page);

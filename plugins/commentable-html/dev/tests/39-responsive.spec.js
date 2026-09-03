@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import path from "path";
-import { SKILL, fileUrl, ready } from "./helpers.js";
+import { SKILL, fileUrl, ready, routeVendoredLibs } from "./helpers.js";
 
 // Mobile responsiveness regression for the shipped showcase examples. A narrow
 // phone viewport must never produce a content box that spills past the viewport: wide
@@ -46,6 +46,9 @@ for (const [name, file] of Object.entries(EXAMPLES)) {
       test.use({ viewport: { width, height: 780 } });
 
       test.beforeEach(async ({ page }) => {
+        // The chart examples load Chart.js from the pinned CDN (CMH-SIZE-09); serve it from the
+        // vendored copy so an overflow measurement never depends on egress or CDN timing.
+        await routeVendoredLibs(page);
         await page.goto(fileUrl(file));
         await ready(page);
       });

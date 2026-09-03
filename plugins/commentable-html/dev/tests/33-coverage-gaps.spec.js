@@ -4,6 +4,7 @@ import path from "path";
 import {
   openInline, ready, openComposerFor, fileUrl, INLINE, SKILL,
   installClipboardCapture, stageInline, startStaticServer, routeMermaidLocal,
+  routeVendoredLibs,
 } from "./helpers.js";
 
 const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-community-garden.html");
@@ -64,6 +65,11 @@ test("the example Chart.js chart renders a working tooltip (CMH-CHART-04)", asyn
   const server = await startStaticServer(dir);
   try {
     await routeMermaidLocal(page);
+    // The example loads Chart.js from the pinned CDN now (CMH-SIZE-09) instead of inlining a
+    // 205 KB copy, so serve it from `assets/vendor/` - same bytes, same SHA-384 the loader's
+    // `integrity` names. Registered AFTER routeMermaidLocal, whose catch-all denies every
+    // other remote request, because Playwright runs the most recently added handler first.
+    await routeVendoredLibs(page);
     await page.goto(`${server.url}/${path.basename(html)}`);
     await ready(page);
     const chartSelector = "#wateringNeedsChart";

@@ -250,6 +250,250 @@ class ExampleTests(unittest.TestCase):
             self.assertIn("report-taxi.html", r.stdout + r.stderr)
 
 
+def _vendored_chartjs_sri():
+    """The SHA-384 of the vendored Chart.js, in `integrity` form - the single source of truth."""
+    import base64
+    import hashlib
+    with open(os.path.join(_paths.ASSETS, "vendor", "chart.umd.min.js"), "rb") as fh:
+        return "sha384-" + base64.b64encode(hashlib.sha384(fh.read()).digest()).decode("ascii")
+
+
+def _vendored_chartjs_version():
+    """The version the vendored bundle reports about itself (its `Chart.js v<x.y.z>` banner)."""
+    with open(os.path.join(_paths.ASSETS, "vendor", "chart.umd.min.js"), encoding="utf-8",
+              errors="replace") as fh:
+        head = fh.read(4000)
+    m = re.search(r"Chart\.js v(\d+\.\d+\.\d+)", head)
+    if not m:
+        raise RuntimeError(
+            "dev/assets/vendor/chart.umd.min.js carries no `Chart.js v<x.y.z>` banner, so the "
+            "version the shipped loaders must pin cannot be read. If upstream dropped the banner, "
+            "read the version from node_modules/chart.js/package.json here instead, then re-pin "
+            "dev/examples/src/report-taxi.html and report-community-garden.html and recompute "
+            "their integrity from this file.")
+    return m.group(1)
+
+
+class ExampleNoInlinedLibraryTests(unittest.TestCase):
+    """CMH-SIZE-09: no shipped example carries a third-party library BODY of its own.
+
+    Two examples used to inline Chart.js v4.4.0 (205,031 bytes each) as authored content, from the
+    era when a self-contained file had to carry its own renderer. Since CMH-SIZE-01/CMH-SIZE-08 the
+    document does not: the viewer loads a pinned CDN copy and Export Offline downloads, SRI-verifies
+    and inlines the vendored one. So the authored copy was pure weight - it made those two the
+    largest shipped documents - and it was stale: 4.4.0, while the payload pins 4.5.1.
+
+    It also inverted the export's provenance guarantee. The exporter hoists author code BELOW the
+    library it inlines so a constructing script cannot run before its dependency; that hoist put the
+    authored copy after the verified one, so the UNVERIFIED 4.4.0 deterministically won
+    `window.Chart` while the downloaded, hash-checked 4.5.1 sat inert. Measured, not inferred.
+
+    A library body here is anything the vendored-provenance guards (CMH-BUILD-25 for mermaid,
+    CMH-SIZE-08 for Chart.js) do not cover, so nothing checks its version, integrity or licence.
+    """
+
+    # Big enough that no ordinary authored snippet reaches it, small enough to catch a minified
+    # library: the real ones are 205 KB (Chart.js) and 3.5 MB (mermaid).
+    LIBRARY_BYTES = 50000
+    # `</script >`, `</SCRIPT>` and even `</script\n bar>` all close a script element as far as a
+    # browser is concerned, so all of them are accepted here: a guard that a library body can slip
+    # past by changing its case or its spacing is not a guard. `\b` keeps `</scriptfoo>` out.
+    # (Flagged by CodeQL's bad-HTML-filtering-regexp rule.)
+    SCRIPT = re.compile(r"<script([^>]*)>([\s\S]*?)</script\b[^>]*>", re.I)
+    SCRIPT_OPEN = re.compile(r"<script([^>]*)>", re.I)
+    # Vendor banners the minified bundles carry.
+    BANNERS = re.compile(r"Chart\.js v[\d.]+|mermaid@[\d.]+|/\*!\s*Chart\.js", re.I)
+
+    def test_no_example_inlines_a_third_party_library_body(self):
+        offenders = []
+        for path in _all_example_docs():
+            html = _read(path)
+            for attrs, body in self.SCRIPT.findall(html):
+                # The vendored-library PAYLOAD is exempt: it is a build artifact with its own
+                # provenance guards (CMH-SIZE-08 for Chart.js, CMH-BUILD-25 for mermaid), and under
+                # the `--vendor-bytes` escape hatch it legitimately carries megabytes of library.
+                # Matched on the id build.py stamps, not on a marker an author could simply add.
+                if 'id="cmhVendoredRichLibs"' in attrs:
+                    continue
+                if len(body) >= self.LIBRARY_BYTES and self.BANNERS.search(body):
+                    offenders.append("%s: %d bytes, %r"
+                                     % (os.path.basename(path), len(body),
+                                        self.BANNERS.search(body).group(0)))
+        self.assertEqual(
+            offenders, [],
+            "a shipped example inlines a third-party library body. The document does not need one: "
+            "the viewer loads the pinned CDN copy and Export Offline inlines the vendored, "
+            "SRI-verified one. An authored copy is unversioned weight that no provenance guard "
+            "checks, and it WINS over the verified copy in an export. Use the pinned CDN loader "
+            "with SRI, as report-metrics and report-triage do. Offenders: " + "; ".join(offenders))
+
+    def test_the_script_scanner_is_not_evaded_by_case_or_spacing(self):
+        # The rule is only as good as its scanner. `<SCRIPT>` and `</script >` are both legal HTML,
+        # so a library body written either way must still be seen - otherwise the guard is
+        # cosmetic. Exercised on synthetic markup rather than on the corpus, which by construction
+        # contains no offender to find.
+        body = "/*! Chart.js v9.9.9 */" + ("x" * self.LIBRARY_BYTES)
+        for name, html in (
+            ("upper-case tags", "<SCRIPT>%s</SCRIPT>" % body),
+            ("spaced end tag", "<script>%s</script >" % body),
+            ("mixed case and spacing", "<ScRiPt>%s</ScRiPt  >" % body),
+            ("junk in the end tag", "<script>%s</script\t\n bar>" % body),
+        ):
+            found = [b for _, b in self.SCRIPT.findall(html)
+                     if len(b) >= self.LIBRARY_BYTES and self.BANNERS.search(b)]
+            self.assertEqual(len(found), 1, "%s evaded the library-body scanner" % name)
+        # ...but a DIFFERENT element must not be mistaken for the end tag, or a body could be
+        # truncated at the wrong place and scan as too small.
+        self.assertEqual(
+            self.SCRIPT.findall("<script>%s</scriptfoo></script>" % body)[0][1],
+            body + "</scriptfoo>",
+            "`</scriptfoo>` is not a script end tag and must not terminate the body")
+        opens = self.SCRIPT_OPEN.findall('<SCRIPT src="https://cdn.jsdelivr.net/npm/chart.js@1.2.3/'
+                                         'dist/chart.umd.min.js"></SCRIPT>')
+        self.assertEqual(len(opens), 1, "an upper-case loader tag evaded the loader scanner")
+
+    def test_the_chart_examples_still_load_chartjs_somehow(self):
+        # The companion assertion, so the rule above can never be satisfied by simply deleting the
+        # library and leaving the charts dead. Every example that constructs a Chart must still
+        # reach one, and the only sanctioned way is a version-pinned loader with Subresource
+        # Integrity and `crossorigin` (without which SRI cannot be enforced cross-origin).
+        #
+        # Attributes are matched INDEPENDENTLY rather than in one ordered regex: HTML attribute
+        # order is free, so an ordered pattern would fail a perfectly correct tag that happens to
+        # write `crossorigin` before `integrity`.
+        for path in _all_example_docs():
+            html = _read(path)
+            if "new Chart(" not in html:
+                continue
+            name = os.path.basename(path)
+            tag = None
+            tag_at = None
+            for m in self.SCRIPT_OPEN.finditer(html):
+                if "cdn.jsdelivr.net/npm/chart.js@" in m.group(1):
+                    tag = m.group(1)
+                    tag_at = m.start()
+                    break
+            self.assertIsNotNone(tag, "%s constructs a Chart but loads no Chart.js" % name)
+            # A FULL version, never a floating jsDelivr specifier: `@4` and `@4.5` silently follow
+            # upstream releases, which is exactly what an integrity hash cannot survive.
+            src = re.search(r'src="(https://cdn\.jsdelivr\.net/npm/chart\.js@'
+                            r'(\d+\.\d+\.\d+)/dist/chart\.umd(\.min)?\.js)"', tag)
+            self.assertIsNotNone(
+                src, "%s: Chart.js loader is not pinned to an exact version: %r" % (name, tag))
+            self.assertRegex(tag, r'integrity="sha384-[A-Za-z0-9+/]+={0,2}"',
+                             "%s: Chart.js loader has no well-formed SHA-384 integrity" % name)
+            # `crossorigin` may legally be written bare (equivalent to `anonymous`), so match the
+            # attribute NAME rather than the `name=` prefix - the ordered-regex trap again.
+            self.assertRegex(tag, r'\bcrossorigin\b',
+                             "%s: Chart.js loader has no crossorigin, so SRI cannot be enforced" % name)
+            # Chart.js is a classic synchronous script and the init runs at parse time, so a
+            # deferred, async or module loader leaves `Chart` undefined when the init looks.
+            self.assertNotRegex(tag, r'\b(defer|async)\b',
+                                "%s: the Chart.js loader is deferred/async, so the parse-time init "
+                                "runs before the library exists" % name)
+            self.assertNotRegex(tag, r'type="module"',
+                                "%s: the Chart.js loader is a module, so it is deferred by "
+                                "definition and the parse-time init runs first" % name)
+
+            # THE POINT of this assertion. A loader that names the MINIFIED build is naming the file
+            # this repository vendors, so its hash must be that file's hash - checked by VALUE, not
+            # by shape. Without this, bumping the vendored Chart.js moves `assets/vendor/`, the
+            # payload descriptor and the CMH-SIZE-08 provenance guard while leaving these loaders
+            # behind; SRI then blocks the script and the `typeof Chart === "undefined"` guard
+            # swallows it, so the charts go blank with no error and no failing test.
+            if src.group(3):
+                self.assertIn(
+                    'integrity="%s"' % _vendored_chartjs_sri(), tag,
+                    "%s: the loader names the vendored minified Chart.js but its integrity is not "
+                    "that file's SHA-384. Recompute it from dev/assets/vendor/chart.umd.min.js "
+                    "(and check the pinned @version still matches)." % name)
+                self.assertIn("chart.js@%s/" % _vendored_chartjs_version(), src.group(1),
+                              "%s: the loader's pinned version does not match the vendored "
+                              "Chart.js bundle" % name)
+
+            # ORDER matters as much as presence. Chart.js is a classic synchronous script and the
+            # init is guarded with `typeof Chart === "undefined"`, so a loader placed AFTER the
+            # first `new Chart(...)` no-ops into a permanently blank canvas with no error - the
+            # precise failure this companion test exists to prevent, and one that "the loader is
+            # somewhere in the file" cannot see.
+            #
+            # Both positions are taken from real SPANS, never from a substring search over the
+            # whole document: `html.index(<url>)` would happily match the same URL inside the
+            # payload descriptor or a comment, and `html.index("new Chart(")` would match the
+            # phrase quoted in prose or in a fenced code sample. Either would flip this into a
+            # false failure whose message reads like a genuine ordering bug.
+            init_at = None
+            for m in self.SCRIPT.finditer(html):
+                if "new Chart(" in m.group(2):
+                    init_at = m.start() + m.group(2).index("new Chart(")
+                    break
+            self.assertIsNotNone(
+                init_at, "%s: `new Chart(` appears only outside a <script> body" % name)
+            self.assertLess(
+                tag_at, init_at,
+                "%s: the Chart.js loader comes AFTER the first new Chart(...) call, so the init "
+                "runs before the library exists and the canvas stays blank" % name)
+
+
+class CaptureChartRouteTests(unittest.TestCase):
+    """CMH-SIZE-09: the tutorial capture serves Chart.js from the vendored copy, and only that one.
+
+    The capture is hermetic - it aborts every remote request - so until the chart examples stopped
+    inlining Chart.js it never needed a chart route at all. Now it does, and the route has two ways
+    to go quietly wrong, both of which end as a BLANK chart in a committed screenshot rather than as
+    an error: not matching the URL the examples actually request, or matching too much and answering
+    some other document's request with these bytes (which then fails that document's `integrity`).
+    """
+
+    def _source(self):
+        with open(os.path.join(_paths.DEV, "tools", "capture_tutorial.mjs"), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_the_capture_installs_the_chart_route(self):
+        src = self._source()
+        # The CALL, not the bare name: `async function routeVendoredChartJs(context)` contains the
+        # name-plus-parens too, so asserting on that alone stays green after the call site is
+        # deleted - a guard that cannot fail is not a guard.
+        self.assertRegex(src, r"(?m)^\s*await routeVendoredChartJs\(context\);\s*$",
+                         "the capture never AWAITS the chart route, so the chart shot would be "
+                         "blank (a declaration alone installs nothing)")
+
+    def test_the_route_is_built_from_the_pin_module_not_a_wildcard(self):
+        # The route used to be a literal here with a `[^/]+` version, which answered a request for
+        # ANY minified Chart.js with the vendored bytes - and since the capture can be pointed at an
+        # arbitrary example, a document on another version would have had its `integrity` check
+        # reject the reply and its chart go silently blank. It is now built from the vendored
+        # bundle's own banner by `tools/chartjs_pin.mjs`, which is exercised behaviorally in
+        # `tests/01-vendor-provenance.spec.js`. What this asserts is only that the capture still
+        # goes through that module and did not regrow a hand-written pattern.
+        src = self._source()
+        self.assertIn('from "./chartjs_pin.mjs"', src,
+                      "the capture must build its Chart.js route from tools/chartjs_pin.mjs")
+        self.assertRegex(src, r"await context\.route\(chartJsRoutePattern\(",
+                         "the capture must install the pinned route the module builds")
+        self.assertNotRegex(
+            src, r"context\.route\(/\^https[^\n]*chart\\\.js@",
+            "the capture has a hand-written Chart.js route literal again; build it from "
+            "chartJsRoutePattern so the version cannot drift into a wildcard")
+
+    def test_no_shipped_example_requests_a_minified_bundle_other_than_the_vendored_one(self):
+        # The other half: the route serves ONE file, so any example asking for a different minified
+        # build would be answered with the wrong bytes.
+        want = "https://cdn.jsdelivr.net/npm/chart.js@%s/dist/chart.umd.min.js" % _vendored_chartjs_version()
+        for path in _all_example_docs():
+            for url in re.findall(r'src="(https://cdn\.jsdelivr\.net/npm/chart\.js@[^"]+)"', _read(path)):
+                if url.endswith("chart.umd.min.js"):
+                    self.assertEqual(url, want,
+                                     "%s requests a minified Chart.js the capture route does not "
+                                     "serve" % os.path.basename(path))
+    def test_the_route_serves_the_vendored_bundle(self):
+        src = self._source()
+        # Quote style and inner whitespace are free; the path segments are what matters.
+        self.assertRegex(
+            src, r"""["']assets["'],\s*["']vendor["'],\s*["']chart\.umd\.min\.js["']""",
+            "the chart route must serve the vendored bundle, whose SHA-384 the examples' "
+            "integrity attribute names")
+
 class ExamplePromptTests(unittest.TestCase):
     """CMH-DEMO-02: every shipped example report has a companion example-prompt file
     (prompt-<name>.md) with the standard headings and a non-empty blockquote prompt."""

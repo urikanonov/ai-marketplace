@@ -4,6 +4,34 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.843.0] - 2026-09-02
+
+### Fixed
+
+- `report-community-garden.html` and `report-taxi.html` no longer inline their own copy of
+  Chart.js. Each carried a complete `Chart.js v4.4.0` bundle (205,031 bytes) as authored content,
+  from the era when a self-contained file had to ship its own renderer. It no longer does: the
+  viewer loads the pinned CDN copy, and Export Offline downloads, SRI-verifies and inlines the
+  vendored one. They now use a pinned, SRI-guarded loader for `chart.js@4.5.1/dist/chart.umd.min.js`.
+  That is deliberately NOT the `chart.js@4.4.0/dist/chart.umd.js` that `tools/blocks/chart_block.py`
+  emits and that `report-metrics` and `report-triage` still use: 4.5.1 minified is the
+  byte-identical copy in `assets/vendor/`, so the loader's integrity hash is that file's own
+  SHA-384 and the version the viewer loads is the version an Offline export inlines. That removes
+  205 KB from each of the two largest shipped examples and takes a version conflict with it - the
+  authored copy was 4.4.0 while the same document's payload pinned 4.5.1.
+- With the authored copy gone, an Offline export of those two documents now contains exactly ONE
+  Chart.js, the vendored and hash-verified one. Previously it contained both, and the UNVERIFIED
+  authored copy won: the exporter hoists author code below the library it inlines so a constructing
+  script cannot run before its dependency, and that hoist placed the authored 4.4.0 after the
+  downloaded 4.5.1, so 4.4.0 took `window.Chart` while the verified copy sat inert. Nothing was
+  broken by it - every chart rendered, with zero network - but the export's verify-before-inline
+  guarantee did not hold in practice for a document that carries its own library.
+- The trade, stated plainly: opened with NO network these two examples now draw blank canvases
+  where they previously rendered charts, matching the long-standing behaviour of `report-metrics`
+  and `report-triage`. Everything else - the prose, the tables, the captions, the mermaid diagrams
+  and the whole comment layer - is unaffected, and Export Offline still produces a chart-bearing
+  file that needs no network to view.
+
 ## [1.842.0] - 2026-08-31
 
 ### Changed

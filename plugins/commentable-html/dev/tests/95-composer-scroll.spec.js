@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import path from "path";
-import { EXAMPLES, fileUrl, ready } from "./helpers.js";
+import { EXAMPLES, fileUrl, ready, routeVendoredLibs } from "./helpers.js";
 
 // CMH-CORE-20: working a comment composer must never move the document. Chromium scroll anchoring
 // reacts to the layout change composer creation makes and shifts window.scrollY a frame LATER -
@@ -32,12 +32,20 @@ async function settle(page) {
   });
 }
 
+// The example loads Chart.js from the pinned CDN (CMH-SIZE-09). Serve it from the vendored copy -
+// the bytes its `integrity` names - so the chart cannot land AFTER `settle()` and grow the document
+// mid-measurement, which would be charged to the composer.
+async function openExample(page) {
+  await routeVendoredLibs(page);
+  await page.goto(fileUrl(EXAMPLE));
+}
+
 test.describe("working a composer preserves the document scroll (CMH-CORE-20)", () => {
   test("opening and closing a text composer leaves window.scrollY and the anchor's viewport position untouched (CMH-CORE-20)", async ({ page }) => {
     test.setTimeout(180000);
     // The reproduction needs a document several viewports tall and an anchor mid-viewport.
     await page.setViewportSize({ width: 2000, height: 1000 });
-    await page.goto(fileUrl(EXAMPLE));
+    await openExample(page);
     await ready(page);
     await settle(page);
     expect(await page.evaluate(() => document.documentElement.scrollHeight),
@@ -132,7 +140,7 @@ test.describe("working a composer preserves the document scroll (CMH-CORE-20)", 
 
   test("saving a comment leaves the document where it was (CMH-CORE-20)", async ({ page }) => {
     await page.setViewportSize({ width: 2000, height: 1000 });
-    await page.goto(fileUrl(EXAMPLE));
+    await openExample(page);
     await ready(page);
     await settle(page);
 
@@ -195,7 +203,7 @@ test.describe("working a composer preserves the document scroll (CMH-CORE-20)", 
 
   test("the scroll guard is re-entrant and leaves no lingering overflow-anchor override (CMH-CORE-20)", async ({ page }) => {
     await page.setViewportSize({ width: 2000, height: 1000 });
-    await page.goto(fileUrl(EXAMPLE));
+    await openExample(page);
     await ready(page);
     await settle(page);
 
@@ -271,7 +279,7 @@ test.describe("working a composer preserves the document scroll (CMH-CORE-20)", 
 
   test("the guard puts back a host document's own inline overflow-anchor, value and priority (CMH-CORE-20)", async ({ page }) => {
     await page.setViewportSize({ width: 2000, height: 1000 });
-    await page.goto(fileUrl(EXAMPLE));
+    await openExample(page);
     await ready(page);
     await settle(page);
 
