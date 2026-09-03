@@ -170,10 +170,10 @@
     return setAutoOpenPanelOverride(autoOpenPanelOverride() === null ? !autoOpenPanelDefault() : null);
   });
   // A refused write leaves the stored zone unchanged, so only a write that LANDED re-stamps the
-  // already-rendered timestamps.
+  // already-rendered timestamps (cmhApplyTimeZoneChange is a no-op when the zone did not move).
   wirePrefRow(prefUtc, () => {
     const ok = setUtcTimes(!utcTimesEnabled());
-    if (ok !== false) cmhRefreshTimeLabels();
+    cmhApplyTimeZoneChange();
     return ok;
   });
   syncPrefRows();
@@ -182,7 +182,10 @@
   window.addEventListener("storage", (e) => {
     if (!e || e.key == null || e.key === AUTO_OPEN_PANEL_KEY || e.key === AUTO_OPEN_PANEL_DOC_KEY
       || e.key === UTC_TIMES_KEY) syncPrefRows();
-    if (!e || e.key == null || e.key === UTC_TIMES_KEY) cmhRefreshTimeLabels();
+    // Deliberately NOT keyed on e.key: a localStorage.clear() reports a null key, and on file://
+    // every document shares one origin. Asking whether the zone actually moved covers both without
+    // rebuilding the list for an unrelated key.
+    cmhApplyTimeZoneChange();
   });
 
   // Roving focus across the menu's items (Up/Down/Home/End) with ONE tab stop, the pattern

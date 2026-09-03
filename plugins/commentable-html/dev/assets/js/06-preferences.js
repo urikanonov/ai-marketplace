@@ -78,3 +78,14 @@ function utcTimesEnabled() {
 function setUtcTimes(on) {
   return cmhWritePref(UTC_TIMES_KEY, on ? CMH_PREF_ON : CMH_PREF_OFF);
 }
+// The display zone the RENDERED output currently carries. A `storage` event fires for every key in
+// the origin - and on file:// every commentable-html document shares one - so re-stamping on each
+// one would rebuild the comment list, and drop the reviewer's scroll position, for a preference
+// that did not change. These answer "did the zone REALLY change since we last drew it?".
+let _cmhAppliedUtcTimes = utcTimesEnabled();
+function cmhUtcTimesChanged() {
+  return _cmhAppliedUtcTimes !== utcTimesEnabled();
+}
+function cmhMarkUtcTimesApplied() {
+  _cmhAppliedUtcTimes = utcTimesEnabled();
+}

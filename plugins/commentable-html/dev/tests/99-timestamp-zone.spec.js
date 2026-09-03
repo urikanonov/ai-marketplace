@@ -179,6 +179,122 @@ test("CMH-MENU-PREF-11: turning UTC on re-labels every rendered timestamp withou
   await expect(page.locator(".cm-comment-popover-meta")).toContainText(UTC_TEXT);
 });
 
+test("CMH-MENU-PREF-11: an OPEN comment dialog re-stamps in place when another tab changes the zone", async ({ page }) => {
+  // Clicking the More menu would dismiss the dialog, so the reachable way an open dialog sees a
+  // zone change is a cross-tab write. This is the assertion that actually exercises the refresh.
+  await seedComment(page, "cmh-tz-08");
+  const cid = (await allCids(page))[0];
+  await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
+  await page.locator("#hlBubble").click();
+  await expect(page.locator(".cm-comment-popover-meta")).toContainText(LOCAL_TEXT);
+
+  await page.evaluate((k) => {
+    localStorage.setItem(k, "1");
+    window.dispatchEvent(new StorageEvent("storage", { key: k, newValue: "1" }));
+  }, UTC_KEY);
+  await expect(page.locator(".cm-comment-popover-meta")).toContainText(UTC_TEXT);
+  expect(await cardTime(page)).toContain(UTC_TEXT);
+});
+
+test("CMH-MENU-PREF-11: a storage event that does not move the zone leaves the list alone", async ({ page }) => {
+  // On file:// every document shares one localStorage origin, and a clear() reports a null key, so
+  // an unrelated write must not rebuild the comment list - a rebuild would throw a reader who is
+  // scrolled deep into a long list back to the top.
+  await seedComment(page, "cmh-tz-09");
+  // Identity, not appearance: renderComments() replaces the list wholesale, so a card element that
+  // is still connected proves no rebuild happened.
+  await page.evaluate(() => { window.__cmhProbeCard = document.querySelector(".cm-card"); });
+  // Force the list to actually scroll, so the restore has something to preserve.
+  await page.evaluate(() => {
+    const l = document.getElementById("commentList");
+    l.style.maxHeight = "40px";
+    l.style.overflowY = "auto";
+    l.scrollTop = 20;
+  });
+  const before = await page.evaluate(() => document.getElementById("commentList").scrollTop);
+  expect(before).toBeGreaterThan(0);
+
+  await page.evaluate(() => {
+    localStorage.setItem("commentable-html::somethingElse", "x");
+    window.dispatchEvent(new StorageEvent("storage", { key: null, newValue: null }));
+  });
+  expect(await page.evaluate(() => window.__cmhProbeCard.isConnected)).toBe(true);
+  expect(await page.evaluate(() => document.getElementById("commentList").scrollTop)).toBe(before);
+
+  // A real zone change DOES rebuild and re-stamp - and still keeps the reader's place in the list.
+  await page.evaluate((k) => {
+    localStorage.setItem(k, "1");
+    window.dispatchEvent(new StorageEvent("storage", { key: k, newValue: "1" }));
+  }, UTC_KEY);
+  expect(await page.evaluate(() => window.__cmhProbeCard.isConnected)).toBe(false);
+  expect(await page.evaluate(() => document.getElementById("commentList").scrollTop)).toBe(before);
+  expect(await cardTime(page)).toContain(UTC_TEXT);
+});
+
+test("CMH-MENU-PREF-11: deleting the shared preferences re-stamps every surface back to local time", async ({ page }) => {
+  // The storage manager's "Other / shared data" row owns the display-zone key, and a same-document
+  // removeItem fires no storage event - so without an explicit re-stamp the footer would keep
+  // reading UTC beside cards drawn in local time.
+  await seedComment(page, "cmh-tz-10", { generated: INSTANT });
+  const menu = await openPrefs(page);
+  await menu.locator(UTC_ROW).click();
+  await page.keyboard.press("Escape");
+  expect(await cardTime(page)).toContain(UTC_TEXT);
+
+  await openSidebarMoreMenu(page);
+  await page.click("#btnStorage");
+  const row = page.locator(".cm-storage-global");
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: /Delete shared preferences/ }).click();
+  await page.locator(".cm-storage-confirm .cm-storage-danger").click();
+
+  expect(await page.evaluate((k) => localStorage.getItem(k), UTC_KEY)).toBe(null);
+  expect(await cardTime(page)).toContain(LOCAL_TEXT);
+  expect(await page.locator("#cmGenerated").innerText()).toContain(LOCAL_TEXT);
+  expect(await page.locator("#cmFooter .cm-footer-gen").innerText()).toContain(LOCAL_TEXT);
+});
+
+test("CMH-SIDE-13: a missing or padded timestamp formats sanely instead of leaking Invalid Date", async ({ page }) => {
+  await seedComment(page, "cmh-tz-11");
+  // A comment persisted with no createdAt at all renders an EMPTY time, never "undefined",
+  // "Invalid Date", or new Date(null)'s Unix epoch.
+  await mutateStoredComments(page, (arr) => {
+    arr.forEach((c) => { delete c.createdAt; delete c.updatedAt; });
+  });
+  await page.reload();
+  await ready(page);
+  await showSidebar(page);
+  const empty = await cardTime(page);
+  expect(empty).not.toMatch(/undefined|Invalid Date|1970/);
+  expect(empty.replace(/#\d+\s*-?\s*/, "").trim()).toBe("");
+
+  // Whitespace around a real ISO instant is benign: it must still format, not be echoed raw.
+  await mutateStoredComments(page, (arr) => {
+    arr.forEach((c) => { c.createdAt = "  " + INSTANT + "  "; });
+  });
+  await page.reload();
+  await ready(page);
+  await showSidebar(page);
+  expect(await cardTime(page)).toContain(LOCAL_TEXT);
+});
+
+test("CMH-SIDE-13: an engine that ignores the timeZone option never labels local time as UTC", async ({ page }) => {
+  // toLocaleString is allowed to drop its options where Intl is unusable. Claiming UTC over a local
+  // clock would be a false statement, so the runtime falls back to a fixed-format UTC rendering.
+  await page.addInitScript(() => {
+    const real = Date.prototype.toLocaleString;
+    Date.prototype.toLocaleString = function () { return real.call(this); };
+  });
+  await seedComment(page, "cmh-tz-12");
+  const menu = await openPrefs(page);
+  await menu.locator(UTC_ROW).click();
+  await page.keyboard.press("Escape");
+  const shown = await cardTime(page);
+  expect(shown).toContain("20:30:00 UTC");     // the instant's real UTC clock time
+  expect(shown).not.toContain("12:30");        // never the local clock under a UTC label
+  expect(shown).not.toContain("GMT");
+});
+
 test("CMH-MENU-PREF-11: the Copy all bundle carries the UTC-labelled time", async ({ page }) => {
   await installClipboardCapture(page);
   await seedComment(page, "cmh-tz-07");

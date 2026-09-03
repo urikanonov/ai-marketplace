@@ -4,21 +4,29 @@ function escapeHtml(s) {
 }
 function formatTime(iso) {
   try {
+    // Nothing to format. A comment persisted without a createdAt (an embedded or hand-edited store)
+    // renders an EMPTY timestamp rather than the word "undefined", the string "Invalid Date", or -
+    // for a literal null, which new Date() maps to 0 - a confident "Jan 1, 1970".
+    if (iso == null || iso === "") return "";
+    // Trim ONCE, for both branches: V8's ISO parse is strict, so a padded "  ...T20:30:00Z  " would
+    // otherwise be rejected and echoed raw while a padded bare date still formatted.
+    const s = String(iso).trim();
+    if (!s) return "";
     // A date-only value (YYYY-MM-DD, e.g. a data-generated build/authoring date) is a CALENDAR
     // date, not an instant: parse it in LOCAL time and render it without a time, so it shows the
     // same day in every timezone. new Date("2026-07-25") parses as UTC midnight, which slides to
     // the previous evening for viewers west of UTC (the "Jul 24 ... 17:00" artifact), so a bare
     // date must not go through the datetime path below. It names no zone either: a calendar date
     // is not an instant, so a zone label would only imply a precision it does not have.
-    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso).trim());
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
     if (dateOnly) {
       const d = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
       return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
     }
-    const d = new Date(iso);
-    // An unparseable value has no instant to name a zone for; hand the raw value back rather than
+    const d = new Date(s);
+    // An unparseable value has no instant to name a zone for; hand the raw text back rather than
     // rendering "Invalid Date UTC+02:00".
-    if (isNaN(d.getTime())) return iso;
+    if (isNaN(d.getTime())) return s;
     const utc = (typeof utcTimesEnabled === "function") && utcTimesEnabled();
     // Month name (not a number) so the date is unambiguous across M/D/Y and D/M/Y
     // locales (e.g. "Jul 9, 2026, 13:07 CEST"). 24-hour time, no AM/PM.
@@ -26,18 +34,40 @@ function formatTime(iso) {
       year: "numeric", month: "short", day: "numeric",
       hour: "2-digit", minute: "2-digit", hour12: false
     };
-    if (utc) opts.timeZone = "UTC";
+    if (utc) {
+      // An engine with no usable Intl is permitted to IGNORE toLocaleString's options, which would
+      // print LOCAL time under a "UTC" label - a false statement, not merely an unlocalized one.
+      // Where the option is not honored, fall back to the fixed-format UTC serialization, which
+      // every engine gets right.
+      if (!CMH_TZ_OPTION_HONORED) return d.toUTCString().replace(/\s*GMT$/, "") + " UTC";
+      opts.timeZone = "UTC";
+    }
     // The zone is appended here rather than left to timeZoneName, so its separator and (in UTC
     // mode) its wording are the same in every locale.
     return d.toLocaleString(undefined, opts) + " " + (utc ? "UTC" : cmhLocalZoneLabel(d));
   }
-  catch (e) { return iso; }
+  catch (e) { return iso == null ? "" : String(iso); }
 }
+// Does this engine actually apply toLocaleString's timeZone option? Probed once, on a fixed
+// instant: a UTC rendering that is indistinguishable from the local one means the option was
+// dropped (unless the viewer really is on UTC, where the two agreeing is correct).
+const CMH_TZ_OPTION_HONORED = (function () {
+  try {
+    const probe = new Date(Date.UTC(2020, 5, 15, 12, 0, 0));
+    const asUtc = probe.toLocaleString("en-US", { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hour12: false });
+    if (probe.getTimezoneOffset() === 0) return asUtc.indexOf("12") !== -1;
+    return asUtc !== probe.toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  } catch (e) { return false; }
+})();
 // The viewer's zone as the locale names it ("PST", "GMT+3"), falling back to a computed offset
-// when the engine cannot part out a zone name.
+// when the engine cannot part out a zone name. The formatter is stateless and instant-independent,
+// so it is built ONCE: formatTime() runs per card, per reply and per metadata row, and constructing
+// a fresh Intl.DateTimeFormat each time measured ~25x the cost of reusing one.
+let _cmhZoneFmt = null;
 function cmhLocalZoneLabel(d) {
   try {
-    const parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(d);
+    if (!_cmhZoneFmt) _cmhZoneFmt = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" });
+    const parts = _cmhZoneFmt.formatToParts(d);
     for (let i = 0; i < parts.length; i++) {
       if (parts[i].type === "timeZoneName" && parts[i].value) return parts[i].value;
     }
@@ -57,9 +87,15 @@ function cmhGeneratedIso() {
 }
 // Re-stamp every ALREADY-RENDERED timestamp after the display zone changes, so the preference
 // takes effect in place instead of on the next load. The print appendix, the Copy all bundle and
-// every export are built on demand, so they pick the new zone up on their own.
+// every export are built on demand, so they pick the new zone up on their own. This is a pure
+// DISPLAY re-stamp, so the comment list's scroll position is put back: renderComments() replaces
+// the list wholesale, and a reviewer reading deep in a long list must not be thrown to the top for
+// a relabelling. (Drafts, the search filter and focus are already carried across by
+// renderComments() itself.)
 function cmhRefreshTimeLabels() {
+  const top = listEl ? listEl.scrollTop : 0;
   if (typeof renderComments === "function") renderComments();
+  if (listEl) listEl.scrollTop = top;
   updateSideInfo();
   const footer = cmhEl("cmFooter");
   const genEl = footer && footer.querySelector(".cm-footer-gen");
@@ -68,6 +104,16 @@ function cmhRefreshTimeLabels() {
     genEl.textContent = "Generated " + (g ? formatTime(g) : "unknown");
   }
   if (typeof cmhRefreshCommentPopoverTime === "function") cmhRefreshCommentPopoverTime();
+}
+// Re-stamp ONLY when the stored display zone really differs from the one on screen. Every writer of
+// the preference routes through here - the More-menu row, a cross-tab storage event, and the
+// storage manager deleting the shared-preferences bucket - so none of them has to know whether the
+// value moved, and a storage event for an unrelated key never rebuilds the list.
+function cmhApplyTimeZoneChange() {
+  if (typeof cmhUtcTimesChanged !== "function" || !cmhUtcTimesChanged()) return false;
+  cmhMarkUtcTimesApplied();
+  cmhRefreshTimeLabels();
+  return true;
 }
 let commentSort = "pos";
 try { commentSort = localStorage.getItem(COMMENT_KEY + "::commentSort") || "pos"; } catch (e) { /* private mode */ }

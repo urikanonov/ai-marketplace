@@ -843,6 +843,10 @@ function openStorageManager(opts) {
     del.addEventListener("click", function () {
       inlineConfirm(del, "Delete shared preferences?", function () {
         _cmhDeleteKeys(keys);
+        // This bucket holds the display-zone preference, and a same-document removeItem fires no
+        // storage event: without this, deleting it would leave the footer (and any surface no later
+        // render touches) stamped in the old zone beside cards drawn in the new one.
+        if (typeof cmhApplyTimeZoneChange === "function") cmhApplyTimeZoneChange();
         announceRetry();
         render();
       });

@@ -25,15 +25,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 ### Fixed
 
-- `formatTime()` no longer renders an unparseable timestamp as `Invalid Date`; it hands the raw
-  value back, so a comment or print entry with a malformed date shows the value instead of a
-  meaningless date carrying a timezone label.
+- `formatTime()` no longer renders an unparseable timestamp as `Invalid Date`, a missing one as
+  `undefined`, or a literal `null` as the Unix epoch: a nullish or empty value renders as empty, a
+  whitespace-padded ISO instant is trimmed and formatted instead of echoed raw, and the return is
+  always a string.
+
 ## [1.844.0] - 2026-09-03
 
 ### Fixed
 
 - Hovering a disabled Copy all control no longer replaces its dimmed crimson background with white.
-
 ## [1.843.0] - 2026-09-02
 
 ### Fixed

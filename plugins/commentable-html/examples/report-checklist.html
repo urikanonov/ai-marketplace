@@ -5372,6 +5372,13 @@ return cmhReadPref(UTC_TIMES_KEY)===CMH_PREF_ON;
 function setUtcTimes(on){
 return cmhWritePref(UTC_TIMES_KEY,on?CMH_PREF_ON:CMH_PREF_OFF);
 }
+let _cmhAppliedUtcTimes=utcTimesEnabled();
+function cmhUtcTimesChanged(){
+return _cmhAppliedUtcTimes!==utcTimesEnabled();
+}
+function cmhMarkUtcTimesApplied(){
+_cmhAppliedUtcTimes=utcTimesEnabled();
+}
 function getTextNodes(){
 if(typeof window!== "undefined"&&window.__cmhPerf)window.__cmhPerf.textScans=(window.__cmhPerf.textScans||0)+1;
 const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{
@@ -10911,26 +10918,42 @@ return String(s).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':
 }
 function formatTime(iso){
 try{
-const dateOnly=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso).trim());
+if(iso==null||iso=== "")return"";
+const s=String(iso).trim();
+if(!s)return"";
+const dateOnly=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
 if(dateOnly){
 const d=new Date(Number(dateOnly[1]),Number(dateOnly[2])-1,Number(dateOnly[3]));
 return d.toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"});
 }
-const d=new Date(iso);
-if(isNaN(d.getTime()))return iso;
+const d=new Date(s);
+if(isNaN(d.getTime()))return s;
 const utc=(typeof utcTimesEnabled=== "function")&&utcTimesEnabled();
 const opts={
 year:"numeric",month:"short",day:"numeric",
 hour:"2-digit",minute:"2-digit",hour12:false
 };
-if(utc)opts.timeZone= "UTC";
+if(utc){
+if(!CMH_TZ_OPTION_HONORED)return d.toUTCString().replace(/\s*GMT$/,"")+" UTC";
+opts.timeZone= "UTC";
+}
 return d.toLocaleString(undefined,opts)+" "+(utc?"UTC":cmhLocalZoneLabel(d));
 }
-catch(e){return iso;}
+catch(e){return iso==null?"":String(iso);}
 }
+const CMH_TZ_OPTION_HONORED=(function(){
+try{
+const probe=new Date(Date.UTC(2020,5,15,12,0,0));
+const asUtc=probe.toLocaleString("en-US",{timeZone:"UTC",hour:"2-digit",minute:"2-digit",hour12:false});
+if(probe.getTimezoneOffset()===0)return asUtc.indexOf("12")!==-1;
+return asUtc!==probe.toLocaleString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false});
+}catch(e){return false;}
+})();
+let _cmhZoneFmt=null;
 function cmhLocalZoneLabel(d){
 try{
-const parts=new Intl.DateTimeFormat(undefined,{timeZoneName:"short"}).formatToParts(d);
+if(!_cmhZoneFmt)_cmhZoneFmt=new Intl.DateTimeFormat(undefined,{timeZoneName:"short"});
+const parts=_cmhZoneFmt.formatToParts(d);
 for(let i=0;i<parts.length;i++){
 if(parts[i].type=== "timeZoneName"&&parts[i].value)return parts[i].value;
 }
@@ -10947,7 +10970,9 @@ const lm=Date.parse(document.lastModified);
 return isNaN(lm)?"":new Date(lm).toISOString();
 }
 function cmhRefreshTimeLabels(){
+const top=listEl?listEl.scrollTop:0;
 if(typeof renderComments=== "function")renderComments();
+if(listEl)listEl.scrollTop=top;
 updateSideInfo();
 const footer=cmhEl("cmFooter");
 const genEl=footer&&footer.querySelector(".cm-footer-gen");
@@ -10956,6 +10981,12 @@ const g=cmhGeneratedIso();
 genEl.textContent= "Generated "+(g?formatTime(g):"unknown");
 }
 if(typeof cmhRefreshCommentPopoverTime=== "function")cmhRefreshCommentPopoverTime();
+}
+function cmhApplyTimeZoneChange(){
+if(typeof cmhUtcTimesChanged!== "function"||!cmhUtcTimesChanged())return false;
+cmhMarkUtcTimesApplied();
+cmhRefreshTimeLabels();
+return true;
 }
 let commentSort= "pos";
 try{commentSort=localStorage.getItem(COMMENT_KEY+"::commentSort")||"pos";}catch(e){}
@@ -12676,14 +12707,14 @@ return setAutoOpenPanelOverride(autoOpenPanelOverride()===null?!autoOpenPanelDef
 });
 wirePrefRow(prefUtc,()=>{
 const ok=setUtcTimes(!utcTimesEnabled());
-if(ok!==false)cmhRefreshTimeLabels();
+cmhApplyTimeZoneChange();
 return ok;
 });
 syncPrefRows();
 window.addEventListener("storage",(e)=>{
 if(!e||e.key==null||e.key===AUTO_OPEN_PANEL_KEY||e.key===AUTO_OPEN_PANEL_DOC_KEY
 ||e.key===UTC_TIMES_KEY)syncPrefRows();
-if(!e||e.key==null||e.key===UTC_TIMES_KEY)cmhRefreshTimeLabels();
+cmhApplyTimeZoneChange();
 });
 function items(){
 return Array.prototype.slice.call(menu.querySelectorAll("button:not([disabled])"))
@@ -13707,6 +13738,7 @@ del.setAttribute("aria-label","Delete shared preferences and dismissed banners")
 del.addEventListener("click",function(){
 inlineConfirm(del,"Delete shared preferences?",function(){
 _cmhDeleteKeys(keys);
+if(typeof cmhApplyTimeZoneChange=== "function")cmhApplyTimeZoneChange();
 announceRetry();
 render();
 });
