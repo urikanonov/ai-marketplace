@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.846.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.847.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,19 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.847.0] - 2026-09-03</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li><strong>Select individual comments and hand back only those.</strong> Every card in the side pane now carries a <code>Select</code> checkbox. With at least one comment picked, <code>Copy all</code> becomes <code>Copy selected</code> and copies only those threads (each root with its replies) - both the Markdown body and the machine-readable <code>HANDLED_IDS_JSON</code> array - so the agent can never mark a comment you kept back as handled. The partial bundle declares itself with a <code>Scope: selected comments only (N of M open comment threads)</code> line, and leaves the tracked note, checklist, and widget-layout change sections out, because a selection is a comment-only scope.</li>
+              <li>A selection bar above the list shows the live count and offers <code>Clear selection</code>, which deselects everything without deleting anything, and the <code>More</code> menu grows a <code>Clear selected comments</code> item (hidden until something is picked) that deletes only the selected threads after the same confirmation Clear all uses. The selection is per-session: it is never persisted, never travels inside an exported file, and it prunes itself when a selected comment is deleted.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>A comment card now ships ONE definition of &quot;an action&quot;: <code>jump</code>, <code>edit</code> and <code>delete</code> moved onto the same row as <code>Reply</code> and share its bordered-pill look, instead of being small plain text buttons on the meta line above an accent pill below. <code>delete</code> sits at the row&#x27;s end so the destructive action stays clear of <code>Reply</code>, and all four keep their &gt;=44px phone touch targets.</li>
+              <li>The <code>dist/commentable-html.js</code> and <code>dist/commentable-html.assets.js</code> size ceilings in <code>dev/tools/size-budget.json</code> are raised to 677,000 and 865,000 bytes. Both sat at 99% of their previous ceiling before this release, leaving no room for the selection layer; the new values restore the documented ~5% headroom over the current build.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.846.0] - 2026-09-03</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -506,6 +519,8 @@
               <li>The side-panel brand icon now follows the document type and version metadata, keeping it away from the Comments count so the two no longer overlap at the demo deck&#x27;s panel width.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.845.0] - 2026-09-03</h3></div>
             <div class="group-label">Added</div>
@@ -518,8 +533,6 @@
               <li><code>formatTime()</code> no longer renders an unparseable timestamp as <code>Invalid Date</code>, a missing one as <code>undefined</code>, or a literal <code>null</code> as the Unix epoch: a nullish, empty, or whitespace-only value renders as empty, an epoch-milliseconds number is accepted as the instant it is, a whitespace-padded ISO instant is trimmed and formatted instead of echoed raw, and the return is always a string. Where a comment has no usable timestamp the surrounding chrome goes with it - no dangling <code>#3 - </code> on a card and no empty <code>When:</code> line in the Copy all bundle.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.844.0] - 2026-09-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -561,14 +574,7 @@
               <li>The floating composer&#x27;s drag grip is now DRAWN rather than typeset. It was a pair of <code>U+22EE</code> glyphs in a <code>line-height: 1</code> box, so it went through the font pipeline - fallback resolution, the glyph cache, and a text origin snapped to whole device pixels from a font-metric-derived baseline that measured OFF the device grid - and it landed one CSS pixel higher or lower between two otherwise identical renders of the same page in the same digest-pinned container. It was the only region of the tutorial screenshots that was not reproducible, so whichever variant a run happened to commit reddened the exact-pixel drift gate for every pull request that followed, including ones that had never touched the capture path. The precise input that varied between two runs was never reproduced on a quiet host (six sequential and twelve concurrent captures were byte-identical), so the fix removes the whole text-rendering pipeline from the element rather than chasing it: the grip is now a definite 6x10 box of six <code>currentColor</code> dots painted from its own geometry, so there is no glyph to rasterize and no font fallback, glyph cache or text-origin snapping left in the element. It keeps the handle&#x27;s hover and dragging colours, stays <code>aria-hidden</code> decoration beside the <code>drag to move</code> label, and is shorter than that label&#x27;s line box, so the handle and the composer are otherwise unchanged. Under <code>forced-colors: active</code> - where the system palette strips <code>box-shadow</code> and forces backgrounds, and would have erased the dots that the old glyph&#x27;s own repainting survived - the grip opts out and names <code>CanvasText</code> explicitly, so a high-contrast reader keeps the affordance in their own palette rather than in the author&#x27;s grey. The drift budget stays exact (<code>MAX_DIFF_PIXELS</code> 0): the rendering was fixed, not the gate widened.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.840.0] - 2026-08-11</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The cold tier&#x27;s row thresholds are retuned from measurement: <code>keep_rows</code> moves from 20 to 2000 and <code>min_rows</code> from 40 to 4000 (<code>CMH-COLD-10</code>). At the old defaults the tier cost COLD FIRST PAINT. Re-measured at 30 paired iterations, the largest document painted nothing until the parser had finished on 19 of 30 cold loads against 0 of 30 with the tier off (median cold first paint 332 ms to 4952 ms), and the mid-size document on 22 of 30. The new pair was chosen in two stages - a six-point screen at 10 iterations, then a confirmation on a fresh sample at 30 - because the screen alone gets it wrong: 1000/2000 cleared the gate at 10 iterations (p=0.125) and failed at 30 (10 of 30 blank, p=0.00098). At 2000/4000 the largest document goes blank on 1 of 30 cold loads against 0 of 30, paint time shows no detectable change, and time to interactive stays far better than the plain document (-1517 ms cold, -1849 ms warm). Both stages are committed at <code>dev/tools/cold-tier-threshold-sweep.json</code>, with the counts each p-value is computed from. This is a judgement on a measured improvement with the residual BOUNDED, not a proof of parity: 1 of 30 puts a one-sided 95 percent bound of 14.9 percent on the remaining blank rate, and the artifact records that, the false-positive floor of the measurement itself, the uncontrolled between-point drift, and the fact that the gate at 4000 rows is extrapolated from an 11500-row body. The trade in bytes: the corpus win falls from 3,047,017 to 2,036,590, of which 586,392 is the two mid-size documents dropping out of the tier entirely. Reach narrows accordingly - the eligible set goes from a single table body over 40 rows to one over 4000, and the roughly 1700-row generated shape the #1250 survey recorded no longer engages - which is the measured price of the paint bound. Nothing a reader sees changes: the tier remains opt-in and default OFF, and a recorded scan shows it engages on no document this repository ships at either the old or the new defaults.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">406 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">407 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

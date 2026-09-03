@@ -67,11 +67,13 @@ test.describe("visual-audit follow-ups", () => {
     await addTextComment(page, "#commentRoot p", "touch target check");
     await paneSettled(page);
     const minH = await page.evaluate(() => {
-      const btns = [...document.querySelectorAll(".cm-card .meta .acts button")];
+      // The root card's actions moved onto the Reply row (CMH-PICK-08); a reply's own edit/delete
+      // still live in its `.meta .acts`, so both rows are measured here.
+      const btns = [...document.querySelectorAll(".cm-card .cm-card-acts button, .cm-card .meta .acts button")];
       if (!btns.length) return 0;
       return Math.min(...btns.map((b) => b.getBoundingClientRect().height));
     });
-    expect(minH, "jump/edit/delete are comfortable touch targets").toBeGreaterThanOrEqual(44);
+    expect(minH, "reply/jump/edit/delete are comfortable touch targets").toBeGreaterThanOrEqual(44);
   });
 
   // Measures an action row's buttons against the CONTENT box of the surface that owns it (inside
@@ -219,7 +221,7 @@ test.describe("visual-audit follow-ups", () => {
     await expect(page.locator(".cm-card .cm-reply")).toContainText("a reply from a phone");
 
     // The ROOT entry's EDIT composer, which reuses the same actions row.
-    await page.locator('.cm-card .cm-entry-root [data-act="edit"]').first().click();
+    await page.locator('.cm-card .cm-card-acts [data-act="edit"]').first().click();
     await expect(page.locator(".cm-reply-compose")).toHaveCount(1);
     await expectRowFitsEveryDensity(page, ".cm-reply-compose-actions", ".cm-reply-compose",
       "side pane root edit composer", REPLY_ACTS);
@@ -295,19 +297,20 @@ test.describe("visual-audit follow-ups", () => {
     await addTextComment(page, "#commentRoot p", "side pane touch targets");
     await paneSettled(page);
 
-    // The door to the reply composer, measured against the card that owns it. Its row is a plain
-    // block, not a flex container, so there is no gap promise to assert.
-    await expectRowFitsEveryDensity(page, ".cm-card .cm-reply-row", ".cm-card",
-      "side pane reply button", [".cm-reply-btn"], { gaps: false });
-    // Reply's nearest neighbour is the card's DESTRUCTIVE delete action. The two boxes are apart
-    // on BOTH axes today (delete is right-aligned in `.meta`, Reply starts at the card's start
-    // edge a row below), so pin the LARGER separation: two boxes are only a thumb-slip apart when
-    // they are close on every axis, and this way neither a re-alignment nor a collapsed vertical
-    // rhythm can bring them together while the other axis still holds them apart.
-    await expect(page.locator(".cm-card .meta .acts button.del")).toHaveCount(1);
+    // The door to the reply composer, measured against the card that owns it. Since CMH-PICK-08 the
+    // row also holds jump / edit / delete; gaps are not asserted here because the deliberate
+    // Reply-to-delete separation is pinned directly below.
+    await expectRowFitsEveryDensity(page, ".cm-card .cm-card-acts", ".cm-card",
+      "side pane card actions", ['.cm-reply-btn', '[data-act="jump"]', '[data-act="edit"]', '[data-act="del"]'],
+      { gaps: false });
+    // Reply's nearest neighbour is the card's DESTRUCTIVE delete action. Since CMH-PICK-08 the two
+    // share ONE row, so the horizontal separation is what holds them apart: delete is pushed to the
+    // row's end while Reply starts at its start edge. Pin the LARGER separation, so neither a
+    // re-alignment nor a collapsed rhythm can bring them together while the other axis holds.
+    await expect(page.locator(".cm-card .cm-card-acts button.del")).toHaveCount(1);
     const apart = await page.evaluate(() => {
       const card = document.querySelector(".cm-card");
-      const delEl = card.querySelector(".meta .acts button.del");
+      const delEl = card.querySelector(".cm-card-acts button.del");
       const replyEl = card.querySelector(".cm-reply-btn");
       if (!delEl || !replyEl) throw new Error("card is missing its delete or reply control");
       const del = delEl.getBoundingClientRect();
@@ -573,7 +576,9 @@ test.describe("visual-audit follow-ups", () => {
         await expect(page.locator(menu)).toBeVisible();
         const reach = await page.evaluate((m) => {
           const el = document.querySelector(m);
-          const items = [...el.querySelectorAll("button")];
+          // Only the items the reviewer can actually reach: `Clear selected comments` is revealed
+          // by a selection (CMH-PICK-06) and measures 0 while hidden.
+          const items = [...el.querySelectorAll("button:not([hidden])")];
           let worst = Infinity;
           for (const b of items) {
             b.scrollIntoView({ block: "nearest" });
@@ -712,7 +717,9 @@ test.describe("visual-audit follow-ups", () => {
           if (b.getAttribute("aria-expanded") !== "true") b.click();
         }, toggle);
         await expect(page.locator(menu)).toBeVisible();
-        const items = await measure(`${menu} button`);
+        // Only the reachable items: `Clear selected comments` is revealed by a selection
+        // (CMH-PICK-06) and measures 0 while hidden.
+        const items = await measure(`${menu} button:not([hidden])`);
         expect(items.length, `${at}: ${menu} holds all of its items`).toBe(count);
         for (const b of items) {
           expect(b.h, `${at}: ${menu} item '${b.l}' height`).toBeGreaterThanOrEqual(44);
@@ -740,12 +747,18 @@ test.describe("visual-audit follow-ups", () => {
       await page.locator("#cmSearchClear").click();
       await expect(page.locator("#cmSearchInput")).toHaveValue("");
       await expect(page.locator(".cm-card.cm-hidden")).toHaveCount(0);
-      const acts = await measure(".cm-card:not(.cm-hidden) .meta .acts button");
-      expect(acts.length, `${at}: the card rows hold exactly their actions`).toBe(5);
+      const acts = await measure(".cm-card:not(.cm-hidden) .cm-card-acts button, .cm-card:not(.cm-hidden) .meta .acts button");
+      expect(acts.length, `${at}: the card rows hold exactly their actions`).toBe(6);
       for (const b of acts) {
         expect(b.h, `${at}: card action '${b.l}' height`).toBeGreaterThanOrEqual(44);
         expect(b.w, `${at}: card action '${b.l}' width`).toBeGreaterThanOrEqual(44);
       }
+      // The per-comment pick control (CMH-PICK-01) is a target in the same pane and is held to the
+      // same floor - its checkbox is tiny, so the LABEL is what the thumb actually lands on.
+      const picks = await measure(".cm-card:not(.cm-hidden) .cm-pick-label");
+      expect(picks.length, `${at}: every card carries one pick control`).toBe(1);
+      expect(picks[0].h, `${at}: the pick control height`).toBeGreaterThanOrEqual(44);
+      expect(picks[0].w, `${at}: the pick control width`).toBeGreaterThanOrEqual(44);
       // ...and the row still fits its card when the OTHER half of `.meta` is long. The stamp is
       // replaced by an UNBREAKABLE token grown until it no longer fits beside the actions, because
       // a breakable localized string just wraps inside its own flex item and would never exercise
@@ -855,7 +868,7 @@ test.describe("visual-audit follow-ups", () => {
     await page.locator("#cmSearchClear").click();
     await expect(page.locator(".cm-card.cm-hidden")).toHaveCount(0);
     const desktop = await page.evaluate(() => {
-      const editEl = document.querySelector('.cm-card:not(.cm-hidden) .meta .acts [data-act="edit"]');
+      const editEl = document.querySelector('.cm-card:not(.cm-hidden) .cm-card-acts [data-act="edit"]');
       if (!editEl) throw new Error("the card edit action is not present");
       return {
         field: document.getElementById("cmSearchInput").getBoundingClientRect().height,

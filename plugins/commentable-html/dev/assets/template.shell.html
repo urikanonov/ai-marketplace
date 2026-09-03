@@ -462,6 +462,7 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
           <button type="button" id="btnUtcTimes" class="cm-menu-check" role="menuitemcheckbox" tabindex="-1" aria-checked="false" title="Show every timestamp in UTC instead of this computer's local timezone. Times are labelled with the zone they are in either way. This is your setting for every commentable-html document in this browser."><span class="cm-menu-check-box" aria-hidden="true"></span><span class="cm-menu-check-label">Show times in UTC</span></button>
           <div class="cm-menu-group" role="presentation">Manage</div>
           <button type="button" id="btnStorage" role="menuitem" tabindex="-1" aria-label="Manage storage" title="View and delete the comment data every commentable-html document has stored in this browser, to free up local storage"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3z M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6 M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Manage storage</span></button>
+          <button type="button" id="btnClearSelected" class="danger" role="menuitem" tabindex="-1" title="Delete only the comments you selected (asks for confirmation first)" hidden><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13 M9.5 11.5l5 5 M14.5 11.5l-5 5"/></svg><span>Clear selected comments</span></button>
           <button type="button" id="btnClearAll" class="danger" role="menuitem" tabindex="-1" title="Delete every comment (asks for confirmation first)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13"/></svg><span>Clear all comments</span></button>
         </div>
       </div>
@@ -480,6 +481,10 @@ code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; fon
           <button type="button" id="btnPrint" aria-label="Save as PDF" title="Open the browser's print dialog to save this document as a PDF (or print it). Ctrl/Cmd+P also works."><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6 M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2 M6 14h12v7H6z"/></svg><span>PDF</span></button>
         </div>
       </div>
+    </div>
+    <div class="cm-select-bar" id="cmSelectBar" role="group" aria-label="Comment selection" hidden>
+      <span class="cm-select-count" id="cmSelectCount" aria-live="polite"></span>
+      <button type="button" id="btnClearSelection" class="cm-select-clear" title="Deselect every selected comment (nothing is deleted)">Clear selection</button>
     </div>
     <div class="head-aux">
       <div class="head-search" id="cmSearchRow" role="search" hidden>

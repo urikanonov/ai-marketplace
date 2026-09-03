@@ -662,7 +662,7 @@ test.describe("comment interactions", () => {
     await expect(pop.locator(".cm-comment-popover-edit")).toHaveCount(1);
 
     // Nor does the panel's own edit action: it hands the draft back instead of opening a second editor.
-    await page.locator(`.cm-card[data-cid="${cids[0]}"] .cm-entry-root [data-act="edit"]`).click();
+    await page.locator(`.cm-card[data-cid="${cids[0]}"] .cm-card-acts [data-act="edit"]`).click();
     await expect(page.locator(".cm-entry-root .cm-reply-compose")).toHaveCount(0);
     await expect(ta).toHaveValue("dirty draft");
 
@@ -676,7 +676,7 @@ test.describe("comment interactions", () => {
     await addTextComment(page, "#commentRoot section p", "panel owns this", 0);
     const cid = (await allCids(page))[0];
     const card = page.locator(`.cm-card[data-cid="${cid}"]`);
-    await card.locator('.cm-entry-root [data-act="edit"]').click();
+    await card.locator('.cm-card-acts [data-act="edit"]').click();
     await card.locator(".cm-entry-root .cm-reply-compose textarea").fill("panel draft");
 
     await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
@@ -729,7 +729,7 @@ test.describe("comment interactions", () => {
     await addTextComment(page, "#commentRoot section p", "panel holds it", 0);
     const cid = (await allCids(page))[0];
     const card = page.locator(".cm-card[data-cid]").first();
-    await card.locator('.cm-entry-root [data-act="edit"]').click();
+    await card.locator('.cm-card-acts [data-act="edit"]').click();
     await card.locator(".cm-entry-root .cm-reply-compose textarea").fill("inline draft");
     // Re-selecting the commented text would open the floating editor; the dirty inline draft wins.
     await reselectHighlight(page, cid);

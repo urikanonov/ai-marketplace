@@ -296,7 +296,7 @@ test.describe("collaboration: author attribution and threads", () => {
     expect((await storedComments(page)).filter((c) => c.parentId).length).toBe(0);
 
     // Clear all also drops an open ROOT inline editor (root edits are inline in the card).
-    await page.locator(".cm-card .cm-entry-root [data-act='edit']").first().click();
+    await page.locator(".cm-card .cm-card-acts [data-act='edit']").first().click();
     await expect(page.locator(".cm-entry-root .cm-reply-compose")).toHaveCount(1);
     await clickClearAll(page);
     await expect(page.locator(".cm-modal")).toBeVisible();
@@ -498,7 +498,7 @@ test.describe("collaboration: author attribution and threads", () => {
     const scrollBefore = await page.evaluate(() => window.scrollY);
 
     const card = page.locator(".cm-card[data-cid]").first();
-    await card.locator('.cm-entry-root [data-act="edit"]').click();
+    await card.locator('.cm-card-acts [data-act="edit"]').click();
     const editor = card.locator(".cm-entry-root .cm-reply-compose");
     await expect(editor).toHaveCount(1);
     await expect(page.locator(".cm-composer")).toHaveCount(0);
@@ -514,7 +514,7 @@ test.describe("collaboration: author attribution and threads", () => {
     expect((await storedComments(page))[0].note).toBe("original root note");
 
     // Saving updates the note in place, marks it edited, and persists.
-    await card.locator('.cm-entry-root [data-act="edit"]').click();
+    await card.locator('.cm-card-acts [data-act="edit"]').click();
     await card.locator(".cm-entry-root .cm-reply-compose textarea").fill("edited root note");
     await card.locator(".cm-entry-root .cm-reply-compose .cm-reply-save").click();
     await expect(card.locator(".cm-entry-root .note")).toContainText("edited root note");
@@ -531,7 +531,7 @@ test.describe("collaboration: author attribution and threads", () => {
     await addTextComment(page, "#commentRoot section p", "root draft base", 0);
     await openSidebarPanel(page);
     const card = page.locator(".cm-card[data-cid]").first();
-    await card.locator('.cm-entry-root [data-act="edit"]').click();
+    await card.locator('.cm-card-acts [data-act="edit"]').click();
     const ta = card.locator(".cm-entry-root .cm-reply-compose textarea");
     await ta.fill("root draft in progress");
     // The root/reply EDIT path re-opens through openInlineNoteEdit (a different branch, and one whose
@@ -546,7 +546,7 @@ test.describe("collaboration: author attribution and threads", () => {
     // another trigger). Move the selection first, BACKWARDS, so this pins the re-focus path itself
     // rather than the restore that just ran, and so the anchor direction is observable.
     await ta.evaluate((el) => el.setSelectionRange(2, 8, "backward"));
-    await card.locator('.cm-entry-root [data-act="edit"]').click();
+    await card.locator('.cm-card-acts [data-act="edit"]').click();
     await expect.poll(async () => ta.evaluate((el) => [
       document.activeElement === el, el.selectionStart, el.selectionEnd, el.selectionDirection,
     ].join(":"))).toBe("true:2:8:backward");
@@ -628,7 +628,7 @@ test.describe("collaboration: author attribution and threads", () => {
     expect(stored.filter((c) => !c.parentId).length).toBe(1);
 
     // Delete the root: the whole thread goes.
-    await card.locator('.cm-entry-root [data-act="del"]').click();
+    await card.locator('.cm-card-acts [data-act="del"]').click();
     stored = await storedComments(page);
     expect(stored.length).toBe(0);
 
@@ -786,7 +786,7 @@ test.describe("collaboration: author attribution and threads", () => {
       .getAttribute("data-cid");
 
     await page.locator(".cm-card[data-cid]", { hasText: "delete this one" })
-      .locator('.cm-entry-root [data-act="del"]').click();
+      .locator('.cm-card-acts [data-act="del"]').click();
     await expect(page.locator(".cm-card[data-cid]")).toHaveCount(1);
     await settleFocus(page);
     const f = await focusedInPanel(page);
@@ -861,7 +861,7 @@ test.describe("collaboration: author attribution and threads", () => {
     await openSidebarPanel(page);
 
     await page.locator(".cm-card[data-cid]", { hasText: "slow delete" })
-      .locator('.cm-entry-root [data-act="del"]').click();
+      .locator('.cm-card-acts [data-act="del"]').click();
     await expect(page.locator(".cm-card[data-cid]")).toHaveCount(1);
     await settleFocus(page);
     const f = await focusedInPanel(page);
@@ -929,7 +929,7 @@ test.describe("collaboration: author attribution and threads", () => {
     // The draft is re-opened WITHOUT focus (it did not own it - CMH-THREAD-09), so the restore has
     // to go to the list rather than being yielded to the editor's own deferred focus.
     await page.locator(".cm-card[data-cid]", { hasText: "doomed card" })
-      .locator('.cm-entry-root [data-act="del"]').click();
+      .locator('.cm-card-acts [data-act="del"]').click();
     await expect(page.locator(".cm-card[data-cid]")).toHaveCount(1);
     await settleFocus(page);
     const f = await focusedInPanel(page);
@@ -973,7 +973,7 @@ test.describe("collaboration: author attribution and threads", () => {
     // The hidden card's controls still sit FIRST in the raw list, so counting them would push the
     // restore past the survivor it should land on.
     await page.locator(".cm-card[data-cid]", { hasText: "zeta delete me" })
-      .locator('.cm-entry-root [data-act="del"]').click();
+      .locator('.cm-card-acts [data-act="del"]').click();
     await expect(page.locator(".cm-card[data-cid]")).toHaveCount(2);
     await settleFocus(page);
     const f = await focusedInPanel(page);

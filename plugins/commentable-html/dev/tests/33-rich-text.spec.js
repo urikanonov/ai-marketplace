@@ -415,7 +415,7 @@ test.describe("rich-text comment notes (CMH-RICH)", () => {
     await expect(page.locator(".cm-reply-compose")).toHaveCount(0);
 
     // Editing the thread ROOT note in the side pane offers the same toolbar.
-    await page.locator('.cm-card .cm-entry-root [data-act="edit"]').first().click();
+    await page.locator('.cm-card .cm-card-acts [data-act="edit"]').first().click();
     const rootEdit = page.locator(".cm-card .cm-entry-root .cm-reply-compose");
     const rootTa = rootEdit.locator("textarea");
     await expect(rootTa).toHaveValue("root note");

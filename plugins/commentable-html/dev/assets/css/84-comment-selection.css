@@ -1,0 +1,58 @@
+/* ---- Per-comment selection: the card pick control and the panel's selection bar (CMH-PICK) ---- */
+.cm-card .cm-pick-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  color: var(--cp-text-soft);
+  font-size: var(--cp-chrome-small-font);
+}
+.cm-card .cm-pick-label:hover { color: var(--cp-accent); }
+.cm-card .cm-pick-box {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--cp-accent);
+  cursor: pointer;
+}
+/* A picked card is legible at a glance while scanning the list, and its ring is the ACCENT one so
+   it never reads as the warning ring `.cm-card.active` uses for the just-jumped-to comment. */
+.cm-card.cm-card-picked {
+  border-color: var(--cp-accent);
+  box-shadow: 0 0 0 2px var(--cp-accent-soft);
+}
+.cm-card.cm-card-picked .cm-pick-label { color: var(--cp-accent); font-weight: 600; }
+
+.cm-select-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cp-chrome-gap);
+  padding: calc(var(--cp-chrome-button-y) * 0.6) var(--cp-chrome-action-x);
+  border: 1px solid var(--cp-accent);
+  border-radius: 8px;
+  background: var(--cp-accent-soft);
+  font-size: var(--cp-chrome-small-font);
+}
+.cm-select-count { color: var(--cp-accent); font-weight: 600; }
+.cm-select-clear {
+  background: none;
+  box-sizing: border-box;
+  border: 1px solid var(--cp-accent);
+  border-radius: 6px;
+  padding: 0.1rem 0.6rem;
+  font-family: inherit;
+  font-size: var(--cp-chrome-small-font);
+  color: var(--cp-accent);
+  cursor: pointer;
+}
+.cm-select-clear:hover { background: var(--cp-surface); }
+
+/* Phones: the pick control and the bar's clear button are real targets on both axes, the same
+   floor every other side-pane control keeps (CMH-RESP-15). */
+@media (max-width: 640px) {
+  .cm-card .cm-pick-label { min-height: 44px; }
+  .cm-card .cm-pick-box { width: 18px; height: 18px; }
+  .cm-select-clear { min-width: 44px; min-height: 44px; padding: 0.4rem 0.7rem; }
+}

@@ -23,11 +23,12 @@ order the directory listing gives.
 | `61-links.css` | CMH-LINK | Author-facing link comment layer (hover cue, commented-link ring, floating add button). |
 | `70-kql.css` | CMH-KQL, CMH-CODE | Kusto query figure + KQL token styling; standalone code-block frame and optional caption. |
 | `80-focus.css` | CMH-A11Y | Shared themed focus ring for interactive controls. |
+| `84-comment-selection.css` | CMH-PICK, CMH-RESP | The per-comment pick control, the picked-card accent ring, and the panel's selection bar (count + Clear selection), with their phone touch targets. |
 | `85-checklist.css` | CMH-CHECK | Layered checklist controls, hierarchy indentation, and the per-list change card. |
 | `86-notes.css` | CMH-NOTE | Editable notes fields: the textarea, label chip, single/multi-line toggle, and the per-note change card. |
 | `87-validation-banner.css` | CMH-STAMP | Unvalidated-document fallback banner (amber, dismissible, light + dark). |
 | `88-rich-text.css` | CMH-RICH | Rich-text note inline elements (bold/italic/underline/strike/code/list/link) and the composer formatting toolbar. |
-| `88-threads.css` | CMH-AUTHOR, CMH-THREAD, CMH-RICH, CMH-GROW, CMH-RESP | Author pill, sidebar identity control, the thread root-entry / reply layout + Reply button, the compact side-pane variant of the formatting toolbar, the reply / edit actions row and its phone touch targets, and the reply input's font size and autogrow bounds. |
+| `88-threads.css` | CMH-AUTHOR, CMH-THREAD, CMH-RICH, CMH-GROW, CMH-RESP, CMH-PICK | Author pill, sidebar identity control, the thread root-entry / reply layout, the card's ONE unified action row (Reply / jump / edit / delete sharing the `cm-card-btn` pill), the compact side-pane variant of the formatting toolbar, the reply / edit actions row and its phone touch targets, and the reply input's font size and autogrow bounds. |
 | `89-storage.css` | CMH-STORE | Storage manager dialog (near-full-screen list, rows, inline confirm, empty state) and the toast action button. |
 | `90-deck.css` | CMH-DECK, CMH-CODE | Deck profile (`data-cmh-mode="deck"`) overrides; deck theming of the code caption. |
 | `92-print.css` | CMH-PRINT | Print/PDF stylesheet for flat documents plus one-slide-per-page deck print flow. |
