@@ -314,6 +314,71 @@ function setupCollapsibleSections() {
     _cmSectionEntries.push({ heading: heading, section: sec, setState: setState });
   });
 }
+// The in-document Contents list folds from a caret in its title row, so a long list stops being a
+// wall the reader scrolls past on every visit. Three properties keep the fold out of the DOCUMENT's
+// own state: the caret is runtime-injected, TEXT-FREE cm-skip chrome (it spends no character of the
+// offset space comments are anchored in), collapsing only sets a class (no node is removed or
+// reordered, so a comment inside the list keeps its anchor), and the choice is READER state in a
+// per-document localStorage key - an export builds from the on-disk source, so neither the caret nor
+// the fold can bake into an exported document.
+const CMH_TOC_FOLD_KEY = COMMENT_KEY + "::tocFold";
+function _cmReadTocFolds() {
+  let parsed = null;
+  try { parsed = JSON.parse(localStorage.getItem(CMH_TOC_FOLD_KEY) || "{}"); } catch (e) { parsed = null; }
+  return (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : {};
+}
+function _cmWriteTocFold(key, collapsed) {
+  const state = _cmReadTocFolds();
+  if (collapsed) state[key] = 1; else delete state[key];
+  try { localStorage.setItem(CMH_TOC_FOLD_KEY, JSON.stringify(state)); } catch (e) { /* private mode */ }
+}
+function setupTocCollapse() {
+  const root = cmhEl("commentRoot") || document.body;
+  const saved = _cmReadTocFolds();
+  root.querySelectorAll(".cm-toc").forEach(function (nav, i) {
+    if (nav.closest(".cm-skip")) return;
+    if (cmhOwnChrome(nav, ".cmh-toc-caret")) return;
+    const title = nav.querySelector(":scope > .cm-toc-title");
+    const list = nav.querySelector(":scope > ol, :scope > ul");
+    const caret = document.createElement("button");
+    caret.type = "button";
+    caret.className = "cmh-toc-caret cm-skip";
+    cmhMarkLayerChrome(caret);
+    if (list) {
+      if (!list.id) list.id = "cmhTocList" + i;
+      caret.setAttribute("aria-controls", list.id);
+    }
+    // A list with no title of its own still gets the control, standing alone above the entries.
+    if (title) title.insertBefore(caret, title.firstChild);
+    else nav.insertBefore(caret, nav.firstChild);
+    const storeKey = String(i);
+    function setState(collapsed, persist) {
+      nav.classList.toggle("cmh-toc-collapsed", collapsed);
+      caret.setAttribute("aria-expanded", String(!collapsed));
+      caret.title = collapsed ? "Show the contents list" : "Hide the contents list";
+      caret.setAttribute("aria-label", collapsed ? "Expand table of contents" : "Collapse table of contents");
+      if (persist) _cmWriteTocFold(storeKey, collapsed);
+    }
+    caret.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      setState(!nav.classList.contains("cmh-toc-collapsed"), true);
+    });
+    // A collapsed list shows only its title, so clicking that title is the natural gesture for
+    // bringing it back. Expand-only, and never mid-selection, so commenting on the title of an
+    // open list is unaffected.
+    if (title) {
+      title.addEventListener("click", function (e) {
+        if (caret.contains(e.target)) return;
+        if (!nav.classList.contains("cmh-toc-collapsed")) return;
+        const sel = window.getSelection();
+        if (sel && sel.toString().trim()) return;
+        setState(false, true);
+      });
+    }
+    setState(!!saved[storeKey], false);
+  });
+}
 function setupSideToc() {
   const root = cmhEl("commentRoot") || document.body;
   const items = [];
