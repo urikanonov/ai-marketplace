@@ -211,8 +211,12 @@ function unwrapMarks(id) {
     // before setupTocCollapse wraps the nav's loose text), so unwrapping it puts a BARE text node
     // back as a direct child - and `normalize()` cannot merge it into the neighbouring wrappers.
     // The fold hides element children only, so without this the list would fold half way again
-    // the moment a reader deleted a comment anchored on that text (CMH-TOC-12).
-    if (parent.nodeType === 1 && parent.classList.contains("cm-toc")) _cmTocWrapLooseText(parent);
+    // the moment a reader deleted a comment anchored on that text (CMH-TOC-12). It is guarded on
+    // the nav actually carrying OUR caret, so it repairs only a list this layer made collapsible:
+    // a deck (and a `.cm-skip` nav) never gets the caret, and its authored list must stay exactly
+    // as written rather than gain a wrapper on a delete.
+    if (parent.nodeType === 1 && parent.classList.contains("cm-toc")
+      && cmhOwnChrome(parent, ".cmh-toc-caret")) _cmTocWrapLooseText(parent);
   });
 }
 function removeHighlight(comment) {
