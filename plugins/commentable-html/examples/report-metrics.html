@@ -5792,6 +5792,7 @@ const parent=m.parentNode;
 while(m.firstChild)parent.insertBefore(m.firstChild,m);
 parent.removeChild(m);
 parent.normalize();
+if(parent.nodeType===1&&parent.classList.contains("cm-toc"))_cmTocWrapLooseText(parent);
 });
 }
 function removeHighlight(comment){
@@ -18627,10 +18628,11 @@ nav=nav.parentElement&&nav.parentElement.closest
 &&nav.parentElement.closest(".cm-toc.cmh-toc-collapsed");
 }
 }
+const _CM_TOC_IGNORABLE_TEXT_RE=/^[\t\n\f\r ]*$/;
 function _cmTocWrapLooseText(nav){
 const loose=[];
 for(let n=nav.firstChild;n;n=n.nextSibling){
-if(n.nodeType===3&&n.nodeValue&&n.nodeValue.trim())loose.push(n);
+if(n.nodeType===3&&n.nodeValue&&!_CM_TOC_IGNORABLE_TEXT_RE.test(n.nodeValue))loose.push(n);
 }
 for(let i=0;i<loose.length;i++){
 const span=document.createElement("span");

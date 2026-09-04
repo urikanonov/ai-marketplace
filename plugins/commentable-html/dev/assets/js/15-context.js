@@ -207,6 +207,12 @@ function unwrapMarks(id) {
     while (m.firstChild) parent.insertBefore(m.firstChild, m);
     parent.removeChild(m);
     parent.normalize();
+    // A highlight restored at load sits directly under its `.cm-toc` (restoreHighlights runs long
+    // before setupTocCollapse wraps the nav's loose text), so unwrapping it puts a BARE text node
+    // back as a direct child - and `normalize()` cannot merge it into the neighbouring wrappers.
+    // The fold hides element children only, so without this the list would fold half way again
+    // the moment a reader deleted a comment anchored on that text (CMH-TOC-12).
+    if (parent.nodeType === 1 && parent.classList.contains("cm-toc")) _cmTocWrapLooseText(parent);
   });
 }
 function removeHighlight(comment) {

@@ -304,6 +304,36 @@ test.describe("in-document Contents list is collapsible (CMH-TOC-12)", () => {
     await expect(body).toContainText("left as plain content, with no caret");
   });
 
+  test("an unrelated earlier element shadowing a Contents id re-identifies the nav (CMH-TOC-12)", async ({ page }) => {
+    // The mint's trigger is "this id does not resolve to me", not "another .cm-toc has it", so it
+    // fires for ANY earlier owner - here a plain anchor target. Without that, the caret would name
+    // the anchor's region. A test that only paired two navs would let the check narrow to a
+    // seen-TOC-ids set and still pass.
+    const SHADOW = `
+<p><a id="contents">Anchor target that borrows the id.</a></p>
+<nav class="cm-toc" id="contents" aria-label="Table of contents"><div class="cm-toc-title">Contents</div>
+  <ol><li><a href="#alpha">Alpha overview</a></li></ol></nav>
+<section aria-labelledby="alpha"><h2 id="alpha">Alpha overview</h2><p>Apple.</p></section>`;
+    const staged = stageContent(SHADOW, { key: KEY + "-shadow", source: "toc-shadow.html" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    const nav = page.locator("#commentRoot nav.cm-toc");
+    const target = await caret(page).getAttribute("aria-controls");
+    expect(target).not.toBe("contents");
+    expect(await nav.getAttribute("id")).toBe(target);
+    // The caret's target really is the nav, and the earlier anchor keeps the id it authored.
+    expect(await page.evaluate((id) =>
+      document.getElementById(id) === document.querySelector("#commentRoot nav.cm-toc"), target)).toBe(true);
+    expect(await page.evaluate(() =>
+      document.getElementById("contents").tagName.toLowerCase())).toBe("a");
+    // The fold still works, and is still remembered under the AUTHORED id.
+    await caret(page).click();
+    await expect(list(page)).toBeHidden();
+    expect(await page.evaluate((k) => Object.keys(
+      JSON.parse(localStorage.getItem(k + "::tocFold") || "{}")), KEY + "-shadow")).toEqual(["id:contents"]);
+  });
+
   test("an id-less Contents list never steals an authored cmhToc id (CMH-TOC-12)", async ({ page }) => {
     // The mint namespace is not reserved - a document may legitimately author `id="cmhToc0"`. The
     // mint loop therefore probes the whole document before taking a name, so an EARLIER id-less nav
@@ -394,6 +424,102 @@ test.describe("in-document Contents list is collapsible (CMH-TOC-12)", () => {
     await expect(intro).toBeHidden();
     await page.emulateMedia({ media: "print" });
     await expect(intro).toBeVisible();
+  });
+
+  test("a non-collapsing space in a Contents list folds away too (CMH-TOC-12)", async ({ page }) => {
+    // `trim()` would call this run ignorable, but `&nbsp;` is NOT collapsible whitespace - it
+    // paints, so a nav whose loose run is one would keep a stray line box after folding. Source
+    // indentation (the newlines and spaces around the markup) must still be left alone, or every
+    // ordinary Contents list would gain pointless wrappers.
+    const NBSP = `
+<nav class="cm-toc" aria-label="Table of contents"><div class="cm-toc-title">Contents</div>
+  &nbsp;
+  <ol><li><a href="#alpha">Alpha overview</a></li></ol>
+</nav>
+<section aria-labelledby="alpha"><h2 id="alpha">Alpha overview</h2><p>Apple.</p></section>`;
+    const staged = stageContent(NBSP, { key: KEY + "-nbsp", source: "toc-nbsp.html" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    const wrapped = page.locator("#commentRoot nav.cm-toc .cmh-toc-text");
+    // Exactly one wrapper: the run carrying the nbsp. The pure-indentation runs around the title
+    // and the list are left as bare text nodes.
+    await expect(wrapped).toHaveCount(1);
+    expect(await wrapped.evaluate((el) => el.textContent.indexOf("\u00a0"))).toBeGreaterThanOrEqual(0);
+
+    await caret(page).click();
+    await expect(list(page)).toBeHidden();
+    await expect(wrapped).toBeHidden();
+    expect(await docHash(page)).toBe(sourceHash(staged.html));
+  });
+
+  test("deleting a comment on a Contents list's own text keeps it foldable (CMH-TOC-12)", async ({ page }) => {
+    // The wrap is a load-time transform, and a comment RESTORED on that text is re-highlighted
+    // long before the wrap runs - so its `mark` lands as a direct child of the nav and the wrap
+    // only covers the remainder. Deleting the comment then unwraps that run straight back under
+    // the nav, where `normalize()` cannot merge it into the neighbouring wrappers, and the fold
+    // (which reaches element children only) would leave it on screen. Both orders are exercised:
+    // delete while expanded then fold, and delete while already folded.
+    const TEXTY = `
+<nav class="cm-toc" aria-label="Table of contents"><div class="cm-toc-title">Contents</div>
+  Jump to any section below.
+  <ol><li><a href="#alpha">Alpha overview</a></li></ol>
+</nav>
+<section aria-labelledby="alpha"><h2 id="alpha">Alpha overview</h2><p>Apple.</p></section>`;
+    const staged = stageContent(TEXTY, { key: KEY + "-unwrap", source: "toc-unwrap.html" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    const intro = page.locator("#commentRoot nav.cm-toc .cmh-toc-text");
+    await expect(intro).toHaveCount(1);
+
+    await addTextComment(page, "#commentRoot nav.cm-toc .cmh-toc-text", "note on the intro line");
+    // Reload so the highlight is RESTORED (marked before the wrap runs), which is the ordering
+    // that puts the mark directly under the nav.
+    await page.reload();
+    await ready(page);
+    await expect(page.locator("#commentRoot nav.cm-toc > mark.cm-hl")).toHaveCount(1);
+
+    page.on("dialog", (d) => d.accept());
+    await page.locator('.cm-card', { hasText: "note on the intro line" }).locator('[data-act="del"]').click();
+    await expect(page.locator("#commentRoot mark.cm-hl")).toHaveCount(0);
+
+    // The invariant, asserted directly: no significant run is left as a BARE direct child of the
+    // nav, so the fold rule (which reaches element children only) covers all of it. Asserting on
+    // rendered text would not do - `toContainText` reads textContent, which includes what the fold
+    // has hidden.
+    const bareRun = () => page.evaluate(() => {
+      const nav = document.querySelector("#commentRoot nav.cm-toc");
+      let bare = "";
+      for (let n = nav.firstChild; n; n = n.nextSibling) {
+        if (n.nodeType === 3 && !/^[\t\n\f\r ]*$/.test(n.nodeValue || "")) bare += n.nodeValue;
+      }
+      return bare.trim();
+    });
+    expect(await bareRun()).toBe("");
+
+    // Delete-then-fold: the whole loose run is away, not just the part the load-time wrap caught.
+    await caret(page).click();
+    await expect(list(page)).toBeHidden();
+    await expect(page.locator("#commentRoot nav.cm-toc .cmh-toc-text")).toBeHidden();
+
+    // Fold-then-delete: same guarantee when the list was already folded at deletion time. The
+    // delete is driven from the card's own control, so no card-body click is what re-opens it.
+    await caret(page).click();
+    await addTextComment(page, "#commentRoot nav.cm-toc .cmh-toc-text", "second note on the intro line");
+    await page.reload();
+    await ready(page);
+    await caret(page).click();
+    await expect(list(page)).toBeHidden();
+    await page.locator('.cm-card', { hasText: "second note on the intro line" }).locator('[data-act="del"]').click();
+    await expect(page.locator("#commentRoot mark.cm-hl")).toHaveCount(0);
+    // Removing the comment may reopen the list (the delete path reaches its anchor), which is not
+    // what this test is about - the invariant is that nothing bare is left behind, so the fold
+    // still covers the whole run.
+    expect(await bareRun()).toBe("");
+    if (await list(page).isVisible()) await caret(page).click();
+    await expect(list(page)).toBeHidden();
+    await expect(page.locator("#commentRoot nav.cm-toc .cmh-toc-text")).toBeHidden();
   });
 
   test("a Contents list with no title still gets a working caret (CMH-TOC-12)", async ({ page }) => {
