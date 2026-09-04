@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.848.0" />
+<meta name="commentable-html-version" content="1.849.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.848.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.849.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -4748,7 +4748,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.848.0";
+const CMH_VERSION= "1.849.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -18200,7 +18200,7 @@ T('Navigation',
 '<li>Menu entries mirror the document: each keeps the section number the document already shows - the one in your contents list, or the one on the heading itself - and falls back to a computed <code>1.1</code>-style number only when there is none. Each entry is indented to its level, so subsections read as subsections.</li>'+
 '<li><strong>Filter sections</strong> narrows the menu to the entries whose <em>title</em> matches what you type (body text is not searched), hides the sections they do not match, and keeps the parent entries that place a match; clearing the box or pressing <kbd>Esc</kbd> restores the whole document. Printing always carries the whole document, whatever the filter shows.</li>'+
 '<li>Every section title has a caret to <strong>collapse or expand</strong> that section; <strong>Expand All</strong> / <strong>Collapse All</strong> act on every section at once.</li>'+
-'<li>An in-document <strong>Contents</strong> list has its own caret: fold it away to reclaim the top of a long report, or click the folded title to bring it back. This browser remembers your choice for this document.</li>'+
+'<li>In a flow document, an in-document <strong>Contents</strong> list has its own caret: fold it away to reclaim the top of a long report, or click the folded title to bring it back. This browser remembers your choice for this document. (A deck has no in-document Contents list, so it has no caret either.)</li>'+
 '<li><strong>Scroll to Top</strong> / <strong>Scroll to Bottom</strong> jump the document, and a small bubble shows your scroll position.</li>'+
 '</ul>')+
 T('Reading aids',
@@ -18627,6 +18627,18 @@ nav=nav.parentElement&&nav.parentElement.closest
 &&nav.parentElement.closest(".cm-toc.cmh-toc-collapsed");
 }
 }
+function _cmTocWrapLooseText(nav){
+const loose=[];
+for(let n=nav.firstChild;n;n=n.nextSibling){
+if(n.nodeType===3&&n.nodeValue&&n.nodeValue.trim())loose.push(n);
+}
+for(let i=0;i<loose.length;i++){
+const span=document.createElement("span");
+span.className= "cmh-toc-text";
+loose[i].parentNode.insertBefore(span,loose[i]);
+span.appendChild(loose[i]);
+}
+}
 function setupTocCollapse(){
 const root=cmhEl("commentRoot")||document.body;
 const saved=_cmReadTocFolds();
@@ -18635,15 +18647,16 @@ _cmTocFoldEntries.length=0;
 root.querySelectorAll(".cm-toc").forEach(function(nav,i){
 if(nav.closest(".cm-skip"))return;
 if(cmhOwnChrome(nav,".cmh-toc-caret"))return;
+_cmTocWrapLooseText(nav);
 const title=nav.querySelector(":scope > .cm-toc-title");
 const storeKey=_cmTocFoldKeyFor(nav,usedKeys);
 const caret=document.createElement("button");
 caret.type= "button";
 caret.className= "cmh-toc-caret cm-skip";
 cmhMarkLayerChrome(caret);
-if(!nav.id){
+if(!nav.id||document.getElementById(nav.id)!==nav){
 let n=i;
-while(cmhEl("cmhToc"+n))n++;
+while(document.getElementById("cmhToc"+n))n++;
 nav.id= "cmhToc"+n;
 }
 caret.setAttribute("aria-controls",nav.id);

@@ -382,6 +382,25 @@ function expandCollapsedToc(el) {
       && nav.parentElement.closest(".cm-toc.cmh-toc-collapsed");
   }
 }
+// A `.cm-toc` can carry significant text DIRECTLY - an intro sentence beside its list, or entries
+// written as bare text. The fold is a CSS rule over ELEMENT children, which cannot reach a text
+// node, so such a nav would fold "half way": the caret says the list is away while a stray
+// sentence stays on screen. Wrap each non-whitespace run in a span so the same rule covers it.
+// The wrapper is deliberately NOT `cm-skip`: the text is the AUTHOR's, and dropping it out of the
+// offset space would move every comment anchored below it. Moving the same text node under a new
+// inline parent leaves that space untouched.
+function _cmTocWrapLooseText(nav) {
+  const loose = [];
+  for (let n = nav.firstChild; n; n = n.nextSibling) {
+    if (n.nodeType === 3 && n.nodeValue && n.nodeValue.trim()) loose.push(n);
+  }
+  for (let i = 0; i < loose.length; i++) {
+    const span = document.createElement("span");
+    span.className = "cmh-toc-text";
+    loose[i].parentNode.insertBefore(span, loose[i]);
+    span.appendChild(loose[i]);
+  }
+}
 function setupTocCollapse() {
   const root = cmhEl("commentRoot") || document.body;
   const saved = _cmReadTocFolds();
@@ -390,6 +409,7 @@ function setupTocCollapse() {
   root.querySelectorAll(".cm-toc").forEach(function (nav, i) {
     if (nav.closest(".cm-skip")) return;
     if (cmhOwnChrome(nav, ".cmh-toc-caret")) return;
+    _cmTocWrapLooseText(nav);
     const title = nav.querySelector(":scope > .cm-toc-title");
     // Resolve the storage identity BEFORE minting an id below, so the minted (index-derived) id
     // never becomes the key the fold is remembered under.
@@ -401,9 +421,15 @@ function setupTocCollapse() {
     // aria-controls names the NAV, not its first list: the fold hides every child but the title
     // row, so a nav that also carries an intro paragraph or a second list would otherwise announce
     // less than the button actually toggles (and a nav with no list at all would announce nothing).
-    if (!nav.id) {
+    // It is resolved by getElementById, which answers with the FIRST element carrying the id, so a
+    // nav whose AUTHORED id is duplicated elsewhere (duplicate ids are invalid HTML but do occur,
+    // and this layer supports them for the fold identity above) needs a runtime id of its own -
+    // otherwise its caret would name a region it does not control. The storage identity is already
+    // resolved from the authored id above, so re-identifying the nav here never orphans a fold.
+    if (!nav.id || document.getElementById(nav.id) !== nav) {
       let n = i;
-      while (cmhEl("cmhToc" + n)) n++;   // never mint a duplicate id into the document
+      // never mint a duplicate id into the document
+      while (document.getElementById("cmhToc" + n)) n++;
       nav.id = "cmhToc" + n;
     }
     caret.setAttribute("aria-controls", nav.id);
