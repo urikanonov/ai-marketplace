@@ -75,12 +75,16 @@ def main(argv):
     out_real = os.path.normcase(os.path.realpath(out_dir))
     dev_root = os.path.normcase(os.path.realpath(HERE))
     try:
-        writes_into_sources = os.path.commonpath([source_parent, examples_real]) == source_parent
+        examples_in_source_tree = os.path.commonpath(
+            [source_parent, examples_real]) == source_parent
+        out_in_source_tree = os.path.commonpath([source_parent, out_real]) == source_parent
         source_tree_in_dev = os.path.commonpath([dev_root, source_parent]) == dev_root
     except ValueError:
-        writes_into_sources = False
+        examples_in_source_tree = False
+        out_in_source_tree = False
         source_tree_in_dev = False
-    if (out_real == dev_root and source_tree_in_dev) or writes_into_sources:
+    if ((out_real == dev_root and source_tree_in_dev)
+            or examples_in_source_tree or out_in_source_tree):
         parser.error(
             "refusing to write build output into the development source root or example source "
             "tree; run from plugins/commentable-html/dev with: " + CANONICAL_BUILD_COMMAND)

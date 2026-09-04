@@ -118,7 +118,8 @@ class BuildTests(unittest.TestCase):
         for path, text in self.outputs.items():
             self.assertTrue(os.path.exists(path), "missing generated file: %s" % path)
             self.assertEqual(_read(path), text.replace("\r\n", "\n"),
-                             "on-disk %s is stale - run python tools/build.py" % os.path.relpath(path, ROOT))
+                             "on-disk %s is stale - run %s"
+                             % (os.path.relpath(path, ROOT), build.CANONICAL_BUILD_COMMAND))
 
     def test_build_is_idempotent(self):
         again, _ = build.build_all()
@@ -616,6 +617,26 @@ class BuildOutputSafetyTests(unittest.TestCase):
                             side_effect=AssertionError("unsafe build reached build_all")):
                     with self.assertRaises(SystemExit) as cm:
                         build.main(["build.py", "--examples-dir", safe_examples])
+            self.assertEqual(cm.exception.code, 2)
+
+    def test_build_refuses_out_dir_inside_example_source_tree(self):
+        with tempfile.TemporaryDirectory() as d:
+            dev = os.path.join(d, "dev")
+            examples_src = os.path.join(dev, "examples", "src")
+            safe_examples = os.path.join(d, "examples")
+            os.makedirs(examples_src)
+            with contextlib.redirect_stderr(io.StringIO()):
+                with mock.patch.object(build, "HERE", dev), \
+                        mock.patch.object(build, "EXAMPLES_SRC", examples_src), \
+                        mock.patch.object(
+                            build, "build_all",
+                            side_effect=AssertionError("unsafe build reached build_all")):
+                    with self.assertRaises(SystemExit) as cm:
+                        build.main([
+                            "build.py",
+                            "--out-dir", os.path.join(examples_src, "generated"),
+                            "--examples-dir", safe_examples,
+                        ])
             self.assertEqual(cm.exception.code, 2)
 
     def test_resolved_examples_alias_is_refused(self):

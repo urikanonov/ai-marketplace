@@ -193,7 +193,9 @@ class NonShareableTests(unittest.TestCase):
 
     def test_real_nonshareable_template_is_clean(self):
         eco = os.path.join(ROOT, "dist", "NONSHAREABLE.html")
-        self.assertTrue(os.path.exists(eco), "dist/NONSHAREABLE.html not found - run python tools/build.py")
+        self.assertTrue(
+            os.path.exists(eco),
+            "dist/NONSHAREABLE.html not found - run the canonical build command in dev/README.md")
         errors, warnings = validate.validate(eco)
         self.assertEqual(errors, [], "dist/NONSHAREABLE.html errors: %r" % errors)
         self.assertEqual(warnings, [], "dist/NONSHAREABLE.html warnings: %r" % warnings)
