@@ -168,7 +168,7 @@ async function _cmConfirmClearSelected(restoreId) {
   // removes it from layout outright, so the control the reviewer just activated disappears under
   // them. Hand focus to a still-visible one first - the same contract every other vanishing
   // control in this panel keeps (CMH-THREAD-11). The toolbar twin lives in a menu that closes on
-  // click, so its focus goes back to that menu's trigger, exactly like Clear all comments.
+  // click, so its focus goes back to that menu's trigger, exactly like Delete all comments.
   [["btnClearSelection", "btnCopyAll"], ["btnClearSelectionTop", "btnToolbarMenu"]].forEach(function (pair) {
     const btn = cmhEl(pair[0]);
     if (!btn) return;
@@ -186,7 +186,7 @@ async function _cmConfirmClearSelected(restoreId) {
     item.addEventListener("click", function () {
       // The listener cannot await, so surface a failure instead of leaving a floating rejection.
       _cmConfirmClearSelected("btnMoreMenu").catch(function (e) {
-        try { console.warn("commentable-html: clear selected comments failed:", e); } catch (e2) { /* no-op */ }
+        try { console.warn("commentable-html: delete selected comments failed:", e); } catch (e2) { /* no-op */ }
       });
     });
   }

@@ -69,7 +69,7 @@ no pending change.
 - **Change card.** Each changed note shows one non-comment card in the sidebar (placed by document
   order) with a from/to preview, a jump button, and a reset button that reverts that note to its
   authored baseline. It is not counted as a comment, and it is searchable by its label and text.
-- **Clear.** The global Clear all comments also reverts every changed note to its authored baseline.
+- **Delete.** The global Delete all comments action also reverts every changed note to its authored baseline.
 - **Badge.** An unsaved note edit flips the document badge to Not shareable until the file is re-exported.
 - **Copy all.** The bundle gains a `## Note "<id>"` human-readable section with the from/to text; the
   machine-readable `NOTES_STATE_JSON: {...}` line is emitted only inside the single, final

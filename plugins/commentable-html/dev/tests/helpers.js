@@ -247,7 +247,7 @@ export async function clickSidebarMore(page, selector) {
   await page.locator(selector).click();
 }
 
-// Clear all comments now lives in the sidebar More menu; open it, then click Clear.
+// Delete all comments lives in the sidebar More menu; open it, then activate the action.
 export async function clickClearAll(page) {
   await clickSidebarMore(page, "#btnClearAll");
 }

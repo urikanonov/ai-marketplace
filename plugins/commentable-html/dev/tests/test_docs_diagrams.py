@@ -211,6 +211,8 @@ class NewFeatureDocsTests(unittest.TestCase):
 
     def test_tutorial_documents_offline_export(self):
         text = _read(TUTORIAL_MD)
+        self.assertIn("## 18. Export, manage storage, and delete comments", text)
+        self.assertNotIn("## 18. Export, manage storage, and clear", text)
         for snippet in (
             "Offline",
             "Export Offline",
@@ -257,7 +259,7 @@ class SkillTrimDocsTests(unittest.TestCase):
         checks = {
             "document-layout.md": (
                 "runtime toolbar",
-                "export actions, **Manage storage**, **Clear all comments**, and Help",
+                "export actions, **Manage storage**, **Delete all comments**, and Help",
                 "sidebar **More** menu and from the\ncollapsed toolbar's **... more** menu",
                 "Per-document configuration example",
                 "oldest-first and newest-first",

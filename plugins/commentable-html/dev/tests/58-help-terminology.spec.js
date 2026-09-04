@@ -65,17 +65,17 @@ test.describe("Help terminology matches the current button labels", () => {
     const search = page.locator(".cm-help-search-input");
     // The panel-and-toolbar topic must name the redesigned composite header: the captioned ribbon
     // (Search, Sort, More, Help, Hide), the Copy all / Export primary row, and the More menu that now
-    // holds Manage storage and Clear all comments.
+    // holds Manage storage and Delete all comments.
     await search.fill("panel and toolbar");
     const panelTopic = page.locator(".cm-help-topic:visible", { hasText: "The panel and toolbar" });
     await expect(panelTopic).toHaveCount(1);
     const panelText = await panelTopic.innerText();
-    for (const label of ["Export", "Sort", "More", "Help", "Hide", "Search", "Copy all", "Manage storage", "Clear all comments"]) {
+    for (const label of ["Export", "Sort", "More", "Help", "Hide", "Search", "Copy all", "Manage storage", "Delete all comments"]) {
       expect(panelText, `panel-and-toolbar topic names ${label}`).toContain(label);
     }
-    // The collapsed-toolbar sentence names Clear all comments as a second entry point, so a reader
-    // working with the panel hidden knows the overflow menu can clear too (CMH-UI-13).
-    expect(panelText).toMatch(/collapsed[\s\S]*overflow[\s\S]*Clear all comments/);
+    // The collapsed-toolbar sentence names Delete all comments as a second entry point, so a reader
+    // working with the panel hidden knows the overflow menu can delete too (CMH-UI-13).
+    expect(panelText).toMatch(/collapsed[\s\S]*overflow[\s\S]*Delete all comments/);
     // The managing-storage topic points reviewers at the More menu, not the old Export menu.
     await search.fill("Managing storage");
     const storageTopic = page.locator(".cm-help-topic:visible", { hasText: "Managing storage" });
@@ -84,12 +84,13 @@ test.describe("Help terminology matches the current button labels", () => {
     expect(storageText).toContain("More menu");
     expect(storageText).not.toContain("Export menu");
     // The managing-comments topic must use the exact current control label, not the old bare "Clear".
-    await search.fill("Clear all comments");
+    await search.fill("Managing comments");
     const commentsTopic = page.locator(".cm-help-topic:visible", { hasText: "Managing comments" });
     await expect(commentsTopic).toHaveCount(1);
     const commentsText = await commentsTopic.innerText();
-    expect(commentsText).toContain("Clear all comments");
-    expect(commentsText).toMatch(/Clear all comments[\s\S]*More[\s\S]*overflow/); // both entry points (CMH-UI-13)
+    expect(commentsText).toContain("Delete all comments");
+    expect(commentsText).toContain("Delete selected comments");
+    expect(commentsText).toMatch(/Delete all comments[\s\S]*More[\s\S]*overflow/); // both entry points (CMH-UI-13)
     expect(commentsText).not.toContain("Clear deletes");
   });
 
@@ -105,13 +106,13 @@ test.describe("Help terminology matches the current button labels", () => {
     await page.click("#btnHelpTop");
     await expect(page.locator(".cm-help")).toBeVisible();
     const search = page.locator(".cm-help-search-input");
-    await search.fill("Clear all comments");
+    await search.fill("Delete all comments");
     const commentsText = await page.locator(".cm-help-topic:visible", { hasText: "Managing comments" }).innerText();
-    expect(commentsText).toContain("Clear all comments"); // the sidebar route is still described
-    expect(commentsText).not.toMatch(/Clear all comments[\s\S]*More[\s\S]*overflow/);
+    expect(commentsText).toContain("Delete all comments"); // the sidebar route is still described
+    expect(commentsText).not.toMatch(/Delete all comments[\s\S]*More[\s\S]*overflow/);
     await search.fill("panel and toolbar");
     const panelText = await page.locator(".cm-help-topic:visible", { hasText: "The panel and toolbar" }).innerText();
-    expect(panelText).not.toMatch(/collapsed[\s\S]*overflow[\s\S]*Clear all comments/);
+    expect(panelText).not.toMatch(/collapsed[\s\S]*overflow[\s\S]*Delete all comments/);
   });
 });
 

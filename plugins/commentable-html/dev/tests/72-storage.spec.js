@@ -151,16 +151,17 @@ test("the dialog is near-full-screen, closes on backdrop and Escape, and restore
   await expect(page.locator(".cm-storage-manager")).toHaveCount(0);
 });
 
-test("the current-document row disables Delete and offers Clear all comments (CMH-STORE-08)", async ({ page }) => {
+test("the current-document row disables whole-document Delete and offers Delete all comments (CMH-STORE-08)", async ({ page }) => {
   await open(page);
   await addTextComment(page, "#commentRoot p", "note to clear");
   await openManager(page);
   const current = page.locator(".cm-storage-current");
-  await expect(current.locator("button", { hasText: "Delete" })).toHaveCount(0);
-  await expect(current.locator("button", { hasText: "Clear all comments" })).toBeVisible();
-  await current.locator("button", { hasText: "Clear all comments" }).click();
+  await expect(current.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
+  await expect(current.locator("button", { hasText: "Delete all comments" })).toBeVisible();
+  await current.locator("button", { hasText: "Delete all comments" }).click();
   await current.locator(".cm-storage-danger", { hasText: "Confirm" }).click();
   expect((await storedComments(page)).length).toBe(0);
+  await expect(page.locator("#toast")).toContainText("Comments deleted.");
 });
 
 test("a quota failure on a comment save opens the manager and retrying after freeing space persists (CMH-STORE-07)", async ({ page }) => {
@@ -682,7 +683,7 @@ test("a section-review quota failure surfaces a Manage storage action (CMH-STORE
   await expect(page.locator("#toast")).toContainText("Manage storage");
 });
 
-test("the empty/quota state offers Export and Clear shortcuts even when shared preferences remain (CMH-STORE-08)", async ({ page }) => {
+test("the empty/quota state offers Export and Delete all comments shortcuts even when shared preferences remain (CMH-STORE-08)", async ({ page }) => {
   const key = "cmh-store-emptyquota";
   const { html } = stageContent("<section><p>reviewable paragraph text here for anchoring.</p></section>",
     { key, source: "emptyquota.html" });
@@ -699,11 +700,13 @@ test("the empty/quota state offers Export and Clear shortcuts even when shared p
   await page.evaluate(() => localStorage.setItem("commentable-html::sidebarWidth", "320"));
   await addTextComment(page, "#commentRoot p", "unsaved");
   await expect(page.locator(".cm-storage-manager")).toBeVisible();
-  // The empty/quota Export + Clear shortcuts must show despite the shared-preference globals row.
+  // The empty/quota Export + Delete shortcuts must show despite the shared-preference globals row.
   const empty = page.locator(".cm-storage-empty");
   await expect(empty).toBeVisible();
+  await expect(empty.locator("p")).toContainText("delete this document's comments to free room");
+  await expect(empty.locator("p")).not.toContainText("clear this document's comments");
   await expect(empty.locator("button", { hasText: "Export as Shareable" })).toBeVisible();
-  await expect(empty.locator("button", { hasText: "Clear all comments" })).toBeVisible();
+  await expect(empty.locator("button", { hasText: "Delete all comments" })).toBeVisible();
 });
 
 test("when the manager cannot open, the comment save surfaces a recovery toast instead of failing silently (CMH-STORE-11)", async ({ page }) => {
@@ -778,7 +781,7 @@ test("clearing the current document's comments keeps its index entry so residual
   await addTextComment(page, "#commentRoot p", "note to clear");
   await openManager(page);
   const current = page.locator(".cm-storage-current");
-  await current.locator("button", { hasText: "Clear all comments" }).click();
+  await current.locator("button", { hasText: "Delete all comments" }).click();
   await current.locator(".cm-storage-danger", { hasText: "Confirm" }).click();
   expect((await storedComments(page)).length).toBe(0);
   // The current document's index entry survives the clear, so it (and its residual banner) remains
