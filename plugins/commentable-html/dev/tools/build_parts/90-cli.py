@@ -70,6 +70,24 @@ def main(argv):
     pkg_dir = os.path.abspath(ns.pkg_dir) if ns.pkg_dir else None
     examples_dir = (os.path.abspath(ns.examples_dir) if ns.examples_dir
                     else os.path.join(out_dir, "examples"))
+    source_parent = os.path.normcase(os.path.realpath(os.path.dirname(EXAMPLES_SRC)))
+    examples_real = os.path.normcase(os.path.realpath(examples_dir))
+    out_real = os.path.normcase(os.path.realpath(out_dir))
+    dev_root = os.path.normcase(os.path.realpath(HERE))
+    try:
+        examples_in_source_tree = os.path.commonpath(
+            [source_parent, examples_real]) == source_parent
+        out_in_source_tree = os.path.commonpath([source_parent, out_real]) == source_parent
+        source_tree_in_dev = os.path.commonpath([dev_root, source_parent]) == dev_root
+    except ValueError:
+        examples_in_source_tree = False
+        out_in_source_tree = False
+        source_tree_in_dev = False
+    if ((out_real == dev_root and source_tree_in_dev)
+            or examples_in_source_tree or out_in_source_tree):
+        parser.error(
+            "refusing to write build output into the development source root or example source "
+            "tree; run from plugins/commentable-html/dev with: " + CANONICAL_BUILD_COMMAND)
     dist_dir = os.path.join(out_dir, "dist")
     outputs, version = build_all(assets_dir, out_dir, examples_dir, vendor_bytes=ns.vendor_bytes)
     if ns.vendor_bytes:
@@ -107,7 +125,7 @@ def main(argv):
         if pkg_dir:
             drift.extend(check_package(out_dir, pkg_dir, version))
         if drift:
-            sys.stderr.write("build --check FAILED; run `python tools/build.py`:\n")
+            sys.stderr.write("build --check FAILED; run `" + CANONICAL_BUILD_COMMAND + "`:\n")
             for d in drift:
                 sys.stderr.write("  - " + d + "\n")
             return 1

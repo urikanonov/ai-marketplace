@@ -152,7 +152,8 @@ class LegacyTemplateNameTests(unittest.TestCase):
     def test_build_emits_the_new_template_names(self):
         for name in ("SHAREABLE.html", "NONSHAREABLE.html"):
             self.assertTrue(os.path.exists(os.path.join(_paths.DIST, name)),
-                            "dist/%s not found - run python tools/build.py" % name)
+                            "dist/%s not found - run the canonical build command in dev/README.md"
+                            % name)
 
     def test_resolver_prefers_the_new_name(self):
         with tempfile.TemporaryDirectory() as d:

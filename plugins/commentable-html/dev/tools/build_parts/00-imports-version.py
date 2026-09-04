@@ -37,18 +37,14 @@ Bumping the version: edit VERSION, then run this builder (it re-stamps every
 spot and regenerates dist). Companion filenames are version-agnostic, so a bump
 never renames dist files.
 
-Usage (flat layout, run from the skill root):
-  python tools/build.py            # (re)generate everything, print a size report
-  python tools/build.py --check    # verify on-disk generated files match a fresh build
-
-Split layout (canonical assets and generated outputs in different directories, e.g.
-the ai-marketplace pkg/dev split - run from dev/):
+Usage (the ai-marketplace pkg/dev split - run from dev/):
   python tools/build.py --assets-dir assets --out-dir skill --pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples
   python tools/build.py --assets-dir assets --out-dir skill --pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples --check
 
 --assets-dir defaults to <skill>/assets and --out-dir defaults to the skill root (the
 directory that receives dist/SHAREABLE.html and dist/). --check compares the files already
-present in --out-dir against a fresh build.
+present in --out-dir against a fresh build. In this split repository, a bare invocation is
+refused because its default examples output would enter the dev/examples source tree.
 """
 import argparse
 import base64
@@ -86,6 +82,9 @@ FIXTURES_GEN = os.path.join(HERE, "tests", "fixtures", "generate.mjs")
 # swap, so build.py copies it VERBATIM to the shipped examples/<same-name>.md and --check flags any
 # drift the same way.
 EXAMPLES_SRC = os.path.join(HERE, "examples", "src")
+CANONICAL_BUILD_COMMAND = (
+    "python tools/build.py --assets-dir assets --out-dir skill "
+    "--pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples")
 
 
 # --------------------------------------------------------------------------- #
