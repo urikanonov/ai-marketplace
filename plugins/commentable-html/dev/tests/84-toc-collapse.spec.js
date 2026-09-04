@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import { stageContent, fileUrl, ready, addTextComment, readDownload, openToolbarMenu, PYTHON, SKILL } from "./helpers.js";
+import { stageContent, stageDeck, fileUrl, ready, addTextComment, readDownload, openToolbarMenu, PYTHON, SKILL } from "./helpers.js";
 
 // The Python-side hasher reads the SOURCE FILE, so comparing it to the live runtime hash catches a
 // load-time transform that changed the hashed text (the pattern CMH-CONTENT-21 established).
@@ -242,6 +242,26 @@ test.describe("in-document Contents list is collapsible (CMH-TOC-12)", () => {
     await ready(page);
     await expect(navs.nth(0).locator("ol")).toBeVisible();
     await expect(navs.nth(1).locator("ol")).toBeHidden();
+
+    // The STORAGE identity is disambiguated above; the ARIA relation has to be too. Assistive
+    // technology resolves aria-controls with getElementById, which answers with the FIRST element
+    // carrying the id, so leaving both carets pointing at the authored `contents` would tell a
+    // screen reader the second caret controls a region it does not control.
+    const targets = await navs.locator(".cmh-toc-caret").evaluateAll(
+      (els) => els.map((el) => el.getAttribute("aria-controls")));
+    expect(targets[0]).toBeTruthy();
+    expect(targets[1]).toBeTruthy();
+    expect(targets[0]).not.toBe(targets[1]);
+    // Each id really resolves to the nav its own caret sits in.
+    expect(await page.evaluate((ids) => ids.map((id, i) => {
+      const navList = document.querySelectorAll("#commentRoot nav.cm-toc");
+      return document.getElementById(id) === navList[i];
+    }), targets)).toEqual([true, true]);
+    // The reader's fold still keys off the AUTHORED id, so re-identifying the nav for ARIA did not
+    // orphan the stored choice (the reload above already proved the fold survived).
+    expect(await page.evaluate((k) => Object.keys(
+      JSON.parse(localStorage.getItem(k + "::tocFold") || "{}")), KEY + "-dupe"))
+      .toEqual(["id:contents#1"]);
   });
 
   test("two Contents lists with identical entries still fold independently (CMH-TOC-12)", async ({ page }) => {
@@ -267,6 +287,66 @@ test.describe("in-document Contents list is collapsible (CMH-TOC-12)", () => {
     await ready(page);
     await expect(navs.nth(0).locator("ol")).toBeVisible();
     await expect(navs.nth(1).locator("ol")).toBeHidden();
+  });
+
+  test("a deck never gets a Contents caret (CMH-TOC-12)", async ({ page }) => {
+    // The whole flow-document navigation family (section collapse, the side menu, this fold) is
+    // deliberately absent from a deck, whose slides carry their own navigation. Locking the scope
+    // here keeps the spec row and the Help text honest: without this the exclusion is incidental,
+    // and the reader is promised a caret a deck slide never shows.
+    const SLIDES = `
+<section class="slide active" aria-labelledby="s1"><h2 id="s1">Agenda</h2>
+  <nav class="cm-toc" aria-label="Table of contents"><div class="cm-toc-title">Contents</div>
+    <ol><li><a href="#s2">Second slide</a></li></ol></nav></section>
+<section class="slide" aria-labelledby="s2"><h2 id="s2">Second slide</h2><p>Banana.</p></section>`;
+    const staged = stageDeck(SLIDES, { key: KEY + "-deck" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // The deck runtime really did take over (else this passes on a document that is not a deck).
+    expect(await page.evaluate(() => !!(window.__cmhDeck && window.__cmhDeck.deckMode))).toBe(true);
+    await expect(page.locator("#commentRoot nav.cm-toc")).toHaveCount(1);
+    await expect(page.locator("#commentRoot .cmh-toc-caret")).toHaveCount(0);
+    // ... and the list is shown in full, not left half-folded by a caret that never arrived.
+    await expect(page.locator("#commentRoot nav.cm-toc ol")).toBeVisible();
+  });
+
+  test("a folded Contents list hides its own direct text too (CMH-TOC-12)", async ({ page }) => {
+    // A hand-authored nav can carry significant text DIRECTLY under `nav.cm-toc`, not only inside
+    // its list. The fold rule can only hide ELEMENT children, so such a nav would stay half-folded
+    // - the caret says the list is away while a stray sentence is still on screen.
+    const TEXTY = `
+<nav class="cm-toc" aria-label="Table of contents"><div class="cm-toc-title">Contents</div>
+  Jump to any section below.
+  <ol><li><a href="#alpha">Alpha overview</a></li><li><a href="#beta">Beta details</a></li></ol>
+</nav>
+<section aria-labelledby="alpha"><h2 id="alpha">Alpha overview</h2><p>Apple.</p></section>
+<section aria-labelledby="beta"><h2 id="beta">Beta details</h2><p>Banana.</p></section>`;
+    const staged = stageContent(TEXTY, { key: KEY + "-texty", source: "toc-texty.html" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // The intro text reads normally while the list is open.
+    const intro = page.locator("#commentRoot nav.cm-toc .cmh-toc-text");
+    await expect(intro).toHaveText("Jump to any section below.");
+    await expect(intro).toBeVisible();
+
+    await caret(page).click();
+    await expect(list(page)).toBeHidden();
+    await expect(intro).toBeHidden();
+    await expect(page.locator("#commentRoot nav.cm-toc .cm-toc-title")).toBeVisible();
+
+    // Wrapping the text must not spend a character of the offset space comments are anchored in,
+    // so the live hash still equals the SOURCE file's.
+    expect(await docHash(page)).toBe(sourceHash(staged.html));
+
+    await caret(page).click();
+    await expect(intro).toBeVisible();
+    // Print carries the whole authored list back, the stray text included.
+    await caret(page).click();
+    await expect(intro).toBeHidden();
+    await page.emulateMedia({ media: "print" });
+    await expect(intro).toBeVisible();
   });
 
   test("a Contents list with no title still gets a working caret (CMH-TOC-12)", async ({ page }) => {
