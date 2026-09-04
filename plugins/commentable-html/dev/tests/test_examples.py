@@ -498,12 +498,11 @@ class DevExamplesHasNoBuiltCopiesTests(unittest.TestCase):
     """CMH-BUILD-29: `dev/examples/` holds SOURCES only - no built report, deck or prompt.
 
     `build.py` reads its content sources from `dev/examples/src/` and writes the built documents to
-    `--examples-dir`. That flag DEFAULTS to `<out-dir>/examples`, and `--out-dir` defaults to the
-    `dev` directory itself, so a build run WITHOUT the canonical flags targets `dev/examples` and
-    fills the source directory with its own output beside the sources it reads. That is not an
-    exotic mistake with a mis-pointed flag - it is what a bare `python tools/build.py` does, which
-    is how #1258 left 12.6 MB tracked and unreferenced until #1293. Always pass
-    `--out-dir skill --examples-dir ../examples`.
+    `--examples-dir`. Before CMH-BUILD-30, that flag defaulted to `<out-dir>/examples` while
+    `--out-dir` defaulted to the `dev` directory, so a bare invocation filled the source directory
+    with its own output. That is how #1258 left 12.6 MB tracked and unreferenced until #1293.
+    CMH-BUILD-30 now refuses that destination; this independent detector keeps the source tree clean
+    if output reaches it by another route.
 
     That is worse than dead weight, because such a copy keeps the state it was built in and nothing
     refreshes it. Each of the two chart examples there still inlined a 205,031-byte `Chart.js
@@ -539,9 +538,7 @@ class DevExamplesHasNoBuiltCopiesTests(unittest.TestCase):
             strays, [],
             "dev/examples holds built documents beside its sources: %s. These are build OUTPUT and "
             "nothing reads them - the shipped tree is plugins/commentable-html/examples, which is "
-            "also what the site copies its demos from. You most likely ran build.py without its "
-            "flags: --examples-dir defaults to <out-dir>/examples and --out-dir defaults to dev, "
-            "so a bare `python tools/build.py` writes here. Delete them and rebuild from "
+            "also what the site copies its demos from. Delete them and rebuild from "
             "plugins/commentable-html/dev with: python tools/build.py --assets-dir assets "
             "--out-dir skill --pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples"
             % ", ".join(strays))

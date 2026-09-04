@@ -498,6 +498,7 @@ class BuildTests(unittest.TestCase):
                     contextlib.redirect_stderr(err):
                 code = build.main(["build.py", "--check"])
             self.assertEqual(code, 1)
+            self.assertIn(build.CANONICAL_BUILD_COMMAND, err.getvalue())
             self.assertIn("dist%sSHAREABLE.html (out of date)" % os.sep, err.getvalue())
             self.assertIn("dist%sNONSHAREABLE.html (missing)" % os.sep, err.getvalue())
             self.assertIn("commentable-html.v0.0.1.css", err.getvalue())
@@ -562,6 +563,119 @@ class BuildTests(unittest.TestCase):
                     runpy.run_path(BUILD_PY, run_name="__main__")
         self.assertEqual(cm.exception.code, 0)
         self.assertIn("build --check OK", out.getvalue())
+
+
+class BuildOutputSafetyTests(unittest.TestCase):
+    """CMH-BUILD-30: build output must not enter the development source trees."""
+
+    def test_build_refuses_to_write_into_example_source_tree(self):
+        with tempfile.TemporaryDirectory() as d:
+            dev = os.path.join(d, "dev")
+            examples_src = os.path.join(dev, "examples", "src")
+            os.makedirs(examples_src)
+            unsafe = [
+                ["build.py"],
+                ["build.py", "--out-dir", os.path.join(dev, "skill"),
+                 "--examples-dir", examples_src],
+                ["build.py", "--out-dir", os.path.join(dev, "skill"),
+                 "--examples-dir", os.path.join(examples_src, "generated")],
+                ["build.py", "--out-dir", os.path.join(dev, "skill"),
+                 "--examples-dir", os.path.join(examples_src, "..", ".", "src")],
+            ]
+            for argv in unsafe:
+                with self.subTest(argv=argv):
+                    err = io.StringIO()
+                    with mock.patch.object(build, "HERE", dev), \
+                            mock.patch.object(build, "EXAMPLES_SRC", examples_src), \
+                            mock.patch.object(
+                                build, "build_all",
+                                side_effect=AssertionError("unsafe build reached build_all")), \
+                            contextlib.redirect_stderr(err):
+                        with self.assertRaises(SystemExit) as cm:
+                            build.main(argv)
+                    self.assertEqual(cm.exception.code, 2)
+                    self.assertIn("refusing to write build output into the development source root "
+                                  "or example source tree",
+                                  err.getvalue())
+                    self.assertIn(
+                        "python tools/build.py --assets-dir assets --out-dir skill "
+                        "--pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples",
+                        err.getvalue())
+
+    def test_build_refuses_default_out_dir_even_with_safe_examples(self):
+        with tempfile.TemporaryDirectory() as d:
+            dev = os.path.join(d, "dev")
+            examples_src = os.path.join(dev, "examples", "src")
+            safe_examples = os.path.join(d, "examples")
+            os.makedirs(examples_src)
+            with contextlib.redirect_stderr(io.StringIO()):
+                with mock.patch.object(build, "HERE", dev), \
+                        mock.patch.object(build, "EXAMPLES_SRC", examples_src), \
+                        mock.patch.object(
+                            build, "build_all",
+                            side_effect=AssertionError("unsafe build reached build_all")):
+                    with self.assertRaises(SystemExit) as cm:
+                        build.main(["build.py", "--examples-dir", safe_examples])
+            self.assertEqual(cm.exception.code, 2)
+
+    def test_resolved_examples_alias_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            dev = os.path.join(d, "dev")
+            examples_src = os.path.join(dev, "examples", "src")
+            alias = os.path.join(d, "examples-alias")
+            os.makedirs(examples_src)
+            realpath = os.path.realpath
+
+            def resolve(path):
+                return os.path.dirname(examples_src) if path == alias else realpath(path)
+
+            with contextlib.redirect_stderr(io.StringIO()):
+                with mock.patch.object(build, "HERE", dev), \
+                        mock.patch.object(build, "EXAMPLES_SRC", examples_src), \
+                        mock.patch.object(os.path, "realpath", side_effect=resolve), \
+                        mock.patch.object(
+                            build, "build_all",
+                            side_effect=AssertionError("unsafe build reached build_all")):
+                    with self.assertRaises(SystemExit) as cm:
+                        build.main([
+                            "build.py",
+                            "--out-dir", os.path.join(dev, "skill"),
+                            "--examples-dir", alias,
+                        ])
+            self.assertEqual(cm.exception.code, 2)
+
+    def test_unrelated_drive_is_not_treated_as_source_containment(self):
+        with tempfile.TemporaryDirectory() as d:
+            dev = os.path.join(d, "dev")
+            examples_src = os.path.join(dev, "examples", "src")
+            os.makedirs(examples_src)
+            sentinel = RuntimeError("unrelated build reached build_all")
+            with mock.patch.object(build, "HERE", dev), \
+                    mock.patch.object(build, "EXAMPLES_SRC", examples_src), \
+                    mock.patch.object(os.path, "commonpath", side_effect=ValueError), \
+                    mock.patch.object(build, "build_all", side_effect=sentinel):
+                with self.assertRaisesRegex(RuntimeError, str(sentinel)):
+                    build.main([
+                        "build.py",
+                        "--out-dir", os.path.join(dev, "skill"),
+                        "--examples-dir", os.path.join(d, "examples"),
+                    ])
+
+    def test_canonical_examples_destination_remains_allowed(self):
+        with tempfile.TemporaryDirectory() as d:
+            dev = os.path.join(d, "dev")
+            examples_src = os.path.join(dev, "examples", "src")
+            os.makedirs(examples_src)
+            sentinel = RuntimeError("canonical build reached build_all")
+            with mock.patch.object(build, "HERE", dev), \
+                    mock.patch.object(build, "EXAMPLES_SRC", examples_src), \
+                    mock.patch.object(build, "build_all", side_effect=sentinel):
+                with self.assertRaisesRegex(RuntimeError, str(sentinel)):
+                    build.main([
+                        "build.py",
+                        "--out-dir", os.path.join(dev, "skill"),
+                        "--examples-dir", os.path.join(d, "examples"),
+                    ])
 
 
 class StampHelperTests(unittest.TestCase):
