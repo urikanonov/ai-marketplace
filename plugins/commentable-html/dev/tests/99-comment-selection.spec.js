@@ -12,9 +12,9 @@ import {
 const CARD = "#commentList .cm-card";
 const PICK = "input.cm-pick-box";
 
-// A document whose prose can carry several distinct comments AND that owns an editable note and a
-// review checklist, so the "a selection is a comment-only scope" rule has tracked non-comment
-// changes of MORE THAN ONE kind to exclude.
+// A document whose prose can carry several distinct comments AND that owns an editable note, a
+// review checklist, and a movable widget board, so the "a selection is a comment-only scope" rule
+// has a tracked non-comment change of EVERY kind to exclude.
 const DOC = `
   <h1>Selection demo</h1>
   <p id="pa">Alpha paragraph for the first comment.</p>
@@ -25,6 +25,14 @@ const DOC = `
     <ul>
       <li data-cmh-item="signoff" data-cmh-state="blank">Sign-off collected</li>
     </ul>
+  </div>
+  <div class="board cm-skip" data-cm-widget="triage" id="board">
+    <div class="col" data-cm-slot="Now" id="now">
+      <div class="card" data-cm-part="a" data-cm-part-label="Card A">Card A</div>
+    </div>
+    <div class="col" data-cm-slot="Later" id="later">
+      <div class="card" data-cm-part="b" data-cm-part-label="Card B">Card B</div>
+    </div>
   </div>`;
 
 const staged = [];
@@ -67,6 +75,14 @@ async function addReply(page, cid, note) {
   await composer.locator("textarea").fill(note);
   await composer.locator(".cm-reply-save").click();
   await expect(composer).toHaveCount(0);
+}
+
+// Move a board card between slots, the way a drag/drop does, so a widget-layout change is tracked.
+async function moveBoardCard(page, part, targetSlotId) {
+  await page.evaluate(({ part, targetSlotId }) => {
+    document.getElementById(targetSlotId).appendChild(document.querySelector('[data-cm-part="' + part + '"]'));
+  }, { part, targetSlotId });
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
 
 test.describe("side-pane comment selection", () => {
@@ -133,19 +149,23 @@ test.describe("side-pane comment selection", () => {
     await expect(page.locator("#btnCopyAllTop")).toHaveText(/Copy selected/);
     await expect(page.locator("#cmSelectBar")).toBeVisible();
     await expect(page.locator("#cmSelectCount")).toHaveText(/1 comment selected/);
-    // The count rides in the tooltip too, so a reviewer working from the COLLAPSED toolbar - who
-    // sees the relabelled button but not the panel's selection bar - can still tell what is picked.
-    await expect(page.locator("#btnCopyAllTop")).toHaveAttribute("title", /the 1 selected comment/);
+    // The count rides in the tooltip of BOTH controls: the sidebar primary and the floating
+    // toolbar's twin, which is the only one a reviewer sees while the panel is collapsed.
+    await expect(copy).toHaveAttribute("title", /the 1 selected comment\b/);
+    await expect(page.locator("#btnCopyAllTop")).toHaveAttribute("title", /the 1 selected comment\b/);
 
     await pick(page, ids[2]);
     await expect(page.locator("#cmSelectCount")).toHaveText(/2 comments selected/);
-    await expect(page.locator("#btnCopyAllTop")).toHaveAttribute("title", /the 2 selected comments/);
+    await expect(copy).toHaveAttribute("title", /the 2 selected comments\b/);
+    await expect(page.locator("#btnCopyAllTop")).toHaveAttribute("title", /the 2 selected comments\b/);
 
-    // Dropping back to an empty selection restores the all-or-nothing default.
+    // Dropping back to an empty selection restores the all-or-nothing default, tooltips included.
     await card(page, ids[0]).locator(PICK).uncheck();
     await card(page, ids[2]).locator(PICK).uncheck();
     await expect(copy).toHaveText(/Copy all/);
     await expect(page.locator("#btnCopyAllTop")).toHaveText(/Copy all/);
+    await expect(copy).toHaveAttribute("title", /Copy all comments/);
+    await expect(page.locator("#btnCopyAllTop")).toHaveAttribute("title", /Copy all comments/);
     await expect(page.locator("#cmSelectBar")).toBeHidden();
   });
 
@@ -198,28 +218,32 @@ test.describe("side-pane comment selection", () => {
 
   test("a partial hand-back declares its scope and carries no tracked note change (CMH-PICK-04)", async ({ page }) => {
     const ids = await seedThree(page);
-    // TWO kinds of tracked NON-comment change that Copy all would normally carry, so a regression
-    // that leaks (or stops naming) either one fails here rather than only the note branch.
+    // ALL THREE kinds of tracked NON-comment change that Copy all would normally carry, so a
+    // regression in any one branch fails here rather than only the note one.
     await page.locator('[data-cmh-note="risk"] textarea, [data-cmh-note="risk"] input').first()
       .fill("Schedule risk is now amber.");
     await page.locator('[data-cmh-checklist="readiness"] [data-cmh-item="signoff"] .cmh-check').first().click();
+    await moveBoardCard(page, "a", "later");
     await expect(page.locator(`${CARD}.cm-card-note`)).toHaveCount(1);
     await expect(page.locator(`${CARD}.cm-card-checklist`)).toHaveCount(1);
+    await expect(page.locator(`${CARD}.cm-card-state`)).toHaveCount(1);
 
     await pick(page, ids[1]);
     await page.locator("#btnCopyAll").click();
     const bundle = await lastCopied(page);
     expect(bundle).toMatch(/^Scope: selected comments only \(1 of 3 open comment threads\)$/m);
     // The canonical empty {} in the trailer cannot say "withheld" apart from "nothing pending", so
-    // the bundle names the tracked changes it is holding back rather than letting the agent guess.
-    expect(bundle).toMatch(/^Withheld: tracked checklist, note changes are still pending but are NOT in this partial hand-back/m);
+    // the bundle names every tracked change kind it is holding back rather than letting the agent
+    // guess - and the sections themselves stay out.
+    expect(bundle).toMatch(/^Withheld: tracked widget-layout, checklist, note changes are still pending but are NOT in this partial hand-back/m);
     expect(bundle, "a selection is a COMMENT-only scope").not.toContain('## Note "risk"');
     expect(bundle).not.toContain('## Checklist "readiness"');
+    expect(bundle).not.toContain("## Widget layout changes");
     const trailer = machineTrailerBody(bundle);
     expect(/NOTES_STATE_JSON: (.*)/.exec(trailer)[1].trim()).toBe("{}");
     expect(/CHECKLIST_STATE_JSON: (.*)/.exec(trailer)[1].trim()).toBe("{}");
 
-    // ...and with no selection the same document still hands both tracked changes back.
+    // ...and with no selection the same document still hands all three tracked changes back.
     await card(page, ids[1]).locator(PICK).uncheck();
     await expect(page.locator("#btnCopyAll")).toHaveText(/Copy all/);
     await page.locator("#btnCopyAll").click();
@@ -228,6 +252,8 @@ test.describe("side-pane comment selection", () => {
     expect(all).not.toMatch(/^Withheld:/m);
     expect(all).toContain('## Note "risk"');
     expect(all).toContain('## Checklist "readiness"');
+    expect(all).toContain("## Widget layout changes");
+    expect(all).toContain('"Card A" moved from Now to Later');
   });
 
   test("a partial hand-back with nothing withheld says so by staying silent (CMH-PICK-04)", async ({ page }) => {
@@ -405,6 +431,9 @@ test.describe("side-pane comment selection", () => {
     await expect(page.locator(".cm-modal")).toBeVisible();
     await page.locator(".cm-modal button.danger, .cm-modal .cm-modal-ok").first().click();
     await expect(page.locator(".cm-modal")).toHaveCount(0);
+    // The dialog's restoreFocus wiring hands focus back to the still-visible menu trigger rather
+    // than stranding a keyboard reviewer on the removed modal.
+    await expect(page.locator("#btnMoreMenu")).toBeFocused();
 
     await expect(page.locator(CARD)).toHaveCount(1);
     await expect(page.locator(`${CARD}[data-cid="${ids[1]}"]`)).toHaveCount(1);

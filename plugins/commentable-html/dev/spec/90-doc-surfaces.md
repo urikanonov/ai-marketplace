@@ -113,6 +113,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-DECK-SHOWCASE-18 | site | deck |
 | CMH-BUILD-15 | opt-out: internal build invariant that stamps the demo examples' build date; the user-facing "Generated on" line itself is CMH-SIDE-03 | opt-out: internal build/authoring invariant, not a deck topic |
 | CMH-DECK-SHOWCASE-19 | site | deck |
+| CMH-DECK-SHOWCASE-20 | site | deck |
 | CMH-BUILD-14 | opt-out: internal Playwright test-harness reliability (deterministic static-server teardown); not a reader-facing capability | opt-out: internal test-harness reliability, not a deck topic |
 | CMH-DECK-41 | opt-out: showcase demo-deck content (a slide's own diagram layout), not a runtime feature documented to readers | deck |
 | CMH-DECK-42 | site | deck |
