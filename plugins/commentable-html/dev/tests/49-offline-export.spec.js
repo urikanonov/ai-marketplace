@@ -9,7 +9,7 @@ import zlib from "zlib";
 import {
   DEV, SKILL, PYTHON, EXAMPLES, fileUrl, ready, stageContent, startStaticServer,
   installClipboardCapture, openToolbarMenu, openSidebarExportMenu, addTextComment, readDownload, stageNonShareable,
-  clickSidebarExport, srcsetCandidates, blockVendoredLibs, routeVendoredLibs, routeTamperedVendoredLibs,
+  clickSidebarExport, srcsetCandidates, blockOfflineExportLibs, routeOfflineExportLibs, routeTamperedOfflineExportLibs,
 } from "./helpers.js";
 
 const CONTENT = `
@@ -2263,19 +2263,19 @@ test("CMH-SIZE-08: a library the export cannot download or verify is refused lou
   const cases = [
     {
       name: "the download is blocked",
-      route: blockVendoredLibs,
+      route: blockOfflineExportLibs,
       expected: /could not download the vendored mermaid bundle[\s\S]*needs network access once[\s\S]*exported file itself stays fully offline/i,
     },
     {
       name: "the downloaded bytes do not match the recorded hash",
-      route: routeTamperedVendoredLibs,
+      route: routeTamperedOfflineExportLibs,
       expected: /could not verify the vendored mermaid bundle it downloaded[\s\S]*do not match the integrity hash[\s\S]*not inlined/i,
     },
     {
       name: "the recorded hash is malformed, so nothing can be verified against it",
       // A hash the document cannot be checked against is not a reason to skip the check.
       build: (html) => withPayloadField(html, "mermaidIntegrity", "sha384-not a real hash"),
-      route: routeVendoredLibs,
+      route: routeOfflineExportLibs,
       expected: /malformed integrity hash for the vendored mermaid bundle/i,
     },
     {
@@ -2283,7 +2283,7 @@ test("CMH-SIZE-08: a library the export cannot download or verify is refused lou
       // The hash would also catch tampering, but the bytes become an inline script in a file the
       // reader will share, so a downgrade to a tamperable transport is refused outright.
       build: (html) => withPayloadField(html, "mermaidUrl", "http://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"),
-      route: routeVendoredLibs,
+      route: routeOfflineExportLibs,
       expected: /refused a non-https source for the vendored mermaid bundle/i,
     },
     {
@@ -2324,7 +2324,7 @@ test("CMH-SIZE-08: a library the export cannot download or verify is refused lou
         const closeAt = html.indexOf("</script>", openEnd);
         return html.slice(0, openEnd) + "[1,2,3]" + html.slice(closeAt);
       },
-      route: routeVendoredLibs,
+      route: routeOfflineExportLibs,
       expected: /payload is not an object/i,
     },
   ];
@@ -2384,7 +2384,7 @@ test("CMH-SIZE-08: a half descriptor is refused, never quietly served from the d
       fs.writeFileSync(staged.html, html);
       await page.unrouteAll({ behavior: "ignoreErrors" });
       await page.route(/^https?:\/\//, (route) => route.abort());
-      await routeVendoredLibs(page);
+      await routeOfflineExportLibs(page);
       await expectExportRefused(page, staged, c.expected, c.name);
     } finally {
       fs.rmSync(staged.dir, { recursive: true, force: true });
@@ -2412,7 +2412,7 @@ test("CMH-SIZE-08: a library the content cannot use is never downloaded, and its
       if (/cdn\.jsdelivr\.net\/npm\/mermaid@/.test(request.url())) requested.push(request.url());
     });
     await page.route(/^https?:\/\//, (route) => route.abort());
-    await routeVendoredLibs(page);
+    await routeOfflineExportLibs(page);
     await installDownloadTextCapture(page);
     await page.goto(fileUrl(staged.html));
     await ready(page);
@@ -2446,7 +2446,7 @@ test("CMH-SIZE-09: an Offline export of the shipped taxi example carries exactly
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "cmh_size09_"));
   try {
     await page.route(/^https?:\/\//, (route) => route.abort());
-    await routeVendoredLibs(page);
+    await routeOfflineExportLibs(page);
     await page.goto(fileUrl(path.join(EXAMPLES, "report-taxi.html")));
     await ready(page);
     await openToolbarMenu(page);
@@ -3353,7 +3353,7 @@ test("CMH-OFFLINE-07: the vendored payload wins over a copy already in the docum
     // downloads it. Serving only those two pinned URLs from `assets/vendor/` keeps the rest of the
     // network blocked, so what this test proves is unchanged: the payload's library wins over the
     // planted copy, and the exported file is still zero-network.
-    await routeVendoredLibs(page);
+    await routeOfflineExportLibs(page);
     await installDownloadTextCapture(page);
     await page.goto(fileUrl(staged.html));
     await ready(page);
@@ -3531,7 +3531,7 @@ test("CMH-OFFLINE-08: an authored decoy vendored payload never displaces the rea
   const staged = stageDecoyPayloadDoc("cmh-offline-decoy");
   try {
     await page.route(/^https?:\/\//, (route) => route.abort());
-    await routeVendoredLibs(page);
+    await routeOfflineExportLibs(page);
     await installDownloadTextCapture(page);
     await page.goto(fileUrl(staged.html));
     await ready(page);
@@ -3624,7 +3624,7 @@ test("CMH-OFFLINE-08: no infrastructure payload block survives an export, author
     fs.writeFileSync(staged.html, html);
 
     await page.route(/^https?:\/\//, (route) => route.abort());
-    await routeVendoredLibs(page);
+    await routeOfflineExportLibs(page);
     await installDownloadTextCapture(page);
     await page.goto(fileUrl(staged.html));
     await ready(page);
@@ -3698,7 +3698,7 @@ test("CMH-OFFLINE-08: a vendored library whose MIT notice is missing is refused,
   // The library the notice must accompany is DOWNLOADED since CMH-SIZE-08, so serve it: without
   // this the export would fail on the blocked download and never reach the notice gate, which is
   // what this test exists to prove.
-  await routeVendoredLibs(page);
+  await routeOfflineExportLibs(page);
   for (const c of cases) {
     const staged = stageContent(c.content || FORGERY_CONTENT, { key: "cmh-offline-nonotice", source: "offline-nonotice.html" });
     try {
@@ -3843,7 +3843,7 @@ test("CMH-OFFLINE-08: an authored script that borrows the payload id still count
   try {
     fs.writeFileSync(staged.html, withPayloadAfterContent(fs.readFileSync(staged.html, "utf8")));
     await page.route(/^https?:\/\//, (route) => route.abort());
-    await routeVendoredLibs(page);
+    await routeOfflineExportLibs(page);
     await installDownloadTextCapture(page);
     await page.goto(fileUrl(staged.html));
     await ready(page);

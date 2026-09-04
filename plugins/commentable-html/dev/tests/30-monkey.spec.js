@@ -4,7 +4,7 @@ import path from "path";
 import {
   fileUrl, ready, SKILL, KITCHEN_SINK, storedComments, distinctCids,
   installClipboardCapture, stageInline, startStaticServer, routeMermaidLocal,
-  routeVendoredLibs,
+  routeOfflineExportLibs,
 } from "./helpers.js";
 
 const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-community-garden.html");
@@ -184,7 +184,7 @@ test("monkey: full-feature fuzz including mermaid + chart never crashes (example
     // 205 KB copy, so serve it from `assets/vendor/` - same bytes, same SHA-384 the loader's
     // `integrity` names. Registered AFTER routeMermaidLocal, whose catch-all denies every
     // other remote request, because Playwright runs the most recently added handler first.
-    await routeVendoredLibs(page);
+    await routeOfflineExportLibs(page);
     await page.addInitScript(prngInit(0xbead5));
     await page.goto(`${server.url}/${path.basename(html)}`);
     await ready(page);

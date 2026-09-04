@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import {
   SKILL, fileUrl, ready, lastCopied, installClipboardCapture,
-  startStaticServer, routeMermaidLocal, routeVendoredLibs,
+  startStaticServer, routeMermaidLocal, routeOfflineExportLibs, routeExampleLibsLocal,
 } from "./helpers.js";
 
 // The shipped showcase example must exercise every feature end to end, so these tests
@@ -11,9 +11,10 @@ import {
 const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-community-garden.html");
 
 async function openExample(page) {
-  // The example loads Chart.js from the pinned CDN (CMH-SIZE-09), so serve it from the vendored
-  // copy - the bytes its `integrity` names - rather than letting the suite depend on egress.
-  await routeVendoredLibs(page);
+  // The example loads mermaid and Chart.js from the pinned CDN (CMH-SIZE-08/09), so serve both
+  // from the local copies (CMH-BUILD-30) - for Chart.js the bytes its `integrity` names - rather
+  // than letting the suite depend on egress.
+  await routeExampleLibsLocal(page);
   await installClipboardCapture(page);
   await page.goto(fileUrl(EXAMPLE));
   await ready(page);
@@ -109,7 +110,7 @@ test.describe("showcase example: features work on the shipped example HTML", () 
       // request - including the example's pinned Chart.js. Playwright runs the most recently
       // added handler first, so this reaches the request; without it the canvas below is blank
       // and the commentable-media assertion (which is purely structural) still passes.
-      await routeVendoredLibs(page);
+      await routeOfflineExportLibs(page);
       await installClipboardCapture(page);
       await page.goto(server.url + "/examples/report-community-garden.html");
       await ready(page);
