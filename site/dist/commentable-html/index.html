@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.845.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.846.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,17 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.846.0] - 2026-09-03</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Decks now use one direct comments button instead of the three-state comment-options menu. Clicking it opens the side panel immediately, and a live count bubble appears on the button when comments exist. The panel&#x27;s existing Auto-open preference under More remains the way to keep the panel closed while comments are added.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>The side-panel brand icon now follows the document type and version metadata, keeping it away from the Comments count so the two no longer overlap at the demo deck&#x27;s panel width.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.845.0] - 2026-09-03</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -507,6 +518,8 @@
               <li><code>formatTime()</code> no longer renders an unparseable timestamp as <code>Invalid Date</code>, a missing one as <code>undefined</code>, or a literal <code>null</code> as the Unix epoch: a nullish, empty, or whitespace-only value renders as empty, an epoch-milliseconds number is accepted as the instant it is, a whitespace-padded ISO instant is trimmed and formatted instead of echoed raw, and the return is always a string. Where a comment has no usable timestamp the surrounding chrome goes with it - no dangling <code>#3 - </code> on a card and no empty <code>When:</code> line in the Copy all bundle.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.844.0] - 2026-09-03</h3></div>
             <div class="group-label">Fixed</div>
@@ -514,8 +527,6 @@
               <li>Hovering a disabled Copy all control no longer replaces its dimmed crimson background with white.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.843.0] - 2026-09-02</h3></div>
             <div class="group-label">Fixed</div>
@@ -557,16 +568,7 @@
               <li>The cold tier&#x27;s row thresholds are retuned from measurement: <code>keep_rows</code> moves from 20 to 2000 and <code>min_rows</code> from 40 to 4000 (<code>CMH-COLD-10</code>). At the old defaults the tier cost COLD FIRST PAINT. Re-measured at 30 paired iterations, the largest document painted nothing until the parser had finished on 19 of 30 cold loads against 0 of 30 with the tier off (median cold first paint 332 ms to 4952 ms), and the mid-size document on 22 of 30. The new pair was chosen in two stages - a six-point screen at 10 iterations, then a confirmation on a fresh sample at 30 - because the screen alone gets it wrong: 1000/2000 cleared the gate at 10 iterations (p=0.125) and failed at 30 (10 of 30 blank, p=0.00098). At 2000/4000 the largest document goes blank on 1 of 30 cold loads against 0 of 30, paint time shows no detectable change, and time to interactive stays far better than the plain document (-1517 ms cold, -1849 ms warm). Both stages are committed at <code>dev/tools/cold-tier-threshold-sweep.json</code>, with the counts each p-value is computed from. This is a judgement on a measured improvement with the residual BOUNDED, not a proof of parity: 1 of 30 puts a one-sided 95 percent bound of 14.9 percent on the remaining blank rate, and the artifact records that, the false-positive floor of the measurement itself, the uncontrolled between-point drift, and the fact that the gate at 4000 rows is extrapolated from an 11500-row body. The trade in bytes: the corpus win falls from 3,047,017 to 2,036,590, of which 586,392 is the two mid-size documents dropping out of the tier entirely. Reach narrows accordingly - the eligible set goes from a single table body over 40 rows to one over 4000, and the roughly 1700-row generated shape the #1250 survey recorded no longer engages - which is the measured price of the paint bound. Nothing a reader sees changes: the tier remains opt-in and default OFF, and a recorded scan shows it engages on no document this repository ships at either the old or the new defaults.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.838.0] - 2026-08-11</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li><code>Export Offline</code> now puts the libraries it inlines AFTER the content too. The inlined mermaid / Chart.js bytes, their MIT notices and any author chart script the export reorders used to be appended to <code>&lt;head&gt;</code>, so an offline file regrew a large head and a tool reading its first 50 KB met ~1 MB of minified library instead of the title and the opening prose - the one generated artifact the content-first layout deliberately left behind. They now sit at the tail of the same <code>BEGIN/END: commentable-html - MACHINERY</code> fence, in an order that still defines a library before the author code that calls it, so the first 50 KB of an offline export is the title and the start of the content.</li>
-              <li>The provenance boundary that decides which already-inlined library an Offline export may reuse moves with it: instead of &quot;in <code>&lt;head&gt;</code>&quot;, a copy now qualifies when it sits OUTSIDE the authored content root AND runs where it sits. A <code>&lt;head&gt;</code> copy still qualifies, so a file an earlier version exported re-exports unchanged; a copy inside the authored content is never captured, and is no longer deleted either, so an authored example survives the export intact; a copy that is inert where it sits (parked in a <code>&lt;noscript&gt;</code>, or a MathML script) is never promoted to running code; and a document whose content root is duplicated aborts the export naming the duplicate id rather than guessing the boundary. The MIT notice still travels with the bytes it licenses, and a re-export still carries exactly one copy and one notice per library.</li>
-              <li>An offline export keeps the chart sizing it had before the move: the runtime applies <code>Chart.defaults.responsive</code> / <code>maintainAspectRatio</code> only when the library is defined before it, which the head placement guaranteed, so the exporter now re-asserts both in a shim emitted immediately after the Chart.js bytes.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">405 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">406 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

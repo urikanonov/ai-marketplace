@@ -725,7 +725,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.845.0";
+const CMH_VERSION= "1.846.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -7167,6 +7167,9 @@ const icon=cmhEl("cmSortIcon");
 if(icon&&ICONS[state])icon.innerHTML=ICONS[state];
 if(window.__cmhRefreshTip)window.__cmhRefreshTip(b);
 }
+function pendingPanelItemCount(roots,notePieces,checklistPieces){
+return roots.length+notePieces.length+checklistPieces.length;
+}
 function renderComments(){
 cmhForgetZoneFormatter();
 if(typeof window!== "undefined"&&window.__cmhPerf)window.__cmhPerf.renders=(window.__cmhPerf.renders||0)+1;
@@ -7194,8 +7197,7 @@ const roots=(typeof threadRoots=== "function")?threadRoots(comments):comments;
 const stateChanges=(typeof widgetStateChanges=== "function")?widgetStateChanges():[];
 const clPieces=(typeof checklistCardPieces=== "function")?checklistCardPieces():[];
 const notePieces=(typeof notesCardPieces=== "function")?notesCardPieces():[];
-const changeCardCount=notePieces.length+clPieces.length;
-const pendingCount=roots.length+changeCardCount;
+const pendingCount=pendingPanelItemCount(roots,notePieces,clPieces);
 toolbarCount.textContent=pendingCount;
 sidebarCount.textContent=pendingCount;
 if(window.__cmhDeck&&typeof window.__cmhDeck.refreshMode=== "function")window.__cmhDeck.refreshMode();
@@ -13796,7 +13798,7 @@ function setupModeUi(){
 const ver=cmhEl("cmVersion");
 if(ver)ver.textContent= "v"+CMH_VERSION;
 const meta=document.querySelector(".cm-sidebar .head-meta");
-if(meta&&!meta.querySelector(".cm-brand-icon"))meta.insertAdjacentHTML("afterbegin",cmBrandLink(CMH_ICON_SVG));
+if(meta&&!meta.querySelector(".cm-brand-icon"))meta.insertAdjacentHTML("beforeend",cmBrandLink(CMH_ICON_SVG));
 if(NONSHAREABLE_MODE){
 document.body.classList.add("cm-nonshareable");
 document.body.classList.add("cm-nonportable");
@@ -15913,7 +15915,7 @@ let current=slides.findIndex((s)=>s.classList.contains("active"));
 if(current<0)current=0;
 let commentMode=false;
 let deckMode= "closed";
-let modeMenu=null,modeToggle=null,modeRadioItems=[];
+let modeToggle=null,modeCount=null;
 let counter=null,prevBtn=null,nextBtn=null;
 let edgePrevBtn=null,edgeNextBtn=null;
 let overview=null,overviewGrid=null,overviewBtn=null,overviewDismiss=null;
@@ -16030,7 +16032,6 @@ return i>=0?show(i):false;
 function hasBlockingDeckChrome(){
 return!!(
 (overview&&!overview.hidden)
-||(modeMenu&&!modeMenu.hidden)
 ||_commentMenuOpen()
 ||document.querySelector(".cm-composer, .cm-modal-overlay, .cm-comment-popover")
 );
@@ -16370,7 +16371,7 @@ activeSlideId:()=>slides[current]&&slides[current].getAttribute("data-slide-id")
 slideCount:()=>slides.length,
 deckMode:()=>deckMode,
 setDeckMode:(m)=>setDeckMode(m),
-refreshMode:()=>updateModeMenu(),
+refreshMode:()=>updateModeControl(),
 };
 show(current);
 fitStage();
@@ -16457,7 +16458,7 @@ document.body.classList.toggle("cmh-deck-present",!paneOpen);
 document.body.classList.toggle("cmh-deck-comments-off",off);
 try{if(paneOpen)openSidebar();else closeSidebar();}catch(e){}
 if(persist!==false)saveDeckMode();
-updateModeMenu();
+updateModeControl();
 hideEdgeNav();
 if(typeof requestAnimationFrame=== "function"){
 requestAnimationFrame(()=>{fitStage();if(!paneOpen)focusStage();});
@@ -16470,73 +16471,31 @@ function setDeckMode(mode){
 deckMode=normalizeDeckMode(mode);
 applyDeckMode(true);
 }
-function updateModeMenu(){
+function panelItemCount(){
+const countEl=cmhEl("sidebarCount");
+if(countEl){
+const count=Number(countEl.textContent);
+if(Number.isFinite(count)&&count>=0)return count;
+}
+const roots=(typeof threadRoots=== "function")?threadRoots(comments):comments;
+const notePieces=(typeof notesCardPieces=== "function")?notesCardPieces():[];
+const checklistPieces=(typeof checklistCardPieces=== "function")?checklistCardPieces():[];
+return pendingPanelItemCount(roots,notePieces,checklistPieces);
+}
+function updateModeControl(){
 const paneOpen=deckMode=== "open";
 const off=deckMode=== "off";
 if(modeToggle){
 modeToggle.classList.toggle("cmh-deck-comments-off",off);
-modeToggle.classList.toggle("cmh-deck-pane-open",paneOpen);
-modeToggle.setAttribute("aria-label",off
-?"Comment options (commenting disabled)"
-:(paneOpen?"Comment options (review panel open)":"Comment options"));
+const count=panelItemCount();
+modeToggle.setAttribute("aria-label",count
+?"Open comments panel ("+count+(count===1?" comment)":" comments)")
+:"Open comments panel");
+if(modeCount){
+modeCount.textContent=String(count);
+modeCount.hidden=count===0;
 }
-modeRadioItems.forEach((item)=>{
-const m=item.getAttribute("data-deck-mode");
-const on=m===deckMode;
-item.setAttribute("aria-checked",on?"true":"false");
-item.classList.toggle("cmh-deck-mode-item-current",on);
-const allow=m!== "off"?true:(off||canDisableComments());
-item.disabled=!allow;
-item.setAttribute("aria-disabled",allow?"false":"true");
-item.title=(m=== "off"&&!allow)
-?"Delete every comment before you can disable commenting"
-:"";
-});
 }
-function openModeMenu(){
-if(!modeMenu)return;
-updateModeMenu();
-modeMenu.hidden=false;
-modeToggle.setAttribute("aria-expanded","true");
-document.addEventListener("click",onModeMenuOutside,true);
-document.addEventListener("keydown",onModeMenuKey,true);
-const first=modeMenu.querySelector('.cmh-deck-mode-radio[aria-checked="true"]:not([disabled])')
-||modeMenu.querySelector(".cmh-deck-mode-item:not([disabled])");
-if(first)setTimeout(()=>{try{first.focus();}catch(e){}},0);
-}
-function closeModeMenu(focusToggle){
-if(!modeMenu||modeMenu.hidden)return;
-modeMenu.hidden=true;
-modeToggle.setAttribute("aria-expanded","false");
-document.removeEventListener("click",onModeMenuOutside,true);
-document.removeEventListener("keydown",onModeMenuKey,true);
-if(focusToggle){try{modeToggle.focus();}catch(e){}}
-}
-function toggleModeMenu(){if(modeMenu.hidden)openModeMenu();else closeModeMenu(true);}
-function onModeMenuOutside(e){
-if(modeMenu.contains(e.target)||modeToggle.contains(e.target))return;
-closeModeMenu(false);
-}
-function modeMenuItems(){
-return Array.prototype.slice.call(
-modeMenu.querySelectorAll(".cmh-deck-mode-item:not([disabled])"));
-}
-function focusModeItem(index){
-const items=modeMenuItems();
-if(!items.length)return;
-const i=(index+items.length)%items.length;
-try{items[i].focus();}catch(e){}
-}
-function onModeMenuKey(e){
-if(e.key=== "Escape"){e.preventDefault();closeModeMenu(true);return;}
-if(e.key=== "Tab"){closeModeMenu(false);return;}
-const items=modeMenuItems();
-if(!items.length)return;
-const cur=items.indexOf(document.activeElement);
-if(e.key=== "ArrowDown"){e.preventDefault();focusModeItem(cur<0?0:cur+1);}
-else if(e.key=== "ArrowUp"){e.preventDefault();focusModeItem(cur<0?items.length-1:cur-1);}
-else if(e.key=== "Home"){e.preventDefault();focusModeItem(0);}
-else if(e.key=== "End"){e.preventDefault();focusModeItem(items.length-1);}
 }
 const modeCtl=document.createElement("div");
 modeCtl.className= "cm-skip cmh-deck-mode-ctl";
@@ -16544,7 +16503,9 @@ const toggle=document.createElement("button");
 modeToggle=toggle;
 toggle.className= "cm-skip cmh-deck-mode-toggle";
 toggle.type= "button";
-toggle.innerHTML=CMH_ICON_SVG+'<span class="cmh-deck-mode-caret" aria-hidden="true"></span>';
+toggle.innerHTML=CMH_ICON_SVG
++'<span class="cmh-deck-comment-count" title="Number of open comments" hidden>0</span>';
+modeCount=toggle.querySelector(".cmh-deck-comment-count");
 const toggleIcon=toggle.querySelector("svg");
 if(toggleIcon){
 toggleIcon.setAttribute("aria-hidden","true");
@@ -16553,59 +16514,16 @@ toggleIcon.removeAttribute("role");
 toggleIcon.removeAttribute("aria-label");
 toggleIcon.removeAttribute("data-cmh-tip");
 }
-toggle.title= "Comment options";
-toggle.setAttribute("aria-label","Comment options");
-toggle.setAttribute("aria-haspopup","menu");
-toggle.setAttribute("aria-expanded","false");
-toggle.addEventListener("click",(e)=>{e.preventDefault();toggleModeMenu();});
-modeMenu=document.createElement("div");
-modeMenu.className= "cm-skip cmh-deck-mode-menu";
-modeMenu.id= "cmhDeckModeMenu";
-modeMenu.setAttribute("role","menu");
-modeMenu.setAttribute("aria-label","Comment options");
-modeMenu.hidden=true;
-toggle.setAttribute("aria-controls",modeMenu.id);
-const DECK_MODE_OPTIONS=[
-{mode:"off",label:"Comments off",cls:"cmh-deck-mode-off-item"},
-{mode:"closed",label:"Comments on, panel closed",cls:"cmh-deck-mode-closed-item"},
-{mode:"open",label:"Comments on, panel open",cls:"cmh-deck-mode-open-item"},
-];
-modeRadioItems=DECK_MODE_OPTIONS.map((opt)=>{
-const item=document.createElement("button");
-item.type= "button";
-item.className= "cmh-deck-mode-item cmh-deck-mode-radio "+opt.cls;
-item.setAttribute("role","menuitemradio");
-item.setAttribute("data-deck-mode",opt.mode);
-item.textContent=opt.label;
-item.addEventListener("click",()=>{
-if(item.disabled)return;
-setDeckMode(opt.mode);
-closeModeMenu(false);
-if(opt.mode=== "open"){
+toggle.title= "Open comments panel";
+toggle.setAttribute("aria-label","Open comments panel");
+toggle.setAttribute("aria-controls","sidebar");
+toggle.addEventListener("click",(e)=>{
+e.preventDefault();
+setDeckMode("open");
 const panelBtn=cmhEl("btnCloseSidebar");
-if(panelBtn&&panelBtn.focus){try{panelBtn.focus();}catch(e){}}
-}else if(modeToggle&&modeToggle.focus){
-try{modeToggle.focus();}catch(e){}
-}
+if(panelBtn&&panelBtn.focus){try{panelBtn.focus();}catch(err){}}
 });
-modeMenu.appendChild(item);
-return item;
-});
-const modeSep=document.createElement("span");
-modeSep.className= "cmh-deck-mode-sep";
-modeSep.setAttribute("role","separator");
-const siteItem=document.createElement("a");
-siteItem.className= "cmh-deck-mode-item cmh-deck-mode-site cm-brand-link";
-siteItem.setAttribute("role","menuitem");
-siteItem.href=CMH_SITE_URL;
-siteItem.target= "_blank";
-siteItem.rel= "noopener noreferrer";
-siteItem.textContent= "Commentable HTML site";
-siteItem.addEventListener("click",()=>closeModeMenu(false));
-modeMenu.appendChild(modeSep);
-modeMenu.appendChild(siteItem);
 modeCtl.appendChild(toggle);
-modeCtl.appendChild(modeMenu);
 document.body.prepend(modeCtl);
 if(typeof MutationObserver=== "function"){
 new MutationObserver(()=>{

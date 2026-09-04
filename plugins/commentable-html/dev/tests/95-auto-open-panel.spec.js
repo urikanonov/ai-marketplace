@@ -4,7 +4,7 @@
 import { test, expect } from "@playwright/test";
 import {
   fileUrl, ready, stageContent, stageDeck, addTextComment, openSidebarMoreMenu,
-  openComposerFor, openDeckModeMenu,
+  openComposerFor,
 } from "./helpers.js";
 
 const DOC = `
@@ -362,8 +362,7 @@ test("CMH-MENU-PREF-07: a comment saved in a comments-off deck still surfaces th
   // Open the composer FIRST, then switch the deck to "Comments off" behind it, then save - the
   // one flow that can land a comment while the lock is on.
   const composer = await openComposerFor(page, ".slide.active p");
-  await openDeckModeMenu(page);
-  await page.locator(".cmh-deck-mode-off-item").click();
+  await page.evaluate(() => window.__cmhDeck.setDeckMode("off"));
   expect(await page.evaluate(() => window.__cmhDeck.deckMode())).toBe("off");
   await composer.locator("textarea").fill("saved while off");
   await composer.locator('[data-act="save"]').click();

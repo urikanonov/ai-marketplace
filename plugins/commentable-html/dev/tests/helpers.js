@@ -412,19 +412,10 @@ export function stageDeck(slidesHtml, { key = "cmh-deck-test" } = {}) {
   return { dir, html: p };
 }
 
-// Deck comment model (3 states) test helpers. The corner control is a menu, not a bare toggle:
-// entering "comment mode" means opening the review panel via the menu; leaving it closes the panel.
-export async function openDeckModeMenu(page) {
-  const menu = page.locator(".cmh-deck-mode-menu");
-  if (await menu.isHidden()) await page.locator(".cmh-deck-mode-toggle").click();
-  await expect(menu).toBeVisible();
-  return menu;
-}
-// Open the review panel (deckMode "open"), the successor to the old "enter comment mode".
+// Open the review panel (deckMode "open") from the deck's direct comments button.
 export async function enterCommentMode(page) {
   if (await page.evaluate(() => window.__cmhDeck && window.__cmhDeck.deckMode()) === "open") return;
-  await openDeckModeMenu(page);
-  await page.locator(".cmh-deck-mode-open-item").click();
+  await page.locator(".cmh-deck-mode-toggle").click();
   await expect(page.locator("#sidebar")).toBeVisible();
 }
 // Close the review panel (deckMode back to "closed").

@@ -9,7 +9,7 @@ body.cmh-deck-present #sidebar {
 body:has(#commentRoot[data-cmh-mode="deck"]) .cm-toolbar {
   display: none !important;
 }
-/* Hide the corner comment-options control whenever the side panel is open: the panel's own
+/* Hide the corner comments control whenever the side panel is open: the panel's own
    header controls (Close, sort, Copy all) take over, and the control would sit over the sidebar.
    Applies at every width; closing the panel brings it back. */
 body.sidebar-open:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-mode-ctl {
@@ -262,7 +262,7 @@ body.cmh-deck-comments-off #headingAddBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 6px;
   height: 42px;
   padding: 0 8px;
   border-radius: 8px;
@@ -277,7 +277,7 @@ body.cmh-deck-comments-off #headingAddBtn {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 .cmh-deck-mode-toggle:hover,
-.cmh-deck-mode-toggle[aria-expanded="true"] {
+.cmh-deck-mode-toggle:focus-visible {
   border-color: var(--cp-accent, #2ecc71);
   background: var(--cp-surface-soft, #333);
 }
@@ -286,73 +286,19 @@ body.cmh-deck-comments-off #headingAddBtn {
   height: 20px;
   margin: 0;
 }
-/* A small down caret signals the button opens a menu (not a bare toggle). */
-.cmh-deck-mode-toggle .cmh-deck-mode-caret {
-  width: 0;
-  height: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid currentColor;
-  opacity: 0.75;
-}
-/* A subtle accent dot marks the panel-open state without recolouring the whole button. */
-.cmh-deck-mode-toggle.cmh-deck-pane-open {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px var(--cp-accent, #2ecc71);
-}
-.cmh-deck-mode-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  min-width: 220px;
-  display: flex;
-  flex-direction: column;
-  padding: 6px;
-  border-radius: 10px;
-  border: 1px solid var(--cp-border, #444);
-  background: var(--cp-surface, #222);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.42);
-}
-.cmh-deck-mode-menu[hidden] {
-  display: none !important;
-}
-.cmh-deck-mode-item {
-  display: block;
-  width: 100%;
-  padding: 9px 12px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--cp-text, #fff);
-  font: inherit;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-}
-.cmh-deck-mode-item:hover,
-.cmh-deck-mode-item:focus-visible {
-  background: var(--cp-surface-soft, #333);
-  outline: none;
-}
-.cmh-deck-mode-item[disabled],
-.cmh-deck-mode-item[aria-disabled="true"] {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.cmh-deck-mode-radio[aria-checked="true"]::before {
-  content: "\2713\00a0";
-  color: var(--cp-accent, #2ecc71);
+.cmh-deck-comment-count {
+  min-width: 1.35rem;
+  padding: 0.08rem 0.4rem;
+  border-radius: 999px;
+  background: var(--cp-accent, #2ecc71);
+  color: var(--cp-accent-fg, #fff);
+  font-size: 0.72rem;
   font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
 }
-.cmh-deck-mode-sep {
-  display: block;
-  height: 1px;
-  margin: 5px 8px;
-  background: var(--cp-border, #444);
-}
-.cmh-deck-mode-site::after {
-  content: "\2197";
-  margin-left: 6px;
-  opacity: 0.7;
+.cmh-deck-comment-count[hidden] {
+  display: none !important;
 }
 #commentRoot[data-cmh-mode="deck"] .deck-viewport:focus {
   outline: none;
@@ -595,10 +541,6 @@ body:has(#commentRoot.cmh-deck-comment-mode) .cmh-deck-edge-nav {
   }
   .cmh-deck-mode-toggle {
     height: 44px;
-    min-height: 44px;
-  }
-  .cmh-deck-mode-item {
-    padding: 12px 14px;
     min-height: 44px;
   }
   .cmh-deck-overview {

@@ -218,6 +218,10 @@ function updateSortUi() {
   // state until focus moves.
   if (window.__cmhRefreshTip) window.__cmhRefreshTip(b);
 }
+function pendingPanelItemCount(roots, notePieces, checklistPieces) {
+  return roots.length + notePieces.length + checklistPieces.length;
+}
+
 function renderComments() {
   // A render pass is the natural granularity for the zone-label formatter memo: built once here for
   // every timestamp the pass draws, then dropped so a host timezone change is picked up next pass.
@@ -289,12 +293,10 @@ function renderComments() {
   // stay at 0, as if nothing had been captured (issue #643). Notes are one card each; a checklist is
   // one card regardless of how many of its items changed. Widget/layout state changes are
   // deliberately NOT counted here - that stays a non-comment signal (see CMH-STATE-01).
-  const changeCardCount = notePieces.length + clPieces.length;
-  const pendingCount = roots.length + changeCardCount;
+  const pendingCount = pendingPanelItemCount(roots, notePieces, clPieces);
   toolbarCount.textContent = pendingCount;
   sidebarCount.textContent = pendingCount;
-  // Keep the deck comment-options menu in step with the live comment count (the "Disable
-  // commenting" item is only available when the deck has zero comments).
+  // Keep the deck's direct panel button in step with the live comment count.
   if (window.__cmhDeck && typeof window.__cmhDeck.refreshMode === "function") window.__cmhDeck.refreshMode();
   if (typeof updateDocTypeUi === "function") updateDocTypeUi();
   updateSideInfo();

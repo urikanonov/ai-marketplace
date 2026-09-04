@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.846.0] - 2026-09-03
+
+### Changed
+
+- Decks now use one direct comments button instead of the three-state comment-options menu. Clicking
+  it opens the side panel immediately, and a live count bubble appears on the button when comments
+  exist. The panel's existing Auto-open preference under More remains the way to keep the panel
+  closed while comments are added.
+
+### Fixed
+
+- The side-panel brand icon now follows the document type and version metadata, keeping it away from
+  the Comments count so the two no longer overlap at the demo deck's panel width.
+
 ## [1.845.0] - 2026-09-03
 
 ### Added

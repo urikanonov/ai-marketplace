@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.845.0" />
+<meta name="commentable-html-version" content="1.846.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.845.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.846.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable Visuals Matrix</title>
 
@@ -2743,7 +2743,7 @@ z-index: 100001;
 display: inline-flex;
 align-items: center;
 justify-content: center;
-gap: 4px;
+gap: 6px;
 height: 42px;
 padding: 0 8px;
 border-radius: 8px;
@@ -2757,7 +2757,7 @@ cursor: pointer;
 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 .cmh-deck-mode-toggle:hover,
-.cmh-deck-mode-toggle[aria-expanded="true"] {
+.cmh-deck-mode-toggle:focus-visible {
 border-color: var(--cp-accent, #2ecc71);
 background: var(--cp-surface-soft, #333);
 }
@@ -2766,73 +2766,19 @@ width: 20px;
 height: 20px;
 margin: 0;
 }
-
-.cmh-deck-mode-toggle .cmh-deck-mode-caret {
-width: 0;
-height: 0;
-border-left: 4px solid transparent;
-border-right: 4px solid transparent;
-border-top: 5px solid currentColor;
-opacity: 0.75;
-}
-
-.cmh-deck-mode-toggle.cmh-deck-pane-open {
-box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 2px var(--cp-accent, #2ecc71);
-}
-.cmh-deck-mode-menu {
-position: absolute;
-top: calc(100% + 8px);
-right: 0;
-min-width: 220px;
-display: flex;
-flex-direction: column;
-padding: 6px;
-border-radius: 10px;
-border: 1px solid var(--cp-border, #444);
-background: var(--cp-surface, #222);
-box-shadow: 0 10px 26px rgba(0, 0, 0, 0.42);
-}
-.cmh-deck-mode-menu[hidden] {
-display: none !important;
-}
-.cmh-deck-mode-item {
-display: block;
-width: 100%;
-padding: 9px 12px;
-border: none;
-border-radius: 7px;
-background: transparent;
-color: var(--cp-text, #fff);
-font: inherit;
-text-align: left;
-text-decoration: none;
-cursor: pointer;
-}
-.cmh-deck-mode-item:hover,
-.cmh-deck-mode-item:focus-visible {
-background: var(--cp-surface-soft, #333);
-outline: none;
-}
-.cmh-deck-mode-item[disabled],
-.cmh-deck-mode-item[aria-disabled="true"] {
-opacity: 0.45;
-cursor: not-allowed;
-}
-.cmh-deck-mode-radio[aria-checked="true"]::before {
-content: "\2713\00a0";
-color: var(--cp-accent, #2ecc71);
+.cmh-deck-comment-count {
+min-width: 1.35rem;
+padding: 0.08rem 0.4rem;
+border-radius: 999px;
+background: var(--cp-accent, #2ecc71);
+color: var(--cp-accent-fg, #fff);
+font-size: 0.72rem;
 font-weight: 700;
+line-height: 1.25;
+text-align: center;
 }
-.cmh-deck-mode-sep {
-display: block;
-height: 1px;
-margin: 5px 8px;
-background: var(--cp-border, #444);
-}
-.cmh-deck-mode-site::after {
-content: "\2197";
-margin-left: 6px;
-opacity: 0.7;
+.cmh-deck-comment-count[hidden] {
+display: none !important;
 }
 #commentRoot[data-cmh-mode="deck"] .deck-viewport:focus {
 outline: none;
@@ -3075,10 +3021,6 @@ min-height: 44px;
 }
 .cmh-deck-mode-toggle {
 height: 44px;
-min-height: 44px;
-}
-.cmh-deck-mode-item {
-padding: 12px 14px;
 min-height: 44px;
 }
 .cmh-deck-overview {
@@ -4710,7 +4652,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.845.0";
+const CMH_VERSION= "1.846.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -11152,6 +11094,9 @@ const icon=cmhEl("cmSortIcon");
 if(icon&&ICONS[state])icon.innerHTML=ICONS[state];
 if(window.__cmhRefreshTip)window.__cmhRefreshTip(b);
 }
+function pendingPanelItemCount(roots,notePieces,checklistPieces){
+return roots.length+notePieces.length+checklistPieces.length;
+}
 function renderComments(){
 cmhForgetZoneFormatter();
 if(typeof window!== "undefined"&&window.__cmhPerf)window.__cmhPerf.renders=(window.__cmhPerf.renders||0)+1;
@@ -11179,8 +11124,7 @@ const roots=(typeof threadRoots=== "function")?threadRoots(comments):comments;
 const stateChanges=(typeof widgetStateChanges=== "function")?widgetStateChanges():[];
 const clPieces=(typeof checklistCardPieces=== "function")?checklistCardPieces():[];
 const notePieces=(typeof notesCardPieces=== "function")?notesCardPieces():[];
-const changeCardCount=notePieces.length+clPieces.length;
-const pendingCount=roots.length+changeCardCount;
+const pendingCount=pendingPanelItemCount(roots,notePieces,clPieces);
 toolbarCount.textContent=pendingCount;
 sidebarCount.textContent=pendingCount;
 if(window.__cmhDeck&&typeof window.__cmhDeck.refreshMode=== "function")window.__cmhDeck.refreshMode();
@@ -17781,7 +17725,7 @@ function setupModeUi(){
 const ver=cmhEl("cmVersion");
 if(ver)ver.textContent= "v"+CMH_VERSION;
 const meta=document.querySelector(".cm-sidebar .head-meta");
-if(meta&&!meta.querySelector(".cm-brand-icon"))meta.insertAdjacentHTML("afterbegin",cmBrandLink(CMH_ICON_SVG));
+if(meta&&!meta.querySelector(".cm-brand-icon"))meta.insertAdjacentHTML("beforeend",cmBrandLink(CMH_ICON_SVG));
 if(NONSHAREABLE_MODE){
 document.body.classList.add("cm-nonshareable");
 document.body.classList.add("cm-nonportable");
@@ -19898,7 +19842,7 @@ let current=slides.findIndex((s)=>s.classList.contains("active"));
 if(current<0)current=0;
 let commentMode=false;
 let deckMode= "closed";
-let modeMenu=null,modeToggle=null,modeRadioItems=[];
+let modeToggle=null,modeCount=null;
 let counter=null,prevBtn=null,nextBtn=null;
 let edgePrevBtn=null,edgeNextBtn=null;
 let overview=null,overviewGrid=null,overviewBtn=null,overviewDismiss=null;
@@ -20015,7 +19959,6 @@ return i>=0?show(i):false;
 function hasBlockingDeckChrome(){
 return!!(
 (overview&&!overview.hidden)
-||(modeMenu&&!modeMenu.hidden)
 ||_commentMenuOpen()
 ||document.querySelector(".cm-composer, .cm-modal-overlay, .cm-comment-popover")
 );
@@ -20355,7 +20298,7 @@ activeSlideId:()=>slides[current]&&slides[current].getAttribute("data-slide-id")
 slideCount:()=>slides.length,
 deckMode:()=>deckMode,
 setDeckMode:(m)=>setDeckMode(m),
-refreshMode:()=>updateModeMenu(),
+refreshMode:()=>updateModeControl(),
 };
 show(current);
 fitStage();
@@ -20442,7 +20385,7 @@ document.body.classList.toggle("cmh-deck-present",!paneOpen);
 document.body.classList.toggle("cmh-deck-comments-off",off);
 try{if(paneOpen)openSidebar();else closeSidebar();}catch(e){}
 if(persist!==false)saveDeckMode();
-updateModeMenu();
+updateModeControl();
 hideEdgeNav();
 if(typeof requestAnimationFrame=== "function"){
 requestAnimationFrame(()=>{fitStage();if(!paneOpen)focusStage();});
@@ -20455,73 +20398,31 @@ function setDeckMode(mode){
 deckMode=normalizeDeckMode(mode);
 applyDeckMode(true);
 }
-function updateModeMenu(){
+function panelItemCount(){
+const countEl=cmhEl("sidebarCount");
+if(countEl){
+const count=Number(countEl.textContent);
+if(Number.isFinite(count)&&count>=0)return count;
+}
+const roots=(typeof threadRoots=== "function")?threadRoots(comments):comments;
+const notePieces=(typeof notesCardPieces=== "function")?notesCardPieces():[];
+const checklistPieces=(typeof checklistCardPieces=== "function")?checklistCardPieces():[];
+return pendingPanelItemCount(roots,notePieces,checklistPieces);
+}
+function updateModeControl(){
 const paneOpen=deckMode=== "open";
 const off=deckMode=== "off";
 if(modeToggle){
 modeToggle.classList.toggle("cmh-deck-comments-off",off);
-modeToggle.classList.toggle("cmh-deck-pane-open",paneOpen);
-modeToggle.setAttribute("aria-label",off
-?"Comment options (commenting disabled)"
-:(paneOpen?"Comment options (review panel open)":"Comment options"));
+const count=panelItemCount();
+modeToggle.setAttribute("aria-label",count
+?"Open comments panel ("+count+(count===1?" comment)":" comments)")
+:"Open comments panel");
+if(modeCount){
+modeCount.textContent=String(count);
+modeCount.hidden=count===0;
 }
-modeRadioItems.forEach((item)=>{
-const m=item.getAttribute("data-deck-mode");
-const on=m===deckMode;
-item.setAttribute("aria-checked",on?"true":"false");
-item.classList.toggle("cmh-deck-mode-item-current",on);
-const allow=m!== "off"?true:(off||canDisableComments());
-item.disabled=!allow;
-item.setAttribute("aria-disabled",allow?"false":"true");
-item.title=(m=== "off"&&!allow)
-?"Delete every comment before you can disable commenting"
-:"";
-});
 }
-function openModeMenu(){
-if(!modeMenu)return;
-updateModeMenu();
-modeMenu.hidden=false;
-modeToggle.setAttribute("aria-expanded","true");
-document.addEventListener("click",onModeMenuOutside,true);
-document.addEventListener("keydown",onModeMenuKey,true);
-const first=modeMenu.querySelector('.cmh-deck-mode-radio[aria-checked="true"]:not([disabled])')
-||modeMenu.querySelector(".cmh-deck-mode-item:not([disabled])");
-if(first)setTimeout(()=>{try{first.focus();}catch(e){}},0);
-}
-function closeModeMenu(focusToggle){
-if(!modeMenu||modeMenu.hidden)return;
-modeMenu.hidden=true;
-modeToggle.setAttribute("aria-expanded","false");
-document.removeEventListener("click",onModeMenuOutside,true);
-document.removeEventListener("keydown",onModeMenuKey,true);
-if(focusToggle){try{modeToggle.focus();}catch(e){}}
-}
-function toggleModeMenu(){if(modeMenu.hidden)openModeMenu();else closeModeMenu(true);}
-function onModeMenuOutside(e){
-if(modeMenu.contains(e.target)||modeToggle.contains(e.target))return;
-closeModeMenu(false);
-}
-function modeMenuItems(){
-return Array.prototype.slice.call(
-modeMenu.querySelectorAll(".cmh-deck-mode-item:not([disabled])"));
-}
-function focusModeItem(index){
-const items=modeMenuItems();
-if(!items.length)return;
-const i=(index+items.length)%items.length;
-try{items[i].focus();}catch(e){}
-}
-function onModeMenuKey(e){
-if(e.key=== "Escape"){e.preventDefault();closeModeMenu(true);return;}
-if(e.key=== "Tab"){closeModeMenu(false);return;}
-const items=modeMenuItems();
-if(!items.length)return;
-const cur=items.indexOf(document.activeElement);
-if(e.key=== "ArrowDown"){e.preventDefault();focusModeItem(cur<0?0:cur+1);}
-else if(e.key=== "ArrowUp"){e.preventDefault();focusModeItem(cur<0?items.length-1:cur-1);}
-else if(e.key=== "Home"){e.preventDefault();focusModeItem(0);}
-else if(e.key=== "End"){e.preventDefault();focusModeItem(items.length-1);}
 }
 const modeCtl=document.createElement("div");
 modeCtl.className= "cm-skip cmh-deck-mode-ctl";
@@ -20529,7 +20430,9 @@ const toggle=document.createElement("button");
 modeToggle=toggle;
 toggle.className= "cm-skip cmh-deck-mode-toggle";
 toggle.type= "button";
-toggle.innerHTML=CMH_ICON_SVG+'<span class="cmh-deck-mode-caret" aria-hidden="true"></span>';
+toggle.innerHTML=CMH_ICON_SVG
++'<span class="cmh-deck-comment-count" title="Number of open comments" hidden>0</span>';
+modeCount=toggle.querySelector(".cmh-deck-comment-count");
 const toggleIcon=toggle.querySelector("svg");
 if(toggleIcon){
 toggleIcon.setAttribute("aria-hidden","true");
@@ -20538,59 +20441,16 @@ toggleIcon.removeAttribute("role");
 toggleIcon.removeAttribute("aria-label");
 toggleIcon.removeAttribute("data-cmh-tip");
 }
-toggle.title= "Comment options";
-toggle.setAttribute("aria-label","Comment options");
-toggle.setAttribute("aria-haspopup","menu");
-toggle.setAttribute("aria-expanded","false");
-toggle.addEventListener("click",(e)=>{e.preventDefault();toggleModeMenu();});
-modeMenu=document.createElement("div");
-modeMenu.className= "cm-skip cmh-deck-mode-menu";
-modeMenu.id= "cmhDeckModeMenu";
-modeMenu.setAttribute("role","menu");
-modeMenu.setAttribute("aria-label","Comment options");
-modeMenu.hidden=true;
-toggle.setAttribute("aria-controls",modeMenu.id);
-const DECK_MODE_OPTIONS=[
-{mode:"off",label:"Comments off",cls:"cmh-deck-mode-off-item"},
-{mode:"closed",label:"Comments on, panel closed",cls:"cmh-deck-mode-closed-item"},
-{mode:"open",label:"Comments on, panel open",cls:"cmh-deck-mode-open-item"},
-];
-modeRadioItems=DECK_MODE_OPTIONS.map((opt)=>{
-const item=document.createElement("button");
-item.type= "button";
-item.className= "cmh-deck-mode-item cmh-deck-mode-radio "+opt.cls;
-item.setAttribute("role","menuitemradio");
-item.setAttribute("data-deck-mode",opt.mode);
-item.textContent=opt.label;
-item.addEventListener("click",()=>{
-if(item.disabled)return;
-setDeckMode(opt.mode);
-closeModeMenu(false);
-if(opt.mode=== "open"){
+toggle.title= "Open comments panel";
+toggle.setAttribute("aria-label","Open comments panel");
+toggle.setAttribute("aria-controls","sidebar");
+toggle.addEventListener("click",(e)=>{
+e.preventDefault();
+setDeckMode("open");
 const panelBtn=cmhEl("btnCloseSidebar");
-if(panelBtn&&panelBtn.focus){try{panelBtn.focus();}catch(e){}}
-}else if(modeToggle&&modeToggle.focus){
-try{modeToggle.focus();}catch(e){}
-}
+if(panelBtn&&panelBtn.focus){try{panelBtn.focus();}catch(err){}}
 });
-modeMenu.appendChild(item);
-return item;
-});
-const modeSep=document.createElement("span");
-modeSep.className= "cmh-deck-mode-sep";
-modeSep.setAttribute("role","separator");
-const siteItem=document.createElement("a");
-siteItem.className= "cmh-deck-mode-item cmh-deck-mode-site cm-brand-link";
-siteItem.setAttribute("role","menuitem");
-siteItem.href=CMH_SITE_URL;
-siteItem.target= "_blank";
-siteItem.rel= "noopener noreferrer";
-siteItem.textContent= "Commentable HTML site";
-siteItem.addEventListener("click",()=>closeModeMenu(false));
-modeMenu.appendChild(modeSep);
-modeMenu.appendChild(siteItem);
 modeCtl.appendChild(toggle);
-modeCtl.appendChild(modeMenu);
 document.body.prepend(modeCtl);
 if(typeof MutationObserver=== "function"){
 new MutationObserver(()=>{
