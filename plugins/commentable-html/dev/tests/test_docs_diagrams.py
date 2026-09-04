@@ -211,6 +211,8 @@ class NewFeatureDocsTests(unittest.TestCase):
 
     def test_tutorial_documents_offline_export(self):
         text = _read(TUTORIAL_MD)
+        self.assertIn("## 18. Export, manage storage, and delete comments", text)
+        self.assertNotIn("## 18. Export, manage storage, and clear", text)
         for snippet in (
             "Offline",
             "Export Offline",

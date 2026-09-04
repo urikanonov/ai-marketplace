@@ -176,7 +176,7 @@ When you pass a document back and forth with someone else, attribute each commen
 
 ![The Copy all action with the comments panel populated](assets/garden-09-copyall.png)
 
-## 18. Export, manage storage, and clear
+## 18. Export, manage storage, and delete comments
 
 The comments panel header gathers the ways to save, share, and manage the review.
 

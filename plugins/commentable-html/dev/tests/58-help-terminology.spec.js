@@ -84,11 +84,12 @@ test.describe("Help terminology matches the current button labels", () => {
     expect(storageText).toContain("More menu");
     expect(storageText).not.toContain("Export menu");
     // The managing-comments topic must use the exact current control label, not the old bare "Clear".
-    await search.fill("Delete all comments");
+    await search.fill("Managing comments");
     const commentsTopic = page.locator(".cm-help-topic:visible", { hasText: "Managing comments" });
     await expect(commentsTopic).toHaveCount(1);
     const commentsText = await commentsTopic.innerText();
     expect(commentsText).toContain("Delete all comments");
+    expect(commentsText).toContain("Delete selected comments");
     expect(commentsText).toMatch(/Delete all comments[\s\S]*More[\s\S]*overflow/); // both entry points (CMH-UI-13)
     expect(commentsText).not.toContain("Clear deletes");
   });
