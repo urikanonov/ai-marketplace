@@ -1769,7 +1769,8 @@ const parent=m.parentNode;
 while(m.firstChild)parent.insertBefore(m.firstChild,m);
 parent.removeChild(m);
 parent.normalize();
-if(parent.nodeType===1&&parent.classList.contains("cm-toc"))_cmTocWrapLooseText(parent);
+if(parent.nodeType===1&&parent.classList.contains("cm-toc")
+&&cmhOwnChrome(parent,".cmh-toc-caret"))_cmTocWrapLooseText(parent);
 });
 }
 function removeHighlight(comment){

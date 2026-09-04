@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import { stageContent, stageDeck, fileUrl, ready, addTextComment, readDownload, openToolbarMenu, PYTHON, SKILL } from "./helpers.js";
+import { stageContent, stageDeck, enterCommentMode, fileUrl, ready, addTextComment, readDownload, openToolbarMenu, PYTHON, SKILL } from "./helpers.js";
 
 // The Python-side hasher reads the SOURCE FILE, so comparing it to the live runtime hash catches a
 // load-time transform that changed the hashed text (the pattern CMH-CONTENT-21 established).
@@ -374,6 +374,7 @@ test.describe("in-document Contents list is collapsible (CMH-TOC-12)", () => {
     const SLIDES = `
 <section class="slide active" aria-labelledby="s1"><h2 id="s1">Agenda</h2>
   <nav class="cm-toc" aria-label="Table of contents"><div class="cm-toc-title">Contents</div>
+    Jump to any slide below.
     <ol><li><a href="#s2">Second slide</a></li></ol></nav></section>
 <section class="slide" aria-labelledby="s2"><h2 id="s2">Second slide</h2><p>Banana.</p></section>`;
     const staged = stageDeck(SLIDES, { key: KEY + "-deck" });
@@ -386,6 +387,21 @@ test.describe("in-document Contents list is collapsible (CMH-TOC-12)", () => {
     await expect(page.locator("#commentRoot .cmh-toc-caret")).toHaveCount(0);
     // ... and the list is shown in full, not left half-folded by a caret that never arrived.
     await expect(page.locator("#commentRoot nav.cm-toc ol")).toBeVisible();
+
+    // The list is left EXACTLY as written, which includes the delete path: the fold repair in
+    // unwrapMarks() is guarded on the nav carrying our caret, so commenting on a deck list's own
+    // loose text and then deleting that comment must not leave a wrapper behind either.
+    await expect(page.locator("#commentRoot nav.cm-toc .cmh-toc-text")).toHaveCount(0);
+    await enterCommentMode(page);
+    await addTextComment(page, "#commentRoot nav.cm-toc", "note on the deck contents text");
+    await page.reload();
+    await ready(page);
+    await enterCommentMode(page);
+    page.on("dialog", (d) => d.accept());
+    await page.locator('.cm-card', { hasText: "note on the deck contents text" }).locator('[data-act="del"]').click();
+    await expect(page.locator("#commentRoot mark.cm-hl")).toHaveCount(0);
+    await expect(page.locator("#commentRoot .cmh-toc-text")).toHaveCount(0);
+    await expect(page.locator("#commentRoot .cmh-toc-caret")).toHaveCount(0);
   });
 
   test("a folded Contents list hides its own direct text too (CMH-TOC-12)", async ({ page }) => {

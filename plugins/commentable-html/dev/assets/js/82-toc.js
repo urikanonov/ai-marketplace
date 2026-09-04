@@ -427,10 +427,11 @@ function setupTocCollapse() {
     // row, so a nav that also carries an intro paragraph or a second list would otherwise announce
     // less than the button actually toggles (and a nav with no list at all would announce nothing).
     // It is resolved by getElementById, which answers with the FIRST element carrying the id, so a
-    // nav whose AUTHORED id is duplicated elsewhere (duplicate ids are invalid HTML but do occur,
-    // and this layer supports them for the fold identity above) needs a runtime id of its own -
-    // otherwise its caret would name a region it does not control. The storage identity is already
-    // resolved from the authored id above, so re-identifying the nav here never orphans a fold.
+    // nav whose id resolves to a DIFFERENT element - some earlier element shadows it, which needs
+    // an id collision, invalid HTML that does occur - needs a runtime id of its own; otherwise its
+    // caret would name a region it does not control. A nav whose id resolves to ITSELF keeps it,
+    // including the first of a duplicated pair. The storage identity is already resolved from the
+    // authored id above, so re-identifying the nav here never orphans a fold.
     if (!nav.id || document.getElementById(nav.id) !== nav) {
       let n = i;
       // never mint a duplicate id into the document
