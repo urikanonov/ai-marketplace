@@ -25,7 +25,11 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 - The `Contents` caret is documented as a FLOW-DOCUMENT affordance. The runtime has always excluded
   decks (as it does the section-collapse carets and the side menu), but the spec row and the Help
   `Navigation` topic promised the caret unconditionally, so a deck slide carrying an authored
-  `Contents` list read as broken. Both now say so, and a test locks the exclusion.
+  `Contents` list read as broken. Both now say a deck gets no in-document navigation chrome and
+  leaves such a list as plain content, and tests lock both the exclusion and the Help wording. The
+  spec row also records the deliberate trade-off in the `aria-controls` fix above: on the invalid
+  input where two elements share one id, the shadowed nav is re-identified, so an author rule keyed
+  to that id stops matching it.
 
 ## [1.848.0] - 2026-09-04
 

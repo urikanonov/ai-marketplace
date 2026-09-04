@@ -504,7 +504,7 @@
             </ul>
             <div class="group-label">Changed</div>
             <ul>
-              <li>The <code>Contents</code> caret is documented as a FLOW-DOCUMENT affordance. The runtime has always excluded decks (as it does the section-collapse carets and the side menu), but the spec row and the Help <code>Navigation</code> topic promised the caret unconditionally, so a deck slide carrying an authored <code>Contents</code> list read as broken. Both now say so, and a test locks the exclusion.</li>
+              <li>The <code>Contents</code> caret is documented as a FLOW-DOCUMENT affordance. The runtime has always excluded decks (as it does the section-collapse carets and the side menu), but the spec row and the Help <code>Navigation</code> topic promised the caret unconditionally, so a deck slide carrying an authored <code>Contents</code> list read as broken. Both now say a deck gets no in-document navigation chrome and leaves such a list as plain content, and tests lock both the exclusion and the Help wording. The spec row also records the deliberate trade-off in the <code>aria-controls</code> fix above: on the invalid input where two elements share one id, the shadowed nav is re-identified, so an author rule keyed to that id stops matching it.</li>
             </ul>
           </div>
           <div class="release">

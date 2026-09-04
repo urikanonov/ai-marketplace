@@ -289,6 +289,53 @@ test.describe("in-document Contents list is collapsible (CMH-TOC-12)", () => {
     await expect(navs.nth(1).locator("ol")).toBeHidden();
   });
 
+  test("Help scopes the Contents caret to a flow document (CMH-TOC-12)", async ({ page }) => {
+    // The Help Navigation topic is the reader-facing surface for this feature (its doc-surface
+    // registry entry is `help`), and it drifted once already by promising the caret
+    // unconditionally. Pin the two claims that matter: the caret is a FLOW-DOCUMENT affordance,
+    // and a deck slide's authored list is left as plain content rather than half-folded.
+    await openDoc(page);
+    await openToolbarMenu(page);
+    await page.click("#btnHelpTop");
+    await expect(page.locator(".cm-help")).toBeVisible();
+    const body = page.locator(".cm-help-body");
+    await expect(body).toContainText("In a flow document, an in-document Contents list has its own caret");
+    await expect(body).toContainText("A deck gets no in-document navigation chrome");
+    await expect(body).toContainText("left as plain content, with no caret");
+  });
+
+  test("an id-less Contents list never steals an authored cmhToc id (CMH-TOC-12)", async ({ page }) => {
+    // The mint namespace is not reserved - a document may legitimately author `id="cmhToc0"`. The
+    // mint loop therefore probes the whole document before taking a name, so an EARLIER id-less nav
+    // cannot claim an id a LATER nav already carries. Without that probe the authored nav would be
+    // re-identified on load and an author's `#cmhToc0` rule or link would stop matching it.
+    const CLASH = `
+<nav class="cm-toc" aria-label="First"><div class="cm-toc-title">Contents</div>
+  <ol><li><a href="#alpha">Alpha overview</a></li></ol></nav>
+<nav class="cm-toc" id="cmhToc0" aria-label="Second"><div class="cm-toc-title">Appendix</div>
+  <ol><li><a href="#beta">Beta details</a></li></ol></nav>
+<section aria-labelledby="alpha"><h2 id="alpha">Alpha overview</h2><p>Apple.</p></section>
+<section aria-labelledby="beta"><h2 id="beta">Beta details</h2><p>Banana.</p></section>`;
+    const staged = stageContent(CLASH, { key: KEY + "-clash", source: "toc-clash.html" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    const navs = page.locator("#commentRoot nav.cm-toc");
+    await expect(navs).toHaveCount(2);
+    // The authored id survives untouched, and the id-less list took a free name instead.
+    await expect(navs.nth(1)).toHaveAttribute("id", "cmhToc0");
+    const first = await navs.nth(0).getAttribute("id");
+    expect(first).not.toBe("cmhToc0");
+    // Both carets still control exactly their own nav.
+    const targets = await navs.locator(".cmh-toc-caret").evaluateAll(
+      (els) => els.map((el) => el.getAttribute("aria-controls")));
+    expect(targets).toEqual([first, "cmhToc0"]);
+    expect(await page.evaluate((ids) => ids.map((id, i) => {
+      const navList = document.querySelectorAll("#commentRoot nav.cm-toc");
+      return document.getElementById(id) === navList[i];
+    }), targets)).toEqual([true, true]);
+  });
+
   test("a deck never gets a Contents caret (CMH-TOC-12)", async ({ page }) => {
     // The whole flow-document navigation family (section collapse, the side menu, this fold) is
     // deliberately absent from a deck, whose slides carry their own navigation. Locking the scope
