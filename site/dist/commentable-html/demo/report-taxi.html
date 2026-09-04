@@ -12967,6 +12967,7 @@ focusItem(list,e.key=== "ArrowDown"?0:list.length-1);
 });
 })();
 function buildCopyText(){
+if(typeof cmhForgetZoneFormatter=== "function")cmhForgetZoneFormatter();
 const liveComments=withoutHandled(comments);
 const stateChanges=(typeof widgetStateChanges=== "function")?widgetStateChanges():[];
 const clChanges=(typeof checklistChanges=== "function")?checklistChanges():[];
@@ -18883,6 +18884,7 @@ return null;
 }
 function materializePrintAppendix(){
 if(IS_DECK)return;
+if(typeof cmhForgetZoneFormatter=== "function")cmhForgetZoneFormatter();
 let appendix=_ownPrintAppendix();
 const roots=(typeof threadRoots=== "function")?threadRoots(comments):comments;
 if(!roots.length){

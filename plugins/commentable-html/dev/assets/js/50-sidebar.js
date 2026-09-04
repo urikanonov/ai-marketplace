@@ -119,11 +119,12 @@ function cmhGeneratedIso() {
   return isNaN(lm) ? "" : new Date(lm).toISOString();
 }
 // Re-stamp every ALREADY-RENDERED timestamp after the display zone changes, so the preference
-// takes effect in place instead of on the next load. The print appendix, the Copy all bundle and
-// every export are built on demand, so they pick the new zone up on their own. This is a pure
-// DISPLAY re-stamp, so the comment list's scroll position is put back: renderComments() replaces
-// the list wholesale, and a reviewer reading deep in a long list must not be thrown to the top for
-// a relabelling. (Drafts, the search filter and focus are already carried across by
+// takes effect in place instead of on the next load. The on-demand surfaces are not touched here:
+// the Copy all bundle and the print appendix read the preference when they are BUILT, and an export
+// carries the raw ISO instant so the recipient's own preference decides how it renders. This is a
+// pure DISPLAY re-stamp, so the comment list's scroll position is put back: renderComments()
+// replaces the list wholesale, and a reviewer reading deep in a long list must not be thrown to the
+// top for a relabelling. (Drafts, the search filter and focus are already carried across by
 // renderComments() itself.)
 function cmhRefreshTimeLabels() {
   const top = listEl ? listEl.scrollTop : 0;

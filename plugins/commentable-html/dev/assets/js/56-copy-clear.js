@@ -1,5 +1,8 @@
 /* ---------- Copy all + Clear all ---------- */
 function buildCopyText() {
+  // A fresh formatting pass: drop the render-pass zone-formatter memo so a host timezone change
+  // since the last render cannot label the bundle with the old zone name (CMH-SIDE-13).
+  if (typeof cmhForgetZoneFormatter === "function") cmhForgetZoneFormatter();
   const liveComments = withoutHandled(comments);
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];

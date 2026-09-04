@@ -111,7 +111,7 @@ test("CMH-SIDE-13: replies and the print appendix carry the zone too", async ({ 
   await page.emulateMedia({ media: "screen" });
 });
 
-test("CMH-SIDE-13: the zone formatter is built once per render pass, not once per timestamp", async ({ page }) => {
+test("CMH-SIDE-13: the zone formatter is built once per formatting pass, not once per timestamp", async ({ page }) => {
   // Reusing one Intl.DateTimeFormat for a whole pass is the perf contract; dropping it between
   // passes is what lets a changed OS timezone be picked up without a reload.
   await page.addInitScript(() => {
@@ -137,6 +137,16 @@ test("CMH-SIDE-13: the zone formatter is built once per render pass, not once pe
   expect(await page.evaluate(() => window.__cmhZoneFmtCount)).toBe(1);
   await page.click("#btnSort");
   expect(await page.evaluate(() => window.__cmhZoneFmtCount)).toBe(2);
+
+  // The on-demand passes start fresh too, so neither can print a stale zone name after the host
+  // timezone changes without an intervening render.
+  await installClipboardCapture(page);
+  await page.click("#btnCopyAll");
+  expect(await page.evaluate(() => window.__cmhZoneFmtCount)).toBe(3);
+  await page.emulateMedia({ media: "print" });
+  await expect(page.locator("#cmhPrintComments")).toHaveCount(1);
+  expect(await page.evaluate(() => window.__cmhZoneFmtCount)).toBeGreaterThan(3);
+  await page.emulateMedia({ media: "screen" });
 });
 
 test("CMH-SIDE-13: an engine with no zone-name part falls back to a computed UTC offset", async ({ page }) => {
