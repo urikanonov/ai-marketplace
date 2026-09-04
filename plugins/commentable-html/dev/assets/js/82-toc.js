@@ -322,6 +322,10 @@ function setupCollapsibleSections() {
 // per-document localStorage key - an export builds from the on-disk source, so neither the caret nor
 // the fold can bake into an exported document.
 const CMH_TOC_FOLD_KEY = COMMENT_KEY + "::tocFold";
+// Live {nav, setState} pairs, so a jump to a comment anchored INSIDE a folded Contents list can
+// unfold it through the owning toggle (and so keep the caret's aria state and the persisted choice
+// consistent) rather than by stripping the class behind the control's back.
+const _cmTocFoldEntries = [];
 function _cmReadTocFolds() {
   let parsed = null;
   try { parsed = JSON.parse(localStorage.getItem(CMH_TOC_FOLD_KEY) || "{}"); } catch (e) { parsed = null; }
@@ -332,26 +336,36 @@ function _cmWriteTocFold(key, collapsed) {
   if (collapsed) state[key] = 1; else delete state[key];
   try { localStorage.setItem(CMH_TOC_FOLD_KEY, JSON.stringify(state)); } catch (e) { /* private mode */ }
 }
+// Unfold the Contents list `el` sits in, if it is folded. Called from the jump path so a comment
+// anchored on a list entry is never scrolled to inside a display:none box.
+function expandCollapsedToc(el) {
+  const nav = el && el.closest && el.closest(".cm-toc.cmh-toc-collapsed");
+  if (!nav) return;
+  for (let i = 0; i < _cmTocFoldEntries.length; i++) {
+    if (_cmTocFoldEntries[i].nav === nav) { _cmTocFoldEntries[i].setState(false, true); return; }
+  }
+}
 function setupTocCollapse() {
   const root = cmhEl("commentRoot") || document.body;
   const saved = _cmReadTocFolds();
+  _cmTocFoldEntries.length = 0;
   root.querySelectorAll(".cm-toc").forEach(function (nav, i) {
     if (nav.closest(".cm-skip")) return;
     if (cmhOwnChrome(nav, ".cmh-toc-caret")) return;
     const title = nav.querySelector(":scope > .cm-toc-title");
-    const list = nav.querySelector(":scope > ol, :scope > ul");
     const caret = document.createElement("button");
     caret.type = "button";
     caret.className = "cmh-toc-caret cm-skip";
     cmhMarkLayerChrome(caret);
-    if (list) {
-      if (!list.id) {
-        let n = i;
-        while (cmhEl("cmhTocList" + n)) n++;   // never mint a duplicate id into the document
-        list.id = "cmhTocList" + n;
-      }
-      caret.setAttribute("aria-controls", list.id);
+    // aria-controls names the NAV, not its first list: the fold hides every child but the title
+    // row, so a nav that also carries an intro paragraph or a second list would otherwise announce
+    // less than the button actually toggles (and a nav with no list at all would announce nothing).
+    if (!nav.id) {
+      let n = i;
+      while (cmhEl("cmhToc" + n)) n++;   // never mint a duplicate id into the document
+      nav.id = "cmhToc" + n;
     }
+    caret.setAttribute("aria-controls", nav.id);
     // A list with no title of its own still gets the control, standing alone above the entries.
     if (title) title.insertBefore(caret, title.firstChild);
     else nav.insertBefore(caret, nav.firstChild);
@@ -380,6 +394,7 @@ function setupTocCollapse() {
         setState(false, true);
       });
     }
+    _cmTocFoldEntries.push({ nav: nav, setState: setState });
     setState(!!saved[storeKey], false);
   });
 }

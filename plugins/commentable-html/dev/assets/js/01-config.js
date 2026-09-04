@@ -215,7 +215,7 @@ const CMH_MAX_STORE_CHARS = 8000000;
 const CMH_SUBKEY_SUFFIXES = [
   "::z", "::deleted", "::diffLayout", "::diffSyntax", "::cl", "::note",
   "::commentSort", "::tableSort", "::reviews", "::reviews::deleted", "::deckMode",
-  "::autoOpenPanel",
+  "::autoOpenPanel", "::tocFold",
 ];
 // Shared registry index of every commentable-html document seen in this browser (best-effort
 // presentation metadata only - the storage manager's delete authority is the owned-key shape, never

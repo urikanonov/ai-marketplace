@@ -137,6 +137,89 @@ test.describe("in-document Contents list is collapsible (CMH-TOC-12)", () => {
     await expect(page.locator("#commentRoot mark.cm-hl")).toHaveText(anchored);
   });
 
+  test("jumping to a comment inside a folded Contents list unfolds it (CMH-TOC-12)", async ({ page }) => {
+    await openDoc(page);
+    // A Contents entry is ordinary commentable content, so a comment can be anchored on it. Once
+    // folded, the entry has no layout box - the jump would silently scroll to nothing.
+    await addTextComment(page, '#commentRoot nav.cm-toc a[href="#beta"]', "note on a contents entry");
+    await caret(page).click();
+    await expect(list(page)).toBeHidden();
+
+    // The fold persists, so the broken jump would be sticky: reload before activating the card.
+    await page.reload();
+    await ready(page);
+    await expect(list(page)).toBeHidden();
+    await page.locator(".cm-card").first().click();
+    await expect(list(page)).toBeVisible();
+    await expect(page.locator("#commentRoot mark.cm-hl")).toBeVisible();
+    // Unfolded through the owning toggle, so the caret's state and the stored choice agree.
+    await expect(caret(page)).toHaveAttribute("aria-expanded", "true");
+    await page.reload();
+    await ready(page);
+    await expect(list(page)).toBeVisible();
+  });
+
+  test("several Contents lists in one document fold independently (CMH-TOC-12)", async ({ page }) => {
+    const TWO = CONTENT + `
+<nav class="cm-toc" aria-label="Appendix contents">
+  <div class="cm-toc-title">Appendix contents</div>
+  <ul><li><a href="#gamma">Gamma appendix</a></li></ul>
+</nav>`;
+    const staged = stageContent(TWO, { key: KEY + "-two", source: "toc-two.html" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    const navs = page.locator("#commentRoot nav.cm-toc");
+    await expect(navs).toHaveCount(2);
+
+    await navs.nth(1).locator(".cmh-toc-caret").click();
+    await expect(navs.nth(0).locator("ol")).toBeVisible();
+    await expect(navs.nth(1).locator("ul")).toBeHidden();
+
+    await page.reload();
+    await ready(page);
+    await expect(navs.nth(0).locator("ol")).toBeVisible();
+    await expect(navs.nth(1).locator("ul")).toBeHidden();
+  });
+
+  test("a Contents list with no title still gets a working caret (CMH-TOC-12)", async ({ page }) => {
+    const BARE = `
+<nav class="cm-toc" aria-label="Table of contents">
+  <ol><li><a href="#alpha">Alpha overview</a></li><li><a href="#beta">Beta details</a></li></ol>
+</nav>
+<section aria-labelledby="alpha"><h2 id="alpha">Alpha overview</h2><p>Apple.</p></section>
+<section aria-labelledby="beta"><h2 id="beta">Beta details</h2><p>Banana.</p></section>`;
+    const staged = stageContent(BARE, { key: KEY + "-bare", source: "toc-bare.html" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await expect(caret(page)).toBeVisible();
+    // aria-controls names the NAV, so it covers everything the fold actually hides.
+    expect(await caret(page).getAttribute("aria-controls"))
+      .toBe(await page.locator("#commentRoot nav.cm-toc").getAttribute("id"));
+    await caret(page).click();
+    await expect(list(page)).toBeHidden();
+    await expect(caret(page)).toBeVisible();
+  });
+
+  test("a corrupt stored fold state leaves the Contents list expanded (CMH-TOC-12)", async ({ page }) => {
+    const staged = stageContent(CONTENT, { key: KEY + "-corrupt", source: "toc-corrupt.html" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    // An array and a non-JSON blob are both refused by the shape check, so a poisoned value can
+    // never hide a reader's Contents list behind a state the runtime cannot reason about.
+    for (const bad of ['[1]', "not json", '"1"', "null"]) {
+      await page.evaluate(([key, value]) => {
+        localStorage.setItem(key + "::tocFold", value);
+      }, [KEY + "-corrupt", bad]);
+      await page.reload();
+      await ready(page);
+      await expect(list(page)).toBeVisible();
+      await expect(caret(page)).toHaveAttribute("aria-expanded", "true");
+    }
+  });
+
   test("a folded Contents list still prints in full (CMH-TOC-12)", async ({ page }) => {
     await openDoc(page);
     await caret(page).click();

@@ -4757,7 +4757,7 @@ const CMH_MAX_STORE_CHARS=8000000;
 const CMH_SUBKEY_SUFFIXES=[
 "::z","::deleted","::diffLayout","::diffSyntax","::cl","::note",
 "::commentSort","::tableSort","::reviews","::reviews::deleted","::deckMode",
-"::autoOpenPanel",
+"::autoOpenPanel","::tocFold",
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
@@ -11720,8 +11720,8 @@ if(el&&el.closest&&el.closest("section.cm-toc-filtered")){
 const _s=document.querySelector(".cm-side-toc-search");
 if(_s&&_s.value){_s.value= "";_s.dispatchEvent(new Event("input"));}
 }
-let sec=el&&el.closest&&el.closest("section.cmh-section-collapsed");
-while(sec){
+if(typeof expandCollapsedToc=== "function")expandCollapsedToc(el);
+let sec=el&&el.closest&&el.closest("section.cmh-section-collapsed");while(sec){
 sec.classList.remove("cmh-section-collapsed");
 const caret=cmhOwnChrome(sec,":scope > .cmh-section-heading .cmh-sec-caret");
 if(caret){
@@ -18601,6 +18601,7 @@ _cmSectionEntries.push({heading:heading,section:sec,setState:setState});
 });
 }
 const CMH_TOC_FOLD_KEY=COMMENT_KEY+"::tocFold";
+const _cmTocFoldEntries=[];
 function _cmReadTocFolds(){
 let parsed=null;
 try{parsed=JSON.parse(localStorage.getItem(CMH_TOC_FOLD_KEY)||"{}");}catch(e){parsed=null;}
@@ -18611,26 +18612,31 @@ const state=_cmReadTocFolds();
 if(collapsed)state[key]=1;else delete state[key];
 try{localStorage.setItem(CMH_TOC_FOLD_KEY,JSON.stringify(state));}catch(e){}
 }
+function expandCollapsedToc(el){
+const nav=el&&el.closest&&el.closest(".cm-toc.cmh-toc-collapsed");
+if(!nav)return;
+for(let i=0;i<_cmTocFoldEntries.length;i++){
+if(_cmTocFoldEntries[i].nav===nav){_cmTocFoldEntries[i].setState(false,true);return;}
+}
+}
 function setupTocCollapse(){
 const root=cmhEl("commentRoot")||document.body;
 const saved=_cmReadTocFolds();
+_cmTocFoldEntries.length=0;
 root.querySelectorAll(".cm-toc").forEach(function(nav,i){
 if(nav.closest(".cm-skip"))return;
 if(cmhOwnChrome(nav,".cmh-toc-caret"))return;
 const title=nav.querySelector(":scope > .cm-toc-title");
-const list=nav.querySelector(":scope > ol, :scope > ul");
 const caret=document.createElement("button");
 caret.type= "button";
 caret.className= "cmh-toc-caret cm-skip";
 cmhMarkLayerChrome(caret);
-if(list){
-if(!list.id){
+if(!nav.id){
 let n=i;
-while(cmhEl("cmhTocList"+n))n++;
-list.id= "cmhTocList"+n;
+while(cmhEl("cmhToc"+n))n++;
+nav.id= "cmhToc"+n;
 }
-caret.setAttribute("aria-controls",list.id);
-}
+caret.setAttribute("aria-controls",nav.id);
 if(title)title.insertBefore(caret,title.firstChild);
 else nav.insertBefore(caret,nav.firstChild);
 const storeKey=String(i);
@@ -18655,6 +18661,7 @@ if(sel&&sel.toString().trim())return;
 setState(false,true);
 });
 }
+_cmTocFoldEntries.push({nav:nav,setState:setState});
 setState(!!saved[storeKey],false);
 });
 }
