@@ -15,7 +15,6 @@ import {
   startStaticServer,
   readDownload,
   routeMermaidLocal,
-  openDeckModeMenu,
   enterCommentMode,
   leaveCommentMode,
   selectText,
@@ -942,8 +941,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await page.keyboard.press("Escape");
     await expect(page.locator("#contextMenu")).toBeHidden();
 
-    const menu = await openDeckModeMenu(page);
-    await menu.locator(".cmh-deck-mode-off-item").click();
+    await page.evaluate(() => window.__cmhDeck.setDeckMode("off"));
     expect(await page.evaluate(() => window.__cmhDeck.deckMode())).toBe("off");
     const preventedInOff = await page.evaluate(() => {
       const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 60, clientY: 60 });
@@ -955,51 +953,75 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("#menuDocComment")).toBeHidden();
   });
 
-  test("CMH-DECK-11: comment-options menu is a 3-state radio group controlling the review panel", async ({ page }) => {
-    await openDeck(page);
-    const toggle = page.getByRole("button", { name: "Comment options" });
-    await expect(toggle).toHaveAttribute("title", "Comment options");
-    await expect(toggle).toHaveAttribute("aria-haspopup", "menu");
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  test("CMH-DECK-11: the deck comments button opens the panel and shows the live comment count", async ({ page }) => {
+    await openDeck(page, "", "cmh-deck-comments-button");
+    const toggle = page.locator(".cmh-deck-mode-toggle");
+    const count = toggle.locator(".cmh-deck-comment-count");
+    await expect(toggle).toHaveAttribute("title", "Open comments panel");
+    await expect(toggle).toHaveAccessibleName("Open comments panel");
+    await expect(toggle).not.toHaveAttribute("aria-haspopup");
     await expect(toggle.locator("svg.cm-brand-icon")).toHaveCount(1);
     await expect(toggle.locator("svg.cm-brand-icon")).toHaveAttribute("aria-hidden", "true");
-    await expect(toggle.locator(".cmh-deck-mode-caret")).toHaveCount(1);
+    await expect(toggle.locator(".cmh-deck-mode-caret")).toHaveCount(0);
+    await expect(page.locator(".cmh-deck-mode-menu")).toHaveCount(0);
+    await expect(count).toBeHidden();
 
-    const menu = await openDeckModeMenu(page);
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    // Three mutually-exclusive radio options; exactly one is checked (the default "closed").
-    const off = menu.locator('.cmh-deck-mode-radio[data-deck-mode="off"]');
-    const closed = menu.locator('.cmh-deck-mode-radio[data-deck-mode="closed"]');
-    const open = menu.locator('.cmh-deck-mode-radio[data-deck-mode="open"]');
-    await expect(menu.locator(".cmh-deck-mode-radio")).toHaveCount(3);
-    await expect(off).toHaveAttribute("role", "menuitemradio");
-    await expect(closed).toHaveAttribute("role", "menuitemradio");
-    await expect(open).toHaveAttribute("role", "menuitemradio");
-    await expect(off).toHaveText("Comments off");
-    await expect(closed).toHaveText("Comments on, panel closed");
-    await expect(open).toHaveText("Comments on, panel open");
-    await expect(closed).toHaveAttribute("aria-checked", "true");
-    await expect(off).toHaveAttribute("aria-checked", "false");
-    await expect(open).toHaveAttribute("aria-checked", "false");
-    await expect(menu.locator(".cmh-deck-mode-site")).toHaveText("Commentable HTML site");
-
-    // Selecting "panel open" opens the review panel and hides the corner control.
-    await open.click();
+    await toggle.click();
     expect(await page.evaluate(() => window.__cmhDeck.deckMode())).toBe("open");
     await expect(page.locator("#sidebar")).toBeVisible();
+    await expect(page.locator("#btnCloseSidebar")).toBeFocused();
     await expect(page.locator(".cmh-deck-mode-ctl")).toBeHidden();
 
+    await addTextComment(page, ".slide.active p", "Count this deck comment");
+    await expect(page.locator("#sidebarCount")).toHaveText("1");
+    await page.locator(".cm-card .cm-reply-btn").click();
+    const reply = page.locator(".cm-card .cm-reply-compose");
+    await reply.locator("textarea").fill("Reply without inflating the thread count");
+    await reply.locator(".cm-reply-save").click();
+    await expect(page.locator("#sidebarCount")).toHaveText("1");
+    await page.evaluate(() => {
+      document.getElementById("sidebarCount").textContent = "pending";
+      window.__cmhDeck.refreshMode();
+    });
+    await expect(count).toHaveText("1");
+    await expect(toggle).toHaveAttribute("aria-controls", "sidebar");
     await leaveCommentMode(page);
     expect(await page.evaluate(() => window.__cmhDeck.deckMode())).toBe("closed");
     await expect(page.locator(".cmh-deck-mode-ctl")).toBeVisible();
     await expect(page.locator("#sidebar")).toBeHidden();
+    await expect(count).toBeVisible();
+    await expect(count).toHaveText("1");
+  });
 
-    // Reopen: "closed" is checked again, and selecting "off" disables commenting.
-    const menu2 = await openDeckModeMenu(page);
-    await expect(menu2.locator('.cmh-deck-mode-radio[data-deck-mode="closed"]')).toHaveAttribute("aria-checked", "true");
-    await menu2.locator('.cmh-deck-mode-radio[data-deck-mode="off"]').click();
-    expect(await page.evaluate(() => window.__cmhDeck.deckMode())).toBe("off");
-    await expect(page.locator("body")).toHaveClass(/cmh-deck-comments-off/);
+  test("CMH-DECK-11: the demo-width panel brand never overlaps the comments title or count", async ({ page }) => {
+    await page.setViewportSize({ width: 852, height: 728 });
+    await openDeck(page, "", "cmh-deck-header-layout");
+    await page.evaluate(() => {
+      document.body.setAttribute("data-cm-density", "comfortable");
+      window.__cmhDeck.setDeckMode("open");
+      document.getElementById("sidebarCount").textContent = "88";
+    });
+    const title = page.locator(".cm-sidebar .head-top h3");
+    const count = page.locator("#sidebarCount");
+    const brand = page.locator(".cm-sidebar .head-meta .cm-brand-link");
+    await expect(title).toBeVisible();
+    await expect(count).toBeVisible();
+    await expect(brand).toBeVisible();
+    expect(await brand.evaluate((el) => el === el.parentElement.lastElementChild)).toBe(true);
+    const boxes = await Promise.all([title.boundingBox(), count.boundingBox(), brand.boundingBox()]);
+    expect(boxes[0]).not.toBeNull();
+    expect(boxes[1]).not.toBeNull();
+    expect(boxes[2]).not.toBeNull();
+    const titleBox = boxes[0];
+    const countBox = boxes[1];
+    const brandBox = boxes[2];
+    expect(countBox.x + countBox.width).toBeLessThanOrEqual(titleBox.x + titleBox.width + 0.5);
+    const overlaps = (left, right) => left.x < right.x + right.width
+      && left.x + left.width > right.x
+      && left.y < right.y + right.height
+      && left.y + left.height > right.y;
+    expect(overlaps(countBox, brandBox)).toBe(false);
+    expect(overlaps(titleBox, brandBox)).toBe(false);
   });
 
   test("CMH-DECK-25: note/checklist changes never re-enable commenting in a comments-off deck (issue #659)", async ({ page }) => {
@@ -1024,9 +1046,8 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       await expect(page.locator("#sidebar")).toBeHidden();
     };
 
-    // Turn comments off (allowed - a changed checklist/note is not a comment).
-    const menu = await openDeckModeMenu(page);
-    await menu.locator(".cmh-deck-mode-off-item").click();
+    // Enter the retained legacy present-only state through the controller.
+    await page.evaluate(() => window.__cmhDeck.setDeckMode("off"));
     await assertPresentOnly();
 
     // Toggle checklist items WHILE off: must NOT open the sidebar or re-enable commenting.
@@ -1064,9 +1085,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("body")).toHaveClass(/cmh-deck-comments-off/);
     await expect(page.locator('[data-cmh-item="backend"] .cmh-check')).toHaveAttribute("data-cmh-check-state", "check");
 
-    // Only an explicit comment-options re-selection re-enables commenting.
-    const menu2 = await openDeckModeMenu(page);
-    await menu2.locator('.cmh-deck-mode-radio[data-deck-mode="open"]').click();
+    await page.locator(".cmh-deck-mode-toggle").click();
     expect(await mode()).toBe("open");
     await expect(page.locator("#sidebar")).toBeVisible();
   });
@@ -1074,8 +1093,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
   test("CMH-DECK-25: an incidental sidebar-open never leaves off with no comment (issue #659)", async ({ page }) => {
     await openDeck(page, "", "cmh-deck-off-observer");
     const mode = () => page.evaluate(() => window.__cmhDeck.deckMode());
-    const menu = await openDeckModeMenu(page);
-    await menu.locator(".cmh-deck-mode-off-item").click();
+    await page.evaluate(() => window.__cmhDeck.setDeckMode("off"));
     expect(await mode()).toBe("off");
     // The deck comment-model observer must NOT promote "off" to "open" for an incidental sidebar
     // open that carries no comment (0 comments); instead it REVERTS the open so the deck stays
@@ -1094,8 +1112,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     const composer = await openComposerFor(page, ".slide.active p");
     await composer.locator("textarea").fill("authored while presenting");
     // While the composer is still open (0 SAVED comments, so "off" is allowed), turn comments off.
-    const menu = await openDeckModeMenu(page);
-    await menu.locator(".cmh-deck-mode-off-item").click();
+    await page.evaluate(() => window.__cmhDeck.setDeckMode("off"));
     expect(await mode()).toBe("off");
     // Saving the pending comment must NOT strand it behind the present-only lock: because "off" is
     // only valid with zero comments, a real comment landing exits "off" to "open" so it is visible.
@@ -1147,8 +1164,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       await page.waitForTimeout(60);
     };
 
-    const menu = await openDeckModeMenu(page);
-    await menu.locator(".cmh-deck-mode-off-item").click();
+    await page.evaluate(() => window.__cmhDeck.setDeckMode("off"));
     expect(await mode()).toBe("off");
 
     // Move a board card WHILE off: a widget layout change must not open the sidebar or re-enable
@@ -1172,8 +1188,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
       expect(await page.locator("body").evaluate((b) => b.classList.contains("sidebar-open"))).toBe(false);
     };
 
-    const menu = await openDeckModeMenu(page);
-    await menu.locator(".cmh-deck-mode-off-item").click();
+    await page.evaluate(() => window.__cmhDeck.setDeckMode("off"));
     await assertOff("slide-00000001");
 
     // Slide movement must NEVER change the deck comment model. Walk EVERY accepted route (each has
@@ -1234,9 +1249,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("#menuComment")).toBeHidden();
     await page.evaluate(() => window.getSelection().removeAllRanges());
 
-    // Only an explicit comment-options re-selection re-enables commenting.
-    const menu2 = await openDeckModeMenu(page);
-    await menu2.locator('.cmh-deck-mode-radio[data-deck-mode="closed"]').click();
+    await page.evaluate(() => window.__cmhDeck.setDeckMode("closed"));
     expect(await mode()).toBe("closed");
     expect(await page.locator("body").evaluate((b) => b.classList.contains("cmh-deck-comments-off"))).toBe(false);
   });
@@ -1270,20 +1283,12 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("#menuDocComment")).toBeVisible();
     await page.keyboard.press("Escape");
 
-    const gateMenu = await openDeckModeMenu(page);
-    await page.keyboard.press("ArrowRight");
-    expect(await activeId(page)).toBe("slide-00000001");
-    await page.keyboard.press("Escape");
-    await expect(gateMenu).toBeHidden();
-
     await addTextComment(page, ".slide.active p", "opens panel from closed mode");
     await expect(page.locator("#sidebar")).toBeVisible();
     expect(await mode()).toBe("open");
     await leaveCommentMode(page);
-    const disabledMenu = await openDeckModeMenu(page);
-    const offWithComment = disabledMenu.locator(".cmh-deck-mode-off-item");
-    await expect(offWithComment).toBeDisabled();
-    await expect(offWithComment).toHaveAttribute("aria-disabled", "true");
+    await page.evaluate(() => window.__cmhDeck.setDeckMode("off"));
+    expect(await mode()).toBe("closed");
 
     await openDeck(page, "", "cmh-deck-22-open-persist");
     await enterCommentMode(page);
@@ -1294,8 +1299,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("#sidebar")).toBeVisible();
 
     await openDeck(page, "", "cmh-deck-22-off-persist");
-    const menu = await openDeckModeMenu(page);
-    await menu.locator(".cmh-deck-mode-off-item").click();
+    await page.evaluate(() => window.__cmhDeck.setDeckMode("off"));
     expect(await mode()).toBe("off");
     await expect(page.locator("body")).toHaveClass(/cmh-deck-comments-off/);
     expect(await triggerBackground()).toBe(closedBg);
@@ -1343,8 +1347,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator(".cm-composer")).toHaveCount(0);
 
     // Switch to off (present-only). It must gate EVERY entry point, not just the selection popup.
-    const menu = await openDeckModeMenu(page);
-    await menu.locator(".cmh-deck-mode-off-item").click();
+    await page.evaluate(() => window.__cmhDeck.setDeckMode("off"));
     await expect(page.locator("body")).toHaveClass(/cmh-deck-comments-off/);
 
     // Every floating "Add Comment" affordance (mermaid / image / diff / widget / heading) stays
@@ -1368,62 +1371,6 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     expect(await addImageComment(), "no composer opens from a rich-content entry point while off").toBe(0);
   });
 
-  test("CMH-DECK-11: the comment-options menu supports full keyboard navigation", async ({ page }) => {
-    await openDeck(page, "", "cmh-deck-menu-kbd");
-    const menu = await openDeckModeMenu(page);
-    const activeClass = () => page.evaluate(() => (document.activeElement && document.activeElement.className) || "");
-    // Opening the menu focuses the current (checked) option - default "closed".
-    await expect.poll(activeClass).toContain("cmh-deck-mode-closed-item");
-    await page.keyboard.press("ArrowDown");
-    await expect.poll(activeClass).toContain("cmh-deck-mode-open-item");
-    await page.keyboard.press("ArrowDown");
-    await expect.poll(activeClass).toContain("cmh-deck-mode-site");
-    await page.keyboard.press("ArrowDown"); // wraps to the first item
-    await expect.poll(activeClass).toContain("cmh-deck-mode-off-item");
-    await page.keyboard.press("ArrowUp"); // wraps to the last item
-    await expect.poll(activeClass).toContain("cmh-deck-mode-site");
-    await page.keyboard.press("Home");
-    await expect.poll(activeClass).toContain("cmh-deck-mode-off-item");
-    await page.keyboard.press("End");
-    await expect.poll(activeClass).toContain("cmh-deck-mode-site");
-    // Tab moves focus out of the menu and closes it (no keyboard trap).
-    await page.keyboard.press("Tab");
-    await expect(menu).toBeHidden();
-  });
-
-  test("CMH-DECK-11: the open menu blocks slide navigation, dismisses on outside click, and manages focus", async ({ page }) => {
-    await openDeck(page, "", "cmh-deck-menu-focus");
-    const toggle = page.locator(".cmh-deck-mode-toggle");
-    const menu = page.locator(".cmh-deck-mode-menu");
-
-    // While the menu is open, deck slide-navigation keys do NOT move slides.
-    await openDeckModeMenu(page);
-    await page.keyboard.press("ArrowRight");
-    expect(await activeId(page)).toBe("slide-00000001");
-    await page.keyboard.press("PageDown");
-    expect(await activeId(page)).toBe("slide-00000001");
-    // Backspace is guarded the same way: it must not step back while blocking chrome is open.
-    await page.evaluate(() => window.__cmhDeck.showSlide(1));
-    expect(await activeId(page)).toBe("slide-00000002");
-    await page.keyboard.press("Backspace");
-    expect(await activeId(page)).toBe("slide-00000002");
-    await page.evaluate(() => window.__cmhDeck.showSlide(0));
-    // Escape closes the menu and returns focus to the trigger.
-    await page.keyboard.press("Escape");
-    await expect(menu).toBeHidden();
-    await expect(toggle).toBeFocused();
-
-    // A click outside the menu dismisses it.
-    await openDeckModeMenu(page);
-    await page.mouse.click(5, 400);
-    await expect(menu).toBeHidden();
-
-    // Choosing "panel open" hides the trigger, so focus moves into the sidebar (not lost).
-    const menu2 = await openDeckModeMenu(page);
-    await menu2.locator('.cmh-deck-mode-radio[data-deck-mode="open"]').click();
-    await expect(page.locator("#sidebar")).toBeVisible();
-    await expect(page.locator("#btnCloseSidebar")).toBeFocused();
-  });
 
   test("CMH-DECK-26: Mermaid diagrams on deck slides fill the slide width", async ({ page }) => {
     const slides =
@@ -1962,7 +1909,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     }
   });
 
-  test("CMH-DECK-15: the comment-options control hides while the side panel is open (all widths)", async ({ page }) => {
+  test("CMH-DECK-15: the comments control hides while the side panel is open (all widths)", async ({ page }) => {
     await page.setViewportSize({ width: 1200, height: 800 });
     await openDeck(page);
     const control = page.locator(".cmh-deck-mode-ctl");
@@ -1971,7 +1918,7 @@ test.describe("deck runtime profile (CMH-DECK-05)", () => {
     await expect(page.locator("#sidebar")).toBeVisible();
     await expect(control).toBeHidden();                   // hidden while the panel is open, even wide
     await leaveCommentMode(page);
-    await expect(control).toBeVisible();                  // reappears so the menu stays reachable
+    await expect(control).toBeVisible();                  // reappears so the panel stays reachable
   });
 
   test("CMH-DECK-15: the comments action toolbar never appears in a deck", async ({ page }) => {

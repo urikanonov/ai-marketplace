@@ -399,14 +399,14 @@ function setupDeck() {
 
   let current = slides.findIndex((s) => s.classList.contains("active"));
   if (current < 0) current = 0;
-  // Deck comment model (3 states): commentMode mirrors the pane-open state so the existing
-  // navigation/focus/edge-nav gates keep working. deckMode is the persisted selection:
+  // Deck comment model: commentMode mirrors the pane-open state so the existing
+  // navigation/focus/edge-nav gates keep working. deckMode is the persisted state:
   //   "closed" - comments enabled, side panel closed (DEFAULT)
   //   "open"   - comments enabled, side panel open (review)
-  //   "off"    - comments disabled (present-only), only selectable at zero comments
+  //   "off"    - legacy present-only state retained for existing saved preferences
   let commentMode = false;
   let deckMode = "closed";
-  let modeMenu = null, modeToggle = null, modeRadioItems = [];
+  let modeToggle = null, modeCount = null;
   let counter = null, prevBtn = null, nextBtn = null;
   let edgePrevBtn = null, edgeNextBtn = null;
   let overview = null, overviewGrid = null, overviewBtn = null, overviewDismiss = null;
@@ -542,7 +542,6 @@ function setupDeck() {
   function hasBlockingDeckChrome() {
     return !!(
       (overview && !overview.hidden)
-      || (modeMenu && !modeMenu.hidden)
       || _commentMenuOpen()
       || document.querySelector(".cm-composer, .cm-modal-overlay, .cm-comment-popover")
     );
@@ -949,7 +948,7 @@ function setupDeck() {
     slideCount: () => slides.length,
     deckMode: () => deckMode,
     setDeckMode: (m) => setDeckMode(m),
-    refreshMode: () => updateModeMenu(),
+    refreshMode: () => updateModeControl(),
   };
 
   show(current);
@@ -1053,7 +1052,7 @@ function setupDeck() {
     document.body.classList.toggle("cmh-deck-comments-off", off);
     try { if (paneOpen) openSidebar(); else closeSidebar(); } catch (e) { /* sidebar helpers optional */ }
     if (persist !== false) saveDeckMode();
-    updateModeMenu();
+    updateModeControl();
     hideEdgeNav();
     // Opening the panel narrows the stage (the sidebar takes width); refit after layout settles.
     if (typeof requestAnimationFrame === "function") {
@@ -1068,79 +1067,32 @@ function setupDeck() {
     applyDeckMode(true);
   }
 
-  function updateModeMenu() {
+  function panelItemCount() {
+    const countEl = cmhEl("sidebarCount");
+    if (countEl) {
+      const count = Number(countEl.textContent);
+      if (Number.isFinite(count) && count >= 0) return count;
+    }
+    const roots = (typeof threadRoots === "function") ? threadRoots(comments) : comments;
+    const notePieces = (typeof notesCardPieces === "function") ? notesCardPieces() : [];
+    const checklistPieces = (typeof checklistCardPieces === "function") ? checklistCardPieces() : [];
+    return pendingPanelItemCount(roots, notePieces, checklistPieces);
+  }
+
+  function updateModeControl() {
     const paneOpen = deckMode === "open";
     const off = deckMode === "off";
     if (modeToggle) {
       modeToggle.classList.toggle("cmh-deck-comments-off", off);
-      modeToggle.classList.toggle("cmh-deck-pane-open", paneOpen);
-      modeToggle.setAttribute("aria-label", off
-        ? "Comment options (commenting disabled)"
-        : (paneOpen ? "Comment options (review panel open)" : "Comment options"));
+      const count = panelItemCount();
+      modeToggle.setAttribute("aria-label", count
+        ? "Open comments panel (" + count + (count === 1 ? " comment)" : " comments)")
+        : "Open comments panel");
+      if (modeCount) {
+        modeCount.textContent = String(count);
+        modeCount.hidden = count === 0;
+      }
     }
-    modeRadioItems.forEach((item) => {
-      const m = item.getAttribute("data-deck-mode");
-      const on = m === deckMode;
-      item.setAttribute("aria-checked", on ? "true" : "false");
-      item.classList.toggle("cmh-deck-mode-item-current", on);
-      // The three states are mutually exclusive (exactly one selected). "Comments off" is only
-      // selectable while no comment exists, so existing feedback is never stranded behind a
-      // present-only lock.
-      const allow = m !== "off" ? true : (off || canDisableComments());
-      item.disabled = !allow;
-      item.setAttribute("aria-disabled", allow ? "false" : "true");
-      item.title = (m === "off" && !allow)
-        ? "Delete every comment before you can disable commenting"
-        : "";
-    });
-  }
-
-  function openModeMenu() {
-    if (!modeMenu) return;
-    updateModeMenu();
-    modeMenu.hidden = false;
-    modeToggle.setAttribute("aria-expanded", "true");
-    document.addEventListener("click", onModeMenuOutside, true);
-    document.addEventListener("keydown", onModeMenuKey, true);
-    const first = modeMenu.querySelector('.cmh-deck-mode-radio[aria-checked="true"]:not([disabled])')
-      || modeMenu.querySelector(".cmh-deck-mode-item:not([disabled])");
-    if (first) setTimeout(() => { try { first.focus(); } catch (e) {} }, 0);
-  }
-  function closeModeMenu(focusToggle) {
-    if (!modeMenu || modeMenu.hidden) return;
-    modeMenu.hidden = true;
-    modeToggle.setAttribute("aria-expanded", "false");
-    document.removeEventListener("click", onModeMenuOutside, true);
-    document.removeEventListener("keydown", onModeMenuKey, true);
-    if (focusToggle) { try { modeToggle.focus(); } catch (e) {} }
-  }
-  function toggleModeMenu() { if (modeMenu.hidden) openModeMenu(); else closeModeMenu(true); }
-  function onModeMenuOutside(e) {
-    if (modeMenu.contains(e.target) || modeToggle.contains(e.target)) return;
-    closeModeMenu(false);
-  }
-  function modeMenuItems() {
-    return Array.prototype.slice.call(
-      modeMenu.querySelectorAll(".cmh-deck-mode-item:not([disabled])"));
-  }
-  function focusModeItem(index) {
-    const items = modeMenuItems();
-    if (!items.length) return;
-    const i = (index + items.length) % items.length;
-    try { items[i].focus(); } catch (e) {}
-  }
-  function onModeMenuKey(e) {
-    if (e.key === "Escape") { e.preventDefault(); closeModeMenu(true); return; }
-    // Tab moves focus out of the menu and closes it (standard menu behaviour); let the browser
-    // do the default focus move so the menu does not trap the keyboard.
-    if (e.key === "Tab") { closeModeMenu(false); return; }
-    const items = modeMenuItems();
-    if (!items.length) return;
-    const cur = items.indexOf(document.activeElement);
-    if (e.key === "ArrowDown") { e.preventDefault(); focusModeItem(cur < 0 ? 0 : cur + 1); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); focusModeItem(cur < 0 ? items.length - 1 : cur - 1); }
-    else if (e.key === "Home") { e.preventDefault(); focusModeItem(0); }
-    else if (e.key === "End") { e.preventDefault(); focusModeItem(items.length - 1); }
   }
 
   const modeCtl = document.createElement("div");
@@ -1149,7 +1101,9 @@ function setupDeck() {
   modeToggle = toggle;
   toggle.className = "cm-skip cmh-deck-mode-toggle";
   toggle.type = "button";
-  toggle.innerHTML = CMH_ICON_SVG + '<span class="cmh-deck-mode-caret" aria-hidden="true"></span>';
+  toggle.innerHTML = CMH_ICON_SVG
+    + '<span class="cmh-deck-comment-count" title="Number of open comments" hidden>0</span>';
+  modeCount = toggle.querySelector(".cmh-deck-comment-count");
   const toggleIcon = toggle.querySelector("svg");
   if (toggleIcon) {
     toggleIcon.setAttribute("aria-hidden", "true");
@@ -1158,69 +1112,17 @@ function setupDeck() {
     toggleIcon.removeAttribute("aria-label");
     toggleIcon.removeAttribute("data-cmh-tip");
   }
-  toggle.title = "Comment options";
-  toggle.setAttribute("aria-label", "Comment options");
-  toggle.setAttribute("aria-haspopup", "menu");
-  toggle.setAttribute("aria-expanded", "false");
-  toggle.addEventListener("click", (e) => { e.preventDefault(); toggleModeMenu(); });
-
-  modeMenu = document.createElement("div");
-  modeMenu.className = "cm-skip cmh-deck-mode-menu";
-  modeMenu.id = "cmhDeckModeMenu";
-  modeMenu.setAttribute("role", "menu");
-  modeMenu.setAttribute("aria-label", "Comment options");
-  modeMenu.hidden = true;
-  toggle.setAttribute("aria-controls", modeMenu.id);
-
-  const DECK_MODE_OPTIONS = [
-    { mode: "off", label: "Comments off", cls: "cmh-deck-mode-off-item" },
-    { mode: "closed", label: "Comments on, panel closed", cls: "cmh-deck-mode-closed-item" },
-    { mode: "open", label: "Comments on, panel open", cls: "cmh-deck-mode-open-item" },
-  ];
-  // A radio group: the three deck states are mutually exclusive, so exactly one is selected at a
-  // time (menuitemradio). Selecting an option applies it; "Comments off" is disabled while any
-  // comment exists (see updateModeMenu).
-  modeRadioItems = DECK_MODE_OPTIONS.map((opt) => {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "cmh-deck-mode-item cmh-deck-mode-radio " + opt.cls;
-    item.setAttribute("role", "menuitemradio");
-    item.setAttribute("data-deck-mode", opt.mode);
-    item.textContent = opt.label;
-    item.addEventListener("click", () => {
-      if (item.disabled) return;
-      setDeckMode(opt.mode);
-      closeModeMenu(false);
-      // Keep keyboard focus sensible after the menu closes: opening the review panel hides the
-      // trigger, so move focus into the panel; otherwise return focus to the trigger.
-      if (opt.mode === "open") {
-        const panelBtn = cmhEl("btnCloseSidebar");
-        if (panelBtn && panelBtn.focus) { try { panelBtn.focus(); } catch (e) {} }
-      } else if (modeToggle && modeToggle.focus) {
-        try { modeToggle.focus(); } catch (e) {}
-      }
-    });
-    modeMenu.appendChild(item);
-    return item;
+  toggle.title = "Open comments panel";
+  toggle.setAttribute("aria-label", "Open comments panel");
+  toggle.setAttribute("aria-controls", "sidebar");
+  toggle.addEventListener("click", (e) => {
+    e.preventDefault();
+    setDeckMode("open");
+    const panelBtn = cmhEl("btnCloseSidebar");
+    if (panelBtn && panelBtn.focus) { try { panelBtn.focus(); } catch (err) {} }
   });
 
-  const modeSep = document.createElement("span");
-  modeSep.className = "cmh-deck-mode-sep";
-  modeSep.setAttribute("role", "separator");
-
-  const siteItem = document.createElement("a");
-  siteItem.className = "cmh-deck-mode-item cmh-deck-mode-site cm-brand-link";
-  siteItem.setAttribute("role", "menuitem");
-  siteItem.href = CMH_SITE_URL;
-  siteItem.target = "_blank";
-  siteItem.rel = "noopener noreferrer";
-  siteItem.textContent = "Commentable HTML site";
-  siteItem.addEventListener("click", () => closeModeMenu(false));
-
-  modeMenu.appendChild(modeSep);
-  modeMenu.appendChild(siteItem);
   modeCtl.appendChild(toggle);
-  modeCtl.appendChild(modeMenu);
   document.body.prepend(modeCtl);
 
   // Keep deckMode in step with any OTHER code path that opens or closes the panel (adding a

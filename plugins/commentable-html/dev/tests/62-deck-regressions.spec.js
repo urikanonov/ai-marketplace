@@ -8,7 +8,6 @@ import {
   ready,
   routeMermaidLocal,
   startStaticServer,
-  openDeckModeMenu,
   enterCommentMode,
 } from "./helpers.js";
 
@@ -747,16 +746,9 @@ test("CMH-DECK-38: cross-card comments do not highlight whitespace-only grid gap
   }
 });
 
-test("CMH-DECK-21: deck chrome exposes the project link and distinct overview/count pills", async ({ page }) => {
+test("CMH-DECK-21: deck chrome keeps distinct overview and slide-count pills", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
-    const menu = await openDeckModeMenu(page);
-    const site = menu.locator(".cmh-deck-mode-site");
-    await expect(site).toHaveAttribute("href", "https://urikanonov.github.io/ai-marketplace/commentable-html/");
-    await expect(site).toHaveAttribute("target", "_blank");
-    await expect(site).toHaveText("Commentable HTML site");
-    await expect(page.locator(".cmh-deck-brand-link")).toHaveCount(0);
-
     const chrome = await page.evaluate(() => {
       const nav = document.querySelector(".cmh-deck-nav");
       const prev = nav.querySelector('button[aria-label="Prev slide"]');

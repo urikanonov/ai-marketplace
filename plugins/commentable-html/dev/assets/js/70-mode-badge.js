@@ -177,7 +177,7 @@ function setupModeUi() {
   const ver = cmhEl("cmVersion");
   if (ver) ver.textContent = "v" + CMH_VERSION;
   const meta = document.querySelector(".cm-sidebar .head-meta");
-  if (meta && !meta.querySelector(".cm-brand-icon")) meta.insertAdjacentHTML("afterbegin", cmBrandLink(CMH_ICON_SVG));
+  if (meta && !meta.querySelector(".cm-brand-icon")) meta.insertAdjacentHTML("beforeend", cmBrandLink(CMH_ICON_SVG));
   if (NONSHAREABLE_MODE) {
     // The legacy cm-nonportable body hook is set alongside the current one, defensively: it is
     // applied at RUNTIME (never baked into a document), so nothing shipped depends on it, but a
@@ -217,4 +217,3 @@ function setupModeUi() {
     if (b) b.hidden = true;
   }
 }
-
