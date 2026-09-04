@@ -18,8 +18,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 - `Show times in UTC`, a new preference in the comments panel's `More > Preferences` menu: it
   normalizes every timestamp to UTC and labels it `UTC` instead of the local zone. It applies
   immediately to what is already on screen (cards, both metadata rows, the footer, and an open
-  comment dialog) with no reload, and the on-demand surfaces - Copy all, the print appendix, and
-  every export - pick it up on their own. The setting is cross-document (a zone is a property of the
+  comment dialog) with no reload, and the on-demand surfaces - the Copy all bundle and the print
+  appendix - read it when they are built. The setting is cross-document (a zone is a property of the
   reader, not of the document), keyboard operable, storage-guarded with a reporting toast on a
   refused write, re-synced on a cross-tab change, and billed to the storage manager's shared bucket.
   Exports are unaffected: a Shareable, Offline, Plain HTML or standalone copy carries the raw ISO

@@ -38,14 +38,17 @@ function formatTime(iso) {
   catch (e) { return iso == null ? "" : String(iso).trim(); }
 }
 // The `<bdi>`-isolated timestamp for a card, reply, or dialog meta line, with its leading separator.
-// A comment with NO usable timestamp (a hand-edited or corrupt store) contributes nothing at all,
-// rather than a dangling "#3 - " with empty space after it. The " (edited)" suffix stays OUTSIDE the
-// isolate so an RTL locale keeps the timestamp-then-suffix order (CMH-SIDE-10).
+// The edit time wins when it FORMATS, else the creation time does - an `updatedAt` that is present
+// but unusable (a whitespace-only string in a hand-edited store) must not hide a perfectly good
+// `createdAt`, nor claim "(edited)" with nothing to show for it. A comment with no usable timestamp
+// at all contributes nothing, rather than a dangling "#3 - " with empty space after it. The
+// " (edited)" suffix stays OUTSIDE the isolate so an RTL locale keeps the timestamp-then-suffix
+// order (CMH-SIDE-10).
 function cmhTimeMetaHtml(c) {
-  const t = formatTime((c && (c.updatedAt || c.createdAt)) || "");
-  const edited = (c && c.updatedAt) ? " (edited)" : "";
-  if (!t) return edited ? edited.replace(/^ /, "") : "";
-  return "<bdi>" + escapeHtml(t) + "</bdi>" + edited;
+  const edited = formatTime((c && c.updatedAt) || "");
+  const t = edited || formatTime((c && c.createdAt) || "");
+  if (!t) return "";
+  return "<bdi>" + escapeHtml(t) + "</bdi>" + (edited ? " (edited)" : "");
 }
 function cmhTimeSuffixHtml(c) {
   const html = cmhTimeMetaHtml(c);

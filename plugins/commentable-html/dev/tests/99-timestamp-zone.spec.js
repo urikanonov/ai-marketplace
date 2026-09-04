@@ -383,6 +383,18 @@ test("CMH-SIDE-13: a missing or padded timestamp formats sanely instead of leaki
   const junk = await setCreated("  not a date  ");
   expect(junk).toContain("not a date");
   expect(junk).not.toMatch(/PST|PDT|UTC|GMT|Invalid Date/);
+
+  // An updatedAt that is present but UNUSABLE must not hide a good createdAt, nor claim "(edited)"
+  // with nothing to show for it.
+  await mutateStoredComments(page, (arr) => {
+    arr.forEach((c) => { c.createdAt = INSTANT; c.updatedAt = "   "; });
+  });
+  await page.reload();
+  await ready(page);
+  await showSidebar(page);
+  const fallback = await cardTime(page);
+  expect(fallback).toContain(LOCAL_TEXT);
+  expect(fallback).not.toContain("edited");
 });
 
 test("CMH-SIDE-13: an engine that ignores the timeZone option never labels local time as UTC", async ({ page }) => {

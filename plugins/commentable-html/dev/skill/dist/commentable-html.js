@@ -7048,10 +7048,10 @@ return cmhFormatInstant(d);
 catch(e){return iso==null?"":String(iso).trim();}
 }
 function cmhTimeMetaHtml(c){
-const t=formatTime((c&&(c.updatedAt||c.createdAt))||"");
-const edited=(c&&c.updatedAt)?" (edited)":"";
-if(!t)return edited?edited.replace(/^ /,""):"";
-return"<bdi>"+escapeHtml(t)+"</bdi>"+edited;
+const edited=formatTime((c&&c.updatedAt)||"");
+const t=edited||formatTime((c&&c.createdAt)||"");
+if(!t)return"";
+return"<bdi>"+escapeHtml(t)+"</bdi>"+(edited?" (edited)":"");
 }
 function cmhTimeSuffixHtml(c){
 const html=cmhTimeMetaHtml(c);
