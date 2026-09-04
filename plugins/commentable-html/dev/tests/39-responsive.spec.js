@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import path from "path";
-import { SKILL, fileUrl, ready, routeVendoredLibs } from "./helpers.js";
+import { SKILL, fileUrl, ready, awaitMermaidRendered, routeExampleLibsLocal } from "./helpers.js";
 
 // Mobile responsiveness regression for the shipped showcase examples. A narrow
 // phone viewport must never produce a content box that spills past the viewport: wide
@@ -46,11 +46,15 @@ for (const [name, file] of Object.entries(EXAMPLES)) {
       test.use({ viewport: { width, height: 780 } });
 
       test.beforeEach(async ({ page }) => {
-        // The chart examples load Chart.js from the pinned CDN (CMH-SIZE-09); serve it from the
-        // vendored copy so an overflow measurement never depends on egress or CDN timing.
-        await routeVendoredLibs(page);
+        // The examples load mermaid and Chart.js from the pinned CDN (CMH-SIZE-08/09); serve both
+        // from the local copies (CMH-BUILD-30) so an overflow measurement never depends on egress
+        // or CDN timing. Serving them locally makes the diagrams render FAST rather than never, so
+        // wait for the renders (and their audits) to finish too - otherwise a diagram can grow the
+        // page in the middle of `scanOverflow` and the measurement becomes a coin flip.
+        await routeExampleLibsLocal(page);
         await page.goto(fileUrl(file));
         await ready(page);
+        await awaitMermaidRendered(page);
       });
 
       test("no author content box overflows the viewport", async ({ page }) => {

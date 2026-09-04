@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import path from "path";
 import fs from "fs";
-import { EXAMPLES, INLINE, fileUrl, ready, stageContent } from "./helpers.js";
+import { EXAMPLES, INLINE, fileUrl, ready, routeExampleLibsLocal, stageContent } from "./helpers.js";
 
 // Mobile-polish fixes surfaced by the visual-audit skill. Each test pins a distinct
 // behavior on a phone viewport (unless noted) and would fail on the pre-fix build.
@@ -97,6 +97,7 @@ test.describe("visual-audit mobile polish", () => {
 
 test("the disabled deck nav button keeps a readable contrast (CMH-DECK-NAV-01)", async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(path.join(EXAMPLES, "deck-showcase.html")));
   await ready(page);
   const opacity = await page.evaluate(() => {
@@ -109,6 +110,7 @@ test("the disabled deck nav button keeps a readable contrast (CMH-DECK-NAV-01)",
 });
 
 test("report-checklist does not repeat its document title as the first section heading (CMH-CONTENT-17)", async ({ page }) => {
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(path.join(EXAMPLES, "report-checklist.html")));
   await ready(page);
   const count = await page.evaluate(() => {

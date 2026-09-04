@@ -9,7 +9,8 @@ import {
   routeMermaidLocal,
   SKILL,
   PLUGIN,
-  routeVendoredLibs,
+  routeOfflineExportLibs,
+  routeExampleLibsLocal,
 } from "./helpers.js";
 
 async function openComposerFromSelection(page, selector, index = 0) {
@@ -116,7 +117,7 @@ test.describe("coverage gap closures", () => {
     test.setTimeout(60000);
     const server = await startStaticServer(PLUGIN);
     try {
-      await routeVendoredLibs(page);
+      await routeExampleLibsLocal(page);
       await page.goto(server.url + "/examples/report-community-garden.html");
       await ready(page);
       await page.waitForFunction(() => {

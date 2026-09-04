@@ -6,7 +6,7 @@ import {
   copiedBundle,
   installClipboardCapture,
   ready,
-  routeMermaidLocal,
+  routeExampleLibsLocal,
   startStaticServer,
   enterCommentMode,
 } from "./helpers.js";
@@ -46,9 +46,12 @@ function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-async function openShowcaseDeck(page, { mermaid = false } = {}) {
+async function openShowcaseDeck(page) {
   await installClipboardCapture(page);
-  if (mermaid) await routeMermaidLocal(page);
+  // The deck is a shipped example: it imports mermaid from the pinned CDN, so serve it (and
+  // Chart.js) locally and deny everything else (CMH-BUILD-30). This used to be opt-in, and the
+  // call sites that did not opt in fetched mermaid from jsDelivr on every run.
+  await routeExampleLibsLocal(page);
   const server = await startStaticServer(EXAMPLES);
   await page.goto(server.url + "/deck-showcase.html");
   await ready(page);
@@ -148,7 +151,7 @@ test("CMH-DECK-08: showcase deck triage cards drag between columns", async ({ pa
 });
 
 test("CMH-DECK-09: showcase deck Mermaid diagram renders with readable contrast", async ({ page }) => {
-  const server = await openShowcaseDeck(page, { mermaid: true });
+  const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, ".slide pre.mermaid");
     await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
@@ -193,7 +196,7 @@ test("CMH-DECK-09: showcase deck Mermaid diagram renders with readable contrast"
 });
 
 test("CMH-MMD-08: deck Mermaid node labels are fully visible inside their node box", async ({ page }) => {
-  const server = await openShowcaseDeck(page, { mermaid: true });
+  const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, ".slide pre.mermaid");
     await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
@@ -267,7 +270,7 @@ test("CMH-MMD-08: deck Mermaid node labels are fully visible inside their node b
 });
 
 test("CMH-MMD-08: deck mermaid comment labels preserve spaces across SVG-text wrapping", async ({ page }) => {
-  const server = await openShowcaseDeck(page, { mermaid: true });
+  const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, ".slide pre.mermaid");
     await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
@@ -303,7 +306,7 @@ test("CMH-MMD-08: deck mermaid comment labels preserve spaces across SVG-text wr
 });
 
 test("CMH-MMD-08: a legacy deck mermaid anchor whose spacing differs re-attaches after the label mode change", async ({ page }) => {
-  const server = await openShowcaseDeck(page, { mermaid: true });
+  const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, ".slide pre.mermaid");
     await expect.poll(() => page.locator(".slide.active pre.mermaid svg g.node").count()).toBeGreaterThanOrEqual(5);
@@ -546,7 +549,7 @@ test("CMH-DECK-13: showcase deck code, KQL, and diff blocks keep readable contra
 });
 
 test("CMH-DECK-SHOWCASE-02: showcase deck mounts in deck mode and is commentable", async ({ page }) => {
-  const server = await openShowcaseDeck(page, { mermaid: true });
+  const server = await openShowcaseDeck(page);
   try {
     await expect(page).toHaveTitle(/Commentable HTML Showcase/);
     expect(await page.evaluate(() => window.__cmhDeck.slideCount())).toBeGreaterThanOrEqual(14);
@@ -1250,7 +1253,7 @@ test("CMH-DECK-SHOWCASE-17: the shareability-modes slide tags parts with colorfu
 });
 
 test("CMH-DECK-41: the loop slide's diagram fills the stage instead of a thin clipped band", async ({ page }) => {
-  const server = await openShowcaseDeck(page, { mermaid: true });
+  const server = await openShowcaseDeck(page);
   try {
     // The "Act 1 - The loop" slide.
     const slideId = "slide-efe04d9f";

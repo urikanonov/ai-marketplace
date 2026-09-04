@@ -3,8 +3,7 @@ import path from "path";
 import {
   SKILL, fileUrl, ready, lastCopied, installClipboardCapture,
   addTextComment, storedComments, distinctCids,
-  startStaticServer, routeMermaidLocal,
-  routeVendoredLibs,
+  startStaticServer, routeExampleLibsLocal,
 } from "./helpers.js";
 
 // The second shipped showcase example is a real-data operations report built on the
@@ -16,10 +15,10 @@ const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-taxi.html");
 async function openExample(page) {
   await installClipboardCapture(page);
   // Since CMH-SIZE-09 the example loads Chart.js from the pinned CDN instead of inlining a
-  // 205 KB copy, so serve it from `assets/vendor/` - byte-identical, and the bytes whose
-  // SHA-384 the loader's `integrity` names. Without this the suite would silently depend on
-  // jsDelivr being reachable.
-  await routeVendoredLibs(page);
+  // 205 KB copy, and it imports mermaid from one too, so serve both from the local copies
+  // (CMH-BUILD-30) - for Chart.js byte-identical to what the loader's `integrity` names. Without
+  // this the suite would silently depend on jsDelivr being reachable.
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(EXAMPLE));
   await ready(page);
 }
@@ -224,8 +223,7 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     test.setTimeout(60000);
     const server = await startStaticServer(path.join(SKILL, "..", ".."));
     try {
-      await routeMermaidLocal(page);
-      await routeVendoredLibs(page);
+      await routeExampleLibsLocal(page);
       await installClipboardCapture(page);
       await page.goto(server.url + "/examples/report-taxi.html");
       await ready(page);
@@ -246,8 +244,7 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     test.setTimeout(60000);
     const server = await startStaticServer(path.join(SKILL, "..", ".."));
     try {
-      await routeMermaidLocal(page);
-      await routeVendoredLibs(page);
+      await routeExampleLibsLocal(page);
       await installClipboardCapture(page);
       await page.goto(server.url + "/examples/report-taxi.html");
       await ready(page);

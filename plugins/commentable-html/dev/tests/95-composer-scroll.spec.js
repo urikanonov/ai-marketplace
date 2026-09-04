@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import path from "path";
-import { EXAMPLES, fileUrl, ready, routeVendoredLibs } from "./helpers.js";
+import { EXAMPLES, fileUrl, ready, awaitMermaidRendered, routeExampleLibsLocal } from "./helpers.js";
 
 // CMH-CORE-20: working a comment composer must never move the document. Chromium scroll anchoring
 // reacts to the layout change composer creation makes and shifts window.scrollY a frame LATER -
@@ -17,6 +17,10 @@ const OFFSETS = [150, 400, 650];
 // own legitimate scroll anchoring. Wait for the document to stop moving and growing before measuring
 // anything, so a settling report is never charged to the composer.
 async function settle(page) {
+  // The diagrams are served locally (CMH-BUILD-30), so they render fast rather than never; wait for
+  // the renders and their audits before the frame-quiescence loop, so a diagram cannot grow the
+  // document after settle() returns and be charged to the composer.
+  await awaitMermaidRendered(page);
   await page.evaluate(async () => {
     const frame = () => new Promise((r) => requestAnimationFrame(r));
     let steady = 0;
@@ -32,11 +36,11 @@ async function settle(page) {
   });
 }
 
-// The example loads Chart.js from the pinned CDN (CMH-SIZE-09). Serve it from the vendored copy -
-// the bytes its `integrity` names - so the chart cannot land AFTER `settle()` and grow the document
-// mid-measurement, which would be charged to the composer.
+// The example loads Chart.js and mermaid from the pinned CDN (CMH-SIZE-08/09). Serve both from the
+// local copies (CMH-BUILD-30) - for Chart.js the bytes its `integrity` names - so neither can land
+// AFTER `settle()` and grow the document mid-measurement, which would be charged to the composer.
 async function openExample(page) {
-  await routeVendoredLibs(page);
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(EXAMPLE));
 }
 
