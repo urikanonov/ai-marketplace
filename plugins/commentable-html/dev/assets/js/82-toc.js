@@ -314,6 +314,130 @@ function setupCollapsibleSections() {
     _cmSectionEntries.push({ heading: heading, section: sec, setState: setState });
   });
 }
+// The in-document Contents list folds from a caret in its title row, so a long list stops being a
+// wall the reader scrolls past on every visit. Three properties keep the fold out of the DOCUMENT's
+// own state: the caret is runtime-injected, TEXT-FREE cm-skip chrome (it spends no character of the
+// offset space comments are anchored in), collapsing only sets a class (no node is removed or
+// reordered, so a comment inside the list keeps its anchor), and the choice is READER state in a
+// per-document localStorage key - an export builds from the on-disk source, so neither the caret nor
+// the fold can bake into an exported document.
+const CMH_TOC_FOLD_KEY = COMMENT_KEY + "::tocFold";
+// Live {nav, setState} pairs, so a jump to a comment anchored INSIDE a folded Contents list can
+// unfold it through the owning toggle (and so keep the caret's aria state and the persisted choice
+// consistent) rather than by stripping the class behind the control's back.
+const _cmTocFoldEntries = [];
+function _cmReadTocFolds() {
+  let parsed = null;
+  try { parsed = JSON.parse(localStorage.getItem(CMH_TOC_FOLD_KEY) || "{}"); } catch (e) { parsed = null; }
+  // Null-prototype, matching the ONE convention this runtime has for a document-reachable state
+  // map (CMH-SEC-02, `_tsNullProto` in 62-sortable-tables.js): a JSON.parse'd map still chains to
+  // Object.prototype, so a read of a key another script polluted there would otherwise fall
+  // through and fold a list the reader never folded.
+  return (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+    ? Object.assign(Object.create(null), parsed) : Object.create(null);
+}
+function _cmWriteTocFold(key, collapsed) {
+  const state = _cmReadTocFolds();
+  if (collapsed) state[key] = 1; else delete state[key];
+  try { localStorage.setItem(CMH_TOC_FOLD_KEY, JSON.stringify(state)); } catch (e) { /* private mode */ }
+}
+// The identity a fold is stored under. The nav's AUTHORED id when it has one, else a SIGNATURE of
+// the COMPLETE sequence of entry targets it lists. Both survive another Contents list being added
+// above this one, which a raw DOM index does not - the reader's fold would silently move onto a
+// different list. The whole sequence, not just its ends: two lists can share a first target, a last
+// target and a count while listing different sections, and the newcomer would then inherit the
+// fold. Each href is percent-encoded before joining, so a separator inside one cannot forge a
+// boundary, and the two namespaces are disjoint so an authored id can never collide with a
+// signature. Two navs that really do resolve to the same identity (duplicate ids are legal HTML,
+// and two lists can genuinely list the same entries) are told apart by their order among
+// themselves, which is stable as long as neither is removed.
+function _cmTocFoldKeyFor(nav, used) {
+  const authored = nav.getAttribute("id");
+  let key;
+  if (authored) {
+    key = "id:" + authored;
+  } else {
+    const links = nav.querySelectorAll("a[href^='#']");
+    const parts = [];
+    for (let i = 0; i < links.length; i++) {
+      parts.push(encodeURIComponent(links[i].getAttribute("href") || ""));
+    }
+    key = "sig:" + parts.join("|");
+  }
+  const seen = used[key] || 0;
+  used[key] = seen + 1;
+  return seen ? (key + "#" + seen) : key;
+}
+// Unfold EVERY folded Contents list `el` sits in, if any. Called from the jump path so a comment
+// anchored on a list entry is never scrolled to inside a display:none box. Nested lists are walked
+// to the outermost, the way expandCollapsedAncestors() walks nested sections: opening only the
+// inner one would leave the comment hidden inside a still-folded outer list.
+function expandCollapsedToc(el) {
+  let nav = el && el.closest && el.closest(".cm-toc.cmh-toc-collapsed");
+  while (nav) {
+    for (let i = 0; i < _cmTocFoldEntries.length; i++) {
+      if (_cmTocFoldEntries[i].nav === nav) { _cmTocFoldEntries[i].setState(false, true); break; }
+    }
+    nav = nav.parentElement && nav.parentElement.closest
+      && nav.parentElement.closest(".cm-toc.cmh-toc-collapsed");
+  }
+}
+function setupTocCollapse() {
+  const root = cmhEl("commentRoot") || document.body;
+  const saved = _cmReadTocFolds();
+  const usedKeys = Object.create(null);
+  _cmTocFoldEntries.length = 0;
+  root.querySelectorAll(".cm-toc").forEach(function (nav, i) {
+    if (nav.closest(".cm-skip")) return;
+    if (cmhOwnChrome(nav, ".cmh-toc-caret")) return;
+    const title = nav.querySelector(":scope > .cm-toc-title");
+    // Resolve the storage identity BEFORE minting an id below, so the minted (index-derived) id
+    // never becomes the key the fold is remembered under.
+    const storeKey = _cmTocFoldKeyFor(nav, usedKeys);
+    const caret = document.createElement("button");
+    caret.type = "button";
+    caret.className = "cmh-toc-caret cm-skip";
+    cmhMarkLayerChrome(caret);
+    // aria-controls names the NAV, not its first list: the fold hides every child but the title
+    // row, so a nav that also carries an intro paragraph or a second list would otherwise announce
+    // less than the button actually toggles (and a nav with no list at all would announce nothing).
+    if (!nav.id) {
+      let n = i;
+      while (cmhEl("cmhToc" + n)) n++;   // never mint a duplicate id into the document
+      nav.id = "cmhToc" + n;
+    }
+    caret.setAttribute("aria-controls", nav.id);
+    // A list with no title of its own still gets the control, standing alone above the entries.
+    if (title) title.insertBefore(caret, title.firstChild);
+    else nav.insertBefore(caret, nav.firstChild);
+    function setState(collapsed, persist) {
+      nav.classList.toggle("cmh-toc-collapsed", collapsed);
+      caret.setAttribute("aria-expanded", String(!collapsed));
+      caret.title = collapsed ? "Show the contents list" : "Hide the contents list";
+      caret.setAttribute("aria-label", collapsed ? "Expand table of contents" : "Collapse table of contents");
+      if (persist) _cmWriteTocFold(storeKey, collapsed);
+    }
+    caret.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      setState(!nav.classList.contains("cmh-toc-collapsed"), true);
+    });
+    // A collapsed list shows only its title, so clicking that title is the natural gesture for
+    // bringing it back. Expand-only, and never mid-selection, so commenting on the title of an
+    // open list is unaffected.
+    if (title) {
+      title.addEventListener("click", function (e) {
+        if (caret.contains(e.target)) return;
+        if (!nav.classList.contains("cmh-toc-collapsed")) return;
+        const sel = window.getSelection();
+        if (sel && sel.toString().trim()) return;
+        setState(false, true);
+      });
+    }
+    _cmTocFoldEntries.push({ nav: nav, setState: setState });
+    setState(saved[storeKey] === 1, false);
+  });
+}
 function setupSideToc() {
   const root = cmhEl("commentRoot") || document.body;
   const items = [];

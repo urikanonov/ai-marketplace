@@ -732,8 +732,11 @@ function expandCollapsedAncestors(el) {
     const _s = document.querySelector(".cm-side-toc-search");
     if (_s && _s.value) { _s.value = ""; _s.dispatchEvent(new Event("input")); }
   }
-  let sec = el && el.closest && el.closest("section.cmh-section-collapsed");
-  while (sec) {
+  // Same for a comment anchored on an entry INSIDE a folded in-document Contents list: the fold is
+  // a third display:none mechanism, and it persists across reloads, so without this the jump would
+  // silently do nothing (CMH-TOC-12).
+  if (typeof expandCollapsedToc === "function") expandCollapsedToc(el);
+  let sec = el && el.closest && el.closest("section.cmh-section-collapsed");  while (sec) {
     sec.classList.remove("cmh-section-collapsed");
     const caret = cmhOwnChrome(sec, ":scope > .cmh-section-heading .cmh-sec-caret");
     if (caret) {

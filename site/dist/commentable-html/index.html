@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.847.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.848.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,6 +496,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.848.0] - 2026-09-04</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The in-document <code>Contents</code> list is collapsible. Its title row gains a caret that folds the list away and unfolds it (clicking a folded title unfolds it too), so a long report&#x27;s table of contents stops being a wall to scroll past on every visit. The choice is remembered per document in this browser, and it is reader state rather than document state: the caret is text-free <code>cm-skip</code> chrome that spends no character of the offset space comments are anchored in, folding only toggles a class (no node is removed, so every comment keeps its anchor), no export bakes the caret or the fold in, and a print or Save as PDF still carries the whole list. Jumping to a comment anchored on a Contents entry unfolds every folded list it sits in, so the jump is never a no-op.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.847.0] - 2026-09-03</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -508,6 +515,8 @@
               <li>The <code>dist/commentable-html.js</code> and <code>dist/commentable-html.assets.js</code> size ceilings in <code>dev/tools/size-budget.json</code> are raised to 677,000 and 865,000 bytes. Both sat at 99% of their previous ceiling before this release, leaving no room for the selection layer; the new values restore the documented ~5% headroom over the current build.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.846.0] - 2026-09-03</h3></div>
             <div class="group-label">Changed</div>
@@ -519,8 +528,6 @@
               <li>The side-panel brand icon now follows the document type and version metadata, keeping it away from the Comments count so the two no longer overlap at the demo deck&#x27;s panel width.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.845.0] - 2026-09-03</h3></div>
             <div class="group-label">Added</div>
@@ -567,14 +574,7 @@
               <li>A document carrying two vendored payload blocks no longer merges them into one that holds a stale library&#x27;s bytes beside a newer one&#x27;s descriptor. Only one form can ever be used, and the bytes win, so the later block silently lost and a right-sized document could be re-inflated.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.841.0] - 2026-08-11</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The floating composer&#x27;s drag grip is now DRAWN rather than typeset. It was a pair of <code>U+22EE</code> glyphs in a <code>line-height: 1</code> box, so it went through the font pipeline - fallback resolution, the glyph cache, and a text origin snapped to whole device pixels from a font-metric-derived baseline that measured OFF the device grid - and it landed one CSS pixel higher or lower between two otherwise identical renders of the same page in the same digest-pinned container. It was the only region of the tutorial screenshots that was not reproducible, so whichever variant a run happened to commit reddened the exact-pixel drift gate for every pull request that followed, including ones that had never touched the capture path. The precise input that varied between two runs was never reproduced on a quiet host (six sequential and twelve concurrent captures were byte-identical), so the fix removes the whole text-rendering pipeline from the element rather than chasing it: the grip is now a definite 6x10 box of six <code>currentColor</code> dots painted from its own geometry, so there is no glyph to rasterize and no font fallback, glyph cache or text-origin snapping left in the element. It keeps the handle&#x27;s hover and dragging colours, stays <code>aria-hidden</code> decoration beside the <code>drag to move</code> label, and is shorter than that label&#x27;s line box, so the handle and the composer are otherwise unchanged. Under <code>forced-colors: active</code> - where the system palette strips <code>box-shadow</code> and forces backgrounds, and would have erased the dots that the old glyph&#x27;s own repainting survived - the grip opts out and names <code>CanvasText</code> explicitly, so a high-contrast reader keeps the affordance in their own palette rather than in the author&#x27;s grey. The drift budget stays exact (<code>MAX_DIFF_PIXELS</code> 0): the rendering was fixed, not the gate widened.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">407 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">408 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

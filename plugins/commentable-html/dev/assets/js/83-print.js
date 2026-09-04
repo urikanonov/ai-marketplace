@@ -304,6 +304,7 @@ function setupSinglePagePrint() {
     return ".cmh-print-comments,.cmh-print-noscript{display:block !important}"
       + "#commentRoot section.cmh-section-collapsed>*{display:revert !important}"
       + "#commentRoot section.cm-toc-filtered{display:revert !important}"
+      + "#commentRoot .cm-toc.cmh-toc-collapsed>*:not(.cmh-toc-caret){display:revert !important}"
       + "#commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-input,"
       + "#commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-head{display:revert !important}"
       + "#commentRoot pre,#commentRoot code,#commentRoot .cmh-diff-view pre,#commentRoot .cmh-diff-view code,"

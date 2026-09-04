@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.848.0] - 2026-09-04
+
+### Added
+
+- The in-document `Contents` list is collapsible. Its title row gains a caret that folds the list
+  away and unfolds it (clicking a folded title unfolds it too), so a long report's table of
+  contents stops being a wall to scroll past on every visit. The choice is remembered per document
+  in this browser, and it is reader state rather than document state: the caret is text-free
+  `cm-skip` chrome that spends no character of the offset space comments are anchored in, folding
+  only toggles a class (no node is removed, so every comment keeps its anchor), no export bakes the
+  caret or the fold in, and a print or Save as PDF still carries the whole list. Jumping to a
+  comment anchored on a Contents entry unfolds every folded list it sits in, so the jump is never a
+  no-op.
+
 ## [1.847.0] - 2026-09-03
 
 ### Added

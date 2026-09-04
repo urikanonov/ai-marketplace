@@ -1197,6 +1197,7 @@ if (IS_DECK) {
 } else {
   setupHeadingAnchors();
   setupCollapsibleSections();
+  setupTocCollapse();
   setupSideToc();
   setupSectionReview();
   setupFooter();

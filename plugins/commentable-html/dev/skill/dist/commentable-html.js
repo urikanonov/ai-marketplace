@@ -721,11 +721,11 @@ const CMH_MAX_STORE_CHARS=8000000;
 const CMH_SUBKEY_SUFFIXES=[
 "::z","::deleted","::diffLayout","::diffSyntax","::cl","::note",
 "::commentSort","::tableSort","::reviews","::reviews::deleted","::deckMode",
-"::autoOpenPanel",
+"::autoOpenPanel","::tocFold",
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.847.0";
+const CMH_VERSION= "1.848.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -7684,8 +7684,8 @@ if(el&&el.closest&&el.closest("section.cm-toc-filtered")){
 const _s=document.querySelector(".cm-side-toc-search");
 if(_s&&_s.value){_s.value= "";_s.dispatchEvent(new Event("input"));}
 }
-let sec=el&&el.closest&&el.closest("section.cmh-section-collapsed");
-while(sec){
+if(typeof expandCollapsedToc=== "function")expandCollapsedToc(el);
+let sec=el&&el.closest&&el.closest("section.cmh-section-collapsed");while(sec){
 sec.classList.remove("cmh-section-collapsed");
 const caret=cmhOwnChrome(sec,":scope > .cmh-section-heading .cmh-sec-caret");
 if(caret){
@@ -14177,6 +14177,7 @@ T('Navigation',
 '<li>Menu entries mirror the document: each keeps the section number the document already shows - the one in your contents list, or the one on the heading itself - and falls back to a computed <code>1.1</code>-style number only when there is none. Each entry is indented to its level, so subsections read as subsections.</li>'+
 '<li><strong>Filter sections</strong> narrows the menu to the entries whose <em>title</em> matches what you type (body text is not searched), hides the sections they do not match, and keeps the parent entries that place a match; clearing the box or pressing <kbd>Esc</kbd> restores the whole document. Printing always carries the whole document, whatever the filter shows.</li>'+
 '<li>Every section title has a caret to <strong>collapse or expand</strong> that section; <strong>Expand All</strong> / <strong>Collapse All</strong> act on every section at once.</li>'+
+'<li>An in-document <strong>Contents</strong> list has its own caret: fold it away to reclaim the top of a long report, or click the folded title to bring it back. This browser remembers your choice for this document.</li>'+
 '<li><strong>Scroll to Top</strong> / <strong>Scroll to Bottom</strong> jump the document, and a small bubble shows your scroll position.</li>'+
 '</ul>')+
 T('Reading aids',
@@ -14561,6 +14562,93 @@ setState(false);
 });
 _cmSectionToggles.push(setState);
 _cmSectionEntries.push({heading:heading,section:sec,setState:setState});
+});
+}
+const CMH_TOC_FOLD_KEY=COMMENT_KEY+"::tocFold";
+const _cmTocFoldEntries=[];
+function _cmReadTocFolds(){
+let parsed=null;
+try{parsed=JSON.parse(localStorage.getItem(CMH_TOC_FOLD_KEY)||"{}");}catch(e){parsed=null;}
+return(parsed&&typeof parsed=== "object"&&!Array.isArray(parsed))
+?Object.assign(Object.create(null),parsed):Object.create(null);
+}
+function _cmWriteTocFold(key,collapsed){
+const state=_cmReadTocFolds();
+if(collapsed)state[key]=1;else delete state[key];
+try{localStorage.setItem(CMH_TOC_FOLD_KEY,JSON.stringify(state));}catch(e){}
+}
+function _cmTocFoldKeyFor(nav,used){
+const authored=nav.getAttribute("id");
+let key;
+if(authored){
+key= "id:"+authored;
+}else{
+const links=nav.querySelectorAll("a[href^='#']");
+const parts=[];
+for(let i=0;i<links.length;i++){
+parts.push(encodeURIComponent(links[i].getAttribute("href")||""));
+}
+key= "sig:"+parts.join("|");
+}
+const seen=used[key]||0;
+used[key]=seen+1;
+return seen?(key+"#"+seen):key;
+}
+function expandCollapsedToc(el){
+let nav=el&&el.closest&&el.closest(".cm-toc.cmh-toc-collapsed");
+while(nav){
+for(let i=0;i<_cmTocFoldEntries.length;i++){
+if(_cmTocFoldEntries[i].nav===nav){_cmTocFoldEntries[i].setState(false,true);break;}
+}
+nav=nav.parentElement&&nav.parentElement.closest
+&&nav.parentElement.closest(".cm-toc.cmh-toc-collapsed");
+}
+}
+function setupTocCollapse(){
+const root=cmhEl("commentRoot")||document.body;
+const saved=_cmReadTocFolds();
+const usedKeys=Object.create(null);
+_cmTocFoldEntries.length=0;
+root.querySelectorAll(".cm-toc").forEach(function(nav,i){
+if(nav.closest(".cm-skip"))return;
+if(cmhOwnChrome(nav,".cmh-toc-caret"))return;
+const title=nav.querySelector(":scope > .cm-toc-title");
+const storeKey=_cmTocFoldKeyFor(nav,usedKeys);
+const caret=document.createElement("button");
+caret.type= "button";
+caret.className= "cmh-toc-caret cm-skip";
+cmhMarkLayerChrome(caret);
+if(!nav.id){
+let n=i;
+while(cmhEl("cmhToc"+n))n++;
+nav.id= "cmhToc"+n;
+}
+caret.setAttribute("aria-controls",nav.id);
+if(title)title.insertBefore(caret,title.firstChild);
+else nav.insertBefore(caret,nav.firstChild);
+function setState(collapsed,persist){
+nav.classList.toggle("cmh-toc-collapsed",collapsed);
+caret.setAttribute("aria-expanded",String(!collapsed));
+caret.title=collapsed?"Show the contents list":"Hide the contents list";
+caret.setAttribute("aria-label",collapsed?"Expand table of contents":"Collapse table of contents");
+if(persist)_cmWriteTocFold(storeKey,collapsed);
+}
+caret.addEventListener("click",function(e){
+e.preventDefault();
+e.stopPropagation();
+setState(!nav.classList.contains("cmh-toc-collapsed"),true);
+});
+if(title){
+title.addEventListener("click",function(e){
+if(caret.contains(e.target))return;
+if(!nav.classList.contains("cmh-toc-collapsed"))return;
+const sel=window.getSelection();
+if(sel&&sel.toString().trim())return;
+setState(false,true);
+});
+}
+_cmTocFoldEntries.push({nav:nav,setState:setState});
+setState(saved[storeKey]===1,false);
 });
 }
 function setupSideToc(){
@@ -15135,6 +15223,7 @@ function measureCss(){
 return".cmh-print-comments,.cmh-print-noscript{display:block !important}"
 +"#commentRoot section.cmh-section-collapsed>*{display:revert !important}"
 +"#commentRoot section.cm-toc-filtered{display:revert !important}"
++"#commentRoot .cm-toc.cmh-toc-collapsed>*:not(.cmh-toc-caret){display:revert !important}"
 +"#commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-input,"
 +"#commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-head{display:revert !important}"
 +"#commentRoot pre,#commentRoot code,#commentRoot .cmh-diff-view pre,#commentRoot .cmh-diff-view code,"
@@ -16786,6 +16875,7 @@ setupDeck();
 }else{
 setupHeadingAnchors();
 setupCollapsibleSections();
+setupTocCollapse();
 setupSideToc();
 setupSectionReview();
 setupFooter();
