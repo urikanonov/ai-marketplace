@@ -18533,13 +18533,21 @@ const state=_cmReadTocFolds();
 if(collapsed)state[key]=1;else delete state[key];
 try{localStorage.setItem(CMH_TOC_FOLD_KEY,JSON.stringify(state));}catch(e){}
 }
-function _cmTocFoldKeyFor(nav,i,used){
+function _cmTocFoldKeyFor(nav,used){
 const authored=nav.getAttribute("id");
-const first=nav.querySelector("a[href^='#']");
-let key=authored?("#"+authored):((first&&first.getAttribute("href"))||String(i));
-if(used[key])key+= "::"+i;
-used[key]=1;
-return key;
+let key;
+if(authored){
+key= "#"+authored;
+}else{
+const links=nav.querySelectorAll("a[href^='#']");
+const href=function(n){return(n&&n.getAttribute("href"))||"";};
+key=links.length
+?(href(links[0])+"|"+href(links[links.length-1])+"|"+links.length)
+:"|empty|0";
+}
+const seen=used[key]||0;
+used[key]=seen+1;
+return seen?(key+"|"+seen):key;
 }
 function expandCollapsedToc(el){
 const nav=el&&el.closest&&el.closest(".cm-toc.cmh-toc-collapsed");
@@ -18557,7 +18565,7 @@ root.querySelectorAll(".cm-toc").forEach(function(nav,i){
 if(nav.closest(".cm-skip"))return;
 if(cmhOwnChrome(nav,".cmh-toc-caret"))return;
 const title=nav.querySelector(":scope > .cm-toc-title");
-const storeKey=_cmTocFoldKeyFor(nav,i,usedKeys);
+const storeKey=_cmTocFoldKeyFor(nav,usedKeys);
 const caret=document.createElement("button");
 caret.type= "button";
 caret.className= "cmh-toc-caret cm-skip";

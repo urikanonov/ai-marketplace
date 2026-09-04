@@ -341,17 +341,30 @@ function _cmWriteTocFold(key, collapsed) {
   if (collapsed) state[key] = 1; else delete state[key];
   try { localStorage.setItem(CMH_TOC_FOLD_KEY, JSON.stringify(state)); } catch (e) { /* private mode */ }
 }
-// The identity a fold is stored under. The nav's AUTHORED id when it has one, else the target of
-// its first entry - both survive another Contents list being added above this one, which a raw
-// DOM index does not (the reader's fold would silently move to a different list). The index is the
-// last resort, and it also disambiguates two navs that resolve to the same key.
-function _cmTocFoldKeyFor(nav, i, used) {
+// The identity a fold is stored under. The nav's AUTHORED id when it has one, else a SIGNATURE of
+// the entries it lists (first target, last target, count). Both survive another Contents list being
+// added above this one, which a raw DOM index does not - the reader's fold would silently move onto
+// a different list. A signature rather than the first target alone, because an overview list whose
+// single entry repeats this list's first target would otherwise collide with it and steal its fold.
+// Two navs that really do list the same entries are told apart by their order among themselves,
+// which is stable as long as neither is removed.
+function _cmTocFoldKeyFor(nav, used) {
   const authored = nav.getAttribute("id");
-  const first = nav.querySelector("a[href^='#']");
-  let key = authored ? ("#" + authored) : ((first && first.getAttribute("href")) || String(i));
-  if (used[key]) key += "::" + i;
-  used[key] = 1;
-  return key;
+  let key;
+  if (authored) {
+    key = "#" + authored;
+  } else {
+    const links = nav.querySelectorAll("a[href^='#']");
+    const href = function (n) { return (n && n.getAttribute("href")) || ""; };
+    key = links.length
+      ? (href(links[0]) + "|" + href(links[links.length - 1]) + "|" + links.length)
+      : "|empty|0";
+  }
+  // Duplicate ids are legal HTML, so the authored-id path is disambiguated exactly like the
+  // signature path - otherwise two navs sharing an id would read and write one fold between them.
+  const seen = used[key] || 0;
+  used[key] = seen + 1;
+  return seen ? (key + "|" + seen) : key;
 }
 // Unfold the Contents list `el` sits in, if it is folded. Called from the jump path so a comment
 // anchored on a list entry is never scrolled to inside a display:none box.
@@ -373,7 +386,7 @@ function setupTocCollapse() {
     const title = nav.querySelector(":scope > .cm-toc-title");
     // Resolve the storage identity BEFORE minting an id below, so the minted (index-derived) id
     // never becomes the key the fold is remembered under.
-    const storeKey = _cmTocFoldKeyFor(nav, i, usedKeys);
+    const storeKey = _cmTocFoldKeyFor(nav, usedKeys);
     const caret = document.createElement("button");
     caret.type = "button";
     caret.className = "cmh-toc-caret cm-skip";
