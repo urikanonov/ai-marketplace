@@ -645,16 +645,18 @@ class BuildOutputSafetyTests(unittest.TestCase):
             examples_src = os.path.join(dev, "examples", "src")
             alias = os.path.join(d, "examples-alias")
             os.makedirs(examples_src)
-            realpath = os.path.realpath
-
-            def resolve(path):
-                same_alias = os.path.basename(os.path.normpath(path)) == "examples-alias"
-                return os.path.dirname(examples_src) if same_alias else realpath(path)
+            source_parent = os.path.dirname(examples_src)
+            resolved_paths = [
+                source_parent,
+                source_parent,
+                os.path.join(dev, "skill"),
+                dev,
+            ]
 
             with contextlib.redirect_stderr(io.StringIO()):
                 with mock.patch.object(build, "HERE", dev), \
                         mock.patch.object(build, "EXAMPLES_SRC", examples_src), \
-                        mock.patch.object(os.path, "realpath", side_effect=resolve), \
+                        mock.patch.object(os.path, "realpath", side_effect=resolved_paths), \
                         mock.patch.object(
                             build, "build_all",
                             side_effect=AssertionError("unsafe build reached build_all")):
