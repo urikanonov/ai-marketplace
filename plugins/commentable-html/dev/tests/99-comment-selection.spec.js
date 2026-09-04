@@ -370,7 +370,7 @@ test.describe("side-pane comment selection", () => {
       return { items: items.length, worst, ids: items.map((b) => b.id) };
     });
     expect(reach.ids, "the selection-revealed item is one of them").toContain("btnClearSelected");
-    expect(reach.items, "every reachable item is measured").toBe(5);
+    expect(reach.items, "every reachable item is measured").toBe(6);
     expect(reach.worst, "every item scrolls FULLY into the menu").toBeGreaterThanOrEqual(-0.5);
   });
 

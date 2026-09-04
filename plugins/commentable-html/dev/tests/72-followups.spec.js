@@ -717,7 +717,7 @@ test.describe("visual-audit follow-ups", () => {
       // them into scrollers.
       for (const [toggle, menu, count] of [
         ["#btnSidebarExportMenu", "#sidebarExportMenu", 5],
-        ["#btnMoreMenu", "#sidebarMoreMenu", 5],
+        ["#btnMoreMenu", "#sidebarMoreMenu", 6],
       ]) {
         await page.evaluate((t) => {
           const b = document.querySelector(t);
