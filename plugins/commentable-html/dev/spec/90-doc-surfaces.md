@@ -115,6 +115,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-DECK-SHOWCASE-19 | site | deck |
 | CMH-DECK-SHOWCASE-20 | site | deck |
 | CMH-BUILD-14 | opt-out: internal Playwright test-harness reliability (deterministic static-server teardown); not a reader-facing capability | opt-out: internal test-harness reliability, not a deck topic |
+| CMH-BUILD-30 | opt-out: internal Playwright test-harness hermeticity (a spec that opens a shipped example serves both vendored libraries locally instead of fetching them); nothing changes in the document a reader opens | opt-out: internal test-harness hermeticity, not a deck topic |
 | CMH-DECK-41 | opt-out: showcase demo-deck content (a slide's own diagram layout), not a runtime feature documented to readers | deck |
 | CMH-DECK-42 | site | deck |
 | CMH-BUILD-16 | opt-out: build/authoring tooling for maintainers (how to regenerate the tutorial screenshots with the CI renderer); documented in docs/testing-guidelines.md, not a reader-facing capability | opt-out: maintainer build tooling, not a deck topic |

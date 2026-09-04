@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import path from "path";
-import { EXAMPLES, fileUrl, ready, routeVendoredLibs } from "./helpers.js";
+import { EXAMPLES, fileUrl, ready, routeExampleLibsLocal } from "./helpers.js";
 
 // CMH-CORE-20: working a comment composer must never move the document. Chromium scroll anchoring
 // reacts to the layout change composer creation makes and shifts window.scrollY a frame LATER -
@@ -32,11 +32,11 @@ async function settle(page) {
   });
 }
 
-// The example loads Chart.js from the pinned CDN (CMH-SIZE-09). Serve it from the vendored copy -
-// the bytes its `integrity` names - so the chart cannot land AFTER `settle()` and grow the document
-// mid-measurement, which would be charged to the composer.
+// The example loads Chart.js and mermaid from the pinned CDN (CMH-SIZE-08/09). Serve both from the
+// local copies (CMH-BUILD-30) - for Chart.js the bytes its `integrity` names - so neither can land
+// AFTER `settle()` and grow the document mid-measurement, which would be charged to the composer.
 async function openExample(page) {
-  await routeVendoredLibs(page);
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(EXAMPLE));
 }
 

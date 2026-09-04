@@ -457,11 +457,19 @@ export async function startStaticServer(dir) {
   return { url: `http://localhost:${port}`, close };
 }
 
-// The two pinned UMD builds an Offline export downloads (CMH-SIZE-08), each mapped to the file in
+// The two pinned UMD builds an Offline export DOWNLOADS (CMH-SIZE-08), each mapped to the file in
 // `assets/vendor/` the build computed its SRI hash from. Serving these EXACT bytes is what lets a
 // hermetic spec exercise the fetch-and-verify path; any other copy (node_modules' unminified
 // `chart.umd.js`, say) fails the integrity check, correctly.
-const VENDORED_LIB_ROUTES = [
+//
+// This list is the EXPORT's download URLs and nothing else. In particular the mermaid entry is the
+// UMD `mermaid.min.js` only the exporter ever asks for - a VIEWER imports `mermaid.esm.min.mjs`
+// plus ~20 relative chunks, which no single vendored file can answer. Routing this list is
+// therefore NOT enough to make a spec that opens a rich document hermetic; that is what
+// `serveMermaidLocal` (from node_modules) and `routeExampleLibsLocal` are for. Two specs learned
+// this the hard way and fetched mermaid from jsDelivr on every run (#1305), which is why all three
+// helpers below are named for the offline export rather than for "vendored libs" generally.
+const OFFLINE_EXPORT_LIB_ROUTES = [
   [/cdn\.jsdelivr\.net\/npm\/mermaid@[^/]+\/dist\/mermaid\.min\.js$/, "mermaid.min.js"],
   [/cdn\.jsdelivr\.net\/npm\/chart\.js@[^/]+\/dist\/chart\.umd\.min\.js$/, "chart.umd.min.js"],
 ];
@@ -470,9 +478,9 @@ const VENDORED_LIB_ROUTES = [
 // network still reaches the behavior it is actually testing. Registered LAST so it wins over a
 // broad deny-all route the spec installed first (Playwright runs the most recently added handler
 // first), and it matches only those two URLs, so everything else still falls to the deny-all.
-export async function routeVendoredLibs(page) {
+export async function routeOfflineExportLibs(page) {
   const vendorDir = path.join(DEV, "assets", "vendor");
-  for (const [pattern, name] of VENDORED_LIB_ROUTES) {
+  for (const [pattern, name] of OFFLINE_EXPORT_LIB_ROUTES) {
     await page.route(pattern, async (route) => {
       await route.fulfill({
         body: fs.readFileSync(path.join(vendorDir, name)),
@@ -486,8 +494,8 @@ export async function routeVendoredLibs(page) {
 // Serve the export's library fetch with TAMPERED bytes: a well-formed response that cannot match
 // the SRI hash the build recorded, so a spec can prove verification is what refuses it rather than
 // the download failing.
-export async function routeTamperedVendoredLibs(page) {
-  for (const [pattern] of VENDORED_LIB_ROUTES) {
+export async function routeTamperedOfflineExportLibs(page) {
+  for (const [pattern] of OFFLINE_EXPORT_LIB_ROUTES) {
     await page.route(pattern, async (route) => {
       await route.fulfill({
         body: "/* cmh-tampered-lib */ window.__cmhTamperedLib = 1;",
@@ -500,17 +508,31 @@ export async function routeTamperedVendoredLibs(page) {
 
 // Block the export's library fetch so a spec can assert the LOUD failure path: no download, and a
 // visible error naming the download rather than a misleading parse error.
-export async function blockVendoredLibs(page) {
+export async function blockOfflineExportLibs(page) {
   await page.route(/cdn\.jsdelivr\.net\/npm\/(mermaid|chart\.js)@[^/]+\/dist\//, async (route) => {
     await route.abort();
   });
+}
+
+// The standard way for a spec to open a SHIPPED EXAMPLE (CMH-BUILD-30). An example loads mermaid
+// and Chart.js from a pinned CDN by design (CMH-SIZE-08/09), so hermeticity needs BOTH halves:
+// mermaid's ESM entry point and its chunks from node_modules, and the pinned Chart.js build from
+// `assets/vendor/`. The deny-all goes on FIRST so it sits at the BOTTOM of the route stack
+// (Playwright runs the most recently added handler first): anything the local routes above do not
+// answer is aborted, never fetched, and is recorded in `page.__external` so a library added to an
+// example later - or a local route that stops matching after a version bump - is visible rather
+// than silent.
+export async function routeExampleLibsLocal(page) {
+  await denyExternalNetwork(page);
+  await serveMermaidLocal(page);
+  await routeOfflineExportLibs(page);
 }
 
 // Serve mermaid's CDN import (and its chunk imports) from the locally vendored
 // node_modules/mermaid/dist, so mermaid renders from the vendored files. The local
 // main module imports its own relative chunks, which resolve against the CDN base
 // and are intercepted here too - fully self-consistent regardless of CDN version.
-export async function routeMermaidLocal(page) {
+async function serveMermaidLocal(page) {
   const distRoot = path.join(DEV, "node_modules", "mermaid");
   const vendored = JSON.parse(fs.readFileSync(path.join(distRoot, "package.json"), "utf8")).version;
   await page.route(/cdn\.jsdelivr\.net\/npm\/mermaid@/, async (route) => {
@@ -527,6 +549,11 @@ export async function routeMermaidLocal(page) {
       await route.abort();
     }
   });
+}
+
+// Serve mermaid locally AND deny every other remote, for a spec that stages its own content.
+export async function routeMermaidLocal(page) {
+  await serveMermaidLocal(page);
   // The suite must be fully self-contained: deny any other remote request, but allow the
   // local static server (localhost/127.0.0.1) and file:// documents through.
   await page.route(/^https?:\/\//, async (route) => {

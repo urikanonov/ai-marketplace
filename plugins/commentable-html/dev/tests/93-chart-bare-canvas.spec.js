@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import {
   PYTHON, SKILL, fileUrl, ready, stageContent, denyExternalNetwork, openToolbarMenu,
-  mutateStoredComments, routeVendoredLibs,
+  mutateStoredComments, routeOfflineExportLibs,
 } from "./helpers.js";
 import { execFileSync } from "child_process";
 
@@ -110,7 +110,7 @@ async function exportOffline(page, html) {
   // Since CMH-SIZE-08 the export DOWNLOADS the pinned library rather than reading bytes the
   // document embeds, so serve those two URLs from `assets/vendor/`. Registered after the deny-all
   // so it wins for exactly those URLs and everything else stays blocked.
-  await routeVendoredLibs(page);
+  await routeOfflineExportLibs(page);
   await page.addInitScript(() => {
     window.__cmhDownloadTexts = [];
     const original = URL.createObjectURL.bind(URL);

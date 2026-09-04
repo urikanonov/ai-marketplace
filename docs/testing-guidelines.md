@@ -89,6 +89,17 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
   and prefer the configured `list` reporter when running the suite by hand. If the named test's
   source does not contain the failing matcher, the attribution is the artifact, not a mystery in
   that test.
+- **Open a shipped commentable-html example with `routeExampleLibsLocal`, nothing else.** The
+  examples load mermaid and Chart.js from a pinned CDN by design (`CMH-SIZE-08`/`CMH-SIZE-09`), and
+  the two halves come from different places: mermaid's ESM entry point plus its ~20 chunks from
+  `node_modules/mermaid`, and the pinned Chart.js from `assets/vendor/`. The export-scoped
+  `routeOfflineExportLibs` covers only what the Offline EXPORT downloads (the UMD `mermaid.min.js`,
+  a URL the viewer never asks for), so a spec that installed it alone looked hermetic and fetched
+  mermaid from jsDelivr on every run, leaving an unbounded round trip that could render a diagram
+  after the measurement it was about to take (#1305). `routeExampleLibsLocal` installs both local
+  routes over a recording deny-all, so anything unrouted is aborted and shows up in
+  `page.__external` instead of going out. `CMH-BUILD-30` sweeps every `examples/*.html` through it
+  and is the guard.
 - **Never let an assertion absorb a heavy load.** A locator assertion with a fixed timeout in front
   of a multi-megabyte (or lazily loaded) document makes ONE budget cover the download AND the
   behavior, so a cold runner fails in the content assertion and blames the content. Wait for the
