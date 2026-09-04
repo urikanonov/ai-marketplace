@@ -5,6 +5,7 @@ import {
   DEV, SKILL, fileUrl, ready, installClipboardCapture, copiedBundle, stageContent, readDownload,
   addTextComment,
   clickSidebarExport,
+  routeExampleLibsLocal,
 } from "./helpers.js";
 
 const TRIAGE = path.join(SKILL, "..", "..", "examples", "report-triage.html");
@@ -155,6 +156,7 @@ async function addWidgetComment(page, partSelector, note) {
 
 test("triage cards can be dragged between opted-in slots and copied as layout changes (CMH-WIDGET-02, CMH-WIDGET-03)", async ({ page }) => {
   await installClipboardCapture(page);
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(TRIAGE));
   await ready(page);
 
@@ -187,6 +189,7 @@ test("widget drag-and-drop requires an explicit data-cm-draggable opt-in (CMH-WI
 });
 
 test("a sub-threshold click on a draggable card still opens the widget comment composer (CMH-WIDGET-04)", async ({ page }) => {
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(TRIAGE));
   await ready(page);
 
@@ -207,6 +210,7 @@ test("a sub-threshold click on a draggable card still opens the widget comment c
 
 test("dropping a card back on its origin slot emits no layout-change bundle line (CMH-WIDGET-05)", async ({ page }) => {
   await installClipboardCapture(page);
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(TRIAGE));
   await ready(page);
 
@@ -360,6 +364,7 @@ test("dragging applies and clears the drop-target affordance classes (CMH-WIDGET
 });
 
 test("multiple sequential widget drags work without stuck listeners or state (CMH-WIDGET-14)", async ({ page }) => {
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(TRIAGE));
   await ready(page);
 
@@ -376,6 +381,7 @@ test("multiple sequential widget drags work without stuck listeners or state (CM
 
 test("moving a card away and back to its baseline slot leaves no net widget state change (CMH-WIDGET-15)", async ({ page }) => {
   await installClipboardCapture(page);
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(TRIAGE));
   await ready(page);
 
@@ -390,6 +396,7 @@ test("moving a card away and back to its baseline slot leaves no net widget stat
 
 test("exporting after a move persists the new DOM order and keeps widget comments anchored (CMH-WIDGET-16)", async ({ page, browser }) => {
   await installClipboardCapture(page);
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(TRIAGE));
   await ready(page);
 

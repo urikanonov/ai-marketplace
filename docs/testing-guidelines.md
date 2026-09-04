@@ -98,8 +98,12 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
   mermaid from jsDelivr on every run, leaving an unbounded round trip that could render a diagram
   after the measurement it was about to take (#1305). `routeExampleLibsLocal` installs both local
   routes over a recording deny-all, so anything unrouted is aborted and shows up in
-  `page.__external` instead of going out. `CMH-BUILD-30` sweeps every `examples/*.html` through it
-  and is the guard.
+  `page.__external` instead of going out. Serving them locally makes a diagram render FAST rather
+  than never, so a spec that MEASURES layout must also `await awaitMermaidRendered(page)` after
+  `ready()` - otherwise a render lands mid-measurement and you have traded a slow race for a fast
+  one. `CMH-BUILD-30` is the guard, and it checks BOTH halves: it sweeps every `examples/*.html`
+  through the helper, and it fails any other spec that navigates to a shipped example without
+  installing a hermetic deny-all.
 - **Never let an assertion absorb a heavy load.** A locator assertion with a fixed timeout in front
   of a multi-megabyte (or lazily loaded) document makes ONE budget cover the download AND the
   behavior, so a cold runner fails in the content assertion and blames the content. Wait for the

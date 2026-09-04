@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import {
   SKILL, fileUrl, ready, lastCopied, installClipboardCapture,
-  startStaticServer, routeMermaidLocal, routeOfflineExportLibs, routeExampleLibsLocal,
+  startStaticServer, routeExampleLibsLocal,
 } from "./helpers.js";
 
 // The shipped showcase example must exercise every feature end to end, so these tests
@@ -105,12 +105,7 @@ test.describe("showcase example: features work on the shipped example HTML", () 
     test.setTimeout(60000);
     const server = await startStaticServer(path.join(SKILL, "..", ".."));
     try {
-      await routeMermaidLocal(page);
-      // Registered AFTER routeMermaidLocal, whose catch-all aborts every non-mermaid remote
-      // request - including the example's pinned Chart.js. Playwright runs the most recently
-      // added handler first, so this reaches the request; without it the canvas below is blank
-      // and the commentable-media assertion (which is purely structural) still passes.
-      await routeOfflineExportLibs(page);
+      await routeExampleLibsLocal(page);
       await installClipboardCapture(page);
       await page.goto(server.url + "/examples/report-community-garden.html");
       await ready(page);

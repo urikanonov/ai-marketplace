@@ -546,8 +546,29 @@ async function serveMermaidLocal(page) {
       const body = fs.readFileSync(path.join(distRoot, rel));
       await route.fulfill({ body, contentType: "text/javascript", headers: { "access-control-allow-origin": "*" } });
     } catch (e) {
+      // No local file answers this URL (a chunk the installed mermaid does not have, say). Aborting
+      // silently would hide exactly the drift CMH-BUILD-30 exists to catch - the request never
+      // reaches the recording deny-all below it, so `page.__external` would stay empty while the
+      // diagram quietly failed to render. Record it first, then abort.
+      if (Array.isArray(page.__external)) page.__external.push(u.href);
       await route.abort();
     }
+  });
+}
+
+// Wait until every mermaid diagram in the document has rendered and its render audit has settled,
+// so a measurement is never taken while a diagram is still growing the page. `__cmhMermaidReady`
+// and `__cmhMermaidAuditsSettled` are the loader's documented automation contract (CMH-MMD-07,
+// CMH-MMD-12). Only call this where mermaid is actually SERVED (routeExampleLibsLocal /
+// routeMermaidLocal): the loader publishes the promise after its import resolves, so a spec that
+// blocks mermaid would wait for a signal that never comes.
+export async function awaitMermaidRendered(page) {
+  if (!await page.evaluate(() => !!document.querySelector("pre.mermaid, div.mermaid"))) return;
+  await page.waitForFunction(() => !!window.__cmhMermaidReady, null, { timeout: 30000 });
+  await page.evaluate(async () => {
+    // A diagram that fails to render is the calling spec's assertion to make, not this helper's.
+    try { await window.__cmhMermaidReady; } catch (e) { /* ignore */ }
+    try { await window.__cmhMermaidAuditsSettled; } catch (e) { /* ignore */ }
   });
 }
 
