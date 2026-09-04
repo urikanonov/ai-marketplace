@@ -398,8 +398,19 @@ function renderComments() {
     // Slide comments have no text highlight but DO navigate to their owning slide, so they keep a
     // jump button (unlike deck-wide/document comments, which have nowhere specific to jump).
     const jumpBtn = isDocument ? "" : isSlide
-      ? `<button type="button" data-act="jump" title="Go to this slide">jump</button>`
-      : `<button type="button" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
+      ? `<button type="button" class="cm-card-btn" data-act="jump" title="Go to this slide">jump</button>`
+      : `<button type="button" class="cm-card-btn" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
+    // The per-comment pick control (issue #1289). It sits in the meta row's action slot, where the
+    // jump/edit/delete trio used to be - those moved onto the Reply row so the card ships ONE
+    // definition of "an action" - and it is a real checkbox, so it is keyboard-operable and
+    // announced as one for free. The label, the checked flag and the article's class list are
+    // built OUTSIDE the template literal: an interpolation inside an attribute would be minified
+    // to a spelling the source does not contain, which the shipped-layer guard forbids.
+    const picked = (typeof isCommentPicked === "function") && isCommentPicked(c.id);
+    const pickLabel = "Select comment #" + (i + 1);
+    const pickChecked = picked ? " checked" : "";
+    const pickHtml = `<span class="acts cm-pick"><label class="cm-pick-label" title="Select this comment for Copy selected / Clear selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label></span>`;
+    const articleClass = picked ? (cardClass + " cm-card-picked") : cardClass;
     const rootPill = (typeof authorPillHtml === "function") ? authorPillHtml(c.author) : "";
     const replies = (typeof repliesOf === "function") ? repliesOf(c.id, comments) : [];
     const delTitle = replies.length ? "Delete this comment and its replies" : "Delete this comment";
@@ -419,7 +430,7 @@ function renderComments() {
       </div>`;
     }).join("");
     return `
-    <article class="${cardClass}" data-cid="${c.id}">
+    <article class="${articleClass}" data-cid="${c.id}">
       ${sectionHtml}
       ${quoteHtml}
       ${pinHtml}
@@ -428,15 +439,18 @@ function renderComments() {
         <div class="cmh-note-raw" hidden>${escapeHtml(c.note == null ? "" : c.note)}</div>
         <div class="meta">
           <span>#${i + 1}${cmhTimeSuffixHtml(c)}</span>
-          <span class="acts">
-            ${jumpBtn}
-            <button type="button" data-act="edit" title="Edit comment">edit</button>
-            <button type="button" class="del" data-act="del" title="${delTitle}">delete</button>
-          </span>
+          ${pickHtml}
         </div>
       </div>
       ${repliesHtml ? `<div class="cm-replies">${repliesHtml}</div>` : ""}
-      <div class="cm-reply-row"><button type="button" class="cm-reply-btn" data-act="reply" title="Reply to this comment">Reply</button></div>
+      <div class="cm-reply-row cm-card-actions">
+        <span class="cm-card-acts">
+          <button type="button" class="cm-reply-btn cm-card-btn" data-act="reply" title="Reply to this comment">Reply</button>
+          ${jumpBtn}
+          <button type="button" class="cm-card-btn" data-act="edit" title="Edit comment">edit</button>
+          <button type="button" class="cm-card-btn del" data-act="del" title="${delTitle}">delete</button>
+        </span>
+      </div>
     </article>`;
   });
   const commentPieces = commentHtml.map((html, i) => ({ pos: sortKey(sorted[i]), html }));
@@ -983,6 +997,10 @@ function openInlineReply(card, rootId) {
   }
   _closeActiveInlineEditor();
   const btn = row.querySelector(".cm-reply-btn");
+  // Reply now shares its row with jump/edit/delete, so the WHOLE action group stands down while the
+  // editor occupies the row - hiding only the Reply button would leave the other three sitting
+  // beside the composer.
+  const acts = row.querySelector(".cm-card-acts");
   const editor = _buildInlineReplyEditor("", "Save reply",
     function (val) {
       if (!comments.some(function (x) { return x.id === rootId && !isReply(x); })) {
@@ -998,10 +1016,16 @@ function openInlineReply(card, rootId) {
       _afterInlineSaveQuota(ok, "reply");
     },
     function () { _closeActiveInlineEditor(); });
-  if (btn) btn.hidden = true;
+  if (acts) acts.hidden = true;
+  else if (btn) btn.hidden = true;
   row.appendChild(editor);
   cmhAutogrowResize(editor.querySelector("textarea"));
-  _activeInlineEditor = { el: editor, kind: "reply", targetId: rootId, restore: function () { editor.remove(); if (btn) { btn.hidden = false; _restoreFocusTo(btn); } } };
+  _activeInlineEditor = { el: editor, kind: "reply", targetId: rootId, restore: function () {
+    editor.remove();
+    if (acts) acts.hidden = false;
+    else if (btn) btn.hidden = false;
+    if (btn) _restoreFocusTo(btn);
+  } };
   editor._focus();
   // First-reply identity prompt (issue #645).
   _nudgeIdentityOnReply();
@@ -1035,8 +1059,11 @@ function openInlineNoteEdit(entry, cid) {
   }
   const kind = isRootNote ? "edit-root" : "edit";
   const editBtnSel = isRootNote ? '[data-act="edit"]' : '[data-act="reply-edit"]';
+  // A ROOT note's edit button no longer sits inside `.cm-entry-root`: since CMH-PICK-08 it lives on
+  // the card's shared action row, so the hand-back scope is the CARD (a reply's stays its entry).
+  const editBtnScope = isRootNote ? (entry.closest(".cm-card") || entry) : entry;
   const focusSel = isRootNote
-    ? '.cm-card[data-cid="' + cid + '"] .cm-entry-root [data-act="edit"]'
+    ? '.cm-card[data-cid="' + cid + '"] .cm-card-acts [data-act="edit"]'
     : '[data-reply-cid="' + cid + '"] [data-act="reply-edit"]';
   // Re-clicking edit on a note already being edited just refocuses it (never resets the draft).
   if (_activeInlineEditor && _activeInlineEditor.kind === kind && _activeInlineEditor.targetId === cid) {
@@ -1072,7 +1099,7 @@ function openInlineNoteEdit(entry, cid) {
     editor.remove();
     noteEl.hidden = false;
     entry.classList.remove("cm-reply-editing");
-    const eb = entry.querySelector(editBtnSel);
+    const eb = editBtnScope.querySelector(editBtnSel);
     if (eb) _restoreFocusTo(eb);
   } };
   editor._focus();
@@ -1111,6 +1138,10 @@ listEl.addEventListener("click", (e) => {
   // Save/Cancel buttons); it must never also fire the card's jump-to-anchor fall-through, which
   // would scroll the document away while the reviewer is editing in the panel.
   if (e.target.closest && e.target.closest(".cm-reply-compose")) return;
+  // The pick control is owned by the `change` listener below, so neither the checkbox click nor
+  // the label's forwarded one may fall through to the card's jump-to-anchor handler (a click on
+  // the label text carries no data-act and would otherwise scroll the document).
+  if (e.target.closest && e.target.closest(".cm-pick")) return;
   // Checklist change cards are not comments: jump focuses the checklist, Reset reverts it to
   // the authored state. Handle before the .cm-card comment path (a checklist card is a .cm-card).
   const clCard = e.target.closest(".cm-card-checklist");
@@ -1187,6 +1218,17 @@ listEl.addEventListener("click", (e) => {
   }
   const c = comments.find(x => x.id === id);
   scrollToAnchor(c);
+});
+// The pick checkbox is driven by `change`, not `click`: a click on the label's caption is
+// forwarded to the input as a second click event, so a click-based toggle would fire twice and
+// land on the wrong state.
+listEl.addEventListener("change", (e) => {
+  const box = e.target.closest && e.target.closest("input.cm-pick-box");
+  if (!box) return;
+  const card = box.closest(".cm-card");
+  if (!card || !card.dataset.cid) return;
+  card.classList.toggle("cm-card-picked", box.checked);
+  if (typeof setCommentPicked === "function") setCommentPicked(card.dataset.cid, box.checked);
 });
 function flashActive(id) {
   root.querySelectorAll("mark.cm-hl.active").forEach(m => m.classList.remove("active"));

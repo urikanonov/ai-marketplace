@@ -136,25 +136,38 @@ html[data-theme="dark"] .cm-author-pill {
 .cm-card .cm-reply .note { margin: 0; }
 .cm-card .cm-reply .meta { opacity: 0.9; }
 .cm-card .cm-reply-row { margin-top: 0.45rem; }
-.cm-card .cm-reply-btn {
+/* One look for every per-card action (issue #1289): Reply, jump, edit and delete share ONE row and
+   ONE bordered-pill style, so a card no longer ships two competing definitions of "an action". */
+.cm-card .cm-card-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cp-chrome-button-gap);
+}
+/* The whole group stands down while the inline reply composer owns the row, and an author
+   `display` declaration beats the UA `[hidden] { display: none }` rule - so state it locally. */
+.cm-card .cm-card-acts[hidden] { display: none; }
+.cm-card .cm-card-btn {
   background: none;
   box-sizing: border-box;
   border: 1px solid var(--cp-border, #cbd5e1);
   border-radius: 6px;
   padding: 0.1rem 0.6rem;
+  font-family: inherit;
   font-size: var(--cp-chrome-small-font, 0.78rem);
   color: var(--cp-accent);
   cursor: pointer;
 }
-.cm-card .cm-reply-btn:hover { background: var(--cp-accent-soft); }
-/* On phones the button that OPENS the reply composer keeps the repo-wide >=44px touch target too:
-   the destination was enlarged (CMH-RESP-13) while the door to it stayed a ~17px sliver. The card
-   actions rule in 20-chrome.css does not reach it - it lives in `.cm-reply-row`, not `.meta .acts`.
-   This one grows for REAL rather than taking an overlaid target like the identity link above: it is
-   a bordered button, which is how the card's own action buttons are already treated (CMH-RESP-07),
-   and it sits in a scrolling card list that has the room to spend. */
+.cm-card .cm-card-btn:hover { background: var(--cp-accent-soft); }
+/* The destructive action sits at the row's end, a deliberate distance from Reply so a thumb slip
+   cannot reach it (CMH-RESP-14), and keeps its danger hover. */
+.cm-card .cm-card-acts .cm-card-btn.del { margin-inline-start: auto; }
+.cm-card .cm-card-btn.del:hover { background: rgba(220, 38, 38, 0.12); color: var(--cp-danger); }
+/* On phones every card action keeps the repo-wide >=44px touch target on BOTH axes (CMH-RESP-07,
+   CMH-RESP-15). They grow for REAL rather than taking an overlaid target: they are bordered
+   buttons in a scrolling card list that has the room to spend. */
 @media (max-width: 640px) {
-  .cm-card .cm-reply-btn { min-width: 44px; min-height: 44px; padding: 0.4rem 0.7rem; }
+  .cm-card .cm-card-btn { min-width: 44px; min-height: 44px; padding: 0.4rem 0.7rem; }
 }
 
 /* Inline reply composer (issue #644): compose a new reply or edit an existing one in place, in the

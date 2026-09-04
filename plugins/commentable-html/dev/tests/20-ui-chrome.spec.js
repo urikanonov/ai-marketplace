@@ -10,9 +10,13 @@ const SITE_LINK_NAME = SITE_LINK_LABEL + " (opens in a new tab)";
 // Identify each focusable by its id, falling back to a STABLE identity for id-less controls
 // (the brand link) rather than its class string, which a class reorder would break. Every
 // descendant is enumerated, so an id-less tab stop of ANY tag (summary, iframe, contenteditable)
-// is still seen rather than filtered away.
+// is still seen rather than filtered away. Only an explicitly `hidden` node is skipped: `tabIndex`
+// still reports 0 on one, but `.cm-skip [hidden]` takes it out of layout so it is not a real tab
+// stop (the menu's `Clear selection` is revealed only by a selection - CMH-PICK-05). A control
+// that is merely zero-sized or `display:none` from CSS is still listed, so the guard stays as
+// strong as it was.
 const MENU_FOCUS_IDENTITY = (el) => Array.from(el.querySelectorAll("*"))
-  .filter((node) => node.tabIndex >= 0)
+  .filter((node) => node.tabIndex >= 0 && !node.hidden)
   .map((node) => node.id || (node.matches("a.cm-brand-link") ? "brand-site-link" : node.tagName.toLowerCase()));
 const MENU_ACTION_IDS = ["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnStorageTop", "btnClearAllTop", "btnHelpTop"];
 const TOOLBAR_MARK = ".cm-toolbar > a.cm-brand-link";

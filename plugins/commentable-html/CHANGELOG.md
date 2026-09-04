@@ -4,6 +4,38 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.847.0] - 2026-09-03
+
+### Added
+
+- **Select individual comments and hand back only those.** Every card in the side pane now carries
+  a `Select` checkbox. With at least one comment picked, `Copy all` becomes `Copy selected` and
+  copies only those threads (each root with its replies) - both the Markdown body and the
+  machine-readable `HANDLED_IDS_JSON` array - so the agent can never mark a comment you kept back
+  as handled. The partial bundle declares itself with a `Scope: selected comments only (N of M open
+  comment threads)` line, names any tracked note, checklist, or widget-layout changes it is holding
+  back on a `Withheld:` line, and leaves those change sections out, because a selection is a
+  comment-only scope.
+- A selection bar above the list shows the live count and offers `Clear selection`, which deselects
+  everything without deleting anything, and the `More` menu grows a `Clear selected comments` item
+  (hidden until something is picked) that deletes only the selected threads after the same
+  confirmation Clear all uses. While the comment search is filtering the list the bar and the
+  confirmation both say how many of your picks are hidden, so nothing is deleted out of sight.
+  With the panel collapsed, the floating toolbar's overflow menu carries `Clear selection` too and
+  the copy button's tooltip names the count, so a selection is never something you can act on but
+  not inspect. The selection is per-session: it is never persisted, never travels inside an
+  exported file, and it prunes itself when a selected comment is deleted.
+
+### Changed
+
+- A comment card now ships ONE definition of "an action": `jump`, `edit` and `delete` moved onto
+  the same row as `Reply` and share its bordered-pill look, instead of being small plain text
+  buttons on the meta line above an accent pill below. `delete` sits at the row's end so the
+  destructive action stays clear of `Reply`, and all four keep their >=44px phone touch targets.
+- The `dist/commentable-html.js` and `dist/commentable-html.assets.js` size ceilings in
+  `dev/tools/size-budget.json` are raised to 677,000 and 865,000 bytes. Both sat at 99% of their
+  previous ceiling before this release, leaving no room for the selection layer; the new values
+  restore the documented ~5% headroom over the current build.
 ## [1.846.0] - 2026-09-03
 
 ### Changed

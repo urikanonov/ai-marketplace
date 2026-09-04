@@ -892,6 +892,33 @@ test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported syntax labels, 
   }
 });
 
+test("CMH-DECK-SHOWCASE-20: the showcase deck teaches the selective hand-back", async ({ page }) => {
+  const server = await openShowcaseDeck(page);
+  try {
+    await showSlideWith(page, "text=Send back the comments you choose, not always all of them.");
+    const slide = page.locator(".slide.active");
+    await expect(slide.locator(".show-kicker")).toHaveText("Act 2 - Hand back only part of it");
+    // The four controls the feature ships, named on the slide a viewer can try them from.
+    await expect(slide).toContainText("Select");
+    await expect(slide).toContainText("Copy selected");
+    await expect(slide).toContainText("Clear selection");
+    await expect(slide).toContainText("Clear selected comments");
+    // ...and WHY a partial hand-back is safe, which is the part a viewer cannot infer from the UI.
+    await expect(slide.locator("p.show-lead")).toContainText("partial hand-back");
+    // It follows the two-prompt loop slide, so the deck teaches the whole round-trip before
+    // narrowing it, and the slide fits its stage.
+    const order = await page.evaluate(() => {
+      const slides = [...document.querySelectorAll(".slide")];
+      const at = (t) => slides.findIndex((s) => (s.textContent || "").includes(t));
+      return { loop: at("Two simple prompts cover the"), pick: at("Send back the comments you choose") };
+    });
+    expect(order.pick, "the selective slide follows the loop slide").toBe(order.loop + 1);
+    expect(await slide.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(4);
+  } finally {
+    await server.close();
+  }
+});
+
 test("CMH-DECK-SHOWCASE-09: the showcase deck shows a concrete Copy all bundle specimen", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {

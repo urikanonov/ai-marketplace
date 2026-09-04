@@ -47,6 +47,7 @@ omitted here.
 | Threads, inline replies, and author names (THREAD, AUTHOR) | tutorial, help, deck |
 | Counting note and checklist changes in the badge (NOTE-04, CHECK-06) | tutorial, help, deck |
 | Copy all and sending comments to an agent (COPY, HANDLED) | tutorial, help, deck |
+| Selecting comments to hand back or delete only part of a review (PICK) | help, deck |
 | Exports: Shareable, Offline, Plain HTML, Markdown, Save as PDF (EXP, OFFLINE, PRINT) | tutorial, site, help, deck |
 | Storage manager, pie-chart breakdown, and per-document browsing (STORE) | tutorial, help, deck |
 | Board and deck document kinds (BOARD, DECK, MODE) | tutorial (board), site (deck), help (board), deck |
@@ -85,6 +86,15 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-THREAD-09 | opt-out: internal draft-preservation robustness, not separately documented | opt-out: internal draft-preservation robustness, not a deck topic |
 | CMH-THREAD-10 | help | opt-out: sidebar note-edit-in-place detail, not a distinct slide |
 | CMH-THREAD-11 | opt-out: keyboard-focus robustness after a panel re-render, not a documented behavior | opt-out: focus-restoration robustness, nothing for a viewer to see on a slide |
+| CMH-PICK-01 | help | deck |
+| CMH-PICK-02 | help | deck |
+| CMH-PICK-03 | help | deck |
+| CMH-PICK-04 | help | opt-out: an agent-facing bundle-scope line and a change-section exclusion, nothing for a viewer to see on a slide |
+| CMH-PICK-05 | help | deck |
+| CMH-PICK-06 | help | deck |
+| CMH-PICK-07 | help | opt-out: a transience-and-pruning invariant of the selection, with nothing to demonstrate on a slide |
+| CMH-PICK-08 | help | deck |
+| CMH-PICK-09 | help | opt-out: a disclosure that fires only while the comment search is filtering a selection, too conditional to demonstrate on a slide |
 | CMH-UI-12 | opt-out: click-target sizing of the already-documented Open comment bubble, no new capability | opt-out: control sizing, nothing to demonstrate on a slide |
 | CMH-UI-13 | help | opt-out: a second entry point into the already-shown clear-all flow; the deck's own toolbar demo covers the overflow menu, and a destructive clear is not a slide to run live |
 | CMH-UI-14 | opt-out: a timing repair to the already-documented tooltip layer (CMH-UI-05), restoring the tip a mid-animation focus used to lose; no new capability to document | opt-out: a tooltip-timing repair, nothing a viewer can see on a slide |
@@ -103,6 +113,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-DECK-SHOWCASE-18 | site | deck |
 | CMH-BUILD-15 | opt-out: internal build invariant that stamps the demo examples' build date; the user-facing "Generated on" line itself is CMH-SIDE-03 | opt-out: internal build/authoring invariant, not a deck topic |
 | CMH-DECK-SHOWCASE-19 | site | deck |
+| CMH-DECK-SHOWCASE-20 | site | deck |
 | CMH-BUILD-14 | opt-out: internal Playwright test-harness reliability (deterministic static-server teardown); not a reader-facing capability | opt-out: internal test-harness reliability, not a deck topic |
 | CMH-DECK-41 | opt-out: showcase demo-deck content (a slide's own diagram layout), not a runtime feature documented to readers | deck |
 | CMH-DECK-42 | site | deck |

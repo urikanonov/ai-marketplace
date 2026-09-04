@@ -101,6 +101,10 @@ function applyCommentSearch() {
     countEl.hidden = false;
   }
   _toggleSearchEmptyNote(q !== "" && shown === 0 && noteShown === 0);
+  // The filter decides which of the SELECTED cards are on screen, and the selection bar discloses
+  // that count (CMH-PICK-09), so refresh it here as well as on a re-render - typing in the field
+  // does not rebuild the list.
+  if (typeof cmhSyncSelectionBar === "function") cmhSyncSelectionBar();
 }
 
 function setupCommentSearch() {
