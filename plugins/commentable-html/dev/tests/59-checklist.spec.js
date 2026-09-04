@@ -9,6 +9,7 @@ import {
   addTextComment, SKILL,
   clickSidebarExport,
   clickClearAll,
+  routeExampleLibsLocal,
 } from "./helpers.js";
 
 const CHECKLIST_DEMO = path.join(SKILL, "..", "..", "examples", "report-checklist.html");
@@ -267,6 +268,7 @@ test("CMH-CHECK-18: Clear restores checklist state changes to the authored basel
 
 test("CMH-DEMO-04: the shipped checklist demo renders both shapes, aggregates, and persists a toggle", async ({ page }) => {
   await installClipboardCapture(page);
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(CHECKLIST_DEMO));
   await ready(page);
   // Both the nested-list and the table checklist are wired up.
@@ -276,6 +278,7 @@ test("CMH-DEMO-04: the shipped checklist demo renders both shapes, aggregates, a
   // Toggling a leaf persists across a reload of the same file.
   await ctrl(page, "rollback").click(); // blank -> check
   await expect(ctrl(page, "rollback")).toHaveAttribute("data-cmh-check-state", "check");
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(CHECKLIST_DEMO));
   await ready(page);
   await expect(ctrl(page, "rollback")).toHaveAttribute("data-cmh-check-state", "check");

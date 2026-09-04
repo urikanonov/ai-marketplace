@@ -3,8 +3,7 @@ import path from "path";
 import {
   SKILL, fileUrl, ready, lastCopied, installClipboardCapture,
   addTextComment, storedComments, distinctCids,
-  startStaticServer, routeMermaidLocal,
-  routeOfflineExportLibs, routeExampleLibsLocal,
+  startStaticServer, routeExampleLibsLocal,
 } from "./helpers.js";
 
 // The second shipped showcase example is a real-data operations report built on the
@@ -224,8 +223,7 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     test.setTimeout(60000);
     const server = await startStaticServer(path.join(SKILL, "..", ".."));
     try {
-      await routeMermaidLocal(page);
-      await routeOfflineExportLibs(page);
+      await routeExampleLibsLocal(page);
       await installClipboardCapture(page);
       await page.goto(server.url + "/examples/report-taxi.html");
       await ready(page);
@@ -246,8 +244,7 @@ test.describe("showcase example: NYC taxi 2014 report exercises the feature set"
     test.setTimeout(60000);
     const server = await startStaticServer(path.join(SKILL, "..", ".."));
     try {
-      await routeMermaidLocal(page);
-      await routeOfflineExportLibs(page);
+      await routeExampleLibsLocal(page);
       await installClipboardCapture(page);
       await page.goto(server.url + "/examples/report-taxi.html");
       await ready(page);
