@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { execFileSync } from "child_process";
+import fs from "fs";
 import path from "path";
 import { stageContent, fileUrl, ready, addTextComment, readDownload, openToolbarMenu, PYTHON, SKILL } from "./helpers.js";
 
@@ -202,22 +203,67 @@ test.describe("in-document Contents list is collapsible (CMH-TOC-12)", () => {
     await expect(caret(page)).toBeVisible();
   });
 
-  test("a corrupt stored fold state leaves the Contents list expanded (CMH-TOC-12)", async ({ page }) => {
+  test("a corrupt or polluted fold state leaves the Contents list expanded (CMH-TOC-12)", async ({ page }) => {
     const staged = stageContent(CONTENT, { key: KEY + "-corrupt", source: "toc-corrupt.html" });
     await page.setViewportSize({ width: 1600, height: 800 });
     await page.goto(fileUrl(staged.html));
     await ready(page);
-    // An array and a non-JSON blob are both refused by the shape check, so a poisoned value can
-    // never hide a reader's Contents list behind a state the runtime cannot reason about.
-    for (const bad of ['[1]', "not json", '"1"', "null"]) {
-      await page.evaluate(([key, value]) => {
-        localStorage.setItem(key + "::tocFold", value);
+    const key = await page.locator("#commentRoot nav.cm-toc a").first().getAttribute("href");
+    // Only the exact `1` sentinel counts as a fold, so a truthy-but-wrong value cannot hide a
+    // reader's Contents list behind a state the runtime cannot reason about.
+    for (const bad of ["[1]", "not json", '"1"', "null", `{"${key}":{"x":1}}`, `{"${key}":"1"}`]) {
+      await page.evaluate(([k, value]) => {
+        localStorage.setItem(k + "::tocFold", value);
       }, [KEY + "-corrupt", bad]);
       await page.reload();
       await ready(page);
       await expect(list(page)).toBeVisible();
       await expect(caret(page)).toHaveAttribute("aria-expanded", "true");
     }
+
+    // A polluted Object.prototype must not fall through into the fold map either - the runtime has
+    // ONE convention for a document-reachable state map (CMH-SEC-02) and this map follows it.
+    await page.evaluate(() => localStorage.removeItem("does-not-matter"));
+    await page.addInitScript((k) => {
+      // eslint-disable-next-line no-extend-native
+      Object.prototype[k] = 1;
+    }, key);
+    await page.evaluate(([k]) => localStorage.removeItem(k + "::tocFold"), [KEY + "-corrupt"]);
+    await page.reload();
+    await ready(page);
+    // The pollution really is live (else this would pass on a no-op).
+    expect(await page.evaluate((k) => ({})[k], key)).toBe(1);
+    await expect(list(page)).toBeVisible();
+  });
+
+  test("adding a Contents list above a folded one does not move the fold (CMH-TOC-12)", async ({ page }) => {
+    const APPENDIX = `
+<nav class="cm-toc" aria-label="Appendix contents">
+  <div class="cm-toc-title">Appendix contents</div>
+  <ul><li><a href="#gamma">Gamma appendix</a></li></ul>
+</nav>`;
+    const staged = stageContent(CONTENT + APPENDIX, { key: KEY + "-stable", source: "toc-stable.html" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    const navs = page.locator("#commentRoot nav.cm-toc");
+    await navs.nth(1).locator(".cmh-toc-caret").click();
+    await expect(navs.nth(1).locator("ul")).toBeHidden();
+
+    // The document gains a THIRD Contents list at the very top. A DOM-index key would now apply the
+    // appendix's fold to whichever list happens to sit at that index; a stable identity does not.
+    const shifted = fs.readFileSync(staged.html, "utf8").replace(
+      '<nav class="cm-toc" aria-label="Table of contents">',
+      '<nav class="cm-toc" aria-label="Overview"><div class="cm-toc-title">Overview</div>'
+      + '<ol><li><a href="#alpha">Alpha overview</a></li></ol></nav>'
+      + '<nav class="cm-toc" aria-label="Table of contents">');
+    fs.writeFileSync(staged.html, shifted);
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await expect(navs).toHaveCount(3);
+    await expect(navs.nth(0).locator("ol")).toBeVisible();
+    await expect(navs.nth(1).locator("ol")).toBeVisible();
+    await expect(navs.nth(2).locator("ul")).toBeHidden();
   });
 
   test("a folded Contents list still prints in full (CMH-TOC-12)", async ({ page }) => {

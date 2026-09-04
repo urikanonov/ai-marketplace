@@ -329,12 +329,29 @@ const _cmTocFoldEntries = [];
 function _cmReadTocFolds() {
   let parsed = null;
   try { parsed = JSON.parse(localStorage.getItem(CMH_TOC_FOLD_KEY) || "{}"); } catch (e) { parsed = null; }
-  return (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : {};
+  // Null-prototype, matching the ONE convention this runtime has for a document-reachable state
+  // map (CMH-SEC-02, `_tsNullProto` in 62-sortable-tables.js): a JSON.parse'd map still chains to
+  // Object.prototype, so a read of a key another script polluted there would otherwise fall
+  // through and fold a list the reader never folded.
+  return (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+    ? Object.assign(Object.create(null), parsed) : Object.create(null);
 }
 function _cmWriteTocFold(key, collapsed) {
   const state = _cmReadTocFolds();
   if (collapsed) state[key] = 1; else delete state[key];
   try { localStorage.setItem(CMH_TOC_FOLD_KEY, JSON.stringify(state)); } catch (e) { /* private mode */ }
+}
+// The identity a fold is stored under. The nav's AUTHORED id when it has one, else the target of
+// its first entry - both survive another Contents list being added above this one, which a raw
+// DOM index does not (the reader's fold would silently move to a different list). The index is the
+// last resort, and it also disambiguates two navs that resolve to the same key.
+function _cmTocFoldKeyFor(nav, i, used) {
+  const authored = nav.getAttribute("id");
+  const first = nav.querySelector("a[href^='#']");
+  let key = authored ? ("#" + authored) : ((first && first.getAttribute("href")) || String(i));
+  if (used[key]) key += "::" + i;
+  used[key] = 1;
+  return key;
 }
 // Unfold the Contents list `el` sits in, if it is folded. Called from the jump path so a comment
 // anchored on a list entry is never scrolled to inside a display:none box.
@@ -348,11 +365,15 @@ function expandCollapsedToc(el) {
 function setupTocCollapse() {
   const root = cmhEl("commentRoot") || document.body;
   const saved = _cmReadTocFolds();
+  const usedKeys = Object.create(null);
   _cmTocFoldEntries.length = 0;
   root.querySelectorAll(".cm-toc").forEach(function (nav, i) {
     if (nav.closest(".cm-skip")) return;
     if (cmhOwnChrome(nav, ".cmh-toc-caret")) return;
     const title = nav.querySelector(":scope > .cm-toc-title");
+    // Resolve the storage identity BEFORE minting an id below, so the minted (index-derived) id
+    // never becomes the key the fold is remembered under.
+    const storeKey = _cmTocFoldKeyFor(nav, i, usedKeys);
     const caret = document.createElement("button");
     caret.type = "button";
     caret.className = "cmh-toc-caret cm-skip";
@@ -369,7 +390,6 @@ function setupTocCollapse() {
     // A list with no title of its own still gets the control, standing alone above the entries.
     if (title) title.insertBefore(caret, title.firstChild);
     else nav.insertBefore(caret, nav.firstChild);
-    const storeKey = String(i);
     function setState(collapsed, persist) {
       nav.classList.toggle("cmh-toc-collapsed", collapsed);
       caret.setAttribute("aria-expanded", String(!collapsed));
@@ -395,7 +415,7 @@ function setupTocCollapse() {
       });
     }
     _cmTocFoldEntries.push({ nav: nav, setState: setState });
-    setState(!!saved[storeKey], false);
+    setState(saved[storeKey] === 1, false);
   });
 }
 function setupSideToc() {

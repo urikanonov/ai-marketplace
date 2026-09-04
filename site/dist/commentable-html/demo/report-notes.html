@@ -18471,12 +18471,21 @@ const _cmTocFoldEntries=[];
 function _cmReadTocFolds(){
 let parsed=null;
 try{parsed=JSON.parse(localStorage.getItem(CMH_TOC_FOLD_KEY)||"{}");}catch(e){parsed=null;}
-return(parsed&&typeof parsed=== "object"&&!Array.isArray(parsed))?parsed:{};
+return(parsed&&typeof parsed=== "object"&&!Array.isArray(parsed))
+?Object.assign(Object.create(null),parsed):Object.create(null);
 }
 function _cmWriteTocFold(key,collapsed){
 const state=_cmReadTocFolds();
 if(collapsed)state[key]=1;else delete state[key];
 try{localStorage.setItem(CMH_TOC_FOLD_KEY,JSON.stringify(state));}catch(e){}
+}
+function _cmTocFoldKeyFor(nav,i,used){
+const authored=nav.getAttribute("id");
+const first=nav.querySelector("a[href^='#']");
+let key=authored?("#"+authored):((first&&first.getAttribute("href"))||String(i));
+if(used[key])key+= "::"+i;
+used[key]=1;
+return key;
 }
 function expandCollapsedToc(el){
 const nav=el&&el.closest&&el.closest(".cm-toc.cmh-toc-collapsed");
@@ -18488,11 +18497,13 @@ if(_cmTocFoldEntries[i].nav===nav){_cmTocFoldEntries[i].setState(false,true);ret
 function setupTocCollapse(){
 const root=cmhEl("commentRoot")||document.body;
 const saved=_cmReadTocFolds();
+const usedKeys=Object.create(null);
 _cmTocFoldEntries.length=0;
 root.querySelectorAll(".cm-toc").forEach(function(nav,i){
 if(nav.closest(".cm-skip"))return;
 if(cmhOwnChrome(nav,".cmh-toc-caret"))return;
 const title=nav.querySelector(":scope > .cm-toc-title");
+const storeKey=_cmTocFoldKeyFor(nav,i,usedKeys);
 const caret=document.createElement("button");
 caret.type= "button";
 caret.className= "cmh-toc-caret cm-skip";
@@ -18505,7 +18516,6 @@ nav.id= "cmhToc"+n;
 caret.setAttribute("aria-controls",nav.id);
 if(title)title.insertBefore(caret,title.firstChild);
 else nav.insertBefore(caret,nav.firstChild);
-const storeKey=String(i);
 function setState(collapsed,persist){
 nav.classList.toggle("cmh-toc-collapsed",collapsed);
 caret.setAttribute("aria-expanded",String(!collapsed));
@@ -18528,7 +18538,7 @@ setState(false,true);
 });
 }
 _cmTocFoldEntries.push({nav:nav,setState:setState});
-setState(!!saved[storeKey],false);
+setState(saved[storeKey]===1,false);
 });
 }
 function setupSideToc(){
