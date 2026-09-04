@@ -18512,23 +18512,27 @@ function _cmTocFoldKeyFor(nav,used){
 const authored=nav.getAttribute("id");
 let key;
 if(authored){
-key= "#"+authored;
+key= "id:"+authored;
 }else{
 const links=nav.querySelectorAll("a[href^='#']");
-const href=function(n){return(n&&n.getAttribute("href"))||"";};
-key=links.length
-?(href(links[0])+"|"+href(links[links.length-1])+"|"+links.length)
-:"|empty|0";
+const parts=[];
+for(let i=0;i<links.length;i++){
+parts.push(encodeURIComponent(links[i].getAttribute("href")||""));
+}
+key= "sig:"+parts.join("|");
 }
 const seen=used[key]||0;
 used[key]=seen+1;
-return seen?(key+"|"+seen):key;
+return seen?(key+"#"+seen):key;
 }
 function expandCollapsedToc(el){
-const nav=el&&el.closest&&el.closest(".cm-toc.cmh-toc-collapsed");
-if(!nav)return;
+let nav=el&&el.closest&&el.closest(".cm-toc.cmh-toc-collapsed");
+while(nav){
 for(let i=0;i<_cmTocFoldEntries.length;i++){
-if(_cmTocFoldEntries[i].nav===nav){_cmTocFoldEntries[i].setState(false,true);return;}
+if(_cmTocFoldEntries[i].nav===nav){_cmTocFoldEntries[i].setState(false,true);break;}
+}
+nav=nav.parentElement&&nav.parentElement.closest
+&&nav.parentElement.closest(".cm-toc.cmh-toc-collapsed");
 }
 }
 function setupTocCollapse(){

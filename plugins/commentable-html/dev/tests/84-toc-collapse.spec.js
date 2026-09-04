@@ -361,6 +361,69 @@ test.describe("in-document Contents list is collapsible (CMH-TOC-12)", () => {
     await expect(navs.nth(2).locator("ul")).toBeVisible();
   });
 
+  test("a list whose ends match another's keeps its own fold (CMH-TOC-12)", async ({ page }) => {
+    // Same first target, same last target, same count - different middles. A signature built from
+    // the ends alone would collide, and the newcomer inserted above would inherit the fold.
+    const MAIN = `<nav class="cm-toc"><div class="cm-toc-title">Contents</div><ol>
+  <li><a href="#alpha">Alpha overview</a></li>
+  <li><a href="#beta">Beta details</a></li>
+  <li><a href="#gamma">Gamma appendix</a></li></ol></nav>`;
+    const TWIN_ENDS = `<nav class="cm-toc"><div class="cm-toc-title">Highlights</div><ol>
+  <li><a href="#alpha">Alpha overview</a></li>
+  <li><a href="#delta">Delta notes</a></li>
+  <li><a href="#gamma">Gamma appendix</a></li></ol></nav>`;
+    const BODY = '<section aria-labelledby="alpha"><h2 id="alpha">Alpha overview</h2><p>Apple.</p></section>'
+      + '<section aria-labelledby="beta"><h2 id="beta">Beta details</h2><p>Banana.</p></section>'
+      + '<section aria-labelledby="delta"><h2 id="delta">Delta notes</h2><p>Date.</p></section>'
+      + '<section aria-labelledby="gamma"><h2 id="gamma">Gamma appendix</h2><p>Cherry.</p></section>';
+    const staged = stageContent(MAIN + BODY, { key: KEY + "-ends", source: "toc-ends.html" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    const navs = page.locator("#commentRoot nav.cm-toc");
+    await navs.nth(0).locator(".cmh-toc-caret").click();
+    await expect(navs.nth(0).locator("ol")).toBeHidden();
+
+    fs.writeFileSync(staged.html, fs.readFileSync(staged.html, "utf8").replace(MAIN, TWIN_ENDS + MAIN));
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    await expect(navs).toHaveCount(2);
+    await expect(navs.nth(0).locator("ol")).toBeVisible();   // the newcomer did not inherit the fold
+    await expect(navs.nth(1).locator("ol")).toBeHidden();    // the list the reader folded still is
+  });
+
+  test("jumping into a nested folded Contents list opens every folded ancestor (CMH-TOC-12)", async ({ page }) => {
+    // A `.cm-toc` can be nested inside another list's item. Opening only the inner one would leave
+    // the comment hidden inside a still-folded outer list, so the jump would still be a no-op.
+    const NESTED = `<nav class="cm-toc"><div class="cm-toc-title">Contents</div><ol>
+  <li><a href="#alpha">Alpha overview</a>
+    <nav class="cm-toc"><div class="cm-toc-title">Sub contents</div>
+      <ol><li><a href="#beta">Beta details</a></li></ol></nav></li>
+  </ol></nav>
+<section aria-labelledby="alpha"><h2 id="alpha">Alpha overview</h2><p>Apple.</p></section>
+<section aria-labelledby="beta"><h2 id="beta">Beta details</h2><p>Banana.</p></section>`;
+    const staged = stageContent(NESTED, { key: KEY + "-nested", source: "toc-nested.html" });
+    await page.setViewportSize({ width: 1600, height: 800 });
+    await page.goto(fileUrl(staged.html));
+    await ready(page);
+    const outer = page.locator("#commentRoot > nav.cm-toc, #commentRoot nav.cm-toc").first();
+    const inner = page.locator("#commentRoot nav.cm-toc nav.cm-toc");
+    await expect(inner).toHaveCount(1);
+
+    await addTextComment(page, '#commentRoot nav.cm-toc nav.cm-toc a[href="#beta"]', "note on a nested entry");
+    // Fold the INNER list first, then the outer one, so both folds persist.
+    await inner.locator(".cmh-toc-caret").click();
+    await outer.locator(".cmh-toc-caret").first().click();
+    await page.reload();
+    await ready(page);
+    await expect(outer.locator("> ol")).toBeHidden();
+
+    await page.locator(".cm-card").first().click();
+    await expect(outer.locator("> ol")).toBeVisible();
+    await expect(inner.locator("ol")).toBeVisible();
+    await expect(page.locator("#commentRoot mark.cm-hl")).toBeVisible();
+  });
+
   test("a folded Contents list still prints in full (CMH-TOC-12)", async ({ page }) => {
     await openDoc(page);
     await caret(page).click();

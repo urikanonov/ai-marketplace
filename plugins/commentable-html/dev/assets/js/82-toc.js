@@ -342,37 +342,44 @@ function _cmWriteTocFold(key, collapsed) {
   try { localStorage.setItem(CMH_TOC_FOLD_KEY, JSON.stringify(state)); } catch (e) { /* private mode */ }
 }
 // The identity a fold is stored under. The nav's AUTHORED id when it has one, else a SIGNATURE of
-// the entries it lists (first target, last target, count). Both survive another Contents list being
-// added above this one, which a raw DOM index does not - the reader's fold would silently move onto
-// a different list. A signature rather than the first target alone, because an overview list whose
-// single entry repeats this list's first target would otherwise collide with it and steal its fold.
-// Two navs that really do list the same entries are told apart by their order among themselves,
-// which is stable as long as neither is removed.
+// the COMPLETE sequence of entry targets it lists. Both survive another Contents list being added
+// above this one, which a raw DOM index does not - the reader's fold would silently move onto a
+// different list. The whole sequence, not just its ends: two lists can share a first target, a last
+// target and a count while listing different sections, and the newcomer would then inherit the
+// fold. Each href is percent-encoded before joining, so a separator inside one cannot forge a
+// boundary, and the two namespaces are disjoint so an authored id can never collide with a
+// signature. Two navs that really do resolve to the same identity (duplicate ids are legal HTML,
+// and two lists can genuinely list the same entries) are told apart by their order among
+// themselves, which is stable as long as neither is removed.
 function _cmTocFoldKeyFor(nav, used) {
   const authored = nav.getAttribute("id");
   let key;
   if (authored) {
-    key = "#" + authored;
+    key = "id:" + authored;
   } else {
     const links = nav.querySelectorAll("a[href^='#']");
-    const href = function (n) { return (n && n.getAttribute("href")) || ""; };
-    key = links.length
-      ? (href(links[0]) + "|" + href(links[links.length - 1]) + "|" + links.length)
-      : "|empty|0";
+    const parts = [];
+    for (let i = 0; i < links.length; i++) {
+      parts.push(encodeURIComponent(links[i].getAttribute("href") || ""));
+    }
+    key = "sig:" + parts.join("|");
   }
-  // Duplicate ids are legal HTML, so the authored-id path is disambiguated exactly like the
-  // signature path - otherwise two navs sharing an id would read and write one fold between them.
   const seen = used[key] || 0;
   used[key] = seen + 1;
-  return seen ? (key + "|" + seen) : key;
+  return seen ? (key + "#" + seen) : key;
 }
-// Unfold the Contents list `el` sits in, if it is folded. Called from the jump path so a comment
-// anchored on a list entry is never scrolled to inside a display:none box.
+// Unfold EVERY folded Contents list `el` sits in, if any. Called from the jump path so a comment
+// anchored on a list entry is never scrolled to inside a display:none box. Nested lists are walked
+// to the outermost, the way expandCollapsedAncestors() walks nested sections: opening only the
+// inner one would leave the comment hidden inside a still-folded outer list.
 function expandCollapsedToc(el) {
-  const nav = el && el.closest && el.closest(".cm-toc.cmh-toc-collapsed");
-  if (!nav) return;
-  for (let i = 0; i < _cmTocFoldEntries.length; i++) {
-    if (_cmTocFoldEntries[i].nav === nav) { _cmTocFoldEntries[i].setState(false, true); return; }
+  let nav = el && el.closest && el.closest(".cm-toc.cmh-toc-collapsed");
+  while (nav) {
+    for (let i = 0; i < _cmTocFoldEntries.length; i++) {
+      if (_cmTocFoldEntries[i].nav === nav) { _cmTocFoldEntries[i].setState(false, true); break; }
+    }
+    nav = nav.parentElement && nav.parentElement.closest
+      && nav.parentElement.closest(".cm-toc.cmh-toc-collapsed");
   }
 }
 function setupTocCollapse() {
