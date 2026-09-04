@@ -193,6 +193,11 @@ const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
 // "commentable-html" would otherwise own the cross-document key and reset every other document.
 const AUTO_OPEN_PANEL_KEY = "commentable-html::autoOpenPanelDefault";
 const AUTO_OPEN_PANEL_DOC_KEY = COMMENT_KEY + "::autoOpenPanel";
+// "Show times in UTC": the display zone for every rendered timestamp. CROSS-DOCUMENT only (like the
+// default above, and deliberately NOT a per-document key): the zone a reviewer reads in is a
+// property of the reader, not of the document. Unset/"0" renders local time with the local zone
+// named beside it; "1" normalizes the instant to UTC and labels it UTC. See 06-preferences.js.
+const UTC_TIMES_KEY = "commentable-html::utcTimes";
 // The comment array is persisted in a modern slot COMMENT_KEY + "::z" holding either a compressed
 // (framed) payload or plain JSON, whichever is smaller (see 05-persistence.js). COMMENT_KEY itself
 // is only READ, as a legacy fallback for files last saved before this slot existed; the modern
@@ -224,7 +229,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.844.0";
+const CMH_VERSION = "1.845.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

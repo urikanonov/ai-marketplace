@@ -4,25 +4,162 @@ function escapeHtml(s) {
 }
 function formatTime(iso) {
   try {
+    // Nothing to format. A comment persisted without a createdAt (an embedded or hand-edited store)
+    // renders an EMPTY timestamp rather than the word "undefined", the string "Invalid Date", or -
+    // for a literal null, which new Date() maps to 0 - a confident "Jan 1, 1970".
+    if (iso == null || iso === "") return "";
+    // An epoch-milliseconds NUMBER (or a Date) is a perfectly good instant, and stringifying it
+    // first would break it: new Date("1736972200000") is Invalid Date.
+    if (typeof iso === "number" || iso instanceof Date) {
+      const dn = new Date(iso);
+      return isNaN(dn.getTime()) ? String(iso) : cmhFormatInstant(dn);
+    }
+    // Trim ONCE, for both branches: V8's ISO parse is strict, so a padded "  ...T20:30:00Z  " would
+    // otherwise be rejected and echoed raw while a padded bare date still formatted.
+    const s = String(iso).trim();
+    if (!s) return "";
     // A date-only value (YYYY-MM-DD, e.g. a data-generated build/authoring date) is a CALENDAR
     // date, not an instant: parse it in LOCAL time and render it without a time, so it shows the
     // same day in every timezone. new Date("2026-07-25") parses as UTC midnight, which slides to
     // the previous evening for viewers west of UTC (the "Jul 24 ... 17:00" artifact), so a bare
-    // date must not go through the datetime path below.
-    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso).trim());
+    // date must not go through the datetime path below. It names no zone either: a calendar date
+    // is not an instant, so a zone label would only imply a precision it does not have.
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
     if (dateOnly) {
       const d = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
       return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
     }
-    // Month name (not a number) so the date is unambiguous across M/D/Y and D/M/Y
-    // locales (e.g. "Jul 9, 2026, 13:07"). 24-hour time, no AM/PM.
-    return new Date(iso).toLocaleString(undefined, {
-      year: "numeric", month: "short", day: "numeric",
-      hour: "2-digit", minute: "2-digit", hour12: false
-    });
+    const d = new Date(s);
+    // An unparseable value has no instant to name a zone for; hand the raw text back rather than
+    // rendering "Invalid Date UTC+02:00".
+    if (isNaN(d.getTime())) return s;
+    return cmhFormatInstant(d);
   }
-  catch (e) { return iso; }
+  catch (e) { return iso == null ? "" : String(iso).trim(); }
 }
+// The `<bdi>`-isolated timestamp for a card, reply, or dialog meta line, with its leading separator.
+// The edit time wins when it FORMATS, else the creation time does - an `updatedAt` that is present
+// but unusable (a whitespace-only string in a hand-edited store) must not hide a perfectly good
+// `createdAt`, nor claim "(edited)" with nothing to show for it. A comment with no usable timestamp
+// at all contributes nothing, rather than a dangling "#3 - " with empty space after it. The
+// " (edited)" suffix stays OUTSIDE the isolate so an RTL locale keeps the timestamp-then-suffix
+// order (CMH-SIDE-10).
+function cmhTimeMetaHtml(c) {
+  const edited = formatTime((c && c.updatedAt) || "");
+  const t = edited || formatTime((c && c.createdAt) || "");
+  if (!t) return "";
+  return "<bdi>" + escapeHtml(t) + "</bdi>" + (edited ? " (edited)" : "");
+}
+function cmhTimeSuffixHtml(c) {
+  const html = cmhTimeMetaHtml(c);
+  return html ? " - " + html : "";
+}
+// Render a known-good instant in the reviewer's display zone, with the zone named beside it.
+function cmhFormatInstant(d) {
+  const utc = (typeof utcTimesEnabled === "function") && utcTimesEnabled();
+  // Month name (not a number) so the date is unambiguous across M/D/Y and D/M/Y
+  // locales (e.g. "Jul 9, 2026, 13:07 CEST"). 24-hour time, no AM/PM.
+  const opts = {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false
+  };
+  if (utc) {
+    // An engine with no usable Intl is permitted to IGNORE toLocaleString's options, which would
+    // print LOCAL time under a "UTC" label - a false statement, not merely an unlocalized one.
+    // Where the option is not honored, fall back to the fixed-format UTC serialization, which
+    // every engine gets right.
+    if (!CMH_TZ_OPTION_HONORED) return d.toUTCString().replace(/\s*GMT$/, "") + " UTC";
+    opts.timeZone = "UTC";
+  }
+  // The zone is appended here rather than left to timeZoneName, so its separator and (in UTC
+  // mode) its wording are the same in every locale.
+  return d.toLocaleString(undefined, opts) + " " + (utc ? "UTC" : cmhLocalZoneLabel(d));
+}
+// Does this engine actually apply toLocaleString's timeZone option? Probed once, on TWO instants
+// six months apart: a single probe would read as honored on a broken engine whenever the viewer's
+// zone merely HAPPENS to sit at +00:00 that day (Atlantic/Azores in summer), and would then label
+// their winter times UTC while showing local time. A zone that is +00:00 all year passes either
+// way, which is correct - there its local clock IS UTC.
+const CMH_TZ_OPTION_HONORED = (function () {
+  try {
+    const opts = { timeZone: "UTC", hour: "2-digit", hour12: false };
+    const probes = [Date.UTC(2020, 0, 15, 12, 0, 0), Date.UTC(2020, 5, 15, 12, 0, 0)];
+    for (let i = 0; i < probes.length; i++) {
+      if (new Date(probes[i]).toLocaleString("en-US", opts).indexOf("12") === -1) return false;
+    }
+    return true;
+  } catch (e) { return false; }
+})();
+// The viewer's zone as the locale names it ("PST", "GMT+3"), falling back to a computed offset
+// when the engine cannot part out a zone name. formatTime() runs per card, per reply and per
+// metadata row, and building a fresh Intl.DateTimeFormat each time measured ~25x the cost of
+// reusing one - so it is built once PER RENDER PASS, not once per session: a constructed formatter
+// pins the zone it RESOLVED, while toLocaleString keeps following the OS, so a session-long memo
+// would name the old zone beside a clock already showing the new one after the reviewer travels or
+// corrects their system zone. Resetting per pass keeps essentially all of the win (the cost was
+// per timestamp, not per render).
+let _cmhZoneFmt = null;
+function cmhForgetZoneFormatter() { _cmhZoneFmt = null; }
+function cmhLocalZoneLabel(d) {
+  try {
+    if (!_cmhZoneFmt) _cmhZoneFmt = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" });
+    const parts = _cmhZoneFmt.formatToParts(d);
+    for (let i = 0; i < parts.length; i++) {
+      if (parts[i].type === "timeZoneName" && parts[i].value) return parts[i].value;
+    }
+  } catch (e) { /* no Intl.formatToParts: fall through to the offset */ }
+  const off = -d.getTimezoneOffset();
+  const abs = Math.abs(off);
+  const pad = (n) => (n < 10 ? "0" : "") + n;
+  return "UTC" + (off < 0 ? "-" : "+") + pad(Math.floor(abs / 60)) + ":" + pad(abs % 60);
+}
+// The document's generation instant: the author's data-generated stamp when there is one
+// (deterministic), else the file's own last-modified time.
+function cmhGeneratedIso() {
+  const g = root.getAttribute("data-generated");
+  if (g) return g;
+  const lm = Date.parse(document.lastModified);
+  return isNaN(lm) ? "" : new Date(lm).toISOString();
+}
+// Re-stamp every ALREADY-RENDERED timestamp after the display zone changes, so the preference
+// takes effect in place instead of on the next load. The on-demand surfaces are not touched here:
+// the Copy all bundle and the print appendix read the preference when they are BUILT, and an export
+// carries the raw ISO instant so the recipient's own preference decides how it renders. This is a
+// pure DISPLAY re-stamp, so the comment list's scroll position is put back: renderComments()
+// replaces the list wholesale, and a reviewer reading deep in a long list must not be thrown to the
+// top for a relabelling. (Drafts, the search filter and focus are already carried across by
+// renderComments() itself.)
+function cmhRefreshTimeLabels() {
+  const top = listEl ? listEl.scrollTop : 0;
+  if (typeof renderComments === "function") renderComments();
+  if (listEl) listEl.scrollTop = top;
+  updateSideInfo();
+  const footer = cmhEl("cmFooter");
+  const genEl = footer && footer.querySelector(".cm-footer-gen");
+  if (genEl) {
+    const g = cmhGeneratedIso();
+    genEl.textContent = "Generated " + (g ? formatTime(g) : "unknown");
+  }
+  if (typeof cmhRefreshCommentPopoverTime === "function") cmhRefreshCommentPopoverTime();
+}
+// Re-stamp ONLY when the stored display zone really differs from the one on screen. Every writer of
+// the preference routes through here - the More-menu row, a cross-tab storage event, and the
+// storage manager deleting the shared-preferences bucket - so none of them has to know whether the
+// value moved, and a storage event for an unrelated key never rebuilds the list.
+function cmhApplyTimeZoneChange() {
+  if (typeof cmhUtcTimesChanged !== "function" || !cmhUtcTimesChanged()) return false;
+  // Mark AFTER the re-stamp really landed: recording it first would leave a half-updated screen
+  // looking current, so a later storage event would decline to retry it.
+  cmhRefreshTimeLabels();
+  cmhMarkUtcTimesApplied();
+  return true;
+}
+// The cross-document half of the same invariant, registered HERE rather than in the More menu:
+// another tab (or another file:// document, which shares this origin) can change the display zone
+// at any time, and a document whose COMMENT UI region predates the Preferences rows still has to
+// re-stamp. Deliberately not keyed on e.key - a localStorage.clear() reports a null key - since
+// cmhApplyTimeZoneChange() already asks whether the zone actually moved.
+window.addEventListener("storage", function () { cmhApplyTimeZoneChange(); });
 let commentSort = "pos";
 try { commentSort = localStorage.getItem(COMMENT_KEY + "::commentSort") || "pos"; } catch (e) { /* private mode */ }
 function commentTimeValue(c) {
@@ -36,8 +173,7 @@ function updateSideInfo() {
   const gen = cmhEl("cmGenerated");
   const last = cmhEl("cmLastComment");
   if (gen) {
-    let g = root.getAttribute("data-generated");
-    if (!g) { const lm = Date.parse(document.lastModified); if (!isNaN(lm)) g = new Date(lm).toISOString(); }
+    const g = cmhGeneratedIso();
     gen.textContent = "Generated on: " + (g ? formatTime(g) : "unknown");
   }
   if (last) {
@@ -83,6 +219,9 @@ function updateSortUi() {
   if (window.__cmhRefreshTip) window.__cmhRefreshTip(b);
 }
 function renderComments() {
+  // A render pass is the natural granularity for the zone-label formatter memo: built once here for
+  // every timestamp the pass draws, then dropped so a host timezone change is picked up next pass.
+  cmhForgetZoneFormatter();
   // Test/perf hook: renderComments runs two full-document tree walks, so a spec pins that the
   // note-typing path COALESCES a keystroke burst into a single render rather than one per key
   // (issue #505). Only counts when a test has pre-seeded the counter; production never creates it.
@@ -269,7 +408,7 @@ function renderComments() {
         <div class="note cmh-rich">${rp}${renderRichNote(r.note)}</div>
         <div class="cmh-note-raw" hidden>${escapeHtml(r.note == null ? "" : r.note)}</div>
         <div class="meta">
-          <span><bdi>${escapeHtml(formatTime(r.updatedAt || r.createdAt))}</bdi>${r.updatedAt ? " (edited)" : ""}</span>
+          <span>${cmhTimeMetaHtml(r)}</span>
           <span class="acts">
             <button type="button" data-act="reply-edit" title="Edit reply">edit</button>
             <button type="button" class="del" data-act="reply-del" title="Delete reply">delete</button>
@@ -286,7 +425,7 @@ function renderComments() {
         <div class="note cmh-rich">${rootPill}${renderRichNote(c.note)}</div>
         <div class="cmh-note-raw" hidden>${escapeHtml(c.note == null ? "" : c.note)}</div>
         <div class="meta">
-          <span>#${i + 1} - <bdi>${escapeHtml(formatTime(c.updatedAt || c.createdAt))}</bdi>${c.updatedAt ? " (edited)" : ""}</span>
+          <span>#${i + 1}${cmhTimeSuffixHtml(c)}</span>
           <span class="acts">
             ${jumpBtn}
             <button type="button" data-act="edit" title="Edit comment">edit</button>

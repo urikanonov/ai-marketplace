@@ -4,6 +4,36 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.845.0] - 2026-09-03
+
+### Added
+
+- Every timestamp the runtime renders now names the timezone it is in - comment cards and replies,
+  the in-document comment dialog, the board-summary state cards, the sidebar `Generated on` and
+  `Last comment` rows, the runtime footer, the Copy all bundle, and the print appendix. The label is
+  the viewer's zone as their locale names it (`PST`, `GMT+3`), with a computed `UTC+HH:MM` offset as
+  the fallback. Two reviewers in different zones no longer read the same comment as two different
+  times. A date-only `data-generated` value stays a bare calendar date with no time and no zone,
+  since a calendar date is not an instant.
+- `Show times in UTC`, a new preference in the comments panel's `More > Preferences` menu: it
+  normalizes every timestamp to UTC and labels it `UTC` instead of the local zone. It applies
+  immediately to what is already on screen (cards, both metadata rows, the footer, and an open
+  comment dialog) with no reload, and the on-demand surfaces - the Copy all bundle and the print
+  appendix - read it when they are built. The setting is cross-document (a zone is a property of the
+  reader, not of the document), keyboard operable, storage-guarded with a reporting toast on a
+  refused write, re-synced on a cross-tab change, and billed to the storage manager's shared bucket.
+  Exports are unaffected: a Shareable, Offline, Plain HTML or standalone copy carries the raw ISO
+  instant, so the recipient's own preference decides how it renders.
+
+### Fixed
+
+- `formatTime()` no longer renders an unparseable timestamp as `Invalid Date`, a missing one as
+  `undefined`, or a literal `null` as the Unix epoch: a nullish, empty, or whitespace-only value
+  renders as empty, an epoch-milliseconds number is accepted as the instant it is, a
+  whitespace-padded ISO instant is trimmed and formatted instead of echoed raw, and the return is
+  always a string. Where a comment has no usable timestamp the surrounding chrome goes with it -
+  no dangling `#3 - ` on a card and no empty `When:` line in the Copy all bundle.
+
 ## [1.844.0] - 2026-09-03
 
 ### Fixed

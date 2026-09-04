@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.844.0" />
+<meta name="commentable-html-version" content="1.845.0" />
 <meta name="commentable-html-kind" content="generic" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.844.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.845.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Kitchen-sink sample (inline)</title>
 
@@ -3707,6 +3707,7 @@ scroll-behavior: auto !important;
           <div class="cm-menu-group" role="presentation">Preferences</div>
           <button type="button" id="btnAutoOpenPanel" class="cm-menu-check" role="menuitemcheckbox" tabindex="-1" aria-checked="true" title="Let the comments panel open ITSELF: when you save a comment, when you reopen a document that already has review items, and on a first review-note, checklist, or widget change. This is the default for every commentable-html document in this browser."><span class="cm-menu-check-box" aria-hidden="true"></span><span class="cm-menu-check-label">Auto-open panel on comment</span></button>
           <button type="button" id="btnAutoOpenPanelOverride" class="cm-menu-check cm-menu-check-sub" role="menuitemcheckbox" tabindex="-1" aria-checked="false" title="Give this document its own setting instead of following the default above. Uncheck it to follow the default again."><span class="cm-menu-check-box" aria-hidden="true"></span><span class="cm-menu-check-label">Override for this document</span></button>
+          <button type="button" id="btnUtcTimes" class="cm-menu-check" role="menuitemcheckbox" tabindex="-1" aria-checked="false" title="Show every timestamp in UTC instead of this computer's local timezone. Times are labelled with the zone they are in either way. This is your setting for every commentable-html document in this browser."><span class="cm-menu-check-box" aria-hidden="true"></span><span class="cm-menu-check-label">Show times in UTC</span></button>
           <div class="cm-menu-group" role="presentation">Manage</div>
           <button type="button" id="btnStorage" role="menuitem" tabindex="-1" aria-label="Manage storage" title="View and delete the comment data every commentable-html document has stored in this browser, to free up local storage"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3z M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6 M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Manage storage</span></button>
           <button type="button" id="btnClearAll" class="danger" role="menuitem" tabindex="-1" title="Delete every comment (asks for confirmation first)"><svg class="cm-ui-ico" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16 M9 7V5h6v2 M6 7l1 13h10l1-13"/></svg><span>Clear all comments</span></button>
@@ -4631,6 +4632,7 @@ document.body.removeAttribute("data-cm-density");
 const SIDEBAR_WIDTH_KEY= "commentable-html::sidebarWidth";
 const AUTO_OPEN_PANEL_KEY= "commentable-html::autoOpenPanelDefault";
 const AUTO_OPEN_PANEL_DOC_KEY=COMMENT_KEY+"::autoOpenPanel";
+const UTC_TIMES_KEY= "commentable-html::utcTimes";
 const CMH_STORE_KEY=COMMENT_KEY+"::z";
 const CMH_STORE_FRAME= "\u0001z";
 const CMH_MAX_STORE_CHARS=8000000;
@@ -4641,7 +4643,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.844.0";
+const CMH_VERSION= "1.845.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -5390,6 +5392,21 @@ return autoOpenPanelEnabled();
 }
 function cmhShouldAutoOpenPanelOnComment(){
 return autoOpenPanelEnabled()||cmhPanelForcedOnComment();
+}
+function utcTimesEnabled(){
+return cmhReadPref(UTC_TIMES_KEY)===CMH_PREF_ON;
+}
+function setUtcTimes(on){
+const ok=cmhWritePref(UTC_TIMES_KEY,on?CMH_PREF_ON:CMH_PREF_OFF);
+if(typeof cmhApplyTimeZoneChange=== "function")cmhApplyTimeZoneChange();
+return ok;
+}
+let _cmhAppliedUtcTimes=utcTimesEnabled();
+function cmhUtcTimesChanged(){
+return _cmhAppliedUtcTimes!==utcTimesEnabled();
+}
+function cmhMarkUtcTimesApplied(){
+_cmhAppliedUtcTimes=utcTimesEnabled();
 }
 function getTextNodes(){
 if(typeof window!== "undefined"&&window.__cmhPerf)window.__cmhPerf.textScans=(window.__cmhPerf.textScans||0)+1;
@@ -10930,18 +10947,97 @@ return String(s).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':
 }
 function formatTime(iso){
 try{
-const dateOnly=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso).trim());
+if(iso==null||iso=== "")return"";
+if(typeof iso=== "number"||iso instanceof Date){
+const dn=new Date(iso);
+return isNaN(dn.getTime())?String(iso):cmhFormatInstant(dn);
+}
+const s=String(iso).trim();
+if(!s)return"";
+const dateOnly=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
 if(dateOnly){
 const d=new Date(Number(dateOnly[1]),Number(dateOnly[2])-1,Number(dateOnly[3]));
 return d.toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"});
 }
-return new Date(iso).toLocaleString(undefined,{
+const d=new Date(s);
+if(isNaN(d.getTime()))return s;
+return cmhFormatInstant(d);
+}
+catch(e){return iso==null?"":String(iso).trim();}
+}
+function cmhTimeMetaHtml(c){
+const edited=formatTime((c&&c.updatedAt)||"");
+const t=edited||formatTime((c&&c.createdAt)||"");
+if(!t)return"";
+return"<bdi>"+escapeHtml(t)+"</bdi>"+(edited?" (edited)":"");
+}
+function cmhTimeSuffixHtml(c){
+const html=cmhTimeMetaHtml(c);
+return html?" - "+html:"";
+}
+function cmhFormatInstant(d){
+const utc=(typeof utcTimesEnabled=== "function")&&utcTimesEnabled();
+const opts={
 year:"numeric",month:"short",day:"numeric",
 hour:"2-digit",minute:"2-digit",hour12:false
-});
+};
+if(utc){
+if(!CMH_TZ_OPTION_HONORED)return d.toUTCString().replace(/\s*GMT$/,"")+" UTC";
+opts.timeZone= "UTC";
 }
-catch(e){return iso;}
+return d.toLocaleString(undefined,opts)+" "+(utc?"UTC":cmhLocalZoneLabel(d));
 }
+const CMH_TZ_OPTION_HONORED=(function(){
+try{
+const opts={timeZone:"UTC",hour:"2-digit",hour12:false};
+const probes=[Date.UTC(2020,0,15,12,0,0),Date.UTC(2020,5,15,12,0,0)];
+for(let i=0;i<probes.length;i++){
+if(new Date(probes[i]).toLocaleString("en-US",opts).indexOf("12")===-1)return false;
+}
+return true;
+}catch(e){return false;}
+})();
+let _cmhZoneFmt=null;
+function cmhForgetZoneFormatter(){_cmhZoneFmt=null;}
+function cmhLocalZoneLabel(d){
+try{
+if(!_cmhZoneFmt)_cmhZoneFmt=new Intl.DateTimeFormat(undefined,{timeZoneName:"short"});
+const parts=_cmhZoneFmt.formatToParts(d);
+for(let i=0;i<parts.length;i++){
+if(parts[i].type=== "timeZoneName"&&parts[i].value)return parts[i].value;
+}
+}catch(e){}
+const off=-d.getTimezoneOffset();
+const abs=Math.abs(off);
+const pad=(n)=>(n<10?"0":"")+n;
+return"UTC"+(off<0?"-":"+")+pad(Math.floor(abs/60))+":"+pad(abs%60);
+}
+function cmhGeneratedIso(){
+const g=root.getAttribute("data-generated");
+if(g)return g;
+const lm=Date.parse(document.lastModified);
+return isNaN(lm)?"":new Date(lm).toISOString();
+}
+function cmhRefreshTimeLabels(){
+const top=listEl?listEl.scrollTop:0;
+if(typeof renderComments=== "function")renderComments();
+if(listEl)listEl.scrollTop=top;
+updateSideInfo();
+const footer=cmhEl("cmFooter");
+const genEl=footer&&footer.querySelector(".cm-footer-gen");
+if(genEl){
+const g=cmhGeneratedIso();
+genEl.textContent= "Generated "+(g?formatTime(g):"unknown");
+}
+if(typeof cmhRefreshCommentPopoverTime=== "function")cmhRefreshCommentPopoverTime();
+}
+function cmhApplyTimeZoneChange(){
+if(typeof cmhUtcTimesChanged!== "function"||!cmhUtcTimesChanged())return false;
+cmhRefreshTimeLabels();
+cmhMarkUtcTimesApplied();
+return true;
+}
+window.addEventListener("storage",function(){cmhApplyTimeZoneChange();});
 let commentSort= "pos";
 try{commentSort=localStorage.getItem(COMMENT_KEY+"::commentSort")||"pos";}catch(e){}
 function commentTimeValue(c){
@@ -10952,8 +11048,7 @@ function updateSideInfo(){
 const gen=cmhEl("cmGenerated");
 const last=cmhEl("cmLastComment");
 if(gen){
-let g=root.getAttribute("data-generated");
-if(!g){const lm=Date.parse(document.lastModified);if(!isNaN(lm))g=new Date(lm).toISOString();}
+const g=cmhGeneratedIso();
 gen.textContent= "Generated on: "+(g?formatTime(g):"unknown");
 }
 if(last){
@@ -10991,6 +11086,7 @@ if(icon&&ICONS[state])icon.innerHTML=ICONS[state];
 if(window.__cmhRefreshTip)window.__cmhRefreshTip(b);
 }
 function renderComments(){
+cmhForgetZoneFormatter();
 if(typeof window!== "undefined"&&window.__cmhPerf)window.__cmhPerf.renders=(window.__cmhPerf.renders||0)+1;
 const _listFocus=_captureListFocus();
 const _openModal=_cmhOpenModalBox();
@@ -11124,7 +11220,7 @@ return`
         <div class="note cmh-rich">${rp}${renderRichNote(r.note)}</div>
         <div class="cmh-note-raw" hidden>${escapeHtml(r.note==null?"":r.note)}</div>
         <div class="meta">
-          <span><bdi>${escapeHtml(formatTime(r.updatedAt||r.createdAt))}</bdi>${r.updatedAt?" (edited)":""}</span>
+          <span>${cmhTimeMetaHtml(r)}</span>
           <span class="acts">
             <button type="button" data-act="reply-edit" title="Edit reply">edit</button>
             <button type="button" class="del" data-act="reply-del" title="Delete reply">delete</button>
@@ -11141,7 +11237,7 @@ return`
         <div class="note cmh-rich">${rootPill}${renderRichNote(c.note)}</div>
         <div class="cmh-note-raw" hidden>${escapeHtml(c.note==null?"":c.note)}</div>
         <div class="meta">
-          <span>#${i+1} - <bdi>${escapeHtml(formatTime(c.updatedAt||c.createdAt))}</bdi>${c.updatedAt?" (edited)":""}</span>
+          <span>#${i+1}${cmhTimeSuffixHtml(c)}</span>
           <span class="acts">
             ${jumpBtn}
             <button type="button" data-act="edit" title="Edit comment">edit</button>
@@ -12271,9 +12367,7 @@ _delBtn.setAttribute("title",_delName);
 _delBtn.setAttribute("aria-label",_delName);
 }
 el.querySelector(".cm-comment-popover-note").innerHTML=renderRichNote(c.note);
-el.querySelector(".cm-comment-popover-meta").innerHTML=
-"<bdi>"+escapeHtml(formatTime(c.updatedAt||c.createdAt))+"</bdi>"
-+(c.updatedAt?" (edited)":"");
+el.querySelector(".cm-comment-popover-meta").innerHTML=cmhTimeMetaHtml(c);
 el.querySelector('[data-act="edit"]').addEventListener("click",(e)=>{
 e.preventDefault();e.stopPropagation();
 const cur=_popoverComment();
@@ -12312,6 +12406,13 @@ const btn=commentPopover&&commentPopover.querySelector('[data-act="popover-del"]
 if(btn){try{btn.focus();}catch(err){}}
 });
 if(!_positionCommentPopover(_popoverAnchorMark))_clampCommentPopoverIntoViewport();
+}
+function cmhRefreshCommentPopoverTime(){
+if(!commentPopover||_popoverEditing)return;
+const meta=commentPopover.querySelector(".cm-comment-popover-meta");
+const c=_popoverComment();
+if(!meta||!c)return;
+meta.innerHTML=cmhTimeMetaHtml(c);
 }
 function _cancelCommentPopoverEdit(){
 const cur=_popoverComment();
@@ -12618,7 +12719,9 @@ if(!menu.hidden&&!menu.contains(e.target)&&!btn.contains(e.target))setOpen(false
 });
 const prefDefault=menu.querySelector("#btnAutoOpenPanel");
 const prefOverride=menu.querySelector("#btnAutoOpenPanelOverride");
+const prefUtc=menu.querySelector("#btnUtcTimes");
 function syncPrefRows(){
+if(prefUtc)prefUtc.setAttribute("aria-checked",utcTimesEnabled()?"true":"false");
 if(prefDefault)prefDefault.setAttribute("aria-checked",autoOpenPanelDefault()?"true":"false");
 if(!prefOverride)return;
 const pinned=autoOpenPanelOverride();
@@ -12650,9 +12753,11 @@ wirePrefRow(prefDefault,()=>setAutoOpenPanelDefault(!autoOpenPanelDefault()));
 wirePrefRow(prefOverride,()=>{
 return setAutoOpenPanelOverride(autoOpenPanelOverride()===null?!autoOpenPanelDefault():null);
 });
+wirePrefRow(prefUtc,()=>setUtcTimes(!utcTimesEnabled()));
 syncPrefRows();
 window.addEventListener("storage",(e)=>{
-if(!e||e.key==null||e.key===AUTO_OPEN_PANEL_KEY||e.key===AUTO_OPEN_PANEL_DOC_KEY)syncPrefRows();
+if(!e||e.key==null||e.key===AUTO_OPEN_PANEL_KEY||e.key===AUTO_OPEN_PANEL_DOC_KEY
+||e.key===UTC_TIMES_KEY)syncPrefRows();
 });
 function items(){
 return Array.prototype.slice.call(menu.querySelectorAll("button:not([disabled])"))
@@ -12697,6 +12802,7 @@ focusItem(list,e.key=== "ArrowDown"?0:list.length-1);
 });
 })();
 function buildCopyText(){
+if(typeof cmhForgetZoneFormatter=== "function")cmhForgetZoneFormatter();
 const liveComments=withoutHandled(comments);
 const stateChanges=(typeof widgetStateChanges=== "function")?widgetStateChanges():[];
 const clChanges=(typeof checklistChanges=== "function")?checklistChanges():[];
@@ -12774,7 +12880,11 @@ const isDocument=c.anchorType=== "document";
 const isSlide=c.anchorType=== "slide";
 lines.push(`## Comment ${i+1}${isMermaid?" (mermaid)":isDiff?" (diff)":isImage?" (image)":isLink?" (link)":isWidget?" (widget)":isDocument?" (document)":isSlide?" (slide)":""}`);
 lines.push(`Id: ${oneLine(c.id)}`);
-lines.push(`When: ${oneLine(formatTime(c.createdAt))}${c.updatedAt?" (edited "+oneLine(formatTime(c.updatedAt))+")":""}`);
+const whenCreated=oneLine(formatTime(c.createdAt));
+const whenEdited=c.updatedAt?oneLine(formatTime(c.updatedAt)):"";
+if(whenCreated||whenEdited){
+lines.push(`When: ${whenCreated}${whenEdited?" (edited "+whenEdited+")":""}`.trim());
+}
 if(c.headingPath&&c.headingPath.length){
 const path=c.headingPath.map(h=>`H${Number(h.level)||0} "${oneLine(h.text)}"`).join(" > ");
 lines.push(`Where: ${path}`);
@@ -13019,7 +13129,7 @@ cmhEl("btnCopyAll").addEventListener("click",copyAll);
 cmhEl("btnCopyAllTop").addEventListener("click",copyAll);
 const CMH_INDEX_MAX=200;
 const CMH_BANNER_PREFIX= "commentable-html::assetBannerDismissed::";
-const CMH_GLOBAL_KEYS=[SIDEBAR_WIDTH_KEY,CMH_AUTHOR_KEY,AUTO_OPEN_PANEL_KEY];
+const CMH_GLOBAL_KEYS=[SIDEBAR_WIDTH_KEY,CMH_AUTHOR_KEY,AUTO_OPEN_PANEL_KEY,UTC_TIMES_KEY];
 function _cmhReadIndex(){
 const out=Object.create(null);
 try{
@@ -13676,6 +13786,7 @@ del.setAttribute("aria-label","Delete shared preferences and dismissed banners")
 del.addEventListener("click",function(){
 inlineConfirm(del,"Delete shared preferences?",function(){
 _cmhDeleteKeys(keys);
+if(typeof cmhApplyTimeZoneChange=== "function")cmhApplyTimeZoneChange();
 announceRetry();
 render();
 });
@@ -17730,6 +17841,7 @@ T('The panel and toolbar',
 (hasBrandMark?'<li>The <strong>comment-bubble mark</strong> just left of the <kbd>...</kbd> button in the floating toolbar'+(hasMenuBrandMark?' - and the matching mark at the top of that menu -':'')+' opens the Commentable HTML site in a new tab.</li>':'')+
 '<li><strong>Auto-open panel on comment</strong> (in <em>More &gt; Preferences</em>) decides whether this panel opens <em>itself</em>. It is <strong>on</strong> by default and is your setting for <em>every</em> commentable-html document in this browser, so turning it off once lets you read full width and dip into the panel only when you want it: saving a comment, reopening a document that already has review items, and a first review-note, checklist, or widget layout change all leave the panel exactly where you put it. Your comment is still saved and still highlighted either way, and <strong>Comments</strong> in the floating toolbar always brings the panel back.</li>'+
 '<li><strong>Override for this document</strong>, indented under it, is the exception: leave it unchecked and this document follows the default above; check it and this document keeps its own setting (the label then shows it, for example <em>Override for this document: Off</em>) no matter how you later change the default. Unchecking it makes the document follow the default again.</li>'+
+'<li>Every time shown here - a comment&#39;s timestamp, <em>Generated on</em>, <em>Last comment</em>, the footer, the Copy all bundle and the printed appendix - names the <strong>timezone</strong> it is in, so two reviewers in different places read the same comment the same way. <strong>Show times in UTC</strong> (in <em>More &gt; Preferences</em>) switches every one of them to UTC instead of this computer&#39;s local zone, labelled <em>UTC</em>; it applies immediately, with no reload, and is your setting for every commentable-html document in this browser. A plain calendar date (a <em>Generated on</em> with no time of day) has no zone and is shown as-is.</li>'+
 '</ul>')+
 T('Shareable or Not shareable',
 '<p>A bubble at the top of the panel shows whether this file is safe to share as-is:</p>'+
@@ -18607,6 +18719,7 @@ return null;
 }
 function materializePrintAppendix(){
 if(IS_DECK)return;
+if(typeof cmhForgetZoneFormatter=== "function")cmhForgetZoneFormatter();
 let appendix=_ownPrintAppendix();
 const roots=(typeof threadRoots=== "function")?threadRoots(comments):comments;
 if(!roots.length){
@@ -19466,8 +19579,7 @@ const f=document.createElement("footer");
 f.id= "cmFooter";
 f.className= "cm-skip cm-footer";
 f.setAttribute("aria-label","About Commentable HTML");
-let gen=root.getAttribute("data-generated");
-if(!gen){const lm=Date.parse(document.lastModified);if(!isNaN(lm))gen=new Date(lm).toISOString();}
+const gen=cmhGeneratedIso();
 const genStr=gen?formatTime(gen):"unknown";
 f.innerHTML=
 cmBrandLink(CMH_ICON_SVG

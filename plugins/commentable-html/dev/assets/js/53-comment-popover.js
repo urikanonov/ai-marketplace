@@ -279,9 +279,7 @@ function _renderCommentPopoverView(c) {
     _delBtn.setAttribute("aria-label", _delName);
   }
   el.querySelector(".cm-comment-popover-note").innerHTML = renderRichNote(c.note);
-  el.querySelector(".cm-comment-popover-meta").innerHTML =
-    "<bdi>" + escapeHtml(formatTime(c.updatedAt || c.createdAt)) + "</bdi>"
-    + (c.updatedAt ? " (edited)" : "");
+  el.querySelector(".cm-comment-popover-meta").innerHTML = cmhTimeMetaHtml(c);
   el.querySelector('[data-act="edit"]').addEventListener("click", (e) => {
     e.preventDefault(); e.stopPropagation();
     const cur = _popoverComment();
@@ -331,6 +329,16 @@ function _renderCommentPopoverView(c) {
     if (btn) { try { btn.focus(); } catch (err) {} }
   });
   if (!_positionCommentPopover(_popoverAnchorMark)) _clampCommentPopoverIntoViewport();
+}
+
+// Re-stamp the open dialog's timestamp after the display zone changes. An in-progress edit is left
+// alone: its meta line is replaced by the editor, and a re-render would discard the draft.
+function cmhRefreshCommentPopoverTime() {
+  if (!commentPopover || _popoverEditing) return;
+  const meta = commentPopover.querySelector(".cm-comment-popover-meta");
+  const c = _popoverComment();
+  if (!meta || !c) return;
+  meta.innerHTML = cmhTimeMetaHtml(c);
 }
 
 // Cancel an in-progress edit: back to the note view with focus on Edit, dialog left open (unless

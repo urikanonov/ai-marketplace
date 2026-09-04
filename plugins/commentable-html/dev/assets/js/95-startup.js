@@ -84,8 +84,7 @@ function setupFooter() {
   f.id = "cmFooter";
   f.className = "cm-skip cm-footer";
   f.setAttribute("aria-label", "About Commentable HTML");
-  let gen = root.getAttribute("data-generated");
-  if (!gen) { const lm = Date.parse(document.lastModified); if (!isNaN(lm)) gen = new Date(lm).toISOString(); }
+  const gen = cmhGeneratedIso();
   const genStr = gen ? formatTime(gen) : "unknown";
   f.innerHTML =
     cmBrandLink(CMH_ICON_SVG

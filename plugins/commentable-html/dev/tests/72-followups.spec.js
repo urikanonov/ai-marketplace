@@ -564,7 +564,7 @@ test.describe("visual-audit follow-ups", () => {
       // reachable by scrolling and the menu stays on screen, not that it never scrolls.
       for (const [toggle, menu, count] of [
         ["#btnSidebarExportMenu", "#sidebarExportMenu", 5],
-        ["#btnMoreMenu", "#sidebarMoreMenu", 4],
+        ["#btnMoreMenu", "#sidebarMoreMenu", 5],
       ]) {
         await page.evaluate((t) => {
           const b = document.querySelector(t);
@@ -705,7 +705,7 @@ test.describe("visual-audit follow-ups", () => {
       // them into scrollers.
       for (const [toggle, menu, count] of [
         ["#btnSidebarExportMenu", "#sidebarExportMenu", 5],
-        ["#btnMoreMenu", "#sidebarMoreMenu", 4],
+        ["#btnMoreMenu", "#sidebarMoreMenu", 5],
       ]) {
         await page.evaluate((t) => {
           const b = document.querySelector(t);

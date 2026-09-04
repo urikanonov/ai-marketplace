@@ -1,5 +1,8 @@
 /* ---------- Copy all + Clear all ---------- */
 function buildCopyText() {
+  // A fresh formatting pass: drop the render-pass zone-formatter memo so a host timezone change
+  // since the last render cannot label the bundle with the old zone name (CMH-SIDE-13).
+  if (typeof cmhForgetZoneFormatter === "function") cmhForgetZoneFormatter();
   const liveComments = withoutHandled(comments);
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
@@ -102,7 +105,13 @@ function buildCopyText() {
     const isSlide = c.anchorType === "slide";
     lines.push(`## Comment ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isLink ? " (link)" : isWidget ? " (widget)" : isDocument ? " (document)" : isSlide ? " (slide)" : ""}`);
     lines.push(`Id: ${oneLine(c.id)}`);
-    lines.push(`When: ${oneLine(formatTime(c.createdAt))}${c.updatedAt ? " (edited " + oneLine(formatTime(c.updatedAt)) + ")" : ""}`);
+    // A comment with no usable timestamp contributes no When: line at all, rather than a dangling
+    // label the agent has to interpret.
+    const whenCreated = oneLine(formatTime(c.createdAt));
+    const whenEdited = c.updatedAt ? oneLine(formatTime(c.updatedAt)) : "";
+    if (whenCreated || whenEdited) {
+      lines.push(`When: ${whenCreated}${whenEdited ? " (edited " + whenEdited + ")" : ""}`.trim());
+    }
     if (c.headingPath && c.headingPath.length) {
       const path = c.headingPath.map(h => `H${Number(h.level) || 0} "${oneLine(h.text)}"`).join(" > ");
       lines.push(`Where: ${path}`);

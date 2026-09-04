@@ -96,6 +96,9 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-EXP-15 | opt-out: a transient confirmation toast on the already-documented export actions; not a separately documented capability | opt-out: a transient export-confirmation toast, nothing to demonstrate on a slide |
 | CMH-SIDE-11 | tutorial, help | opt-out: sidebar More-menu grouping detail; the storage manager it houses is shown on the deck, but the menu grouping is not a slide topic |
 | CMH-SIDE-12 | opt-out: responsive touch-target sizing for the already-documented Sort control; a mobile accessibility refinement, not a new user-facing capability | opt-out: responsive touch-target refinement, not a deck topic |
+| CMH-SIDE-13 | tutorial, help | opt-out: a zone label appended to timestamps the deck panel already shows; it needs no slide of its own |
+| CMH-MENU-PREF-10 | tutorial, help | opt-out: an in-runtime panel preference a reviewer sets in the More menu, not something a viewer needs shown on a slide |
+| CMH-MENU-PREF-11 | tutorial, help | opt-out: the same timestamps re-labelled UTC; a slide would show a clock in a different zone, which is nothing to demonstrate |
 | CMH-LINK-05 | opt-out: an authoring-time validator warning (agent/author-facing) that enforces the already-documented new-tab link behavior; no new reader-facing capability | opt-out: authoring-time validator warning (agent/author-facing), not a deck topic |
 | CMH-DECK-SHOWCASE-18 | site | deck |
 | CMH-BUILD-15 | opt-out: internal build invariant that stamps the demo examples' build date; the user-facing "Generated on" line itself is CMH-SIDE-03 | opt-out: internal build/authoring invariant, not a deck topic |

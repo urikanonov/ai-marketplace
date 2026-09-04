@@ -87,6 +87,9 @@ function _ownPrintAppendix() {
 }
 function materializePrintAppendix() {
   if (IS_DECK) return;
+  // A fresh formatting pass: drop the render-pass zone-formatter memo so a host timezone change
+  // since the last render cannot print the old zone name beside the new clock (CMH-SIDE-13).
+  if (typeof cmhForgetZoneFormatter === "function") cmhForgetZoneFormatter();
   let appendix = _ownPrintAppendix();
   const roots = (typeof threadRoots === "function") ? threadRoots(comments) : comments;
   if (!roots.length) {

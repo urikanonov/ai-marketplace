@@ -1,11 +1,16 @@
 /* ---------- Reviewer preferences (scoped: a cross-document default + a per-document override) ----------
-   Today's only preference is "Auto-open panel on comment". It governs every path where the panel
+   Two preferences live here. "Auto-open panel on comment" governs every path where the panel
    opens ITSELF - a saved comment, the load-time restore, and the first note/checklist/widget change
    that raises a card - which is the right default; a reviewer who reads full width with the panel
-   collapsed turns it off. An EXPLICIT Show/panel action always opens it. The DEFAULT is cross-document (AUTO_OPEN_PANEL_KEY); a document that must differ
-   pins its own value in AUTO_OPEN_PANEL_DOC_KEY, and dropping that key re-inherits the default.
+   collapsed turns it off. An EXPLICIT Show/panel action always opens it. Its DEFAULT is
+   cross-document (AUTO_OPEN_PANEL_KEY); a document that must differ pins its own value in
+   AUTO_OPEN_PANEL_DOC_KEY, and dropping that key re-inherits the default.
+   "Show times in UTC" (UTC_TIMES_KEY) is the display zone every rendered timestamp is formatted in.
+   It is cross-document ONLY - a zone is a property of the reader, not of the document - so it has
+   no per-document override, and this file also owns the shadow state that records which zone the
+   RENDERED output currently carries, so a re-stamp happens exactly when the zone really moved.
    Every read and write is try/catch guarded, so a browser that denies storage (private mode) simply
-   degrades to the ON default instead of throwing. */
+   degrades to the defaults instead of throwing. */
 const CMH_PREF_ON = "1";
 const CMH_PREF_OFF = "0";
 
@@ -66,4 +71,31 @@ function cmhShouldAutoOpenPanel() {
 // the reader of either function does not have to reason about the other's call sites.
 function cmhShouldAutoOpenPanelOnComment() {
   return autoOpenPanelEnabled() || cmhPanelForcedOnComment();
+}
+
+/* "Show times in UTC": the display zone every rendered timestamp is formatted in. Off by default,
+   so an existing document reads exactly as it always has - local time, now with the local zone
+   named beside it. On, the instant is normalized to UTC and labelled UTC. Cross-document only:
+   a reviewer reads in one zone, whatever document they happen to open. */
+function utcTimesEnabled() {
+  return cmhReadPref(UTC_TIMES_KEY) === CMH_PREF_ON;
+}
+function setUtcTimes(on) {
+  const ok = cmhWritePref(UTC_TIMES_KEY, on ? CMH_PREF_ON : CMH_PREF_OFF);
+  // Re-stamp from the WRITER, so a future caller cannot introduce the "wrote the key, left the
+  // screen stale" bug the storage manager once had. A no-op when the value did not move, and a
+  // refused write leaves the stored zone unchanged so nothing is re-drawn.
+  if (typeof cmhApplyTimeZoneChange === "function") cmhApplyTimeZoneChange();
+  return ok;
+}
+// The display zone the RENDERED output currently carries. A `storage` event fires for every key in
+// the origin - and on file:// every commentable-html document shares one - so re-stamping on each
+// one would rebuild the comment list, and drop the reviewer's scroll position, for a preference
+// that did not change. These answer "did the zone REALLY change since we last drew it?".
+let _cmhAppliedUtcTimes = utcTimesEnabled();
+function cmhUtcTimesChanged() {
+  return _cmhAppliedUtcTimes !== utcTimesEnabled();
+}
+function cmhMarkUtcTimesApplied() {
+  _cmhAppliedUtcTimes = utcTimesEnabled();
 }

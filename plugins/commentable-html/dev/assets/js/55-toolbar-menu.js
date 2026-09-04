@@ -131,7 +131,9 @@
      content carrying the same id must never be mistaken for one. */
   const prefDefault = menu.querySelector("#btnAutoOpenPanel");
   const prefOverride = menu.querySelector("#btnAutoOpenPanelOverride");
+  const prefUtc = menu.querySelector("#btnUtcTimes");
   function syncPrefRows() {
+    if (prefUtc) prefUtc.setAttribute("aria-checked", utcTimesEnabled() ? "true" : "false");
     if (prefDefault) prefDefault.setAttribute("aria-checked", autoOpenPanelDefault() ? "true" : "false");
     if (!prefOverride) return;
     const pinned = autoOpenPanelOverride();
@@ -167,11 +169,17 @@
   wirePrefRow(prefOverride, () => {
     return setAutoOpenPanelOverride(autoOpenPanelOverride() === null ? !autoOpenPanelDefault() : null);
   });
+  // The write itself re-stamps (setUtcTimes -> cmhApplyTimeZoneChange), so this row only reports a
+  // refusal and re-syncs its own state.
+  wirePrefRow(prefUtc, () => setUtcTimes(!utcTimesEnabled()));
   syncPrefRows();
   // Another tab (or another document in this browser) can change the shared default while this
-  // menu is open; refresh the rows so an activation never toggles from a stale state.
+  // menu is open; refresh the rows so an activation never toggles from a stale state. The matching
+  // TIMESTAMP re-stamp is registered in 50-sidebar.js, not here: it must keep working in a document
+  // whose COMMENT UI region has no Preferences rows, where this whole block never runs.
   window.addEventListener("storage", (e) => {
-    if (!e || e.key == null || e.key === AUTO_OPEN_PANEL_KEY || e.key === AUTO_OPEN_PANEL_DOC_KEY) syncPrefRows();
+    if (!e || e.key == null || e.key === AUTO_OPEN_PANEL_KEY || e.key === AUTO_OPEN_PANEL_DOC_KEY
+      || e.key === UTC_TIMES_KEY) syncPrefRows();
   });
 
   // Roving focus across the menu's items (Up/Down/Home/End) with ONE tab stop, the pattern
