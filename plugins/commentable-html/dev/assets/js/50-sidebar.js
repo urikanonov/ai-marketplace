@@ -409,7 +409,7 @@ function renderComments() {
     const picked = (typeof isCommentPicked === "function") && isCommentPicked(c.id);
     const pickLabel = "Select comment #" + (i + 1);
     const pickChecked = picked ? " checked" : "";
-    const pickHtml = `<span class="acts cm-pick"><label class="cm-pick-label" title="Select this comment for Copy selected / Clear selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label></span>`;
+    const pickHtml = `<span class="acts cm-pick"><label class="cm-pick-label" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label></span>`;
     const articleClass = picked ? (cardClass + " cm-card-picked") : cardClass;
     const rootPill = (typeof authorPillHtml === "function") ? authorPillHtml(c.author) : "";
     const replies = (typeof repliesOf === "function") ? repliesOf(c.id, comments) : [];

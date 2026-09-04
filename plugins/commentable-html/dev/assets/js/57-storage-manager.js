@@ -610,14 +610,14 @@ function openStorageManager(opts) {
     listWrap.appendChild(table);
 
     // Empty state: nothing reclaimable from OTHER documents. Gate on other-document rows only (not
-    // shared-preference globals): the quota Export/Clear escape hatch must show whenever there is no
+    // shared-preference globals): the quota Export/Delete escape hatch must show whenever there is no
     // other document's data to delete, even if some shared preferences remain (deleting those frees
     // little). The globals row, if any, still renders above for its own deletion.
     if (!otherDocs.length) {
       emptyNote.hidden = false;
       emptyNote.textContent = "";
       const p = el("p", null, quota
-        ? "There is no other document's data to delete - this document (or other site data) is using the space. Save your review to a file, then clear this document's comments to free room:"
+        ? "There is no other document's data to delete - this document (or other site data) is using the space. Save your review to a file, then delete this document's comments to free room:"
         : "No other commentable-html documents have stored data in this browser yet.");
       emptyNote.appendChild(p);
       if (quota) {
@@ -645,11 +645,11 @@ function openStorageManager(opts) {
   }
 
   function clearCurrentButton() {
-    const btn = el("button", "cm-storage-btn cm-storage-danger", "Clear all comments");
+    const btn = el("button", "cm-storage-btn cm-storage-danger", "Delete all comments");
     btn.type = "button";
-    btn.setAttribute("aria-label", "Clear all comments for this document");
+    btn.setAttribute("aria-label", "Delete all comments for this document");
     btn.addEventListener("click", function () {
-      inlineConfirm(btn, "Clear all comments and reset tracked widget, checklist, and note changes for this document?", function () {
+      inlineConfirm(btn, "Delete all comments and reset tracked widget, checklist, and note changes for this document?", function () {
         if (typeof performClearAll === "function") performClearAll();
         // Do NOT drop this document's index entry: it is the CURRENT document (still open and
         // re-registered on every load), and clearing its comments leaves residual keys (dismissed
@@ -657,7 +657,7 @@ function openStorageManager(opts) {
         // proof those residuals need to stay listed/reclaimable from another document (CMH-STORE-10).
         announceRetry();
         render();
-        showToast("Comments cleared.", { duration: 2500 });
+        showToast("Comments deleted.", { duration: 2500 });
       });
     });
     return btn;

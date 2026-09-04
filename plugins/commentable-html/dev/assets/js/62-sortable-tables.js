@@ -559,7 +559,7 @@ function showConfirm(opts) {
 }
 let _clearAllBusy = false;
 // The post-confirmation clear-all steps, factored out so the storage manager's current-document
-// "Clear all comments" can reuse them after its own inline confirm (without nesting showConfirm).
+// "Delete all comments" can reuse them after its own inline confirm (without nesting showConfirm).
 function performClearAll() {
   // Close any open edit composer first: after the array is cleared its Save would find nothing
   // and the common tail would close it silently, losing the reviewer's in-progress edit.
@@ -578,13 +578,13 @@ function performClearAll() {
   if (typeof resetAllNotes === "function") resetAllNotes();
   renderComments();
 }
-// Clear all comments has TWO entry points - the sidebar More menu and the toolbar overflow menu
+// Delete all comments has TWO entry points - the sidebar More menu and the toolbar overflow menu
 // (the only chrome a reviewer has while the panel is hidden). Both bind to this one handler, so
 // the confirmation text, the nothing-to-clear guard, and the reset semantics can never disagree;
 // only the focus-restore target differs, because each item lives in a menu that closes on click
 // and focus must land on the still-visible trigger of the menu the user actually opened.
 const CMH_CLEAR_ALL_TITLE = "Delete every comment (asks for confirmation first)";
-const CMH_CLEAR_ALL_EMPTY_TIP = "Nothing to clear - there are no comments, note, checklist, or layout changes yet";
+const CMH_CLEAR_ALL_EMPTY_TIP = "Nothing to delete - there are no comments, note, checklist, or layout changes yet";
 function _clearAllPending() {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
@@ -620,7 +620,7 @@ async function _confirmClearAll(restoreId) {
   if (_clearAllBusy) return;
   const restore = cmhEl(restoreId);
   if (_clearAllPending() === 0) {
-    // Nothing to clear: no dialog opens, so no restoreFocus fires - but the owning menu still
+    // Nothing to delete: no dialog opens, so no restoreFocus fires - but the owning menu still
     // closes on this click, which would drop focus to <body>. Put it back on the menu's trigger.
     if (restore && typeof restore.focus === "function") restore.focus();
     return;
@@ -648,7 +648,7 @@ async function _confirmClearAll(restoreId) {
     b.addEventListener("click", function () {
       // The listener cannot await, so surface a failure instead of leaving a floating rejection.
       _confirmClearAll(pair[1]).catch(function (e) {
-        try { console.warn("commentable-html: clear all comments failed:", e); } catch (e2) { /* no-op */ }
+        try { console.warn("commentable-html: delete all comments failed:", e); } catch (e2) { /* no-op */ }
       });
     });
   }

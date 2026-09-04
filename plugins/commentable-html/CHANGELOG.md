@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.849.0] - 2026-09-04
+
+### Changed
+
+- Renamed the destructive `Clear selected comments` and `Clear all comments` actions to
+  `Delete selected comments` and `Delete all comments` across the menus, storage manager, Help,
+  tutorial, and showcase deck. `Clear selection` keeps its name because it only deselects comments.
+
 ## [1.848.0] - 2026-09-04
 
 ### Added

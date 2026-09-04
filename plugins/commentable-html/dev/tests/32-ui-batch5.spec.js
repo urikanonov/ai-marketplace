@@ -305,11 +305,13 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
     await openInline(page);
     await page.evaluate(() => document.body.classList.add("sidebar-open"));
     expect((await page.locator("#btnSidebarExportMenu").innerText()).trim()).toBe("Export");
-    // Clear now lives in the More menu as a full menu item.
-    expect((await page.locator("#btnClearAll").textContent()).trim()).toBe("Clear all comments");
+    // Delete now lives in the More menu as a full menu item.
+    expect((await page.locator("#btnClearAll").textContent()).trim()).toBe("Delete all comments");
+    await expect(page.locator("#btnMoreMenu")).toHaveAttribute("title", /delete all comments/i);
+    await expect(page.locator("#btnMoreMenu")).not.toHaveAttribute("title", /clear all comments/i);
   });
 
-  test("the sidebar More menu holds Manage storage and Clear all (CMH-SIDE-11)", async ({ page }) => {
+  test("the sidebar More menu holds Manage storage and Delete all (CMH-SIDE-11)", async ({ page }) => {
     await openInline(page);
     await page.evaluate(() => {
       document.body.classList.add("sidebar-open");
@@ -373,7 +375,7 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
       expect(m.menuWidth).toBeLessThan(m.ribbonWidth - 8);
       expect(["rgba(0, 0, 0, 0)", "transparent"]).toContain(m.btnBg);
       expect(m.storageClip, "Manage storage label must not be clipped").toBeLessThanOrEqual(0.5);
-      expect(m.clearClip, "Clear all comments label must not be clipped").toBeLessThanOrEqual(0.5);
+      expect(m.clearClip, "Delete all comments label must not be clipped").toBeLessThanOrEqual(0.5);
       expect(Math.abs(m.menuRight - m.toggleRight)).toBeLessThanOrEqual(1);
       expect(m.menuRight).toBeLessThanOrEqual(m.viewportWidth + 1);
       expect(m.menuRight).toBeLessThan(m.exportCenterX);
@@ -484,10 +486,10 @@ test.describe("multi-duck panel fixes (batch 5)", () => {
   });
 });
 
-// Clear all comments is reachable from the toolbar overflow menu too, so a reviewer working with
-// the comments panel hidden does not have to re-open the panel to clear. It is a second ENTRY
+// Delete all comments is reachable from the toolbar overflow menu too, so a reviewer working with
+// the comments panel hidden does not have to re-open the panel to delete. It is a second ENTRY
 // POINT into the one clear-all flow, never a second implementation.
-test.describe("Clear all comments from the toolbar overflow menu (CMH-UI-13)", () => {
+test.describe("Delete all comments from the toolbar overflow menu (CMH-UI-13)", () => {
   async function seedComment(page) {
     await openInline(page);
     await addTextComment(page, "#commentRoot p", "clear me from the collapsed toolbar");
@@ -500,12 +502,12 @@ test.describe("Clear all comments from the toolbar overflow menu (CMH-UI-13)", (
     await expect(page.locator("#btnToolbarMenu")).toBeVisible();
   }
 
-  test("the overflow menu groups Clear all comments beside Manage storage (CMH-UI-13)", async ({ page }) => {
+  test("the overflow menu groups Delete all comments beside Manage storage (CMH-UI-13)", async ({ page }) => {
     await openInline(page);
     await openToolbarMenu(page);
     const item = page.locator("#toolbarMenu #btnClearAllTop");
     await expect(item).toBeVisible();
-    expect((await item.textContent()).trim()).toBe("Clear all comments");
+    expect((await item.textContent()).trim()).toBe("Delete all comments");
     await expect(item).toHaveClass(/danger/);
     expect(await item.locator("svg.cm-ui-ico").count()).toBe(1);
     const tip = (await item.getAttribute("title")) || (await item.getAttribute("data-cmh-tip"));
@@ -516,7 +518,7 @@ test.describe("Clear all comments from the toolbar overflow menu (CMH-UI-13)", (
     expect(await page.locator("#btnClearAll").getAttribute("aria-label")).toBeNull();
     // ...and the COMPUTED accessible name really is the visible label, not just the absence of an
     // override (an aria-labelledby could still rename it).
-    await expect(page.locator("#toolbarMenu").getByRole("button", { name: "Clear all comments" })).toHaveCount(1);
+    await expect(page.locator("#toolbarMenu").getByRole("button", { name: "Delete all comments" })).toHaveCount(1);
     // The two data-management actions stay together: Clear sits right after Manage storage.
     const next = await page.locator("#toolbarMenu #btnStorageTop")
       .evaluate((el) => el.nextElementSibling && el.nextElementSibling.id);
@@ -527,7 +529,7 @@ test.describe("Clear all comments from the toolbar overflow menu (CMH-UI-13)", (
     await expect(page.locator("#btnToolbarMenu")).toBeFocused();
   });
 
-  test("clearing from the overflow menu works with the panel hidden (CMH-UI-13)", async ({ page }) => {
+  test("deleting from the overflow menu works with the panel hidden (CMH-UI-13)", async ({ page }) => {
     await openInline(page);
     await openToolbarMenu(page);
     const pristineMode = (await page.locator("#cmhModeBadge").textContent()).trim();
@@ -570,7 +572,7 @@ test.describe("Clear all comments from the toolbar overflow menu (CMH-UI-13)", (
     await expect(page.locator("#btnClearAllTop")).toHaveAttribute("aria-disabled", "true");
   });
 
-  test("the overflow menu Clear all runs the same confirmed flow as the sidebar item (CMH-UI-13)", async ({ page }) => {
+  test("the overflow menu Delete all runs the same confirmed flow as the sidebar item (CMH-UI-13)", async ({ page }) => {
     await seedComment(page);
     // Sidebar entry point: capture the confirmation text, then cancel.
     await openSidebarMoreMenu(page);
@@ -590,7 +592,7 @@ test.describe("Clear all comments from the toolbar overflow menu (CMH-UI-13)", (
     await expect(page.locator("#commentList .cm-card")).toHaveCount(1); // cancel kept everything
   });
 
-  test("with nothing to clear both entry points are inert and keep focus on their trigger (CMH-UI-13)", async ({ page }) => {
+  test("with nothing to delete both entry points are inert and keep focus on their trigger (CMH-UI-13)", async ({ page }) => {
     await openInline(page);
     // Pristine document: no comments, and no widget / checklist / note change tracked yet, so the
     // shared guard sees nothing to clear. (The count pill is deliberately NOT the premise here - it
@@ -604,7 +606,7 @@ test.describe("Clear all comments from the toolbar overflow menu (CMH-UI-13)", (
       const b = page.locator(sel);
       await expect(b, sel).toHaveAttribute("aria-disabled", "true");
       const tip = (await b.getAttribute("title")) || (await b.getAttribute("data-cmh-tip"));
-      expect(tip, sel).toMatch(/Nothing to clear/);
+      expect(tip, sel).toMatch(/Nothing to delete/);
     }
     // Activate with the keyboard (an aria-disabled control is not "actionable" for a synthetic
     // click, but a real user - and a real keyboard - can still fire it).

@@ -400,7 +400,7 @@ test.describe("side-pane comment selection", () => {
     expect(reach.worst, "every item scrolls FULLY into the menu").toBeGreaterThanOrEqual(-0.5);
   });
 
-  test("Clear selected comments shows only with a selection and deletes only those (CMH-PICK-06)", async ({ page }) => {
+  test("Delete selected comments shows only with a selection and deletes only those (CMH-PICK-06)", async ({ page }) => {
     const ids = await seedThree(page);
     // A REPLY under one of the selected roots, so the delete has a whole thread to take with it.
     await addReply(page, ids[0], "alpha refinement");
@@ -415,6 +415,7 @@ test.describe("side-pane comment selection", () => {
     await pick(page, ids[2]);
     await openSidebarMoreMenu(page);
     await expect(page.locator("#btnClearSelected")).toBeVisible();
+    await expect(page.locator("#btnClearSelected")).toHaveText("Delete selected comments");
     await page.locator("#btnClearSelected").click();
 
     // It is destructive, so it confirms first, names the replies going with the roots - and

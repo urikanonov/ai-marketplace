@@ -108,7 +108,7 @@ test("CMH-NOTE-05: reset reverts the note to its authored baseline", async ({ pa
   await expect(page.locator("#toolbarCount")).toHaveText("0");
 });
 
-test("CMH-NOTE-06: Clear all comments also reverts note edits to baseline", async ({ page }) => {
+test("CMH-NOTE-06: Delete all comments also reverts note edits to baseline", async ({ page }) => {
   await open(page, DOC, "cmh-note-06");
   await addTextComment(page, "#before", "a comment");
   await field(page).fill(HOSTILE);
@@ -124,7 +124,7 @@ test("CMH-NOTE-06: Clear all comments also reverts note edits to baseline", asyn
   expect(await storedNotes(page)).toBeNull();
 });
 
-test("CMH-NOTE-06: Clear all reverts a note-only change even with no comment present", async ({ page }) => {
+test("CMH-NOTE-06: Delete all reverts a note-only change even with no comment present", async ({ page }) => {
   await open(page, DOC, "cmh-note-06b");
   // A note edit is the ONLY pending change (no comments, no checklist/widget changes). Clear all
   // used to treat this as "nothing to clear" and no-op; it must now open the confirm and reset it.

@@ -902,7 +902,7 @@ test("CMH-DECK-SHOWCASE-20: the showcase deck teaches the selective hand-back", 
     await expect(slide).toContainText("Select");
     await expect(slide).toContainText("Copy selected");
     await expect(slide).toContainText("Clear selection");
-    await expect(slide).toContainText("Clear selected comments");
+    await expect(slide).toContainText("Delete selected comments");
     // ...and WHY a partial hand-back is safe, which is the part a viewer cannot infer from the UI.
     await expect(slide.locator("p.show-lead")).toContainText("partial hand-back");
     // It follows the two-prompt loop slide, so the deck teaches the whole round-trip before
