@@ -648,7 +648,9 @@ class BuildOutputSafetyTests(unittest.TestCase):
             realpath = os.path.realpath
 
             def resolve(path):
-                return os.path.dirname(examples_src) if path == alias else realpath(path)
+                same_alias = (os.path.normcase(os.path.abspath(path))
+                              == os.path.normcase(os.path.abspath(alias)))
+                return os.path.dirname(examples_src) if same_alias else realpath(path)
 
             with contextlib.redirect_stderr(io.StringIO()):
                 with mock.patch.object(build, "HERE", dev), \
