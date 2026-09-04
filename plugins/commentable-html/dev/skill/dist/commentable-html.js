@@ -7024,13 +7024,30 @@ if(box)box.checked=false;
 updateCommentPickUi();
 }
 function cmhSyncSelectionBar(){
-const n=selectedCommentIds().length;
+const ids=selectedCommentIds();
+const n=ids.length;
 const bar=cmhEl("cmSelectBar");
-if(bar)bar.hidden=n===0;
 const count=cmhEl("cmSelectCount");
-if(count)count.textContent=n+" comment"+(n===1?"":"s")+" selected";
-const item=cmhEl("btnClearSelected");
+if(count&&n){
+const hidden=_cmPickedHiddenCount(ids);
+const text=n+" comment"+(n===1?"":"s")+" selected"
++(hidden?" ("+hidden+" hidden by search)":"");
+if(count.textContent!==text)count.textContent=text;
+}
+if(bar)bar.hidden=n===0;
+["btnClearSelected","btnClearSelectionTop"].forEach(function(id){
+const item=cmhEl(id);
 if(item)item.hidden=n===0;
+});
+}
+function _cmPickedHiddenCount(ids){
+if(!listEl)return 0;
+let n=0;
+(ids||selectedCommentIds()).forEach(function(id){
+const card=listEl.querySelector('.cm-card[data-cid="'+id+'"]');
+if(card&&card.classList.contains("cm-hidden"))n+=1;
+});
+return n;
 }
 function updateCommentPickUi(){
 if(typeof updateCopyAllState=== "function")updateCopyAllState();
@@ -7076,9 +7093,13 @@ try{
 const ids=selectedThreadIds();
 const nReplies=ids.length-roots.length;
 const reps=nReplies?(" and "+nReplies+" repl"+(nReplies===1?"y":"ies")):"";
+const hidden=_cmPickedHiddenCount(roots);
+const veiled=hidden
+?(" "+hidden+(hidden===1?" of them is":" of them are")+" hidden by the current search.")
+:"";
 const ok=await showConfirm({
 message:"Delete the "+roots.length+" selected comment"+(roots.length===1?"":"s")
-+reps+"? This cannot be undone.",
++reps+"? This cannot be undone."+veiled,
 confirmLabel:"OK",
 cancelLabel:"Cancel",
 danger:true,
@@ -7091,8 +7112,18 @@ _cmClearSelectedBusy=false;
 }
 }
 (function(){
-const clear=cmhEl("btnClearSelection");
-if(clear)clear.addEventListener("click",function(){clearCommentPicks();});
+[["btnClearSelection","btnCopyAll"],["btnClearSelectionTop","btnToolbarMenu"]].forEach(function(pair){
+const btn=cmhEl(pair[0]);
+if(!btn)return;
+btn.addEventListener("click",function(){
+const held=btn.contains(document.activeElement);
+clearCommentPicks();
+if(!held)return;
+const to=cmhEl(pair[1])||listEl;
+if(typeof _focusListEl=== "function")_focusListEl(to);
+else if(to&&typeof to.focus=== "function"){try{to.focus();}catch(e){}}
+});
+});
 const item=cmhEl("btnClearSelected");
 if(item){
 item.addEventListener("click",function(){
@@ -8128,6 +8159,7 @@ countEl.textContent=(q=== ""?totalItems:(shown+noteShown))+" / "+totalItems;
 countEl.hidden=false;
 }
 _toggleSearchEmptyNote(q!== ""&&shown===0&&noteShown===0);
+if(typeof cmhSyncSelectionBar=== "function")cmhSyncSelectionBar();
 }
 function setupCommentSearch(){
 const input=cmhEl("cmSearchInput");
@@ -9082,7 +9114,14 @@ lines.push(`# ${oneLine(DOC_LABEL)} review (${sorted.length} comment${sorted.len
 lines.push(`Source: ${oneLineSafe(DOC_SOURCE)}`);
 if(picked){
 const openRoots=(typeof threadRoots=== "function")?threadRoots(allLive).length:allLive.length;
+const held=[];
+if((typeof widgetStateChanges=== "function")&&widgetStateChanges().length)held.push("widget-layout");
+if((typeof checklistChanges=== "function")&&checklistChanges().length)held.push("checklist");
+if((typeof notesChanges=== "function")&&notesChanges().length)held.push("note");
 lines.push(`Scope: selected comments only (${sorted.length} of ${openRoots} open comment threads)`);
+if(held.length){
+lines.push(`Withheld: tracked ${held.join(", ")} changes are still pending but are NOT in this partial hand-back - the empty JSON objects in the machine trailer mean "out of scope here", not "nothing pending". Use Copy all to hand those back.`);
+}
 }
 lines.push("");
 lines.push("AGENT INSTRUCTIONS (read first):");
@@ -9295,8 +9334,8 @@ btnCopyAll:"Copy all comments to the clipboard as a Markdown bundle for pasting 
 btnCopyAllTop:"Copy all comments to the clipboard for pasting back to the agent",
 };
 const CMH_COPY_SELECTED_TITLES={
-btnCopyAll:"Copy only the selected comments to the clipboard as a Markdown bundle for pasting back to the agent",
-btnCopyAllTop:"Copy only the selected comments to the clipboard for pasting back to the agent",
+btnCopyAll:"Copy only $SCOPE to the clipboard as a Markdown bundle for pasting back to the agent",
+btnCopyAllTop:"Copy only $SCOPE to the clipboard for pasting back to the agent",
 };
 function _copyAllState(){
 const live=withoutHandled(comments);
@@ -9321,15 +9360,16 @@ else btn.textContent=text;
 function updateCopyAllState(){
 const state=_copyAllState();
 const disabled=!state.hasContent;
-const selecting=state.picked.length>0;
-const titles=selecting?CMH_COPY_SELECTED_TITLES:CMH_COPY_ALL_TITLES;
+const picked=state.picked.length;
+const titles=picked?CMH_COPY_SELECTED_TITLES:CMH_COPY_ALL_TITLES;
+const scope=picked===1?"the 1 selected comment":("the "+picked+" selected comments");
 Object.keys(CMH_COPY_ALL_TITLES).forEach((id)=>{
 const btn=cmhEl(id);
 if(!btn)return;
 btn.setAttribute("aria-disabled",disabled?"true":"false");
 btn.classList.toggle("cm-copy-disabled",disabled);
-_setCopyAllLabel(btn,selecting?"Copy selected":"Copy all");
-_setCopyAllTip(btn,disabled?"No comments to copy":titles[id]);
+_setCopyAllLabel(btn,picked?"Copy selected":"Copy all");
+_setCopyAllTip(btn,disabled?"No comments to copy":titles[id].replace("$SCOPE",scope));
 });
 if(typeof updateClearAllState=== "function")updateClearAllState(state);
 if(typeof cmhSyncSelectionBar=== "function")cmhSyncSelectionBar();
@@ -14086,7 +14126,7 @@ T('The panel and toolbar',
 '<li>The <strong>Comments</strong> heading carries a <strong>count bubble</strong> showing how many items still need attention: open comment threads plus any unresolved review-note and checklist changes (each top-level thread counts once, not its individual replies). The shareability badge and version sit at the right of the same row.</li>'+
 '<li>Below it, a row of captioned buttons - <strong>Search</strong>, <strong>Sort</strong>, <strong>More</strong>, <strong>Help</strong>, and <strong>Hide</strong>. <strong>Help</strong> opens this dialog; <strong>Hide</strong> collapses the panel, leaving a small floating toolbar to bring it back.</li>'+
 '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, the <strong>Export</strong> button opens the file-format menu. The <strong>Search</strong> button in the ribbon reveals a search field (hidden by default) that filters the list by each comment\'s note text.</li>'+
-'<li><strong>Hand back only some comments:</strong> each comment card has a <strong>Select</strong> checkbox. Tick one or more and <strong>Copy all</strong> becomes <strong>Copy selected</strong>, copying just those threads (with their replies) - the bundle says plainly that it is a partial hand-back, so the agent never assumes the rest were dealt with. A bar above the list shows how many are selected and offers <strong>Clear selection</strong> to unpick everything without deleting a thing, and while a selection exists <em>More</em> also offers <strong>Clear selected comments</strong>, which deletes only those. The selection is per-session: it is never saved, never travels inside an exported file, and a reload starts fresh.</li>'+
+'<li><strong>Hand back only some comments:</strong> each comment card has a <strong>Select</strong> checkbox. Tick one or more and <strong>Copy all</strong> becomes <strong>Copy selected</strong>, copying just those threads (with their replies) - the bundle says plainly that it is a partial hand-back, and names any tracked note, checklist, or layout changes it is holding back, so the agent never assumes the rest were dealt with. A bar above the list shows how many are selected and offers <strong>Clear selection</strong> to unpick everything without deleting a thing, and while a selection exists <em>More</em> also offers <strong>Clear selected comments</strong>, which deletes only those. If the search box is filtering the list, the bar and the delete confirmation both say how many of your picks are hidden, so nothing is deleted out of sight. The selection is per-session: it is never saved, never travels inside an exported file, and a reload starts fresh. With the panel collapsed, the floating toolbar\'s <kbd>...</kbd> menu carries <strong>Clear selection</strong> too.</li>'+
 '<li><strong>Each card\'s actions sit on one row:</strong> <strong>Reply</strong>, <strong>jump</strong> (scroll to what the comment is anchored to), <strong>edit</strong>, and <strong>delete</strong>, with delete at the far end so it is hard to hit by accident.</li>'+
 '<li><strong>More</strong> opens a menu with a <strong>Preferences</strong> group and the <strong>Manage storage</strong> and <strong>Clear all comments</strong> actions. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, '+(hasToolbarClear?'<strong>Clear all comments</strong> (the same confirmed clear), ':'')+'and <strong>Help &amp; About</strong>.</li>'+
 (hasBrandMark?'<li>The <strong>comment-bubble mark</strong> just left of the <kbd>...</kbd> button in the floating toolbar'+(hasMenuBrandMark?' - and the matching mark at the top of that menu -':'')+' opens the Commentable HTML site in a new tab.</li>':'')+

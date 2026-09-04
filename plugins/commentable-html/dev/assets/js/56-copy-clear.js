@@ -91,9 +91,18 @@ function buildCopyText(pickedIds) {
   lines.push(`Source: ${oneLineSafe(DOC_SOURCE)}`);
   if (picked) {
     // Say plainly that this is a PARTIAL hand-back, so the agent never reads the absence of a
-    // comment as "already handled" and the reviewer's remaining notes are not assumed away.
+    // comment as "already handled" and the reviewer's remaining notes are not assumed away. When
+    // tracked non-comment changes exist they are WITHHELD rather than absent, and the canonical
+    // `{}` in the trailer cannot tell those two apart on its own - so name them here.
     const openRoots = (typeof threadRoots === "function") ? threadRoots(allLive).length : allLive.length;
+    const held = [];
+    if ((typeof widgetStateChanges === "function") && widgetStateChanges().length) held.push("widget-layout");
+    if ((typeof checklistChanges === "function") && checklistChanges().length) held.push("checklist");
+    if ((typeof notesChanges === "function") && notesChanges().length) held.push("note");
     lines.push(`Scope: selected comments only (${sorted.length} of ${openRoots} open comment threads)`);
+    if (held.length) {
+      lines.push(`Withheld: tracked ${held.join(", ")} changes are still pending but are NOT in this partial hand-back - the empty JSON objects in the machine trailer mean "out of scope here", not "nothing pending". Use Copy all to hand those back.`);
+    }
   }
   lines.push("");
   lines.push("AGENT INSTRUCTIONS (read first):");
@@ -322,8 +331,8 @@ const CMH_COPY_ALL_TITLES = {
   btnCopyAllTop: "Copy all comments to the clipboard for pasting back to the agent",
 };
 const CMH_COPY_SELECTED_TITLES = {
-  btnCopyAll: "Copy only the selected comments to the clipboard as a Markdown bundle for pasting back to the agent",
-  btnCopyAllTop: "Copy only the selected comments to the clipboard for pasting back to the agent",
+  btnCopyAll: "Copy only $SCOPE to the clipboard as a Markdown bundle for pasting back to the agent",
+  btnCopyAllTop: "Copy only $SCOPE to the clipboard for pasting back to the agent",
 };
 function _copyAllState() {
   const live = withoutHandled(comments);
@@ -352,15 +361,20 @@ function _setCopyAllLabel(btn, text) {
 function updateCopyAllState() {
   const state = _copyAllState();
   const disabled = !state.hasContent;
-  const selecting = state.picked.length > 0;
-  const titles = selecting ? CMH_COPY_SELECTED_TITLES : CMH_COPY_ALL_TITLES;
+  const picked = state.picked.length;
+  const titles = picked ? CMH_COPY_SELECTED_TITLES : CMH_COPY_ALL_TITLES;
+  // The count rides in the TOOLTIP as well as the bar, because a reviewer working from the
+  // collapsed toolbar sees the relabelled button but not the panel's selection bar. It is
+  // interpolated at an explicit `$SCOPE` placeholder, so an edit to the wording cannot silently
+  // drop it the way replacing a prose substring would.
+  const scope = picked === 1 ? "the 1 selected comment" : ("the " + picked + " selected comments");
   Object.keys(CMH_COPY_ALL_TITLES).forEach((id) => {
     const btn = cmhEl(id);
     if (!btn) return;
     btn.setAttribute("aria-disabled", disabled ? "true" : "false");
     btn.classList.toggle("cm-copy-disabled", disabled);
-    _setCopyAllLabel(btn, selecting ? "Copy selected" : "Copy all");
-    _setCopyAllTip(btn, disabled ? "No comments to copy" : titles[id]);
+    _setCopyAllLabel(btn, picked ? "Copy selected" : "Copy all");
+    _setCopyAllTip(btn, disabled ? "No comments to copy" : titles[id].replace("$SCOPE", scope));
   });
   // The Clear all items share this state's document scans rather than repeating them: an extra
   // widgetStateChanges()/checklistChanges()/notesChanges() pass here would run on every keystroke

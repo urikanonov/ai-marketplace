@@ -144,6 +144,9 @@ html[data-theme="dark"] .cm-author-pill {
   align-items: center;
   gap: var(--cp-chrome-button-gap);
 }
+/* The whole group stands down while the inline reply composer owns the row, and an author
+   `display` declaration beats the UA `[hidden] { display: none }` rule - so state it locally. */
+.cm-card .cm-card-acts[hidden] { display: none; }
 .cm-card .cm-card-btn {
   background: none;
   box-sizing: border-box;

@@ -13,13 +13,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   copies only those threads (each root with its replies) - both the Markdown body and the
   machine-readable `HANDLED_IDS_JSON` array - so the agent can never mark a comment you kept back
   as handled. The partial bundle declares itself with a `Scope: selected comments only (N of M open
-  comment threads)` line, and leaves the tracked note, checklist, and widget-layout change sections
-  out, because a selection is a comment-only scope.
+  comment threads)` line, names any tracked note, checklist, or widget-layout changes it is holding
+  back on a `Withheld:` line, and leaves those change sections out, because a selection is a
+  comment-only scope.
 - A selection bar above the list shows the live count and offers `Clear selection`, which deselects
   everything without deleting anything, and the `More` menu grows a `Clear selected comments` item
   (hidden until something is picked) that deletes only the selected threads after the same
-  confirmation Clear all uses. The selection is per-session: it is never persisted, never travels
-  inside an exported file, and it prunes itself when a selected comment is deleted.
+  confirmation Clear all uses. While the comment search is filtering the list the bar and the
+  confirmation both say how many of your picks are hidden, so nothing is deleted out of sight.
+  With the panel collapsed, the floating toolbar's overflow menu carries `Clear selection` too and
+  the copy button's tooltip names the count, so a selection is never something you can act on but
+  not inspect. The selection is per-session: it is never persisted, never travels inside an
+  exported file, and it prunes itself when a selected comment is deleted.
 
 ### Changed
 

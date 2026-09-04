@@ -35,6 +35,10 @@
   background: var(--cp-accent-soft);
   font-size: var(--cp-chrome-small-font);
 }
+/* An author `display` declaration beats the UA `[hidden] { display: none }` rule, and this bar is
+   toggled by `hidden` - so keep the guarantee local to the rule that creates the hazard rather
+   than leaning on the `.cm-skip [hidden]` sweep (the convention 20-chrome.css documents). */
+.cm-select-bar[hidden] { display: none; }
 .cm-select-count { color: var(--cp-accent); font-weight: 600; }
 .cm-select-clear {
   background: none;
@@ -50,9 +54,16 @@
 .cm-select-clear:hover { background: var(--cp-surface); }
 
 /* Phones: the pick control and the bar's clear button are real targets on both axes, the same
-   floor every other side-pane control keeps (CMH-RESP-15). */
+   floor every other side-pane control keeps (CMH-RESP-15). The bar's button follows the search
+   row's HEIGHT gate (CMH-RESP-16): on a short landscape phone the selection bar is a transient
+   header row, and a 44px control inside it would take the comment list's last usable height, so
+   below 360px it keeps the WCAG 2.5.8 AA 24px floor instead. The card's pick control is inside
+   the scrolling list, not the bounded header, so it grows unconditionally. */
 @media (max-width: 640px) {
-  .cm-card .cm-pick-label { min-height: 44px; }
+  .cm-card .cm-pick-label { min-width: 44px; min-height: 44px; }
   .cm-card .cm-pick-box { width: 18px; height: 18px; }
+  .cm-select-clear { box-sizing: border-box; min-width: 24px; min-height: 24px; }
+}
+@media (max-width: 640px) and (min-height: 360px) {
   .cm-select-clear { min-width: 44px; min-height: 44px; padding: 0.4rem 0.7rem; }
 }

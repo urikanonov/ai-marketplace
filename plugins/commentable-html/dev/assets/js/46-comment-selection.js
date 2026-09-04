@@ -48,17 +48,45 @@ function clearCommentPicks() {
   updateCommentPickUi();
 }
 
-// The selection bar and the More-menu item are the two controls that only exist while something is
+// The selection bar and the More-menu items are the controls that only exist while something is
 // picked. The copy buttons' own label swap lives in updateCopyAllState (56-copy-clear.js), which
 // calls this after every render, so the two can never disagree about whether a selection exists.
 function cmhSyncSelectionBar() {
-  const n = selectedCommentIds().length;
+  const ids = selectedCommentIds();
+  const n = ids.length;
   const bar = cmhEl("cmSelectBar");
-  if (bar) bar.hidden = n === 0;
   const count = cmhEl("cmSelectCount");
-  if (count) count.textContent = n + " comment" + (n === 1 ? "" : "s") + " selected";
-  const item = cmhEl("btnClearSelected");
-  if (item) item.hidden = n === 0;
+  // Write the count BEFORE the bar is revealed and skip the write once it is hidden again: a
+  // polite live region is least reliably announced when its host subtree becomes rendered and its
+  // text changes in the same task, and its content should never be mutated while it is not shown.
+  if (count && n) {
+    // The comment search hides non-matching cards outright, so a pick can be selected but not on
+    // screen - and Clear selected would still delete it. Say so rather than let the filtered list
+    // imply the selection was narrowed too.
+    const hidden = _cmPickedHiddenCount(ids);
+    const text = n + " comment" + (n === 1 ? "" : "s") + " selected"
+      + (hidden ? " (" + hidden + " hidden by search)" : "");
+    // updateCopyAllState runs after EVERY render (a sort, a checklist tick, a note keystroke), so
+    // only write when the text actually changed - an unchanged count must not be re-announced
+    // while the reviewer is doing something else.
+    if (count.textContent !== text) count.textContent = text;
+  }
+  if (bar) bar.hidden = n === 0;
+  ["btnClearSelected", "btnClearSelectionTop"].forEach(function (id) {
+    const item = cmhEl(id);
+    if (item) item.hidden = n === 0;
+  });
+}
+
+// How many of the picked comments the comment search is currently hiding.
+function _cmPickedHiddenCount(ids) {
+  if (!listEl) return 0;
+  let n = 0;
+  (ids || selectedCommentIds()).forEach(function (id) {
+    const card = listEl.querySelector('.cm-card[data-cid="' + id + '"]');
+    if (card && card.classList.contains("cm-hidden")) n += 1;
+  });
+  return n;
 }
 
 function updateCommentPickUi() {
@@ -114,9 +142,15 @@ async function _cmConfirmClearSelected(restoreId) {
     const ids = selectedThreadIds();
     const nReplies = ids.length - roots.length;
     const reps = nReplies ? (" and " + nReplies + " repl" + (nReplies === 1 ? "y" : "ies")) : "";
+    // A pick the comment search is hiding is deleted just the same, so the dialog names it: the
+    // filtered list would otherwise imply the selection had been narrowed with it.
+    const hidden = _cmPickedHiddenCount(roots);
+    const veiled = hidden
+      ? (" " + hidden + (hidden === 1 ? " of them is" : " of them are") + " hidden by the current search.")
+      : "";
     const ok = await showConfirm({
       message: "Delete the " + roots.length + " selected comment" + (roots.length === 1 ? "" : "s")
-        + reps + "? This cannot be undone.",
+        + reps + "? This cannot be undone." + veiled,
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,
@@ -130,8 +164,23 @@ async function _cmConfirmClearSelected(restoreId) {
 }
 
 (function () {
-  const clear = cmhEl("btnClearSelection");
-  if (clear) clear.addEventListener("click", function () { clearCommentPicks(); });
+  // Clearing the selection HIDES the bar the sidebar button lives in, and `.cm-skip [hidden]`
+  // removes it from layout outright, so the control the reviewer just activated disappears under
+  // them. Hand focus to a still-visible one first - the same contract every other vanishing
+  // control in this panel keeps (CMH-THREAD-11). The toolbar twin lives in a menu that closes on
+  // click, so its focus goes back to that menu's trigger, exactly like Clear all comments.
+  [["btnClearSelection", "btnCopyAll"], ["btnClearSelectionTop", "btnToolbarMenu"]].forEach(function (pair) {
+    const btn = cmhEl(pair[0]);
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      const held = btn.contains(document.activeElement);
+      clearCommentPicks();
+      if (!held) return;
+      const to = cmhEl(pair[1]) || listEl;
+      if (typeof _focusListEl === "function") _focusListEl(to);
+      else if (to && typeof to.focus === "function") { try { to.focus(); } catch (e) { /* refused */ } }
+    });
+  });
   const item = cmhEl("btnClearSelected");
   if (item) {
     item.addEventListener("click", function () {

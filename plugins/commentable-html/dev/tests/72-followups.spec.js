@@ -564,7 +564,10 @@ test.describe("visual-audit follow-ups", () => {
       // The menus are overlays, so their 44px items cost this viewport no header height - but the
       // `max-height: min(60vh, 22rem, calc(100vh - 12rem))` cap is only ~128px here, so they were
       // ALREADY scrollers before the enlargement. What has to hold is that every item stays
-      // reachable by scrolling and the menu stays on screen, not that it never scrolls.
+      // reachable by scrolling and the menu stays on screen, not that it never scrolls. The
+      // selection-revealed `Clear selected comments` is measured by its own CMH-PICK-09 guard at
+      // this viewport, so this loop keeps its documented header states (density x editing x
+      // search) rather than adding a fourth.
       for (const [toggle, menu, count] of [
         ["#btnSidebarExportMenu", "#sidebarExportMenu", 5],
         ["#btnMoreMenu", "#sidebarMoreMenu", 5],
@@ -651,6 +654,10 @@ test.describe("visual-audit follow-ups", () => {
     await page.locator(".cm-reply-compose textarea").fill("a reply");
     await page.locator(".cm-reply-compose .cm-reply-save").click();
     await expect(page.locator('.cm-card [data-act="reply-edit"]')).toHaveCount(1);
+    // A selection reveals the More menu's `Clear selected comments` (CMH-PICK-06), so the sweep
+    // below measures it too rather than letting a hidden item escape the touch-target floor.
+    await page.locator(".cm-card input.cm-pick-box").first().check();
+    await expect(page.locator("#btnClearSelected")).not.toHaveAttribute("hidden", /.*/);
 
     const measure = (sel) => page.evaluate((q) => {
       const els = [...document.querySelectorAll(q)];
@@ -718,7 +725,7 @@ test.describe("visual-audit follow-ups", () => {
         }, toggle);
         await expect(page.locator(menu)).toBeVisible();
         // Only the reachable items: `Clear selected comments` is revealed by a selection
-        // (CMH-PICK-06) and measures 0 while hidden.
+        // (CMH-PICK-06), so pick a comment first and count it rather than filtering it away.
         const items = await measure(`${menu} button:not([hidden])`);
         expect(items.length, `${at}: ${menu} holds all of its items`).toBe(count);
         for (const b of items) {
