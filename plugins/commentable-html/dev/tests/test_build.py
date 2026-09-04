@@ -648,8 +648,7 @@ class BuildOutputSafetyTests(unittest.TestCase):
             realpath = os.path.realpath
 
             def resolve(path):
-                same_alias = (os.path.normcase(os.path.abspath(path))
-                              == os.path.normcase(os.path.abspath(alias)))
+                same_alias = os.path.basename(os.path.normpath(path)) == "examples-alias"
                 return os.path.dirname(examples_src) if same_alias else realpath(path)
 
             with contextlib.redirect_stderr(io.StringIO()):
