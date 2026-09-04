@@ -725,7 +725,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.848.0";
+const CMH_VERSION= "1.850.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -1769,6 +1769,8 @@ const parent=m.parentNode;
 while(m.firstChild)parent.insertBefore(m.firstChild,m);
 parent.removeChild(m);
 parent.normalize();
+if(parent.nodeType===1&&parent.classList.contains("cm-toc")
+&&cmhOwnChrome(parent,".cmh-toc-caret"))_cmTocWrapLooseText(parent);
 });
 }
 function removeHighlight(comment){
@@ -14177,7 +14179,7 @@ T('Navigation',
 '<li>Menu entries mirror the document: each keeps the section number the document already shows - the one in your contents list, or the one on the heading itself - and falls back to a computed <code>1.1</code>-style number only when there is none. Each entry is indented to its level, so subsections read as subsections.</li>'+
 '<li><strong>Filter sections</strong> narrows the menu to the entries whose <em>title</em> matches what you type (body text is not searched), hides the sections they do not match, and keeps the parent entries that place a match; clearing the box or pressing <kbd>Esc</kbd> restores the whole document. Printing always carries the whole document, whatever the filter shows.</li>'+
 '<li>Every section title has a caret to <strong>collapse or expand</strong> that section; <strong>Expand All</strong> / <strong>Collapse All</strong> act on every section at once.</li>'+
-'<li>An in-document <strong>Contents</strong> list has its own caret: fold it away to reclaim the top of a long report, or click the folded title to bring it back. This browser remembers your choice for this document.</li>'+
+'<li>In a flow document, an in-document <strong>Contents</strong> list has its own caret: fold it away to reclaim the top of a long report, or click the folded title to bring it back. This browser remembers your choice for this document. (A deck gets no in-document navigation chrome, so a Contents list authored on a slide is left as plain content, with no caret.)</li>'+
 '<li><strong>Scroll to Top</strong> / <strong>Scroll to Bottom</strong> jump the document, and a small bubble shows your scroll position.</li>'+
 '</ul>')+
 T('Reading aids',
@@ -14604,6 +14606,19 @@ nav=nav.parentElement&&nav.parentElement.closest
 &&nav.parentElement.closest(".cm-toc.cmh-toc-collapsed");
 }
 }
+const _CM_TOC_IGNORABLE_TEXT_RE=/^[\t\n\f\r ]*$/;
+function _cmTocWrapLooseText(nav){
+const loose=[];
+for(let n=nav.firstChild;n;n=n.nextSibling){
+if(n.nodeType===3&&n.nodeValue&&!_CM_TOC_IGNORABLE_TEXT_RE.test(n.nodeValue))loose.push(n);
+}
+for(let i=0;i<loose.length;i++){
+const span=document.createElement("span");
+span.className= "cmh-toc-text";
+loose[i].parentNode.insertBefore(span,loose[i]);
+span.appendChild(loose[i]);
+}
+}
 function setupTocCollapse(){
 const root=cmhEl("commentRoot")||document.body;
 const saved=_cmReadTocFolds();
@@ -14612,15 +14627,16 @@ _cmTocFoldEntries.length=0;
 root.querySelectorAll(".cm-toc").forEach(function(nav,i){
 if(nav.closest(".cm-skip"))return;
 if(cmhOwnChrome(nav,".cmh-toc-caret"))return;
+_cmTocWrapLooseText(nav);
 const title=nav.querySelector(":scope > .cm-toc-title");
 const storeKey=_cmTocFoldKeyFor(nav,usedKeys);
 const caret=document.createElement("button");
 caret.type= "button";
 caret.className= "cmh-toc-caret cm-skip";
 cmhMarkLayerChrome(caret);
-if(!nav.id){
+if(!nav.id||document.getElementById(nav.id)!==nav){
 let n=i;
-while(cmhEl("cmhToc"+n))n++;
+while(document.getElementById("cmhToc"+n))n++;
 nav.id= "cmhToc"+n;
 }
 caret.setAttribute("aria-controls",nav.id);

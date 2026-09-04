@@ -4,6 +4,37 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.850.0] - 2026-09-04
+
+### Fixed
+
+- Two in-document `Contents` lists that share an authored `id` (invalid HTML, but it happens) no
+  longer give both carets the same `aria-controls` target. Assistive technology resolves
+  `aria-controls` with `getElementById`, which answers with the first element carrying the id, so
+  the second caret announced a region it did not control. Each nav whose authored id does not
+  resolve to itself now gets a minted runtime id; the authored id still supplies the stored fold
+  identity, so nothing a reader folded is orphaned.
+- A `Contents` list that carries significant text DIRECTLY (an intro sentence beside its list, or
+  entries written as bare text) now folds all the way. The fold is a CSS rule over element
+  children, which cannot reach a text node, so such a list stayed half-folded with the caret
+  claiming it was away. Each such text run is wrapped in a span the same rule hides and print
+  restores; the wrapper is not `cm-skip`, so no comment anchor moves. "Ignorable" is only the
+  whitespace CSS itself collapses, so a run made of `&nbsp;` (which paints) folds away too, while
+  ordinary source indentation still gains no wrapper. Deleting a comment anchored on that text
+  re-establishes the wrap instead of dropping the run back into the nav bare, so the list stays
+  fully foldable afterwards.
+
+### Changed
+
+- The `Contents` caret is documented as a FLOW-DOCUMENT affordance. The runtime has always excluded
+  decks (as it does the section-collapse carets and the side menu), but the spec row and the Help
+  `Navigation` topic promised the caret unconditionally, so a deck slide carrying an authored
+  `Contents` list read as broken. Both now say a deck gets no in-document navigation chrome and
+  leaves such a list as plain content, and tests lock both the exclusion and the Help wording. The
+  spec row also records the deliberate trade-off in the `aria-controls` fix above: on the invalid
+  input where two elements share one id, the shadowed nav is re-identified, so an author rule keyed
+  to that id stops matching it.
+
 ## [1.848.0] - 2026-09-04
 
 ### Added

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.848.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.850.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,26 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.850.0] - 2026-09-04</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Two in-document <code>Contents</code> lists that share an authored <code>id</code> (invalid HTML, but it happens) no longer give both carets the same <code>aria-controls</code> target. Assistive technology resolves <code>aria-controls</code> with <code>getElementById</code>, which answers with the first element carrying the id, so the second caret announced a region it did not control. Each nav whose authored id does not resolve to itself now gets a minted runtime id; the authored id still supplies the stored fold identity, so nothing a reader folded is orphaned.</li>
+              <li>A <code>Contents</code> list that carries significant text DIRECTLY (an intro sentence beside its list, or entries written as bare text) now folds all the way. The fold is a CSS rule over element children, which cannot reach a text node, so such a list stayed half-folded with the caret claiming it was away. Each such text run is wrapped in a span the same rule hides and print restores; the wrapper is not <code>cm-skip</code>, so no comment anchor moves. &quot;Ignorable&quot; is only the whitespace CSS itself collapses, so a run made of <code>&amp;nbsp;</code> (which paints) folds away too, while ordinary source indentation still gains no wrapper. Deleting a comment anchored on that text re-establishes the wrap instead of dropping the run back into the nav bare, so the list stays fully foldable afterwards.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The <code>Contents</code> caret is documented as a FLOW-DOCUMENT affordance. The runtime has always excluded decks (as it does the section-collapse carets and the side menu), but the spec row and the Help <code>Navigation</code> topic promised the caret unconditionally, so a deck slide carrying an authored <code>Contents</code> list read as broken. Both now say a deck gets no in-document navigation chrome and leaves such a list as plain content, and tests lock both the exclusion and the Help wording. The spec row also records the deliberate trade-off in the <code>aria-controls</code> fix above: on the invalid input where two elements share one id, the shadowed nav is re-identified, so an author rule keyed to that id stops matching it.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.848.0] - 2026-09-04</h3></div>
             <div class="group-label">Added</div>
             <ul>
               <li>The in-document <code>Contents</code> list is collapsible. Its title row gains a caret that folds the list away and unfolds it (clicking a folded title unfolds it too), so a long report&#x27;s table of contents stops being a wall to scroll past on every visit. The choice is remembered per document in this browser, and it is reader state rather than document state: the caret is text-free <code>cm-skip</code> chrome that spends no character of the offset space comments are anchored in, folding only toggles a class (no node is removed, so every comment keeps its anchor), no export bakes the caret or the fold in, and a print or Save as PDF still carries the whole list. Jumping to a comment anchored on a Contents entry unfolds every folded list it sits in, so the jump is never a no-op.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.847.0] - 2026-09-03</h3></div>
             <div class="group-label">Added</div>
@@ -515,8 +529,6 @@
               <li>The <code>dist/commentable-html.js</code> and <code>dist/commentable-html.assets.js</code> size ceilings in <code>dev/tools/size-budget.json</code> are raised to 677,000 and 865,000 bytes. Both sat at 99% of their previous ceiling before this release, leaving no room for the selection layer; the new values restore the documented ~5% headroom over the current build.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.846.0] - 2026-09-03</h3></div>
             <div class="group-label">Changed</div>
@@ -556,25 +568,7 @@
               <li>The trade, stated plainly: opened with NO network these two examples now draw blank canvases where they previously rendered charts, matching the long-standing behaviour of <code>report-metrics</code> and <code>report-triage</code>. Everything else - the prose, the tables, the captions, the mermaid diagrams and the whole comment layer - is unaffected, and Export Offline still produces a chart-bearing file that needs no network to view.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.842.0] - 2026-08-31</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>A generated document no longer embeds the vendored rich libraries. It carried mermaid and Chart.js as a 1,392,096-byte (1,359 KiB) gzip+base64 payload that the VIEWER never read - the viewer imports mermaid from the CDN, and an authored Chart.js arrives as its own CDN script with an SRI hash - so the only consumer was the Offline export, and every reader paid over a megabyte to pre-stage an export most of them never run. The payload is now a byte-free descriptor of 2,629 bytes: the pinned CDN URL for each library plus the SHA-384 hash recorded at build time, with the MIT notices still embedded so compliance never depends on the network. Measured on the shipped examples: <code>report-metrics.html</code> 2,217,964 -&gt; 831,745 bytes (-62%), the four diagram-carrying examples each drop 57 to 62 percent, and the whole example corpus drops 47 percent (12,035,861 -&gt; 6,406,508 bytes).</li>
-              <li>Export Offline downloads the pinned library it needs and VERIFIES it against that recorded hash before inlining it, exactly where it used to inflate the embedded bytes. The export therefore needs network access once; the file it produces is unchanged - still fully self-contained, still under the same zero-network CSP. It fetches the UMD build rather than the ESM entry the viewer uses, because the exporter drives <code>window.mermaid</code> as a classic global and a UMD file is self-contained, whereas the ESM entry would still lazy-load its per-diagram chunks. Nothing is downloaded while merely reading a document, and a library the document cannot use is never downloaded, decoded, or allowed to fail an export.</li>
-              <li>Every way the download can go wrong fails CLOSED and says so, with no file written: a blocked or failed request, bytes that do not match the recorded hash, a hash that is malformed, a recorded URL that is not https, a redirect that lands on a non-https address, a page that is not a secure context (the message names the fix - open the file locally or serve it over https), and a connection that is accepted and then never answers. A payload that names a library with only half a descriptor - a URL and no hash, or a hash and no URL - is refused too, rather than being read as &quot;this document does not carry the library&quot; and quietly falling through to the document&#x27;s own unverified copy.</li>
-              <li>Documents generated by an earlier version are unaffected: a payload that still carries bytes is honoured exactly as before, with no network access at all.</li>
-              <li>The export sends no referrer to the CDN, so downloading a library never discloses which document is being exported. The two downloads share one time budget rather than one each.</li>
-              <li><code>tools/build.py --vendor-bytes</code> is a troubleshooting escape hatch that restores the old self-contained form, for an author who must export with no network. It is never used by the committed build, so it is refused alongside <code>--check</code> and does not enforce the size budget.</li>
-              <li>The <code>dist/SHAREABLE.html</code> and <code>dist/NONSHAREABLE.html</code> size-budget ceilings drop to match, so the win cannot silently drift back.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The vendored Chart.js copy is now held to the same provenance guarantee as mermaid: its version pin, the bytes in <code>assets/vendor/chart.umd.min.js</code>, and the installed npm tarball must all agree. Without that, a lockfile-only bump followed by a re-vendor could record a URL and a hash for different releases, and every chart document&#x27;s offline export would fail verification permanently.</li>
-              <li>A document carrying two vendored payload blocks no longer merges them into one that holds a stale library&#x27;s bytes beside a newer one&#x27;s descriptor. Only one form can ever be used, and the bytes win, so the later block silently lost and a right-sized document could be re-inflated.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">408 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">409 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
