@@ -385,14 +385,19 @@ function expandCollapsedToc(el) {
 // A `.cm-toc` can carry significant text DIRECTLY - an intro sentence beside its list, or entries
 // written as bare text. The fold is a CSS rule over ELEMENT children, which cannot reach a text
 // node, so such a nav would fold "half way": the caret says the list is away while a stray
-// sentence stays on screen. Wrap each non-whitespace run in a span so the same rule covers it.
+// sentence stays on screen. Wrap each run that is not ignorable in a span so the same rule covers
+// it. Ignorable means only the whitespace CSS itself collapses away (tab, newline, form feed,
+// carriage return, space) - source indentation. It deliberately is NOT `trim()`, which also eats
+// `&nbsp;` and the other Unicode space separators; those do NOT collapse, so a nav whose loose run
+// is one of them still paints a line box and would still fold half way.
 // The wrapper is deliberately NOT `cm-skip`: the text is the AUTHOR's, and dropping it out of the
 // offset space would move every comment anchored below it. Moving the same text node under a new
 // inline parent leaves that space untouched.
+const _CM_TOC_IGNORABLE_TEXT_RE = /^[\t\n\f\r ]*$/;
 function _cmTocWrapLooseText(nav) {
   const loose = [];
   for (let n = nav.firstChild; n; n = n.nextSibling) {
-    if (n.nodeType === 3 && n.nodeValue && n.nodeValue.trim()) loose.push(n);
+    if (n.nodeType === 3 && n.nodeValue && !_CM_TOC_IGNORABLE_TEXT_RE.test(n.nodeValue)) loose.push(n);
   }
   for (let i = 0; i < loose.length; i++) {
     const span = document.createElement("span");

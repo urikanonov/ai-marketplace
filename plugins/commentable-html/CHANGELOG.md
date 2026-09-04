@@ -18,7 +18,11 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   entries written as bare text) now folds all the way. The fold is a CSS rule over element
   children, which cannot reach a text node, so such a list stayed half-folded with the caret
   claiming it was away. Each such text run is wrapped in a span the same rule hides and print
-  restores; the wrapper is not `cm-skip`, so no comment anchor moves.
+  restores; the wrapper is not `cm-skip`, so no comment anchor moves. "Ignorable" is only the
+  whitespace CSS itself collapses, so a run made of `&nbsp;` (which paints) folds away too, while
+  ordinary source indentation still gains no wrapper. Deleting a comment anchored on that text
+  re-establishes the wrap instead of dropping the run back into the nav bare, so the list stays
+  fully foldable afterwards.
 
 ### Changed
 
