@@ -4,7 +4,8 @@ import path from "path";
 import {
   openInline, ready, openComposerFor, fileUrl, INLINE, SKILL,
   installClipboardCapture, stageInline, startStaticServer, routeMermaidLocal,
-  routeVendoredLibs,
+  routeOfflineExportLibs,
+  routeExampleLibsLocal,
 } from "./helpers.js";
 
 const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-community-garden.html");
@@ -69,7 +70,7 @@ test("the example Chart.js chart renders a working tooltip (CMH-CHART-04)", asyn
     // 205 KB copy, so serve it from `assets/vendor/` - same bytes, same SHA-384 the loader's
     // `integrity` names. Registered AFTER routeMermaidLocal, whose catch-all denies every
     // other remote request, because Playwright runs the most recently added handler first.
-    await routeVendoredLibs(page);
+    await routeOfflineExportLibs(page);
     await page.goto(`${server.url}/${path.basename(html)}`);
     await ready(page);
     const chartSelector = "#wateringNeedsChart";
@@ -126,6 +127,7 @@ test("saving a blank note marks the textarea invalid and keeps the composer open
 });
 
 test("closing a composer returns focus to the diff line that opened it (CMH-A11Y-02)", async ({ page }) => {
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(EXAMPLE));
   await ready(page);
   const line = page.locator(".cmh-dl-add").first();
