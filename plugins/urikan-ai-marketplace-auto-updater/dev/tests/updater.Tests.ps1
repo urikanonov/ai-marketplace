@@ -1100,11 +1100,13 @@ try {
 Write-Host "== UPD-29 real CLI lifecycle suite is wired into both platform jobs =="
 try {
     $lifecycleScript29 = Join-Path $here "real_cli_lifecycle.py"
+    $cliPackage29 = Get-Content -Path (Join-Path (Join-Path $here "real-cli") "package.json") -Raw | ConvertFrom-Json
     $workflow29 = Get-Content -Path (Join-Path (Join-Path (Join-Path $repoRoot ".github") "workflows") "pwsh-tests.yml") -Raw
     Assert-True (Test-Path $lifecycleScript29) "UPD-29: the hermetic real-CLI lifecycle harness exists"
     Assert-True ($workflow29 -match 'python plugins/urikan-ai-marketplace-auto-updater/dev/tests/real_cli_lifecycle\.py') "UPD-29: the required cross-platform job runs the real-CLI lifecycle harness"
-    Assert-True ($workflow29 -match '@github/copilot@1\.0\.83') "UPD-29: CI pins the Copilot CLI used by the lifecycle harness"
-    Assert-True ($workflow29 -match '@anthropic-ai/claude-code@2\.1\.251') "UPD-29: CI pins the Claude CLI used by the lifecycle harness"
+    Assert-True ($workflow29 -match 'npm ci --ignore-scripts --prefix plugins/urikan-ai-marketplace-auto-updater/dev/tests/real-cli') "UPD-29: CI installs the real CLIs from the committed lockfile"
+    Assert-True ($cliPackage29.dependencies.'@github/copilot' -eq "1.0.83") "UPD-29: the Copilot CLI lifecycle dependency is pinned"
+    Assert-True ($cliPackage29.dependencies.'@anthropic-ai/claude-code' -eq "2.1.251") "UPD-29: the Claude CLI lifecycle dependency is pinned"
 } catch { $script:failures += "UPD-29 threw: $_" }
 
 Remove-Item Function:copilot -ErrorAction SilentlyContinue

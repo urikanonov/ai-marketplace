@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -25,6 +26,7 @@ FIXTURE_N1 = "1.1.0"
 TEST_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TEST_DIR.parents[3]
 UPDATER_PACKAGE = REPO_ROOT / "plugins" / UPDATER / "pkg"
+CLI_BIN = TEST_DIR / "real-cli" / "node_modules" / ".bin"
 
 
 def run(
@@ -385,11 +387,37 @@ def plugin_records(value: object, name: str) -> list[dict[str, object]]:
     return records
 
 
+def resolve_cli(name: str) -> str | None:
+    if name == "claude":
+        system = {
+            "Darwin": "darwin",
+            "Linux": "linux",
+            "Windows": "win32",
+        }.get(platform.system())
+        machine = platform.machine().lower()
+        architecture = "arm64" if machine in {"arm64", "aarch64"} else "x64"
+        if system:
+            package = (
+                TEST_DIR
+                / "real-cli"
+                / "node_modules"
+                / "@anthropic-ai"
+                / f"claude-code-{system}-{architecture}"
+            )
+            binary = package / ("claude.exe" if system == "win32" else "claude")
+            if binary.is_file():
+                return str(binary)
+    installed = CLI_BIN / (f"{name}.cmd" if os.name == "nt" else name)
+    if installed.is_file():
+        return str(installed)
+    return shutil.which(name)
+
+
 class RealCliLifecycleTests(unittest.TestCase):
     def test_upd_29_real_cli_updater_lifecycle(self) -> None:
         """UPD-29 real CLI updater lifecycle."""
-        copilot = shutil.which("copilot")
-        claude = shutil.which("claude")
+        copilot = resolve_cli("copilot")
+        claude = resolve_cli("claude")
         pwsh = shutil.which("pwsh")
         missing = [
             name
@@ -437,6 +465,16 @@ class RealCliLifecycleTests(unittest.TestCase):
 
             copilot_env = isolated_env(root, "copilot")
             claude_env = isolated_env(root, "claude")
+            copilot_env["PATH"] = (
+                str(Path(copilot).parent)
+                + os.pathsep
+                + copilot_env.get("PATH", "")
+            )
+            claude_env["PATH"] = (
+                str(Path(claude).parent)
+                + os.pathsep
+                + claude_env.get("PATH", "")
+            )
             with serve_git(remote.parent) as marketplace_url:
                 install_agent(copilot, "copilot", marketplace_url, copilot_env)
                 install_agent(claude, "claude", marketplace_url, claude_env)
