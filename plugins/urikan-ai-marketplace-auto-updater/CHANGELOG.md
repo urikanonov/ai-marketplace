@@ -4,6 +4,21 @@ All notable changes to the `urikan-ai-marketplace-auto-updater` plugin are docum
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-09-06
+
+### Added
+
+- Hermetic cross-platform lifecycle coverage that installs and upgrades copied packages through the
+  real Copilot and Claude plugin CLIs over a loopback Git marketplace. (UPD-29)
+
+### Fixed
+
+- Claude self-update now compares the marketplace version with the running updater package, rather
+  than a newer cache entry materialized while another plugin updates, so an N-to-N+1 update reliably
+  records that a restart is required. (UPD-22)
+- Health diagnostics clear that restart requirement after the updated updater package becomes active.
+  (UPD-28)
+
 ## [1.5.0] - 2026-09-06
 
 ### Added
