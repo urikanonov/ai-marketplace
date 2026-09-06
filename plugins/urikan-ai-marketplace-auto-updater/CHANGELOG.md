@@ -16,7 +16,8 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions f
 - Claude self-update now compares the marketplace version with the running updater package, rather
   than a newer cache entry materialized while another plugin updates, so an N-to-N+1 update reliably
   records that a restart is required. (UPD-22)
-- Health diagnostics clear that restart requirement after the updated updater package becomes active.
+- Health diagnostics retain that restart requirement until the next session-start pass activates the
+  updated updater package.
   (UPD-28)
 
 ## [1.5.0] - 2026-09-06

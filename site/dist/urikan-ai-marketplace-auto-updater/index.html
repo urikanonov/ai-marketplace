@@ -227,7 +227,7 @@
             <div class="group-label">Fixed</div>
             <ul>
               <li>Claude self-update now compares the marketplace version with the running updater package, rather than a newer cache entry materialized while another plugin updates, so an N-to-N+1 update reliably records that a restart is required. (UPD-22)</li>
-              <li>Health diagnostics clear that restart requirement after the updated updater package becomes active. (UPD-28)</li>
+              <li>Health diagnostics retain that restart requirement until the next session-start pass activates the updated updater package. (UPD-28)</li>
             </ul>
           </div>
           <div class="release">

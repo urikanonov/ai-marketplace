@@ -7,6 +7,7 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -27,6 +28,9 @@ TEST_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TEST_DIR.parents[3]
 UPDATER_PACKAGE = REPO_ROOT / "plugins" / UPDATER / "pkg"
 CLI_BIN = TEST_DIR / "real-cli" / "node_modules" / ".bin"
+sys.path.insert(0, str(REPO_ROOT))
+
+from scripts._git_test_env import clean_git_env  # noqa: E402
 
 
 def run(
@@ -38,7 +42,7 @@ def run(
     result = subprocess.run(
         [str(arg) for arg in args],
         cwd=cwd,
-        env=env,
+        env=clean_git_env(env),
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -60,7 +64,7 @@ def run_json(
 ) -> object:
     result = subprocess.run(
         [str(arg) for arg in args],
-        env=env,
+        env=clean_git_env(env),
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -193,7 +197,7 @@ class GitHttpHandler(BaseHTTPRequestHandler):
         parsed = urlsplit(self.path)
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length) if length else b""
-        env = os.environ.copy()
+        env = clean_git_env()
         env.update(
             {
                 "GIT_PROJECT_ROOT": str(self.server.project_root),
@@ -259,7 +263,7 @@ def serve_git(project_root: Path):
 
 
 def isolated_env(root: Path, agent: str) -> dict[str, str]:
-    env = os.environ.copy()
+    env = clean_git_env()
     home = root / agent
     home.mkdir(parents=True)
     local_data = home / "local-data"
@@ -615,7 +619,7 @@ class RealCliLifecycleTests(unittest.TestCase):
                     ("copilot", copilot_package(copilot_home, UPDATER), copilot_env),
                     ("claude", claude_updater_n1, claude_env),
                 ):
-                    active = run_json(
+                    same_session = run_json(
                         pwsh,
                         "-NoProfile",
                         "-File",
@@ -627,9 +631,33 @@ class RealCliLifecycleTests(unittest.TestCase):
                         env=env,
                     )
                     self.assertEqual(
-                        active["activeUpdaterVersion"], UPDATER_N1
+                        same_session["activeUpdaterVersion"], UPDATER_N
                     )
-                    self.assertFalse(active["restartRequired"])
+                    self.assertTrue(same_session["restartRequired"])
+                    run(
+                        pwsh,
+                        "-NoProfile",
+                        "-File",
+                        package / "hooks" / "marketplace-update.ps1",
+                        "-Agent",
+                        agent,
+                        env=env,
+                    )
+                    restarted = run_json(
+                        pwsh,
+                        "-NoProfile",
+                        "-File",
+                        package / "hooks" / "marketplace-update.ps1",
+                        "-Agent",
+                        agent,
+                        "-Mode",
+                        "health",
+                        env=env,
+                    )
+                    self.assertEqual(
+                        restarted["activeUpdaterVersion"], UPDATER_N1
+                    )
+                    self.assertFalse(restarted["restartRequired"])
 
                 copilot_registry = run(
                     copilot, "plugin", "list", env=copilot_env

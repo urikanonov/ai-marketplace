@@ -992,10 +992,14 @@ try {
     $activated28 = Get-Content -Path (Get-StatusPath $h28) -Raw | ConvertFrom-Json
     $activated28.restartRequired = $true
     $activeVersion28 = (Get-Content -Path (Join-Path $pkgRoot "plugin.json") -Raw | ConvertFrom-Json).version
+    $activated28.activeUpdaterVersion = "1.5.0"
     $activated28.plugins += [pscustomobject]@{ name = $self; finalVersion = $activeVersion28 }
     $activated28 | ConvertTo-Json -Depth 8 | Set-Content -Path (Get-StatusPath $h28) -Encoding utf8
+    $sameSessionHealth28 = @(Invoke-Hook $h28 "health") -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True ($sameSessionHealth28.activeUpdaterVersion -eq "1.5.0" -and $sameSessionHealth28.restartRequired -eq $true) "UPD-28: health keeps restartRequired while the updated package is only on disk"
+    Invoke-Hook $h28
     $activatedHealth28 = @(Invoke-Hook $h28 "health") -join [Environment]::NewLine | ConvertFrom-Json
-    Assert-True ($activatedHealth28.restartRequired -eq $false) "UPD-28: health clears restartRequired after the updated package becomes active"
+    Assert-True ($activatedHealth28.activeUpdaterVersion -eq $activeVersion28 -and $activatedHealth28.restartRequired -eq $false) "UPD-28: the next session-start pass activates the updated package and clears restartRequired"
 
     $interrupted28 = $activatedHealth28
     $interrupted28.result = "running"
@@ -1105,8 +1109,8 @@ try {
     Assert-True (Test-Path $lifecycleScript29) "UPD-29: the hermetic real-CLI lifecycle harness exists"
     Assert-True ($workflow29 -match 'python plugins/urikan-ai-marketplace-auto-updater/dev/tests/real_cli_lifecycle\.py') "UPD-29: the required cross-platform job runs the real-CLI lifecycle harness"
     Assert-True ($workflow29 -match 'npm ci --ignore-scripts --prefix plugins/urikan-ai-marketplace-auto-updater/dev/tests/real-cli') "UPD-29: CI installs the real CLIs from the committed lockfile"
-    Assert-True ($cliPackage29.dependencies.'@github/copilot' -eq "1.0.83") "UPD-29: the Copilot CLI lifecycle dependency is pinned"
-    Assert-True ($cliPackage29.dependencies.'@anthropic-ai/claude-code' -eq "2.1.251") "UPD-29: the Claude CLI lifecycle dependency is pinned"
+    Assert-True ($cliPackage29.dependencies.'@github/copilot' -eq "1.0.80") "UPD-29: the Copilot CLI lifecycle dependency is pinned"
+    Assert-True ($cliPackage29.dependencies.'@anthropic-ai/claude-code' -eq "2.1.240") "UPD-29: the Claude CLI lifecycle dependency is pinned"
 } catch { $script:failures += "UPD-29 threw: $_" }
 
 Remove-Item Function:copilot -ErrorAction SilentlyContinue

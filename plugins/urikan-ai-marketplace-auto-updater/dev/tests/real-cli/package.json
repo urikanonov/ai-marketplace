@@ -4,7 +4,7 @@
   "private": true,
   "description": "Pinned real CLIs for the hermetic updater lifecycle test.",
   "dependencies": {
-    "@anthropic-ai/claude-code": "2.1.251",
-    "@github/copilot": "1.0.83"
+    "@anthropic-ai/claude-code": "2.1.240",
+    "@github/copilot": "1.0.80"
   }
 }

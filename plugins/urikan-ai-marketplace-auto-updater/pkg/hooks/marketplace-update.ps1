@@ -501,7 +501,11 @@ function Get-HealthReport {
     }
     $lastAttempt = if ($null -ne $saved) { $saved.lastAttempt } else { $null }
     $restartRequired = if ($null -ne $saved) { [bool]$saved.restartRequired } else { $false }
-    $activeUpdaterVersion = Get-ActiveUpdaterVersion
+    $activeUpdaterVersion = if ($null -ne $saved -and $null -ne $saved.activeUpdaterVersion) {
+        [string]$saved.activeUpdaterVersion
+    } else {
+        Get-ActiveUpdaterVersion
+    }
     if ($restartRequired -and $activeUpdaterVersion -and $null -ne $saved -and $null -ne $saved.plugins) {
         $savedSelf = @($saved.plugins | Where-Object { $_.name -eq $self } | Select-Object -Last 1)
         if ($savedSelf.Count -gt 0 -and $savedSelf[0].finalVersion -eq $activeUpdaterVersion) {
