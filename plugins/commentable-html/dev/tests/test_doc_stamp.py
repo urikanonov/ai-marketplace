@@ -15,6 +15,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
+import _test_env  # noqa: E402
 sys.path.insert(0, _paths.TOOLS)
 import _io_faults  # noqa: E402
 import doc_stamp  # noqa: E402
@@ -196,7 +197,7 @@ class NewDocumentSessionStampTests(unittest.TestCase):
     or the environment), records the agent, and suppresses it with --no-session-id."""
 
     def test_stamps_session_from_flag(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
+        with _test_env.patch(clear=True):
             code, html, err = _run_new_document(
                 ["new_document.py", "--content", "-", "--key", "ss-v1", "--label", "L",
                  "--kind", "report", "--shareable", "--session-id", "flag-sess", "--agent", "claude"])
@@ -205,7 +206,7 @@ class NewDocumentSessionStampTests(unittest.TestCase):
         self.assertEqual(doc_stamp.get_meta(html, doc_stamp.AGENT_META), "claude")
 
     def test_stamps_session_from_environment_by_default(self):
-        with mock.patch.dict(os.environ, {"COPILOT_AGENT_SESSION_ID": "env-sess"}, clear=True):
+        with _test_env.patch({"COPILOT_AGENT_SESSION_ID": "env-sess"}, clear=True):
             code, html, err = _run_new_document(
                 ["new_document.py", "--content", "-", "--key", "ss-v2", "--label", "L",
                  "--kind", "report", "--shareable"])
@@ -214,7 +215,7 @@ class NewDocumentSessionStampTests(unittest.TestCase):
         self.assertEqual(doc_stamp.get_meta(html, doc_stamp.AGENT_META), "copilot")
 
     def test_no_session_id_flag_suppresses_the_stamp(self):
-        with mock.patch.dict(os.environ, {"COPILOT_AGENT_SESSION_ID": "env-sess"}, clear=True):
+        with _test_env.patch({"COPILOT_AGENT_SESSION_ID": "env-sess"}, clear=True):
             code, html, err = _run_new_document(
                 ["new_document.py", "--content", "-", "--key", "ss-v3", "--label", "L",
                  "--kind", "report", "--shareable", "--no-session-id"])
@@ -222,7 +223,7 @@ class NewDocumentSessionStampTests(unittest.TestCase):
         self.assertIsNone(doc_stamp.get_meta(html, doc_stamp.SESSION_META))
 
     def test_absent_when_no_session_id_is_available(self):
-        with mock.patch.dict(os.environ, {}, clear=True):
+        with _test_env.patch(clear=True):
             code, html, err = _run_new_document(
                 ["new_document.py", "--content", "-", "--key", "ss-v4", "--label", "L",
                  "--kind", "report", "--shareable"])

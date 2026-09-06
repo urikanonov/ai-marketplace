@@ -17,6 +17,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402
+import _test_env  # noqa: E402
 sys.path.insert(0, _paths.DEV_TOOLS)
 import shots_linux as S  # noqa: E402
 
@@ -252,10 +253,10 @@ class RendererDispatchTests(unittest.TestCase):
     def test_a_truthy_ci_env_is_what_forbids_skipping(self):
         # _in_ci() no longer picks a renderer - it only means "this is a gate that must not skip".
         for truthy in ("true", "1", "yes"):
-            with mock.patch.dict(os.environ, {"CI": truthy}, clear=False):
+            with _test_env.patch({"CI": truthy}):
                 self.assertTrue(S._in_ci(), "CI=%r is a CI runner" % truthy)
         for falsy in ("", "0", "false", "no"):
-            with mock.patch.dict(os.environ, {"CI": falsy}, clear=False):
+            with _test_env.patch({"CI": falsy}):
                 self.assertFalse(S._in_ci(), "CI=%r must not count as a CI runner" % falsy)
 
 
@@ -1493,7 +1494,7 @@ class AdoptRunDownloadTests(unittest.TestCase):
         with mock.patch.object(S.shutil, "which", return_value="/usr/bin/gh"), \
                 mock.patch.object(S, "checkout_repo", return_value="owner/name"), \
                 mock.patch.object(S, "_run", return_value=0) as run:
-            with mock.patch.dict(S.os.environ, {"GH_REPO": "someone/else"}, clear=False):
+            with _test_env.patch({"GH_REPO": "someone/else"}):
                 S.download_drift_artifact("1", "/tmp/dest")
         self.assertEqual(run.call_args[1]["cwd"], S.REPO_ROOT)
         self.assertEqual(run.call_args[1]["env"]["GH_REPO"], "owner/name")
@@ -1502,7 +1503,7 @@ class AdoptRunDownloadTests(unittest.TestCase):
         with mock.patch.object(S.shutil, "which", return_value="/usr/bin/gh"), \
                 mock.patch.object(S, "checkout_repo", return_value=None), \
                 mock.patch.object(S, "_run", return_value=0) as run:
-            with mock.patch.dict(S.os.environ, {"GH_REPO": "someone/else"}, clear=False):
+            with _test_env.patch({"GH_REPO": "someone/else"}):
                 S.download_drift_artifact("1", "/tmp/dest")
         self.assertNotIn("GH_REPO", run.call_args[1]["env"])
 

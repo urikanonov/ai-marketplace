@@ -20,6 +20,7 @@ from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 import _paths  # noqa: E402  shared pkg/dev split path constants
+import _test_env  # noqa: E402
 
 sys.path.insert(0, _paths.DEV_TOOLS)
 import skill_flow_harness as harness  # noqa: E402
@@ -41,12 +42,12 @@ class CiGuardTests(unittest.TestCase):
             self.assertFalse(harness.is_ci_environment({"CI": falsey}), falsey)
 
     def test_main_refuses_a_real_run_under_ci(self):
-        with mock.patch.dict(os.environ, {"CI": "true"}, clear=False):
+        with _test_env.patch({"CI": "true"}):
             rc = harness.main(["--flows", "create"])
         self.assertEqual(rc, 3)
 
     def test_dry_run_is_allowed_even_under_ci(self):
-        with mock.patch.dict(os.environ, {"CI": "true"}, clear=False):
+        with _test_env.patch({"CI": "true"}):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 rc = harness.main(["--dry-run"])
@@ -58,7 +59,7 @@ class CiGuardTests(unittest.TestCase):
 
     def test_run_flow_raises_and_never_spawns_under_ci(self):
         # Defense in depth: calling run_flow directly under CI must refuse before any subprocess.
-        with mock.patch.dict(os.environ, {"CI": "true"}, clear=False), \
+        with _test_env.patch({"CI": "true"}), \
                 mock.patch("subprocess.run") as spawned:
             with self.assertRaises(RuntimeError):
                 harness.run_flow(prompts.FLOWS[0], harness.scratch_root() / "should-not-exist")
