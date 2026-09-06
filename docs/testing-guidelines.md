@@ -101,7 +101,7 @@ spec-and-test rules in [../AGENTS.md](../AGENTS.md); where they overlap, AGENTS.
   `page.__external` instead of going out. Serving them locally makes a diagram render FAST rather
   than never, so a spec that MEASURES layout must also `await awaitMermaidRendered(page)` after
   `ready()` - otherwise a render lands mid-measurement and you have traded a slow race for a fast
-  one. `CMH-BUILD-30` is the guard, and it checks BOTH halves: it sweeps every `examples/*.html`
+  one. `CMH-BUILD-31` is the guard, and it checks BOTH halves: it sweeps every `examples/*.html`
   through the helper, and it fails any other spec that navigates to a shipped example without
   installing a hermetic deny-all.
 - **Never let an assertion absorb a heavy load.** A locator assertion with a fixed timeout in front

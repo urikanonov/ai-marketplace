@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { DEV, EXAMPLES, fileUrl, ready, awaitMermaidRendered, routeExampleLibsLocal } from "./helpers.js";
 
-// CMH-BUILD-30: a spec that opens a shipped example must reach NOTHING. The examples load mermaid
+// CMH-BUILD-31: a spec that opens a shipped example must reach NOTHING. The examples load mermaid
 // and Chart.js from a pinned CDN by design (CMH-SIZE-08/09), so such a spec is only hermetic if
 // every one of those requests is answered locally. That was silently untrue: the export-scoped
 // helper routes the UMD `mermaid.min.js` the Offline export downloads, while the VIEWER imports
@@ -34,8 +34,8 @@ function isUnserveableChartPin(url) {
     && /^\/npm\/chart\.js@\d+\.\d+\.\d+\/dist\/chart\.umd\.js$/.test(u.pathname);
 }
 
-test.describe("a spec that opens a shipped example reaches no network (CMH-BUILD-30)", () => {
-  test("the sweep covers every shipped example (CMH-BUILD-30)", () => {
+test.describe("a spec that opens a shipped example reaches no network (CMH-BUILD-31)", () => {
+  test("the sweep covers every shipped example (CMH-BUILD-31)", () => {
     // A directory rename or a moved build output would otherwise leave this file generating zero
     // tests, and a guard that quietly stops running is worse than no guard.
     expect(DOCS.length, "shipped examples were discovered to sweep").toBeGreaterThanOrEqual(5);
@@ -45,7 +45,7 @@ test.describe("a spec that opens a shipped example reaches no network (CMH-BUILD
   });
 
   for (const name of DOCS) {
-    test(`${name} serves its vendored libraries locally and reaches nothing (CMH-BUILD-30)`, async ({ page }) => {
+    test(`${name} serves its vendored libraries locally and reaches nothing (CMH-BUILD-31)`, async ({ page }) => {
       // The document load, every library request, mermaid's serialized renders and its render
       // audits all happen inside this one test, so it needs a real budget rather than the default.
       test.setTimeout(90000);
@@ -104,7 +104,7 @@ test.describe("a spec that opens a shipped example reaches no network (CMH-BUILD
     });
   }
 
-  test("every spec that opens a shipped example installs a hermetic deny-all (CMH-BUILD-30)", () => {
+  test("every spec that opens a shipped example installs a hermetic deny-all (CMH-BUILD-31)", () => {
     // The sweep above proves the HELPER is complete; it cannot see how OTHER specs open these same
     // documents. That gap is the actual #1305 defect, so it is checked here at the source level.
     // The check is SEGMENT-scoped, not file-scoped: a hermetic call somewhere else in the file does

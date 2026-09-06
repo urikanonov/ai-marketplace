@@ -50,7 +50,7 @@ for (const [name, file] of Object.entries(EXAMPLES)) {
         // too tight to also leave `awaitMermaidRendered` room to fail with its own message.
         test.setTimeout(90000);
         // The examples load mermaid and Chart.js from the pinned CDN (CMH-SIZE-08/09); serve both
-        // from the local copies (CMH-BUILD-30) so an overflow measurement never depends on egress
+        // from the local copies (CMH-BUILD-31) so an overflow measurement never depends on egress
         // or CDN timing. Serving them locally makes the diagrams render FAST rather than never, so
         // wait for the renders (and their audits) to finish too - otherwise a diagram can grow the
         // page in the middle of `scanOverflow` and the measurement becomes a coin flip.

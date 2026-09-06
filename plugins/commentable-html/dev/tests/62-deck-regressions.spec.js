@@ -50,7 +50,7 @@ function contrast(a, b) {
 async function openShowcaseDeck(page) {
   await installClipboardCapture(page);
   // The deck is a shipped example: it imports mermaid from the pinned CDN, so serve it (and
-  // Chart.js) locally and deny everything else (CMH-BUILD-30). This used to be opt-in, and the
+  // Chart.js) locally and deny everything else (CMH-BUILD-31). This used to be opt-in, and the
   // call sites that did not opt in fetched mermaid from jsDelivr on every run.
   await routeExampleLibsLocal(page);
   const server = await startStaticServer(EXAMPLES);

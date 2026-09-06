@@ -11,7 +11,7 @@ const METRICS = path.join(SKILL, "..", "..", "examples", "report-metrics.html");
 test.use({ viewport: { width: 380, height: 820 } });
 
 test("charts and mermaid blocks are contained in the mobile content column (CMH-RESP-01)", async ({ page }) => {
-  // A shipped example: serve its CDN libraries locally and deny the rest (CMH-BUILD-30), then wait
+  // A shipped example: serve its CDN libraries locally and deny the rest (CMH-BUILD-31), then wait
   // for the diagrams, since the wide-block assertions below measure what mermaid drew.
   await routeExampleLibsLocal(page);
   await page.goto(fileUrl(METRICS));

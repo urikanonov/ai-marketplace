@@ -12,7 +12,7 @@ const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-community-garde
 
 async function openExample(page) {
   // The example loads mermaid and Chart.js from the pinned CDN (CMH-SIZE-08/09), so serve both
-  // from the local copies (CMH-BUILD-30) - for Chart.js the bytes its `integrity` names - rather
+  // from the local copies (CMH-BUILD-31) - for Chart.js the bytes its `integrity` names - rather
   // than letting the suite depend on egress.
   await routeExampleLibsLocal(page);
   await installClipboardCapture(page);

@@ -17,7 +17,7 @@ const OFFSETS = [150, 400, 650];
 // own legitimate scroll anchoring. Wait for the document to stop moving and growing before measuring
 // anything, so a settling report is never charged to the composer.
 async function settle(page) {
-  // The diagrams are served locally (CMH-BUILD-30), so they render fast rather than never; wait for
+  // The diagrams are served locally (CMH-BUILD-31), so they render fast rather than never; wait for
   // the renders and their audits before the frame-quiescence loop, so a diagram cannot grow the
   // document after settle() returns and be charged to the composer.
   await awaitMermaidRendered(page);
@@ -37,7 +37,7 @@ async function settle(page) {
 }
 
 // The example loads Chart.js and mermaid from the pinned CDN (CMH-SIZE-08/09). Serve both from the
-// local copies (CMH-BUILD-30) - for Chart.js the bytes its `integrity` names - so neither can land
+// local copies (CMH-BUILD-31) - for Chart.js the bytes its `integrity` names - so neither can land
 // AFTER `settle()` and grow the document mid-measurement, which would be charged to the composer.
 async function openExample(page) {
   await routeExampleLibsLocal(page);

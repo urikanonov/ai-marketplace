@@ -514,7 +514,7 @@ export async function blockOfflineExportLibs(page) {
   });
 }
 
-// The standard way for a spec to open a SHIPPED EXAMPLE (CMH-BUILD-30). An example loads mermaid
+// The standard way for a spec to open a SHIPPED EXAMPLE (CMH-BUILD-31). An example loads mermaid
 // and Chart.js from a pinned CDN by design (CMH-SIZE-08/09), so hermeticity needs BOTH halves:
 // mermaid's ESM entry point and its chunks from node_modules, and the pinned Chart.js build from
 // `assets/vendor/`. The deny-all goes on FIRST so it sits at the BOTTOM of the route stack
@@ -547,7 +547,7 @@ async function serveMermaidLocal(page) {
       await route.fulfill({ body, contentType: "text/javascript", headers: { "access-control-allow-origin": "*" } });
     } catch (e) {
       // No local file answers this URL (a chunk the installed mermaid does not have, say). Aborting
-      // silently would hide exactly the drift CMH-BUILD-30 exists to catch - the request never
+      // silently would hide exactly the drift CMH-BUILD-31 exists to catch - the request never
       // reaches the recording deny-all below it, so `page.__external` would stay empty while the
       // diagram quietly failed to render. Record it first, then abort.
       if (Array.isArray(page.__external)) page.__external.push(u.href);

@@ -16,7 +16,7 @@ async function openExample(page) {
   await installClipboardCapture(page);
   // Since CMH-SIZE-09 the example loads Chart.js from the pinned CDN instead of inlining a
   // 205 KB copy, and it imports mermaid from one too, so serve both from the local copies
-  // (CMH-BUILD-30) - for Chart.js byte-identical to what the loader's `integrity` names. Without
+  // (CMH-BUILD-31) - for Chart.js byte-identical to what the loader's `integrity` names. Without
   // this the suite would silently depend on jsDelivr being reachable.
   await routeExampleLibsLocal(page);
   await page.goto(fileUrl(EXAMPLE));
