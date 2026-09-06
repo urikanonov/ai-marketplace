@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.850.1] - 2026-09-06
+
+### Changed
+
+- Removed the legacy companion-file mode from the website, tutorial, in-document Help, public
+  plugin guidance, and showcase deck. Existing companion-mode documents remain supported by the
+  runtime, validator, migration tool, and technical compatibility references.
+
 ## [1.850.0] - 2026-09-04
 
 ### Fixed

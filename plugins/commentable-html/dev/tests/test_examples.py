@@ -554,6 +554,21 @@ class DevExamplesHasNoBuiltCopiesTests(unittest.TestCase):
         built = sorted(n for n in os.listdir(src) if self.is_built_name(n))
         self.assertTrue(built, "dev/examples/src has no report/deck/prompt sources left")
 
+    def test_example_source_help_does_not_present_the_legacy_mode(self):
+        src = os.path.join(_paths.DEV, "examples", "src")
+        retired_help = "In <strong>NonShareable mode</strong>"
+        offenders = []
+        for name in sorted(os.listdir(src)):
+            if not name.endswith(".html"):
+                continue
+            with open(os.path.join(src, name), encoding="utf-8") as fh:
+                if retired_help in fh.read():
+                    offenders.append(name)
+        self.assertEqual(
+            offenders, [],
+            "example sources still present the legacy mode in Help: %s"
+            % ", ".join(offenders))
+
     def test_the_guard_consults_every_output_shape_the_build_declares(self):
         # THE pin, and the reason `build` exposes `_OUTPUT_NAME_RES` at all. Asserting on a
         # hand-written sample of names would pass just as happily against a hand-copied pattern -

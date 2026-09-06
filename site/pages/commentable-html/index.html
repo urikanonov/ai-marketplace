@@ -364,18 +364,9 @@
 
     <section id="modes">
       <div class="wrap">
-        <h2 class="section-title">Three shareability modes</h2>
-        <p class="section-sub">Same document, three ways to assemble it - pick based on whether it stays local, travels, or must work with no network. The graph in each card shows where every part comes from.</p>
+        <h2 class="section-title">Two shareability modes</h2>
+        <p class="section-sub">Same document, two ways to assemble it - pick based on whether it travels normally or must work with no network. The graph in each card shows where every part comes from.</p>
         <div class="grid">
-          <div class="card feature mode-card">
-            <h3>Non-shareable <span class="badge">legacy</span></h3>
-            <p>References shared companion assets instead of inlining them. New documents are no longer generated this way, but existing ones are opened, validated and edited exactly as before, permanently - the runtime and its companion files are kept for that reason. Migrate one to Shareable whenever you like with <code>tools/authoring/to_shareable.py</code>.</p>
-            <dl class="mode-sources" aria-label="Where each part comes from in Non-shareable mode">
-              <div class="mode-source"><dt>Styles + runtime</dt><dd><span class="src src-folder">skill folder</span></dd></div>
-              <div class="mode-source"><dt>Mermaid + charts</dt><dd><span class="src src-cdn">CDN</span></dd></div>
-              <div class="mode-source"><dt>Comments</dt><dd><span class="src src-storage">browser storage</span></dd></div>
-            </dl>
-          </div>
           <div class="card feature mode-card">
             <h3>Shareable</h3>
             <p>One self-contained file with the CSS, runtime, and comments inlined. Best when you want to share the document with a peer or keep it as a durable, long-term artifact - one click via Export as Shareable.</p>
@@ -395,7 +386,7 @@
             </dl>
           </div>
         </div>
-        <p class="modes-note"><span class="src src-cdn">CDN</span> marks the parts that load over the network. A Non-shareable or Shareable report that uses mermaid diagrams or charts therefore needs an internet connection to render them - static images and the rest of the review layer still work with no network. Export Offline to inline those diagrams and charts as snapshots and drop the network dependency entirely.</p>
+        <p class="modes-note"><span class="src src-cdn">CDN</span> marks the parts that load over the network. A Shareable report that uses mermaid diagrams or charts therefore needs an internet connection to render them - static images and the rest of the review layer still work with no network. Export Offline to inline those diagrams and charts as snapshots and drop the network dependency entirely.</p>
       </div>
     </section>
 

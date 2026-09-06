@@ -208,6 +208,10 @@ class NewFeatureDocsTests(unittest.TestCase):
         ):
             self.assertIn(snippet, text)
         self.assertEqual(text.count("data-cm-draggable"), 1)
+        self.assertNotIn("NonShareable", text)
+        self.assertNotIn("Non-shareable", text)
+        self.assertIn("Older companion-file documents remain supported", text)
+        self.assertIn("tools/authoring/to_shareable.py", text)
 
     def test_tutorial_documents_offline_export(self):
         text = _read(TUTORIAL_MD)
@@ -229,6 +233,16 @@ class NewFeatureDocsTests(unittest.TestCase):
             "reopens with the **Offline** badge",
         ):
             self.assertIn(badge_phrase, text)
+        self.assertNotIn("NonShareable", text)
+        self.assertNotIn("Non-shareable", text)
+        self.assertNotIn("references companion assets", text)
+
+    def test_plugin_readme_presents_only_current_output_modes(self):
+        text = _read(PLUGIN_README)
+        self.assertNotIn("NonShareable", text)
+        self.assertNotIn("Non-shareable", text)
+        self.assertIn("Older companion-file documents remain supported", text)
+        self.assertIn("tools/authoring/to_shareable.py", text)
 
 
 class SkillTrimDocsTests(unittest.TestCase):
@@ -748,7 +762,6 @@ class SkillToolIndexRetentionTests(unittest.TestCase):
             "--agent",
             "--no-session-id",
             "--force",
-            "to_shareable.py",
             "only recommends `report`, `plan`, or flat `slides`",
             "mismatch warning is advisory",
             "[--toc --fix-skip --inline-images --images-base DIR] --strict",
@@ -857,7 +870,6 @@ class SkillToolIndexRetentionTests(unittest.TestCase):
             "author display names",
             "reply threads",
             "markdown/print exports",
-            "nonshareable",
             "shareable",
             "offline",
         ):
