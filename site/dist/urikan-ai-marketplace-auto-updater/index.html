@@ -89,7 +89,7 @@
           <a class="btn" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater">View source</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"><img class="hero-logo" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /> Auto-updater <span class="badge version"><!-- BEGIN:version -->v1.4.2<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/urikan-ai-marketplace-auto-updater"><img class="hero-logo" src="../assets/urikan-ai-marketplace-auto-updater.svg" alt="Auto-updater logo" /> Auto-updater <span class="badge version"><!-- BEGIN:version -->v1.5.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -219,12 +219,29 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.5.0] - 2026-09-06</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Safe updater self-update after all managed plugins, with separate managed/self outcomes and an explicit restart-required signal. (UPD-22)</li>
+              <li>Atomic structured status with attempt/success timing, catalog state, normalized per-plugin outcomes, and actionable read-only health diagnostics. (UPD-23, UPD-25, UPD-28)</li>
+              <li>An independent hourly marketplace catalog refresh cadence so newly published versions are checked without waiting for the 24-hour install fallback. (UPD-24)</li>
+              <li>Cross-process update locking and bounded log rotation. (UPD-26, UPD-27)</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The bundled <code>marketplace-update</code> skill can now diagnose installation, version drift, throttle, lock, failure, and restart state in addition to updating plugins and configuring cadence.</li>
+              <li>Copilot diagnostics resolve the CLI&#x27;s platform marketplace cache, and health inspection remains read-only even when configuration is malformed.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.4.2] - 2026-07-23</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>The throttle stamp is now written only when ALL plugin updates in the pass succeed. Previously a pass where any plugin update exited non-zero or threw an exception still wrote the stamp, suppressing retries for up to 24 hours after a transient failure. (UPD-21)</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.4.1] - 2026-07-19</h3></div>
             <div class="group-label">Added</div>
@@ -232,8 +249,6 @@
               <li>The shipped plugin package now includes the MIT license text.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.4.0] - 2026-07-17</h3></div>
             <div class="group-label">Changed</div>
@@ -275,14 +290,7 @@
               <li>The Claude <code>SessionStart</code> hook could run the update twice on Windows when both Git Bash and a PowerShell were present (the bash and powershell handlers both fired). The bash handler now no-ops on Windows (<code>uname</code> MINGW/MSYS/CYGWIN), so exactly one handler runs per platform: powershell on Windows, bash+pwsh on macOS/Linux. Updates are idempotent and throttled, so this was harmless but is now clean. (UPD-15)</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.2.1] - 2026-07-15</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The plugin failed to load in Claude Code with &quot;Duplicate hooks file detected&quot; because <code>.claude-plugin/plugin.json</code> redundantly referenced <code>./hooks/hooks.json</code>, which Claude Code already auto-loads from the standard <code>hooks/hooks.json</code> location. Removed the redundant <code>hooks</code> manifest field so the plugin loads cleanly; <code>claude plugin validate --strict</code> accepted the manifest either way, so this was caught only by a real <code>claude plugin install</code>. (UPD-14)</li>
-            </ul>
-          </div>
-            <p class="changelog-more">6 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/urikan-ai-marketplace-auto-updater/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">7 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/urikan-ai-marketplace-auto-updater/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
