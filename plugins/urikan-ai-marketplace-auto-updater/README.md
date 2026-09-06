@@ -1,9 +1,10 @@
 # urikan-ai-marketplace-auto-updater
 
 An opt-in plugin for both Claude Code and the GitHub Copilot CLI that, on each session start, checks for and
-installs updates to the other plugins you have installed from the `urikan-ai-marketplace`. Install it only if
-you want automatic updates. It also ships an on-demand `marketplace-update` skill for forcing an update in
-free text (for example "update cmh").
+installs updates to plugins you have installed from the `urikan-ai-marketplace`, including a safe final
+self-update phase. Install it only if you want automatic updates. It also ships an on-demand
+`marketplace-update` skill for forcing an update, configuring cadence, and reporting updater health in
+free text (for example "update cmh" or "check updater health").
 
 ## Repository layout
 

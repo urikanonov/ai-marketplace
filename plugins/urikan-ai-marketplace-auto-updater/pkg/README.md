@@ -22,17 +22,16 @@ The plugin registers a session-start hook for each agent, both of which run the 
 
 The hook is non-blocking by design: all work is wrapped in `try/catch`, failures are logged and never
 surfaced to the session, and each plugin is updated in isolation so one failure does not stop the rest.
-Plugins are processed in name-sorted order for a deterministic log. A per-agent last-run throttle skips
-the whole pass when the previous pass for that agent ran less than the configured cadence (24 hours by
-default) ago. The plugin always excludes itself (a plugin cannot update itself while its own hook is
-running).
+Plugins are processed in name-sorted order. The updater updates itself only after every other plugin has
+been processed, then records that the agent must restart before the new hook is active. An exclusive,
+non-waiting file lock prevents overlapping passes from simultaneous session starts.
 
 ## Update cadence (persistent across updates)
 
-How often the updater runs is controlled by a `throttleHours` value: the session-start pass is skipped
-when the previous pass ran less than that many hours ago. It defaults to `24` (once a day), and you set
-your own cadence in a config file that SURVIVES plugin updates, because it lives under `plugin-data/`
-(outside the `installed-plugins/` subtree a plugin update replaces):
+The updater refreshes the marketplace catalog every `catalogCheckHours` (default `1`) and immediately
+checks installed plugins after a due successful refresh. `throttleHours` (default `24`) remains the
+fallback interval between successful install passes. Configure either value in a file that SURVIVES
+plugin updates because it lives under `plugin-data/` (outside the `installed-plugins/` subtree):
 
 - GitHub Copilot CLI: `<COPILOT_HOME or ~/.copilot>/plugin-data/urikan-ai-marketplace-auto-updater.config.json`
 - Claude Code: `<CLAUDE_CONFIG_DIR or ~/.claude>/plugin-data/urikan-ai-marketplace-auto-updater.config.json`
@@ -40,16 +39,31 @@ your own cadence in a config file that SURVIVES plugin updates, because it lives
 Write it as:
 
 ```json
-{ "throttleHours": 0 }
+{ "throttleHours": 24, "catalogCheckHours": 1 }
 ```
 
-`0` means "no throttle" - update on every session start. Use `1` for hourly, `12` for twice a day, `24`
-for daily (the default), `168` for weekly, and so on. The easiest way to set it is to just ask in free
+Both values must be numeric hours from `0` through `87600` (10 years). Boolean, negative, non-finite,
+and larger values are ignored in favor of the corresponding default.
+
+`0` means "no throttle" for that cadence. Use `1` for hourly, `12` for twice a day, `24`
+for daily, `168` for weekly, and so on. The easiest way to set it is to just ask in free
 text ("change update schedule", "update every session", "set update frequency to 12 hours"); the bundled
 `marketplace-update` skill offers a four-way choice (each session / every 1 hour / every 24 hours / a
 custom interval) and writes this file for you. A one-off override without editing the file is the
 `URIKAN_AI_MARKETPLACE_THROTTLE_HOURS` environment variable, which takes precedence for that session. Any
-invalid or unreadable value falls back to the 24h default and never blocks the hook.
+invalid or unreadable value falls back to its default and never blocks the hook.
+
+## Health
+
+Ask "check updater health" or "why did updates skip?" to use the bundled skill. It runs the hook in
+read-only `health` mode and reports installation/enabled state, active and marketplace versions,
+per-plugin versions, last attempt and success, next eligibility, throttle reason, lock state, restart
+requirement, and remediation. Health mode never runs a plugin or catalog update.
+
+If the updater changes version, restart the GitHub Copilot CLI by ending the current CLI process and
+starting a new session. In Claude Code, restart Claude Code (or use its plugin reload command when
+available). The current pass completes with the old in-memory script; the next session loads the new
+hook version.
 
 ## Prerequisite on macOS and Linux: PowerShell 7 (`pwsh`)
 
@@ -63,9 +77,10 @@ its per-agent log so the skip is discoverable rather than silent. On Windows no 
 
 ## Logs
 
-Each pass, skip, and failure is logged per agent, and a completed pass is stamped beside the log:
+Each pass writes normalized per-plugin outcomes to an atomic JSON status file and appends a concise log.
+CLI output is not persisted. Logs rotate at 256 KiB and retain three archives:
 
 - GitHub Copilot CLI: `<COPILOT_HOME or ~/.copilot>/plugin-data/urikan-ai-marketplace-auto-updater.log`
-  (stamp: `urikan-ai-marketplace-auto-updater.last-run`).
+  (status: `urikan-ai-marketplace-auto-updater.status.json`).
 - Claude Code: `<CLAUDE_CONFIG_DIR or ~/.claude>/plugin-data/urikan-ai-marketplace-auto-updater.log`
-  (stamp: `urikan-ai-marketplace-auto-updater.claude.last-run`).
+  (status: `urikan-ai-marketplace-auto-updater.status.json`).

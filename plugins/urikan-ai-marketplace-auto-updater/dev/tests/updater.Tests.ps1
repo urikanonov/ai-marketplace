@@ -13,6 +13,7 @@ $hooksJson = Join-Path $pkgRoot "hooks.json"
 $repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $pkgRoot))
 $marketplace = "urikan-ai-marketplace"
 $self = "urikan-ai-marketplace-auto-updater"
+$isWindowsPlatform = [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
 
 $script:failures = @()
 $script:passes = 0
@@ -25,34 +26,64 @@ function New-Sandbox([string[]]$plugins, [switch]$IncludeSelf) {
     $root = Join-Path ([IO.Path]::GetTempPath()) ("upd-" + [Guid]::NewGuid().ToString("N"))
     $installed = Join-Path (Join-Path $root "installed-plugins") $marketplace
     New-Item -ItemType Directory -Force -Path $installed | Out-Null
-    foreach ($p in $plugins) { New-Item -ItemType Directory -Force -Path (Join-Path $installed $p) | Out-Null }
-    if ($IncludeSelf) { New-Item -ItemType Directory -Force -Path (Join-Path $installed $self) | Out-Null }
+    foreach ($p in $plugins) {
+        $pluginRoot = Join-Path $installed $p
+        New-Item -ItemType Directory -Force -Path $pluginRoot | Out-Null
+        @{ name = $p; version = "1.0.0" } | ConvertTo-Json |
+            Set-Content -Path (Join-Path $pluginRoot "plugin.json") -Encoding utf8
+    }
+    if ($IncludeSelf) {
+        $selfRoot = Join-Path $installed $self
+        New-Item -ItemType Directory -Force -Path $selfRoot | Out-Null
+        @{ name = $self; version = "1.0.0" } | ConvertTo-Json |
+            Set-Content -Path (Join-Path $selfRoot "plugin.json") -Encoding utf8
+    }
     return $root
 }
 
 function Reset-Mock {
     $global:CopilotCalls = @()
+    $global:CopilotCatalogCalls = @()
     $global:CopilotFailFor = $null
+    $global:CopilotCatalogFails = $false
+    $global:CopilotSelfUpdateVersion = $null
+    $global:ObservedRunningStatus = $null
     Set-Item -Path Function:global:copilot -Value {
-        $global:CopilotCalls += , ([string]::Join(" ", $args))
+        $call = [string]::Join(" ", $args)
+        if ($call -like "plugin marketplace update *") {
+            $global:CopilotCatalogCalls += , $call
+            $global:LASTEXITCODE = if ($global:CopilotCatalogFails) { 1 } else { 0 }
+            Write-Output $(if ($global:CopilotCatalogFails) { "catalog failed" } else { "catalog updated" })
+            return
+        }
+        $global:CopilotCalls += , $call
+        $statusPath = Join-Path (Join-Path $env:COPILOT_HOME "plugin-data") "urikan-ai-marketplace-auto-updater.status.json"
+        if (Test-Path $statusPath) {
+            $global:ObservedRunningStatus = (Get-Content -Path $statusPath -Raw | ConvertFrom-Json).result
+        }
         $target = ($args | Select-Object -Last 1)
         if ($global:CopilotFailFor -and $target -like "*$($global:CopilotFailFor)@*") {
             $global:LASTEXITCODE = 1
             Write-Output "simulated failure for $target"
         } else {
             $global:LASTEXITCODE = 0
+            if ($global:CopilotSelfUpdateVersion -and $target -like "urikan-ai-marketplace-auto-updater@*") {
+                $manifest = Join-Path (Join-Path (Join-Path (Join-Path $env:COPILOT_HOME "installed-plugins") "urikan-ai-marketplace") "urikan-ai-marketplace-auto-updater") "plugin.json"
+                @{ name = "urikan-ai-marketplace-auto-updater"; version = $global:CopilotSelfUpdateVersion } |
+                    ConvertTo-Json | Set-Content -Path $manifest -Encoding utf8
+            }
             Write-Output "updated $target"
         }
     }
 }
 
-function Invoke-Hook([string]$copilotHome) {
+function Invoke-Hook([string]$copilotHome, [string]$mode = "update") {
     $savedPath = $env:PATH
     $savedHome = $env:COPILOT_HOME
     try {
         $env:PATH = ""              # keep the stub function authoritative; never hit a real copilot on PATH
         $env:COPILOT_HOME = $copilotHome
-        & $hookScript
+        & $hookScript -Mode $mode
     } finally {
         $env:PATH = $savedPath
         if ($null -eq $savedHome) { Remove-Item Env:COPILOT_HOME -ErrorAction SilentlyContinue } else { $env:COPILOT_HOME = $savedHome }
@@ -68,6 +99,19 @@ function Get-Throttle([string]$copilotHome) {
     return Join-Path (Join-Path $copilotHome "plugin-data") "$self.last-run"
 }
 
+function Get-CatalogStamp([string]$copilotHome, [string]$agent = "copilot") {
+    $suffix = if ($agent -eq "claude") { ".claude" } else { "" }
+    return Join-Path (Join-Path $copilotHome "plugin-data") "$self$suffix.last-catalog-check"
+}
+
+function Get-StatusPath([string]$copilotHome) {
+    return Join-Path (Join-Path $copilotHome "plugin-data") "$self.status.json"
+}
+
+function Get-LockPath([string]$copilotHome) {
+    return Join-Path (Join-Path $copilotHome "plugin-data") "$self.lock"
+}
+
 function Set-Config([string]$copilotHome, $config) {
     $pd = Join-Path $copilotHome "plugin-data"
     New-Item -ItemType Directory -Force -Path $pd | Out-Null
@@ -76,8 +120,22 @@ function Set-Config([string]$copilotHome, $config) {
     else { ($config | ConvertTo-Json) | Set-Content -Path $path -Encoding utf8 }
 }
 
+function Set-CatalogPluginVersion([string]$copilotHome, [string]$plugin, [string]$version) {
+    $root = Join-Path (Join-Path (Join-Path $copilotHome "plugins") $marketplace) $plugin
+    New-Item -ItemType Directory -Force -Path $root | Out-Null
+    @{ name = $plugin; version = $version } | ConvertTo-Json |
+        Set-Content -Path (Join-Path $root "plugin.json") -Encoding utf8
+}
+
 function Set-Stamp([string]$copilotHome, [double]$hoursAgo) {
     $stamp = Get-Throttle $copilotHome
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stamp) | Out-Null
+    ([datetimeoffset]::Now.AddHours(-$hoursAgo)).ToString("o") | Set-Content -Path $stamp -Encoding utf8
+    Set-CatalogStamp $copilotHome $hoursAgo
+}
+
+function Set-CatalogStamp([string]$configHome, [double]$hoursAgo, [string]$agent = "copilot") {
+    $stamp = Get-CatalogStamp $configHome $agent
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stamp) | Out-Null
     ([datetimeoffset]::Now.AddHours(-$hoursAgo)).ToString("o") | Set-Content -Path $stamp -Encoding utf8
 }
@@ -92,22 +150,37 @@ function New-ClaudeSandbox([hashtable]$enabledPlugins) {
     return $root
 }
 
+function Set-ClaudeCacheVersion([string]$claudeHome, [string]$plugin, [string]$version) {
+    $root = Join-Path (Join-Path (Join-Path (Join-Path (Join-Path $claudeHome "plugins") "cache") $marketplace) $plugin) $version
+    New-Item -ItemType Directory -Force -Path (Join-Path $root ".claude-plugin") | Out-Null
+    @{ name = $plugin; version = $version } | ConvertTo-Json |
+        Set-Content -Path (Join-Path (Join-Path $root ".claude-plugin") "plugin.json") -Encoding utf8
+}
+
 function Reset-ClaudeMock {
     $global:ClaudeCalls = @()
+    $global:ClaudeCatalogCalls = @()
     Set-Item -Path Function:global:claude -Value {
-        $global:ClaudeCalls += , ([string]::Join(" ", $args))
+        $call = [string]::Join(" ", $args)
+        if ($call -like "plugin marketplace update *") {
+            $global:ClaudeCatalogCalls += , $call
+            $global:LASTEXITCODE = 0
+            Write-Output "catalog updated"
+            return
+        }
+        $global:ClaudeCalls += , $call
         $global:LASTEXITCODE = 0
         Write-Output ("updated " + ($args | Select-Object -Last 1))
     }
 }
 
-function Invoke-ClaudeHook([string]$claudeHome) {
+function Invoke-ClaudeHook([string]$claudeHome, [string]$mode = "update") {
     $savedPath = $env:PATH
     $savedHome = $env:CLAUDE_CONFIG_DIR
     try {
         $env:PATH = ""
         $env:CLAUDE_CONFIG_DIR = $claudeHome
-        & $hookScript -Agent claude
+        & $hookScript -Agent claude -Mode $mode
     } finally {
         $env:PATH = $savedPath
         if ($null -eq $savedHome) { Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue } else { $env:CLAUDE_CONFIG_DIR = $savedHome }
@@ -128,7 +201,7 @@ function Get-ClaudeLog([string]$claudeHome) {
 # a plain `Get-Command bash` can resolve to WSL's bash.exe instead, which is a different OS layer
 # with different path semantics and would not represent the real invocation.
 function Get-FunctionalBashExe {
-    if ($IsWindows) {
+    if ($isWindowsPlatform) {
         $gitBash = "C:\Program Files\Git\bin\bash.exe"
         if (Test-Path $gitBash) { return $gitBash }
         return $null
@@ -145,7 +218,7 @@ function Get-FunctionalBashExe {
 function New-StubCli([string]$root, [string]$name, [string]$logPath) {
     $bin = Join-Path $root "bin"
     New-Item -ItemType Directory -Force -Path $bin | Out-Null
-    if ($IsWindows) {
+    if ($isWindowsPlatform) {
         $path = Join-Path $bin "$name.cmd"
         @"
 @echo off
@@ -172,7 +245,7 @@ exit 0
 function Resolve-NativeUtilPath([string]$bashExe, [string]$name) {
     $posix = ((& $bashExe "-c" "command -v $name 2>/dev/null") -join "").Trim()
     if (-not $posix) { return $null }
-    if ($IsWindows) {
+    if ($isWindowsPlatform) {
         $native = ((& $bashExe "-c" "cygpath -w -- '$posix' 2>/dev/null") -join "").Trim()
         if ($native -and (Test-Path -LiteralPath $native -PathType Leaf)) { return $native }
         return $null
@@ -191,7 +264,7 @@ function New-PwshFreeUtilBin([string]$root, [string]$bashExe) {
     foreach ($name in @("mkdir", "date", "printf", "cat")) {
         $native = Resolve-NativeUtilPath $bashExe $name
         if ($native) {
-            $destName = if ($IsWindows) { Split-Path -Leaf $native } else { $name }
+            $destName = if ($isWindowsPlatform) { Split-Path -Leaf $native } else { $name }
             Copy-Item -LiteralPath $native -Destination (Join-Path $dir $destName) -Force -ErrorAction SilentlyContinue
         }
     }
@@ -204,7 +277,7 @@ function New-PwshFreeUtilBin([string]$root, [string]$bashExe) {
 # regex-extracting the else branch's text and running only that in isolation.
 function Remove-PwshFromPath([string]$path) {
     $sep = [IO.Path]::PathSeparator
-    $pwshNames = if ($IsWindows) { @("pwsh.exe", "pwsh.cmd", "pwsh.bat") } else { @("pwsh") }
+    $pwshNames = if ($isWindowsPlatform) { @("pwsh.exe", "pwsh.cmd", "pwsh.bat") } else { @("pwsh") }
     $dirs = ($path -split [regex]::Escape($sep)) | Where-Object { $_ }
     $kept = $dirs | Where-Object {
         $dir = $_
@@ -213,13 +286,27 @@ function Remove-PwshFromPath([string]$path) {
     return ($kept -join $sep)
 }
 
-Write-Host "== UPD-01 self-exclusion =="
+function Invoke-FunctionalBashCommand([string]$bashExe, [string]$command) {
+    $saved = $env:UPDATER_TEST_COMMAND
+    try {
+        $env:UPDATER_TEST_COMMAND = $command
+        & $bashExe "-c" 'eval "$UPDATER_TEST_COMMAND"'
+    } finally {
+        if ($null -eq $saved) {
+            Remove-Item Env:UPDATER_TEST_COMMAND -ErrorAction SilentlyContinue
+        } else {
+            $env:UPDATER_TEST_COMMAND = $saved
+        }
+    }
+}
+
+Write-Host "== UPD-01 managed-plugin enumeration keeps self out of the managed phase =="
 try {
     Reset-Mock
     $home1 = New-Sandbox -plugins @("alpha") -IncludeSelf
     Invoke-Hook $home1
     Assert-True (($global:CopilotCalls -join "|") -like "*alpha@$marketplace*") "UPD-01: alpha should be updated"
-    Assert-True (-not (($global:CopilotCalls -join "|") -like "*$self@*")) "UPD-01: self must not be updated"
+    Assert-True ($global:CopilotCalls[0] -like "*alpha@$marketplace*") "UPD-01: self must not enter the managed-plugin phase"
     Remove-Item -Recurse -Force $home1
 } catch { $script:failures += "UPD-01 threw: $_" }
 
@@ -291,7 +378,7 @@ try {
     # runs it from the plugin root) under real Windows PowerShell 5.1, against a sandbox
     # COPILOT_HOME with one installed plugin and a stubbed `copilot` CLI. This proves the real
     # quoting, -File path resolution, and end-to-end behavior, not just the command text.
-    if ($IsWindows -and (Get-Command powershell -ErrorAction SilentlyContinue)) {
+    if ($isWindowsPlatform -and (Get-Command powershell -ErrorAction SilentlyContinue)) {
         $home6 = Join-Path ([IO.Path]::GetTempPath()) ("upd06-" + [Guid]::NewGuid().ToString("N"))
         New-Item -ItemType Directory -Force -Path (Join-Path (Join-Path $home6 "installed-plugins") "$marketplace\alpha") | Out-Null
         $stubLog6 = Join-Path $home6 "stub-calls.log"
@@ -340,7 +427,7 @@ try {
             $probe7 = ((& $bashExe "-c" "command -v pwsh 2>/dev/null") -join "").Trim()
             Assert-True ([string]::IsNullOrEmpty($probe7)) "UPD-07: sandbox PATH genuinely lacks pwsh (precondition for the missing-pwsh branch)"
             $env:COPILOT_HOME = $home7
-            & $bashExe "-c" $bash | Out-Null
+            Invoke-FunctionalBashCommand $bashExe $bash | Out-Null
         } finally {
             $env:PATH = $savedPath7
             if ($null -eq $prev) { Remove-Item Env:COPILOT_HOME -ErrorAction SilentlyContinue } else { $env:COPILOT_HOME = $prev }
@@ -360,6 +447,7 @@ try {
     $stamp = Get-Throttle $home8
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stamp) | Out-Null
     ([datetimeoffset]::Now).ToString("o") | Set-Content -Path $stamp -Encoding utf8
+    Set-CatalogStamp $home8 0
     Invoke-Hook $home8
     Assert-True ($global:CopilotCalls.Count -eq 0) "UPD-08: recent stamp throttles the whole pass"
     Assert-True ((Get-Log $home8) -like "*skipping auto-update*") "UPD-08: throttle is logged"
@@ -379,19 +467,20 @@ try {
     Reset-Mock
     $home8c = New-Sandbox -plugins @("alpha")
     Set-Stamp $home8c 22
+    Set-CatalogStamp $home8c 0
     Invoke-Hook $home8c
     Assert-True ($global:CopilotCalls.Count -eq 0) "UPD-08: the default cadence is 24h (a 22h-old pass is throttled)"
     Remove-Item -Recurse -Force $home8, $home8b, $home8c
 } catch { $script:failures += "UPD-08 threw: $_" }
 
-Write-Host "== UPD-09 Claude enumerates enabledPlugins and excludes self =="
+Write-Host "== UPD-09 Claude enumerates enabledPlugins and keeps self for the final phase =="
 try {
     Reset-ClaudeMock
     $c9 = New-ClaudeSandbox @{ "commentable-html@$marketplace" = $true; "$self@$marketplace" = $true }
     Invoke-ClaudeHook $c9
     Assert-True (($global:ClaudeCalls -join "|") -like "*commentable-html@$marketplace*") "UPD-09: commentable-html updated under Claude"
-    Assert-True (-not (($global:ClaudeCalls -join "|") -like "*$self@*")) "UPD-09: self excluded under Claude"
-    Assert-True ($global:ClaudeCalls.Count -eq 1) "UPD-09: exactly one Claude update (self skipped)"
+    Assert-True ($global:ClaudeCalls[-1] -like "*$self@$marketplace*") "UPD-09: self is retained for the final Claude update phase"
+    Assert-True ($global:ClaudeCalls.Count -eq 2) "UPD-09: Claude updates the managed plugin and then the updater"
     Remove-Item -Recurse -Force $c9
 } catch { $script:failures += "UPD-09 threw: $_" }
 
@@ -438,6 +527,7 @@ try {
     $stamp = Join-Path (Join-Path $c13 "plugin-data") "$self.claude.last-run"
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $stamp) | Out-Null
     ([datetimeoffset]::Now).ToString("o") | Set-Content -Path $stamp -Encoding utf8
+    Set-CatalogStamp $c13 0 "claude"
     Invoke-ClaudeHook $c13
     Assert-True ($global:ClaudeCalls.Count -eq 0) "UPD-13: recent Claude stamp throttles the pass"
     Assert-True ((Get-ClaudeLog $c13) -like "*skipping auto-update*") "UPD-13: Claude throttle is logged"
@@ -503,7 +593,7 @@ try {
             $env:PATH = "$bin15$([IO.Path]::PathSeparator)$savedPath15"
             $env:CLAUDE_PLUGIN_ROOT = $pkgRoot
             $env:CLAUDE_CONFIG_DIR = $home15
-            & $bashExe15 "-c" $h.command | Out-Null
+            Invoke-FunctionalBashCommand $bashExe15 $h.command | Out-Null
             Assert-True ($LASTEXITCODE -eq 0) "UPD-15: the real dispatcher command exits cleanly"
         } finally {
             $env:PATH = $savedPath15
@@ -547,6 +637,7 @@ try {
     $h17b = New-Sandbox -plugins @("alpha")
     Set-Config $h17b @{ throttleHours = 100 }
     Set-Stamp $h17b 48
+    Set-CatalogStamp $h17b 0.1
     Invoke-Hook $h17b
     Assert-True ($global:CopilotCalls.Count -eq 0) "UPD-17: a custom throttleHours=100 throttles a 48h-old stamp"
     Assert-True ((Get-Log $h17b) -like "*skipping auto-update*") "UPD-17: the custom-throttle skip is logged"
@@ -565,6 +656,38 @@ try {
     }
     Assert-True ($global:CopilotCalls.Count -eq 1) "UPD-17: the env override beats the config file"
 
+    Reset-Mock
+    $h17e = New-Sandbox -plugins @("alpha")
+    Set-Stamp $h17e 0.1
+    $savedInfiniteEnv = $env:URIKAN_AI_MARKETPLACE_THROTTLE_HOURS
+    try {
+        $env:URIKAN_AI_MARKETPLACE_THROTTLE_HOURS = "Infinity"
+        Invoke-Hook $h17e
+    } finally {
+        if ($null -eq $savedInfiniteEnv) { Remove-Item Env:URIKAN_AI_MARKETPLACE_THROTTLE_HOURS -ErrorAction SilentlyContinue } else { $env:URIKAN_AI_MARKETPLACE_THROTTLE_HOURS = $savedInfiniteEnv }
+    }
+    $status17e = Get-Content -Path (Get-StatusPath $h17e) -Raw | ConvertFrom-Json
+    Assert-True ($status17e.result -eq "throttled") "UPD-17: non-finite cadence is rejected and falls back to the default"
+    Assert-True ((Get-Log $h17e) -like "*ignoring invalid URIKAN_AI_MARKETPLACE_THROTTLE_HOURS*") "UPD-17: rejected non-finite cadence is logged"
+
+    Reset-Mock
+    $h17f = New-Sandbox -plugins @("alpha")
+    Set-Config $h17f @{ throttleHours = $true }
+    Set-Stamp $h17f 2
+    Set-CatalogStamp $h17f 0.1
+    Invoke-Hook $h17f
+    $status17f = Get-Content -Path (Get-StatusPath $h17f) -Raw | ConvertFrom-Json
+    Assert-True ($status17f.result -eq "throttled") "UPD-17: Boolean cadence is rejected instead of being coerced to one hour"
+
+    Reset-Mock
+    $h17g = New-Sandbox -plugins @("alpha")
+    Set-Config $h17g @{ throttleHours = 1e300 }
+    Set-Stamp $h17g 2
+    Set-CatalogStamp $h17g 0.1
+    Invoke-Hook $h17g
+    $status17g = Get-Content -Path (Get-StatusPath $h17g) -Raw | ConvertFrom-Json
+    Assert-True ($status17g.result -eq "throttled") "UPD-17: cadence that can overflow date arithmetic is rejected"
+
     # A corrupt config never breaks the hook; it falls back to the 20h default.
     Reset-Mock
     $h17d = New-Sandbox -plugins @("alpha")
@@ -573,7 +696,7 @@ try {
     Invoke-Hook $h17d
     Assert-True ($global:CopilotCalls.Count -eq 1) "UPD-17: a corrupt config falls back to the default and still runs a due pass"
 
-    Remove-Item -Recurse -Force $h17a, $h17b, $h17c, $h17d
+    Remove-Item -Recurse -Force $h17a, $h17b, $h17c, $h17d, $h17e, $h17f, $h17g
 } catch { $script:failures += "UPD-17 threw: $_" }
 
 Write-Host "== UPD-18 the skill can set the cadence in free text =="
@@ -646,6 +769,251 @@ try {
     Assert-True (Test-Path (Get-Throttle $h21b)) "UPD-21: throttle stamp IS written after an all-success pass"
     Remove-Item -Recurse -Force $h21b
 } catch { $script:failures += "UPD-21 threw: $_" }
+
+Write-Host "== UPD-22 updater self-update runs last and records restart state =="
+try {
+    Reset-Mock
+    $global:CopilotSelfUpdateVersion = "2.0.0"
+    $h22 = New-Sandbox -plugins @("alpha", "beta") -IncludeSelf
+    Invoke-Hook $h22
+    $targets22 = $global:CopilotCalls | ForEach-Object { ($_ -split " ")[-1] }
+    Assert-True (($targets22 -join ",") -eq "alpha@$marketplace,beta@$marketplace,$self@$marketplace") "UPD-22: self-update runs once after every managed plugin"
+    $status22 = Get-Content -Path (Get-StatusPath $h22) -Raw | ConvertFrom-Json
+    Assert-True ($status22.restartRequired -eq $true) "UPD-22: a successful self-update records restartRequired"
+    Assert-True ($status22.plugins[-1].name -eq $self) "UPD-22: the final structured outcome belongs to the updater"
+    Remove-Item -Recurse -Force $h22
+
+    Reset-Mock
+    $global:CopilotFailFor = $self
+    $h22b = New-Sandbox -plugins @("alpha") -IncludeSelf
+    Invoke-Hook $h22b
+    $status22b = Get-Content -Path (Get-StatusPath $h22b) -Raw | ConvertFrom-Json
+    Assert-True ($status22b.managedResult -eq "success") "UPD-22: managed-plugin success is preserved when self-update fails"
+    Assert-True ($status22b.selfUpdateResult -eq "failed") "UPD-22: self-update failure is recorded separately"
+    Remove-Item -Recurse -Force $h22b
+} catch { $script:failures += "UPD-22 threw: $_" }
+
+Write-Host "== UPD-23 structured status is atomic and tracks attempts separately from success =="
+try {
+    Reset-Mock
+    $h23 = New-Sandbox -plugins @("alpha", "beta")
+    Invoke-Hook $h23
+    $firstStatus23 = Get-Content -Path (Get-StatusPath $h23) -Raw | ConvertFrom-Json
+    $firstSuccess23 = $firstStatus23.lastSuccess
+    Set-Config $h23 @{ throttleHours = 0; catalogCheckHours = 1 }
+    Reset-Mock
+    $global:CopilotFailFor = "beta"
+    Invoke-Hook $h23
+    $statusPath23 = Get-StatusPath $h23
+    $status23 = Get-Content -Path $statusPath23 -Raw | ConvertFrom-Json
+    Assert-True ($status23.schemaVersion -eq 1) "UPD-23: status declares schemaVersion 1"
+    Assert-True (-not [string]::IsNullOrWhiteSpace($status23.lastAttempt)) "UPD-23: status records lastAttempt"
+    Assert-True ($global:ObservedRunningStatus -eq "running") "UPD-23: the running attempt is persisted before an external plugin operation"
+    Assert-True ($status23.lastSuccess -eq $firstSuccess23) "UPD-23: failed pass preserves rather than advances lastSuccess"
+    Assert-True ($status23.result -eq "partial") "UPD-23: mixed outcomes produce a partial result (got $($status23.result))"
+    Assert-True (-not (Test-Path "$statusPath23.tmp")) "UPD-23: no fixed temporary status file remains after atomic replacement"
+    Get-Content -Path $statusPath23 -Raw | ConvertFrom-Json | Out-Null
+    Remove-Item -Recurse -Force $h23
+
+    Reset-Mock
+    $h23b = New-Sandbox -plugins @("alpha") -IncludeSelf
+    Invoke-Hook $h23b
+    $previousSuccess23b = (Get-Content -Path (Get-StatusPath $h23b) -Raw | ConvertFrom-Json).lastSuccess
+    $throttle23b = Get-Throttle $h23b
+    Remove-Item -Path $throttle23b -Force
+    New-Item -ItemType Directory -Path $throttle23b | Out-Null
+    Set-Config $h23b @{ throttleHours = 0; catalogCheckHours = 1 }
+    Reset-Mock
+    $global:CopilotSelfUpdateVersion = "2.0.0"
+    Invoke-Hook $h23b
+    $status23b = Get-Content -Path (Get-StatusPath $h23b) -Raw | ConvertFrom-Json
+    Assert-True ($status23b.result -eq "failed") "UPD-23: an uncaught pass failure records a failed result (got $($status23b.result))"
+    Assert-True ($status23b.lastSuccess -eq $previousSuccess23b) "UPD-23: outer failure handling preserves the previous lastSuccess (got $($status23b.lastSuccess))"
+    Assert-True (@($status23b.plugins).Count -eq 2) "UPD-23: outer failure handling preserves accumulated plugin outcomes"
+    Assert-True ($status23b.managedResult -eq "success" -and $status23b.selfUpdateResult -eq "updated") "UPD-23: outer failure handling preserves managed and self-update results"
+    Assert-True ($status23b.restartRequired -eq $true) "UPD-23: outer failure handling preserves a completed self-update restart requirement"
+    Assert-True ($null -ne $status23b.catalog) "UPD-23: outer failure handling preserves the catalog snapshot"
+    Remove-Item -Recurse -Force $h23b
+} catch { $script:failures += "UPD-23 threw: $_" }
+
+Write-Host "== UPD-24 catalog checks use an independent one-hour cadence and bypass install throttle =="
+try {
+    Reset-Mock
+    $h24 = New-Sandbox -plugins @("alpha")
+    Set-CatalogPluginVersion $h24 "alpha" "2.0.0"
+    Set-Config $h24 @{ throttleHours = 24; catalogCheckHours = 1 }
+    Set-Stamp $h24 0.1
+    Set-CatalogStamp $h24 2
+    Invoke-Hook $h24
+    Assert-True ($global:CopilotCatalogCalls.Count -eq 1) "UPD-24: a due catalog refresh runs independently of the install throttle"
+    Assert-True ($global:CopilotCalls.Count -eq 1) "UPD-24: a successful due catalog refresh processes plugin updates immediately"
+    $status24 = Get-Content -Path (Get-StatusPath $h24) -Raw | ConvertFrom-Json
+    Assert-True ($status24.catalog.checkHours -eq 1) "UPD-24: status records the configured catalog-check cadence"
+    Assert-True (-not [string]::IsNullOrWhiteSpace($status24.catalog.lastChecked)) "UPD-24: status records the successful catalog refresh"
+    Assert-True (-not [string]::IsNullOrWhiteSpace($status24.catalog.revision)) "UPD-24: status records a deterministic catalog revision"
+    Assert-True ($status24.plugins[0].targetVersion -eq "2.0.0") "UPD-24: plugin outcomes report the current marketplace target version"
+    Remove-Item -Recurse -Force $h24
+
+    Reset-Mock
+    $h24b = New-Sandbox -plugins @("alpha")
+    Set-Config $h24b @{ throttleHours = 24; catalogCheckHours = 1 }
+    Set-Stamp $h24b 0.1
+    Set-CatalogStamp $h24b 2
+    $global:CopilotFailFor = "alpha"
+    Invoke-Hook $h24b
+    $failedStatus24b = Get-Content -Path (Get-StatusPath $h24b) -Raw | ConvertFrom-Json
+    $retryAt24b = [datetimeoffset]::Parse($failedStatus24b.nextEligiblePass)
+    Assert-True ($retryAt24b -le [datetimeoffset]::Now.AddMinutes(1)) "UPD-24: failed pass reports immediate next-session eligibility"
+    Reset-Mock
+    Invoke-Hook $h24b
+    Assert-True ($global:CopilotCatalogCalls.Count -eq 0) "UPD-24: retry does not need another catalog refresh"
+    Assert-True ($global:CopilotCalls.Count -eq 1) "UPD-24: a failed catalog-triggered pass retries on the next session despite both cadences"
+    Remove-Item -Recurse -Force $h24b
+
+    Reset-Mock
+    $global:CopilotCatalogFails = $true
+    $h24c = New-Sandbox -plugins @("alpha")
+    Set-Stamp $h24c 0.1
+    Remove-Item -Path (Get-CatalogStamp $h24c) -Force
+    Invoke-Hook $h24c
+    $failedCatalogStatus24c = Get-Content -Path (Get-StatusPath $h24c) -Raw | ConvertFrom-Json
+    Assert-True ($failedCatalogStatus24c.result -eq "failed") "UPD-24: failed catalog refresh is recorded when install checks are throttled"
+    Assert-True ([datetimeoffset]::Parse($failedCatalogStatus24c.nextEligiblePass) -le [datetimeoffset]::Now.AddMinutes(1)) "UPD-24: failed catalog refresh reports immediate eligibility"
+    Remove-Item -Recurse -Force $h24c
+} catch { $script:failures += "UPD-24 threw: $_" }
+
+Write-Host "== UPD-25 every plugin has a normalized structured outcome =="
+try {
+    Reset-Mock
+    $global:CopilotFailFor = "beta"
+    $h25 = New-Sandbox -plugins @("alpha", "beta")
+    Invoke-Hook $h25
+    $status25 = Get-Content -Path (Get-StatusPath $h25) -Raw | ConvertFrom-Json
+    Assert-True (@($status25.plugins).Count -eq 2) "UPD-25: status contains one outcome per managed plugin"
+    $alpha25 = @($status25.plugins | Where-Object { $_.name -eq "alpha" })[0]
+    $beta25 = @($status25.plugins | Where-Object { $_.name -eq "beta" })[0]
+    Assert-True ($alpha25.result -in @("updated", "already-current", "completed")) "UPD-25: successful plugin has a normalized success outcome"
+    Assert-True ($beta25.result -eq "failed" -and $beta25.errorCategory -eq "cli-exit") "UPD-25: failed plugin has a normalized error category"
+    Assert-True ($alpha25.durationMs -ge 0 -and $beta25.durationMs -ge 0) "UPD-25: every plugin outcome records duration"
+    Remove-Item -Recurse -Force $h25
+} catch { $script:failures += "UPD-25 threw: $_" }
+
+Write-Host "== UPD-26 an exclusive cross-process lock prevents overlapping passes =="
+try {
+    Reset-Mock
+    $h26 = New-Sandbox -plugins @("alpha")
+    $lockPath26 = Get-LockPath $h26
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $lockPath26) | Out-Null
+    $held26 = [IO.File]::Open($lockPath26, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    try { Invoke-Hook $h26 } finally { $held26.Dispose() }
+    Assert-True ($global:CopilotCalls.Count -eq 0) "UPD-26: a second pass performs no plugin updates while the lock is held"
+    Assert-True ((Get-Log $h26) -like "*another pass is running*") "UPD-26: lock contention is logged with an explicit outcome"
+    Remove-Item -Recurse -Force $h26
+} catch { $script:failures += "UPD-26 threw: $_" }
+
+Write-Host "== UPD-27 updater logs rotate at a bounded size =="
+try {
+    Reset-Mock
+    $h27 = New-Sandbox -plugins @("alpha")
+    $logPath27 = Join-Path (Join-Path $h27 "plugin-data") "$self.log"
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $logPath27) | Out-Null
+    [IO.File]::WriteAllText($logPath27, ("x" * 300000))
+    Invoke-Hook $h27
+    Assert-True (Test-Path "$logPath27.1") "UPD-27: oversized current log is rotated to .1"
+    Assert-True ((Get-Item $logPath27).Length -lt 300000) "UPD-27: a fresh bounded current log is created"
+    Assert-True (-not (Test-Path "$logPath27.4")) "UPD-27: rotation retains no more than three archives"
+    Remove-Item -Recurse -Force $h27
+} catch { $script:failures += "UPD-27 threw: $_" }
+
+Write-Host "== UPD-28 health mode explains state without updating plugins =="
+try {
+    Reset-Mock
+    $h28 = New-Sandbox -plugins @("alpha") -IncludeSelf
+    Invoke-Hook $h28
+    Reset-Mock
+    $health28 = @(Invoke-Hook $h28 "health") -join [Environment]::NewLine
+    $healthJson28 = $health28 | ConvertFrom-Json
+    Assert-True ($global:CopilotCalls.Count -eq 0 -and $global:CopilotCatalogCalls.Count -eq 0) "UPD-28: health mode performs no CLI update operations"
+    Assert-True ($healthJson28.agent -eq "copilot") "UPD-28: health output identifies the current agent"
+    Assert-True (-not [string]::IsNullOrWhiteSpace($healthJson28.activeUpdaterVersion)) "UPD-28: health output reports the active updater version"
+    Assert-True ($null -ne $healthJson28.plugins) "UPD-28: health output reports managed plugin state"
+    Assert-True ($null -ne $healthJson28.lastAttempt -and $null -ne $healthJson28.nextEligiblePass) "UPD-28: health output reports attempt and eligibility timing"
+    $skill28 = Get-Content -Path (Join-Path (Join-Path (Join-Path $pkgRoot "skills") "marketplace-update") "SKILL.md") -Raw
+    Assert-True ($skill28 -match "(?i)check updater health") "UPD-28: the bundled skill triggers on updater-health requests"
+    Assert-True ($skill28 -match "(?i)-Mode health") "UPD-28: the bundled skill invokes the read-only health mode"
+    $interrupted28 = $healthJson28
+    $interrupted28.result = "running"
+    $interrupted28.reason = "Update pass started."
+    $interrupted28 | ConvertTo-Json -Depth 8 | Set-Content -Path (Get-StatusPath $h28) -Encoding utf8
+    $interruptedHealth28 = @(Invoke-Hook $h28 "health") -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True ($interruptedHealth28.result -eq "interrupted") "UPD-28: an abandoned running state is reported as interrupted"
+    Assert-True ($interruptedHealth28.remediation -match "(?i)retry") "UPD-28: interrupted health includes a retry remediation"
+
+    $heldLock28 = [IO.File]::Open((Get-LockPath $h28), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    try {
+        $activeHealth28 = @(Invoke-Hook $h28 "health") -join [Environment]::NewLine | ConvertFrom-Json
+    } finally {
+        $heldLock28.Dispose()
+    }
+    Assert-True ($activeHealth28.result -eq "running") "UPD-28: a locked running state remains active rather than interrupted"
+    Assert-True ($activeHealth28.remediation -match "(?i)wait") "UPD-28: an active running state tells the user to wait"
+    Remove-Item -Recurse -Force $h28
+
+    Reset-Mock
+    $h28b = New-Sandbox -plugins @()
+    $pluginData28b = Join-Path $h28b "plugin-data"
+    $null = @(Invoke-Hook $h28b "health") -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True (-not (Test-Path $pluginData28b)) "UPD-28: read-only health does not create plugin-data or a lock file"
+    Remove-Item -Recurse -Force $h28b
+
+    Reset-Mock
+    $h28e = New-Sandbox -plugins @() -IncludeSelf
+    $lockPath28e = Get-LockPath $h28e
+    New-Item -ItemType Directory -Force -Path $lockPath28e | Out-Null
+    $health28e = @(Invoke-Hook $h28e "health") -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True ($health28e.lockState -eq "unavailable") "UPD-28: non-contention lock errors are distinguished from an active pass"
+    Assert-True ($health28e.remediation -match "(?i)permissions|lock") "UPD-28: lock errors include actionable remediation"
+    Remove-Item -Recurse -Force $h28e
+
+    Reset-Mock
+    $h28c = New-Sandbox -plugins @()
+    Set-Stamp $h28c 0.1
+    Invoke-Hook $h28c
+    $status28c = Get-Content -Path (Get-StatusPath $h28c) -Raw | ConvertFrom-Json
+    Assert-True ([datetimeoffset]::Parse($status28c.nextEligiblePass) -le [datetimeoffset]::Now.AddMinutes(1)) "UPD-28: no-plugins outcome is immediately eligible for retry"
+    Remove-Item -Recurse -Force $h28c
+
+    Reset-Mock
+    $h28d = New-Sandbox -plugins @("alpha")
+    Set-Stamp $h28d 0.1
+    Remove-Item Function:copilot -ErrorAction SilentlyContinue
+    Invoke-Hook $h28d
+    $status28d = Get-Content -Path (Get-StatusPath $h28d) -Raw | ConvertFrom-Json
+    Assert-True ($status28d.result -eq "missing-cli") "UPD-28: missing CLI is recorded"
+    Assert-True ([datetimeoffset]::Parse($status28d.nextEligiblePass) -le [datetimeoffset]::Now.AddMinutes(1)) "UPD-28: missing-cli outcome is immediately eligible for retry"
+    Remove-Item -Recurse -Force $h28d
+
+    Reset-ClaudeMock
+    $c28 = New-ClaudeSandbox @{ "$self@$marketplace" = $false }
+    Set-ClaudeCacheVersion $c28 $self "1.9.0"
+    Set-ClaudeCacheVersion $c28 $self "1.10.0"
+    $healthClaude28 = @(Invoke-ClaudeHook $c28 "health") -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True ($healthClaude28.installed -eq $true -and $healthClaude28.enabled -eq $false) "UPD-28: Claude health distinguishes installed-but-disabled from missing"
+    Assert-True ($healthClaude28.marketplaceUpdaterVersion -eq "1.10.0") "UPD-28: Claude cache versions are selected semantically, not lexically"
+    Assert-True ($healthClaude28.remediation -match "(?i)enable") "UPD-28: disabled updater health includes an enable remediation"
+    Remove-Item -Recurse -Force $c28
+
+    Reset-ClaudeMock
+    $c28b = New-ClaudeSandbox @{ "$self@$marketplace" = $false }
+    Set-ClaudeCacheVersion $c28b $self "1.10.0-beta.10"
+    Set-ClaudeCacheVersion $c28b $self "1.10.0-beta.2"
+    $healthClaude28b = @(Invoke-ClaudeHook $c28b "health") -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True ($healthClaude28b.marketplaceUpdaterVersion -eq "1.10.0-beta.10") "UPD-28: Claude prerelease cache versions follow SemVer precedence"
+    Remove-Item -Recurse -Force $c28b
+
+    $hookBody28 = Get-Content -Path $hookScript -Raw
+    Assert-True ($hookBody28 -notmatch '\.claude-plugin\\plugin\.json') "UPD-28: Claude manifest lookup does not embed a Windows-only path separator"
+} catch { $script:failures += "UPD-28 threw: $_" }
 
 Remove-Item Function:copilot -ErrorAction SilentlyContinue
 Remove-Item Function:claude -ErrorAction SilentlyContinue

@@ -4,6 +4,23 @@ All notable changes to the `urikan-ai-marketplace-auto-updater` plugin are docum
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-06
+
+### Added
+
+- Safe updater self-update after all managed plugins, with separate managed/self outcomes and an
+  explicit restart-required signal. (UPD-22)
+- Atomic structured status with attempt/success timing, catalog state, normalized per-plugin
+  outcomes, and actionable read-only health diagnostics. (UPD-23, UPD-25, UPD-28)
+- An independent hourly marketplace catalog refresh cadence so newly published versions are checked
+  without waiting for the 24-hour install fallback. (UPD-24)
+- Cross-process update locking and bounded log rotation. (UPD-26, UPD-27)
+
+### Changed
+
+- The bundled `marketplace-update` skill can now diagnose installation, version drift, throttle,
+  lock, failure, and restart state in addition to updating plugins and configuring cadence.
+
 ## [1.4.2] - 2026-07-23
 
 ### Fixed
