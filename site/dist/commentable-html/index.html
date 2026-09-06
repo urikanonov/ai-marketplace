@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.849.1<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.850.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -496,12 +496,26 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.850.0] - 2026-09-04</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Two in-document <code>Contents</code> lists that share an authored <code>id</code> (invalid HTML, but it happens) no longer give both carets the same <code>aria-controls</code> target. Assistive technology resolves <code>aria-controls</code> with <code>getElementById</code>, which answers with the first element carrying the id, so the second caret announced a region it did not control. Each nav whose authored id does not resolve to itself now gets a minted runtime id; the authored id still supplies the stored fold identity, so nothing a reader folded is orphaned.</li>
+              <li>A <code>Contents</code> list that carries significant text DIRECTLY (an intro sentence beside its list, or entries written as bare text) now folds all the way. The fold is a CSS rule over element children, which cannot reach a text node, so such a list stayed half-folded with the caret claiming it was away. Each such text run is wrapped in a span the same rule hides and print restores; the wrapper is not <code>cm-skip</code>, so no comment anchor moves. &quot;Ignorable&quot; is only the whitespace CSS itself collapses, so a run made of <code>&amp;nbsp;</code> (which paints) folds away too, while ordinary source indentation still gains no wrapper. Deleting a comment anchored on that text re-establishes the wrap instead of dropping the run back into the nav bare, so the list stays fully foldable afterwards.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>The <code>Contents</code> caret is documented as a FLOW-DOCUMENT affordance. The runtime has always excluded decks (as it does the section-collapse carets and the side menu), but the spec row and the Help <code>Navigation</code> topic promised the caret unconditionally, so a deck slide carrying an authored <code>Contents</code> list read as broken. Both now say a deck gets no in-document navigation chrome and leaves such a list as plain content, and tests lock both the exclusion and the Help wording. The spec row also records the deliberate trade-off in the <code>aria-controls</code> fix above: on the invalid input where two elements share one id, the shadowed nav is re-identified, so an author rule keyed to that id stops matching it.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.849.1] - 2026-09-04</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Renamed the destructive <code>Clear selected comments</code> and <code>Clear all comments</code> actions to <code>Delete selected comments</code> and <code>Delete all comments</code> across the menus, storage manager, Help, tutorial, and showcase deck. <code>Clear selection</code> keeps its name because it only deselects comments.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.848.0] - 2026-09-04</h3></div>
             <div class="group-label">Added</div>
@@ -509,8 +523,6 @@
               <li>The in-document <code>Contents</code> list is collapsible. Its title row gains a caret that folds the list away and unfolds it (clicking a folded title unfolds it too), so a long report&#x27;s table of contents stops being a wall to scroll past on every visit. The choice is remembered per document in this browser, and it is reader state rather than document state: the caret is text-free <code>cm-skip</code> chrome that spends no character of the offset space comments are anchored in, folding only toggles a class (no node is removed, so every comment keeps its anchor), no export bakes the caret or the fold in, and a print or Save as PDF still carries the whole list. Jumping to a comment anchored on a Contents entry unfolds every folded list it sits in, so the jump is never a no-op.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.847.0] - 2026-09-03</h3></div>
             <div class="group-label">Added</div>
@@ -554,16 +566,7 @@
               <li>Hovering a disabled Copy all control no longer replaces its dimmed crimson background with white.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.843.0] - 2026-09-02</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li><code>report-community-garden.html</code> and <code>report-taxi.html</code> no longer inline their own copy of Chart.js. Each carried a complete <code>Chart.js v4.4.0</code> bundle (205,031 bytes) as authored content, from the era when a self-contained file had to ship its own renderer. It no longer does: the viewer loads the pinned CDN copy, and Export Offline downloads, SRI-verifies and inlines the vendored one. They now use a pinned, SRI-guarded loader for <code>chart.js@4.5.1/dist/chart.umd.min.js</code>. That is deliberately NOT the <code>chart.js@4.4.0/dist/chart.umd.js</code> that <code>tools/blocks/chart_block.py</code> emits and that <code>report-metrics</code> and <code>report-triage</code> still use: 4.5.1 minified is the byte-identical copy in <code>assets/vendor/</code>, so the loader&#x27;s integrity hash is that file&#x27;s own SHA-384 and the version the viewer loads is the version an Offline export inlines. That removes 205 KB from each of the two largest shipped examples and takes a version conflict with it - the authored copy was 4.4.0 while the same document&#x27;s payload pinned 4.5.1.</li>
-              <li>With the authored copy gone, an Offline export of those two documents now contains exactly ONE Chart.js, the vendored and hash-verified one. Previously it contained both, and the UNVERIFIED authored copy won: the exporter hoists author code below the library it inlines so a constructing script cannot run before its dependency, and that hoist placed the authored 4.4.0 after the downloaded 4.5.1, so 4.4.0 took <code>window.Chart</code> while the verified copy sat inert. Nothing was broken by it - every chart rendered, with zero network - but the export&#x27;s verify-before-inline guarantee did not hold in practice for a document that carries its own library.</li>
-              <li>The trade, stated plainly: opened with NO network these two examples now draw blank canvases where they previously rendered charts, matching the long-standing behaviour of <code>report-metrics</code> and <code>report-triage</code>. Everything else - the prose, the tables, the captions, the mermaid diagrams and the whole comment layer - is unaffected, and Export Offline still produces a chart-bearing file that needs no network to view.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">409 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">410 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
