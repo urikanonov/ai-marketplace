@@ -113,17 +113,16 @@ test("mobile comparison cards color only the verdicts and show a good/total scor
 });
 
 
-test("the shareability section shows three modes including Offline with a source graph (SITE-PLUGIN-09)", async ({ page }) => {
+test("the shareability section shows only Shareable and Offline with source graphs (SITE-PLUGIN-09)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator(".mode-card")).toHaveCount(3);
+  await expect(page.locator(".mode-card")).toHaveCount(2);
+  await expect(page.locator(".mode-card h3", { hasText: /^Shareable$/ })).toHaveCount(1);
   await expect(page.locator(".mode-card h3", { hasText: "Offline" })).toHaveCount(1);
   await expect(page.locator(".mode-card .mode-sources .src").first()).toBeVisible();
   // Offline inlines the CDN parts (mermaid + charts): its card has an inline chip and no CDN chip.
   const offline = page.locator(".mode-card", { hasText: "Offline" });
   await expect(offline.locator(".src-cdn")).toHaveCount(0);
   await expect(offline.locator(".src-inline")).not.toHaveCount(0);
-  // Non-shareable still pulls mermaid + charts from a CDN.
-  await expect(page.locator(".mode-card", { hasText: "Non-shareable" }).locator(".src-cdn")).not.toHaveCount(0);
 });
 
 
@@ -135,23 +134,17 @@ test("the Comment on anything card lists inline SVG figures (SITE-PLUGIN-28)", a
 });
 
 
-test("the Non-shareable mode card is marked legacy and points at the migration tool (SITE-PLUGIN-27)", async ({ page }) => {
+test("the plugin page does not present the legacy Non-shareable mode (SITE-PLUGIN-27)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const nonShareable = page.locator(".mode-card", { hasText: "Non-shareable" });
-  // The skill no longer generates this mode, so the card must not read as a choice a reader
-  // could make: it is the shape older documents have, plus the way out of it.
-  await expect(nonShareable.locator(".badge")).toHaveText("legacy");
-  await expect(nonShareable).toContainText(/no longer generated/i);
-  await expect(nonShareable).toContainText(/to_shareable\.py/);
-  await expect(page.locator(".mode-card", { hasText: "Non-shareable" }).locator(".badge", { hasText: "default" })).toHaveCount(0);
+  await expect(page.locator("#modes")).not.toContainText(/Non-shareable|NonShareable|to_shareable\.py/i);
 });
 
 
 test("the shareability section explains the CDN chip needs a network connection and Offline removes it (SITE-PLUGIN-10)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const modes = page.locator("#modes");
-  // The CDN chip means mermaid/charts load over the network, so a Non-shareable or Shareable report
-  // that uses them needs an internet connection to render them; Offline inlines them instead.
+  // The CDN chip means mermaid/charts load over the network in Shareable reports; Offline inlines
+  // them instead.
   const note = modes.locator(".modes-note");
   await expect(note).toContainText(/internet connection/i);
   await expect(note).toContainText(/mermaid/i);

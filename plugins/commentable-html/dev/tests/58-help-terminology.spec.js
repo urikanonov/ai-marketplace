@@ -58,6 +58,7 @@ test.describe("Help terminology matches the current button labels", () => {
     for (const label of ["Copy all", "Export as Shareable", "Export Offline", "Export to Plain HTML", "Export to Markdown", "Save as PDF", "Help & About", "Comment on document"]) {
       await expect(body).toContainText(label);
     }
+    await expect(body).not.toContainText(/NonShareable|Non-shareable/);
   });
 
   test("the panel-and-toolbar topic describes the composite header ribbon, Search, and More menu (CMH-HELP-TERMS-01)", async ({ page }) => {

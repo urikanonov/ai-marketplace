@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.850.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.850.1<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -441,18 +441,9 @@
 
     <section id="modes">
       <div class="wrap">
-        <h2 class="section-title">Three shareability modes</h2>
-        <p class="section-sub">Same document, three ways to assemble it - pick based on whether it stays local, travels, or must work with no network. The graph in each card shows where every part comes from.</p>
+        <h2 class="section-title">Two shareability modes</h2>
+        <p class="section-sub">Same document, two ways to assemble it - pick based on whether it travels normally or must work with no network. The graph in each card shows where every part comes from.</p>
         <div class="grid">
-          <div class="card feature mode-card">
-            <h3>Non-shareable <span class="badge">legacy</span></h3>
-            <p>References shared companion assets instead of inlining them. New documents are no longer generated this way, but existing ones are opened, validated and edited exactly as before, permanently - the runtime and its companion files are kept for that reason. Migrate one to Shareable whenever you like with <code>tools/authoring/to_shareable.py</code>.</p>
-            <dl class="mode-sources" aria-label="Where each part comes from in Non-shareable mode">
-              <div class="mode-source"><dt>Styles + runtime</dt><dd><span class="src src-folder">skill folder</span></dd></div>
-              <div class="mode-source"><dt>Mermaid + charts</dt><dd><span class="src src-cdn">CDN</span></dd></div>
-              <div class="mode-source"><dt>Comments</dt><dd><span class="src src-storage">browser storage</span></dd></div>
-            </dl>
-          </div>
           <div class="card feature mode-card">
             <h3>Shareable</h3>
             <p>One self-contained file with the CSS, runtime, and comments inlined. Best when you want to share the document with a peer or keep it as a durable, long-term artifact - one click via Export as Shareable.</p>
@@ -472,7 +463,7 @@
             </dl>
           </div>
         </div>
-        <p class="modes-note"><span class="src src-cdn">CDN</span> marks the parts that load over the network. A Non-shareable or Shareable report that uses mermaid diagrams or charts therefore needs an internet connection to render them - static images and the rest of the review layer still work with no network. Export Offline to inline those diagrams and charts as snapshots and drop the network dependency entirely.</p>
+        <p class="modes-note"><span class="src src-cdn">CDN</span> marks the parts that load over the network. A Shareable report that uses mermaid diagrams or charts therefore needs an internet connection to render them - static images and the rest of the review layer still work with no network. Export Offline to inline those diagrams and charts as snapshots and drop the network dependency entirely.</p>
       </div>
     </section>
 
@@ -496,6 +487,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.850.1] - 2026-09-06</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Removed the legacy companion-file mode from the website, tutorial, in-document Help, public plugin guidance, and showcase deck. Existing companion-mode documents remain supported by the runtime, validator, migration tool, and technical compatibility references.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.850.0] - 2026-09-04</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -507,6 +505,8 @@
               <li>The <code>Contents</code> caret is documented as a FLOW-DOCUMENT affordance. The runtime has always excluded decks (as it does the section-collapse carets and the side menu), but the spec row and the Help <code>Navigation</code> topic promised the caret unconditionally, so a deck slide carrying an authored <code>Contents</code> list read as broken. Both now say a deck gets no in-document navigation chrome and leaves such a list as plain content, and tests lock both the exclusion and the Help wording. The spec row also records the deliberate trade-off in the <code>aria-controls</code> fix above: on the invalid input where two elements share one id, the shadowed nav is re-identified, so an author rule keyed to that id stops matching it.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.849.1] - 2026-09-04</h3></div>
             <div class="group-label">Changed</div>
@@ -514,8 +514,6 @@
               <li>Renamed the destructive <code>Clear selected comments</code> and <code>Clear all comments</code> actions to <code>Delete selected comments</code> and <code>Delete all comments</code> across the menus, storage manager, Help, tutorial, and showcase deck. <code>Clear selection</code> keeps its name because it only deselects comments.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.848.0] - 2026-09-04</h3></div>
             <div class="group-label">Added</div>
@@ -559,14 +557,7 @@
               <li><code>formatTime()</code> no longer renders an unparseable timestamp as <code>Invalid Date</code>, a missing one as <code>undefined</code>, or a literal <code>null</code> as the Unix epoch: a nullish, empty, or whitespace-only value renders as empty, an epoch-milliseconds number is accepted as the instant it is, a whitespace-padded ISO instant is trimmed and formatted instead of echoed raw, and the return is always a string. Where a comment has no usable timestamp the surrounding chrome goes with it - no dangling <code>#3 - </code> on a card and no empty <code>When:</code> line in the Copy all bundle.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.844.0] - 2026-09-03</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Hovering a disabled Copy all control no longer replaces its dimmed crimson background with white.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">410 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">411 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

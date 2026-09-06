@@ -77,10 +77,9 @@
           <h3>2. Read the document-type bubble and version</h3>
           <ol>
           <li>In the sidebar header, look at the document-type bubble.</li>
-          <li>It reads <strong>Shareable</strong> (green) when the file is safe to share as-is: everything is embedded and every comment is baked in. It reads <strong>Offline</strong> when the file is also ready for a zero-network handoff: any Mermaid diagrams or charts keep working from inlined vendored runtimes and remote loaders are stripped. It reads <strong>Not shareable</strong> (orange) when the file still references companion assets or has comments that are not embedded yet. Hover the bubble for the exact reason and how to make it shareable.</li>
+          <li>It reads <strong>Shareable</strong> (green) when the file is safe to share as-is: everything is embedded and every comment is baked in. It reads <strong>Offline</strong> when the file is also ready for a zero-network handoff: any Mermaid diagrams or charts keep working from inlined vendored runtimes and remote loaders are stripped. It reads <strong>Not shareable</strong> (orange) when comments or review changes are not embedded yet. Hover the bubble for the exact reason and how to make it shareable.</li>
           <li>Next to the bubble, the version indicator shows <code>v&lt;x.y.z&gt;</code>, telling you which Commentable HTML runtime produced the file.</li>
           </ol>
-          <p>Every document the skill generates is Shareable. Older documents built in the <strong>Non-shareable</strong> mode - which referenced companion files sitting beside the HTML - keep working exactly as before, permanently; only creating new ones has gone away. To make such a document self-contained, run <code>tools/authoring/to_shareable.py &lt;file.html&gt;</code>: it inlines the layer and keeps your content, your embedded comments, and the handled ids intact.</p>
           <h3>3. Comment on prose</h3>
           <ol>
           <li>Go to <strong>Overview</strong>.</li>

@@ -661,13 +661,12 @@ test("CMH-DECK-SHOWCASE-06: Act 4 slides explain the deterministic build, sharea
     await expect(anatomy).toContainText("That separation is why upgrades stay deterministic");
     await expect(anatomy).toContainText("The build swaps only the layer-owned regions and re-stamps the version");
 
-    await showSlideWith(page, "text=Three shareability modes explain every handoff.");
+    await showSlideWith(page, "text=Two shareability modes explain every handoff.");
     const shareability = page.locator(".slide.active");
-    await expect(shareability).toContainText("Non-shareable");
+    await expect(shareability).not.toContainText("Non-shareable");
     await expect(shareability).toContainText("Shareable");
     await expect(shareability).toContainText("Offline");
     await expect(shareability).toContainText("Styles + runtime");
-    await expect(shareability).toContainText("skill folder");
     await expect(shareability).toContainText("CDN");
     await expect(shareability).toContainText("vendored runtimes");
     await expect(shareability).toContainText("browser storage");
@@ -1209,17 +1208,17 @@ test("CMH-DECK-SHOWCASE-19: link pills stay rounded on hover in comment mode, th
   }
 });
 
-test("CMH-DECK-SHOWCASE-17: the shareability-modes slide tags parts with colorful source pills", async ({ page }) => {
+test("CMH-DECK-SHOWCASE-17: the two shareability modes tag parts with colorful source pills", async ({ page }) => {
   const server = await openShowcaseDeck(page);
   try {
     await showSlideWith(page, ".show-mode-table");
     const slide = page.locator(".slide.active");
     const pills = slide.locator("td .show-src");
-    // Exactly 11 source pills: 3 modes x 3 part-columns = 9 cells, and the Shareable + Offline
+    // Exactly 8 source pills: 2 modes x 3 part-columns = 6 cells, and the Shareable + Offline
     // "Comments" cells each carry a 2-pill "seed + storage" pair (+2). Asserting the exact total
     // (not just >= 9) makes dropping a storage pill from those cells fail the test.
     await expect(pills.first()).toBeVisible();
-    await expect(pills).toHaveCount(11);
+    await expect(pills).toHaveCount(8);
     // The Shareable and Offline "Comments" cells each show BOTH the seed and the storage pill, so the
     // "seeded from HTML, then browser storage" handoff is not misrepresented as seed-only.
     const dualCells = slide.locator("tbody tr").filter({ hasText: /Shareable|Offline/ }).locator("td:last-child");
@@ -1227,10 +1226,11 @@ test("CMH-DECK-SHOWCASE-17: the shareability-modes slide tags parts with colorfu
     await expect(dualCells.nth(1).locator(".show-src")).toHaveCount(2);
     await expect(dualCells.nth(0)).toContainText("seeded from HTML");
     await expect(dualCells.nth(0)).toContainText("browser storage");
-    // All five source variants appear across the table.
-    for (const variant of ["folder", "cdn", "inline", "storage", "seed"]) {
+    // All four source variants used by current modes appear across the table.
+    for (const variant of ["cdn", "inline", "storage", "seed"]) {
       await expect(slide.locator(".show-src.show-src-" + variant).first()).toBeVisible();
     }
+    await expect(slide).not.toContainText("Non-shareable");
     // A pill is a rounded chip with a distinct (non-transparent) fill and a colored leading dot.
     const styled = await slide.locator(".show-src.show-src-cdn").first().evaluate((el) => ({
       radius: getComputedStyle(el).borderTopLeftRadius,
