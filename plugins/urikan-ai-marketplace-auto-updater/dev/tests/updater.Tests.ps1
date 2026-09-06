@@ -80,13 +80,16 @@ function Reset-Mock {
 function Invoke-Hook([string]$copilotHome, [string]$mode = "update") {
     $savedPath = $env:PATH
     $savedHome = $env:COPILOT_HOME
+    $savedCacheHome = $env:COPILOT_CACHE_HOME
     try {
         $env:PATH = ""              # keep the stub function authoritative; never hit a real copilot on PATH
         $env:COPILOT_HOME = $copilotHome
+        $env:COPILOT_CACHE_HOME = Join-Path $copilotHome "copilot-cache"
         & $hookScript -Mode $mode
     } finally {
         $env:PATH = $savedPath
         if ($null -eq $savedHome) { Remove-Item Env:COPILOT_HOME -ErrorAction SilentlyContinue } else { $env:COPILOT_HOME = $savedHome }
+        if ($null -eq $savedCacheHome) { Remove-Item Env:COPILOT_CACHE_HOME -ErrorAction SilentlyContinue } else { $env:COPILOT_CACHE_HOME = $savedCacheHome }
     }
 }
 
@@ -125,6 +128,19 @@ function Set-CatalogPluginVersion([string]$copilotHome, [string]$plugin, [string
     New-Item -ItemType Directory -Force -Path $root | Out-Null
     @{ name = $plugin; version = $version } | ConvertTo-Json |
         Set-Content -Path (Join-Path $root "plugin.json") -Encoding utf8
+}
+
+function Set-CopilotCachedMarketplaceVersion([string]$copilotHome, [string]$plugin, [string]$version) {
+    $root = Join-Path (Join-Path (Join-Path $copilotHome "copilot-cache") "marketplaces") "fixture-marketplace"
+    $manifestRoot = Join-Path (Join-Path $root ".github") "plugin"
+    $source = Join-Path (Join-Path (Join-Path $root "plugins") $plugin) "pkg"
+    New-Item -ItemType Directory -Force -Path $manifestRoot, $source | Out-Null
+    @{
+        name = $marketplace
+        plugins = @(@{ name = $plugin; version = $version; source = "./plugins/$plugin/pkg" })
+    } | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $manifestRoot "marketplace.json") -Encoding utf8
+    @{ name = $plugin; version = $version } | ConvertTo-Json |
+        Set-Content -Path (Join-Path $source "plugin.json") -Encoding utf8
 }
 
 function Set-Stamp([string]$copilotHome, [double]$hoursAgo) {
@@ -909,6 +925,13 @@ try {
     Assert-True ($global:CopilotCalls.Count -eq 0) "UPD-26: a second pass performs no plugin updates while the lock is held"
     Assert-True ((Get-Log $h26) -like "*another pass is running*") "UPD-26: lock contention is logged with an explicit outcome"
     Remove-Item -Recurse -Force $h26
+
+    Reset-Mock
+    $h26b = New-Sandbox -plugins @("alpha")
+    New-Item -ItemType Directory -Force -Path (Get-LockPath $h26b) | Out-Null
+    Invoke-Hook $h26b
+    Assert-True ((Get-Log $h26b) -like "*lock unavailable*") "UPD-26: non-contention lock errors are not mislabeled as another pass"
+    Remove-Item -Recurse -Force $h26b
 } catch { $script:failures += "UPD-26 threw: $_" }
 
 Write-Host "== UPD-27 updater logs rotate at a bounded size =="
@@ -967,6 +990,24 @@ try {
     Remove-Item -Recurse -Force $h28b
 
     Reset-Mock
+    $h28f = New-Sandbox -plugins @("alpha")
+    Set-Stamp $h28f 0.1
+    Remove-Item -Path (Get-CatalogStamp $h28f) -Force
+    $health28f = @(Invoke-Hook $h28f "health") -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True ([datetimeoffset]::Parse($health28f.nextEligiblePass) -le [datetimeoffset]::Now.AddMinutes(1)) "UPD-28: a missing cadence stamp reports immediate eligibility"
+    Remove-Item -Recurse -Force $h28f
+
+    Reset-Mock
+    $h28g = New-Sandbox -plugins @("alpha")
+    Set-Config $h28g "{ invalid json"
+    $config28g = Join-Path (Join-Path $h28g "plugin-data") "$self.config.json"
+    $beforeConfig28g = Get-Content -Path $config28g -Raw
+    $null = @(Invoke-Hook $h28g "health") -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True (-not (Test-Path (Join-Path (Join-Path $h28g "plugin-data") "$self.log"))) "UPD-28: malformed config does not make read-only health write a log"
+    Assert-True ((Get-Content -Path $config28g -Raw) -eq $beforeConfig28g) "UPD-28: read-only health does not modify malformed config"
+    Remove-Item -Recurse -Force $h28g
+
+    Reset-Mock
     $h28e = New-Sandbox -plugins @() -IncludeSelf
     $lockPath28e = Get-LockPath $h28e
     New-Item -ItemType Directory -Force -Path $lockPath28e | Out-Null
@@ -1010,6 +1051,14 @@ try {
     $healthClaude28b = @(Invoke-ClaudeHook $c28b "health") -join [Environment]::NewLine | ConvertFrom-Json
     Assert-True ($healthClaude28b.marketplaceUpdaterVersion -eq "1.10.0-beta.10") "UPD-28: Claude prerelease cache versions follow SemVer precedence"
     Remove-Item -Recurse -Force $c28b
+
+    Reset-Mock
+    $h28h = New-Sandbox -plugins @("alpha") -IncludeSelf
+    Set-CopilotCachedMarketplaceVersion $h28h $self "2.0.0"
+    $health28h = @(Invoke-Hook $h28h "health") -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True ($health28h.marketplaceUpdaterVersion -eq "2.0.0") "UPD-28: Copilot health resolves the refreshed platform marketplace cache"
+    Assert-True (-not [string]::IsNullOrWhiteSpace($health28h.catalog.revision)) "UPD-28: Copilot catalog revision includes the platform marketplace cache"
+    Remove-Item -Recurse -Force $h28h
 
     $hookBody28 = Get-Content -Path $hookScript -Raw
     Assert-True ($hookBody28 -notmatch '\.claude-plugin\\plugin\.json') "UPD-28: Claude manifest lookup does not embed a Windows-only path separator"

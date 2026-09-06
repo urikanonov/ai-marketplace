@@ -20,6 +20,8 @@ based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions f
 
 - The bundled `marketplace-update` skill can now diagnose installation, version drift, throttle,
   lock, failure, and restart state in addition to updating plugins and configuring cadence.
+- Copilot diagnostics resolve the CLI's platform marketplace cache, and health inspection remains
+  read-only even when configuration is malformed.
 
 ## [1.4.2] - 2026-07-23
 

@@ -96,7 +96,7 @@ function Write-StatusAtomic($status) {
     }
 }
 
-function Get-ConfigNumber($config, $propertyName, [double]$defaultValue, [string]$environmentName = "") {
+function Get-ConfigNumber($config, $propertyName, [double]$defaultValue, [string]$environmentName = "", [switch]$NoLog) {
     $parsed = 0.0
     $numStyle = [Globalization.NumberStyles]::Float
     $invariant = [Globalization.CultureInfo]::InvariantCulture
@@ -108,7 +108,7 @@ function Get-ConfigNumber($config, $propertyName, [double]$defaultValue, [string
                 (Test-ValidCadence $parsed)) {
                 return $parsed
             }
-            Write-UpdaterLog "ignoring invalid $environmentName='$environmentValue'; using config/default."
+            if (-Not $NoLog) { Write-UpdaterLog "ignoring invalid $environmentName='$environmentValue'; using config/default." }
         }
     }
 
@@ -117,7 +117,7 @@ function Get-ConfigNumber($config, $propertyName, [double]$defaultValue, [string
         if ($null -ne $property -and $null -ne $property.Value) {
             $value = $property.Value
             if ($value -is [bool]) {
-                Write-UpdaterLog "ignoring invalid $propertyName in config; using default ${defaultValue}h."
+                if (-Not $NoLog) { Write-UpdaterLog "ignoring invalid $propertyName in config; using default ${defaultValue}h." }
             } elseif ($value -is [ValueType]) {
                 $number = [double]$value
                 if (Test-ValidCadence $number) { return $number }
@@ -125,24 +125,24 @@ function Get-ConfigNumber($config, $propertyName, [double]$defaultValue, [string
                 (Test-ValidCadence $parsed)) {
                 return $parsed
             }
-            Write-UpdaterLog "ignoring invalid $propertyName in config; using default ${defaultValue}h."
+            if (-Not $NoLog) { Write-UpdaterLog "ignoring invalid $propertyName in config; using default ${defaultValue}h." }
         }
     }
     return $defaultValue
 }
 
-function Get-ConfiguredCadences {
+function Get-ConfiguredCadences([switch]$NoLog) {
     $config = $null
     if (Test-Path $configFile) {
         try {
             $config = Get-Content -Path $configFile -Raw | ConvertFrom-Json
         } catch {
-            Write-UpdaterLog "could not parse config ${configFile}; using defaults: $($_.Exception.Message)"
+            if (-Not $NoLog) { Write-UpdaterLog "could not parse config ${configFile}; using defaults: $($_.Exception.Message)" }
         }
     }
     return [ordered]@{
-        throttleHours = Get-ConfigNumber $config "throttleHours" $defaultThrottleHours $envThrottleVar
-        catalogCheckHours = Get-ConfigNumber $config "catalogCheckHours" $defaultCatalogCheckHours
+        throttleHours = Get-ConfigNumber $config "throttleHours" $defaultThrottleHours $envThrottleVar -NoLog:$NoLog
+        catalogCheckHours = Get-ConfigNumber $config "catalogCheckHours" $defaultCatalogCheckHours -NoLog:$NoLog
     }
 }
 
@@ -261,6 +261,63 @@ function Get-VersionDirectoriesNewestFirst($root) {
     return $directories
 }
 
+function Get-CopilotCacheRoot {
+    if (-Not [string]::IsNullOrWhiteSpace($env:COPILOT_CACHE_HOME)) {
+        return [IO.Path]::GetFullPath($env:COPILOT_CACHE_HOME)
+    }
+    $platform = [Environment]::OSVersion.Platform
+    $isMac = $platform -eq [PlatformID]::MacOSX -or
+        ((Get-Variable -Name IsMacOS -ValueOnly -ErrorAction SilentlyContinue) -eq $true)
+    if ($isMac) { return Join-Path (Join-Path (Join-Path $HOME "Library") "Caches") "copilot" }
+    if ($platform -eq [PlatformID]::Win32NT) {
+        $base = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $HOME ".cache" }
+        return Join-Path $base "copilot"
+    }
+    $base = if ($env:XDG_CACHE_HOME) { $env:XDG_CACHE_HOME } else { Join-Path $HOME ".cache" }
+    return Join-Path $base "copilot"
+}
+
+function Get-CopilotMarketplaceCacheDirectories {
+    if ($Agent -ne "copilot") { return @() }
+    $root = Join-Path (Get-CopilotCacheRoot) "marketplaces"
+    if (-Not (Test-Path $root)) { return @() }
+    $matches = @()
+    foreach ($directory in @(Get-ChildItem -Path $root -Directory -ErrorAction SilentlyContinue)) {
+        $manifestPaths = @(
+            (Join-Path (Join-Path (Join-Path $directory.FullName ".github") "plugin") "marketplace.json"),
+            (Join-Path (Join-Path $directory.FullName ".claude-plugin") "marketplace.json")
+        )
+        foreach ($manifestPath in $manifestPaths) {
+            $manifest = Read-JsonFile $manifestPath
+            if ($null -ne $manifest -and $manifest.name -eq $marketplace) {
+                $matches += $directory
+                break
+            }
+        }
+    }
+    return @($matches)
+}
+
+function Get-CopilotCachedPluginRoots($plugin) {
+    $roots = @()
+    foreach ($directory in @(Get-CopilotMarketplaceCacheDirectories)) {
+        $manifestPaths = @(
+            (Join-Path (Join-Path (Join-Path $directory.FullName ".github") "plugin") "marketplace.json"),
+            (Join-Path (Join-Path $directory.FullName ".claude-plugin") "marketplace.json")
+        )
+        foreach ($manifestPath in $manifestPaths) {
+            $manifest = Read-JsonFile $manifestPath
+            if ($null -eq $manifest -or $manifest.name -ne $marketplace) { continue }
+            $entry = @($manifest.plugins | Where-Object { $_.name -eq $plugin } | Select-Object -First 1)
+            if ($entry.Count -eq 0 -or [string]::IsNullOrWhiteSpace($entry[0].source)) { continue }
+            $relative = ([string]$entry[0].source) -replace '^[.][\\/]', ''
+            $roots += Join-Path $directory.FullName $relative
+            break
+        }
+    }
+    return @($roots)
+}
+
 function Test-PluginInstalled($plugin) {
     if ($Agent -eq "copilot") {
         return Test-Path (Join-Path (Join-Path (Join-Path $agentHome "installed-plugins") $marketplace) $plugin)
@@ -287,7 +344,11 @@ function Get-InstalledVersion($plugin) {
 }
 
 function Get-MarketplaceVersion($plugin) {
-    $roots = @(
+    $roots = @()
+    if ($Agent -eq "copilot") {
+        $roots += @(Get-CopilotCachedPluginRoots $plugin)
+    }
+    $roots += @(
         (Join-Path (Join-Path (Join-Path $agentHome "plugins") $marketplace) $plugin),
         (Join-Path (Join-Path (Join-Path (Join-Path $agentHome "plugins") "marketplaces") $marketplace) $plugin)
     )
@@ -308,7 +369,11 @@ function Get-MarketplaceVersion($plugin) {
 }
 
 function Get-CatalogRevision {
-    $roots = @(
+    $roots = @()
+    if ($Agent -eq "copilot") {
+        $roots += @(Get-CopilotMarketplaceCacheDirectories | ForEach-Object { $_.FullName })
+    }
+    $roots += @(
         (Join-Path (Join-Path $agentHome "plugins") $marketplace),
         (Join-Path (Join-Path (Join-Path $agentHome "plugins") "marketplaces") $marketplace),
         (Join-Path (Join-Path (Join-Path $agentHome "plugins") "cache") $marketplace)
@@ -366,6 +431,9 @@ function Write-Timestamp($path, [datetimeoffset]$time) {
 }
 
 function Get-NextEligiblePass($lastSuccess, $lastCatalogCheck, $cadences) {
+    if ($null -eq $lastSuccess -or $null -eq $lastCatalogCheck) {
+        return ([datetimeoffset]::Now).ToString("o")
+    }
     $next = @()
     if ($null -ne $lastSuccess) { $next += $lastSuccess.AddHours($cadences.throttleHours) }
     if ($null -ne $lastCatalogCheck) { $next += $lastCatalogCheck.AddHours($cadences.catalogCheckHours) }
@@ -375,7 +443,7 @@ function Get-NextEligiblePass($lastSuccess, $lastCatalogCheck, $cadences) {
 
 function Get-HealthReport {
     $saved = Read-JsonFile $statusFile
-    $cadences = Get-ConfiguredCadences
+    $cadences = Get-ConfiguredCadences -NoLog
     $lastSuccess = Read-Timestamp $throttleFile
     $lastCatalogCheck = Read-Timestamp $catalogStampFile
     $plugins = @()
@@ -510,8 +578,11 @@ try {
     Ensure-PluginData
     try {
         $lockHandle = [IO.File]::Open($lockFile, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-    } catch {
+    } catch [IO.IOException] {
         Write-UpdaterLog "another pass is running; skipping this session." -NoRotate
+        return
+    } catch {
+        Write-UpdaterLog "lock unavailable; skipping this session: $($_.Exception.Message)" -NoRotate
         return
     }
 

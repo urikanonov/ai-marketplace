@@ -53,12 +53,17 @@ custom interval) and writes this file for you. A one-off override without editin
 `URIKAN_AI_MARKETPLACE_THROTTLE_HOURS` environment variable, which takes precedence for that session. Any
 invalid or unreadable value falls back to its default and never blocks the hook.
 
+For Copilot, version and revision diagnostics read the CLI's platform marketplace cache
+(`COPILOT_CACHE_HOME`, `%LOCALAPPDATA%/copilot`, `~/Library/Caches/copilot`, or
+`${XDG_CACHE_HOME:-~/.cache}/copilot`) as well as the materialized plugin view under `COPILOT_HOME`.
+
 ## Health
 
 Ask "check updater health" or "why did updates skip?" to use the bundled skill. It runs the hook in
 read-only `health` mode and reports installation/enabled state, active and marketplace versions,
 per-plugin versions, last attempt and success, next eligibility, throttle reason, lock state, restart
-requirement, and remediation. Health mode never runs a plugin or catalog update.
+requirement, and remediation. Health mode never runs a plugin or catalog update and never creates or
+changes updater state or logs, including when configuration is malformed.
 
 If the updater changes version, restart the GitHub Copilot CLI by ending the current CLI process and
 starting a new session. In Claude Code, restart Claude Code (or use its plugin reload command when
