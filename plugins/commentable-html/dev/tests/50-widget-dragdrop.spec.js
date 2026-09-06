@@ -419,6 +419,7 @@ test("exporting after a move persists the new DOM order and keeps widget comment
   const ctx = await browser.newContext();
   try {
     const page2 = await ctx.newPage();
+    await routeExampleLibsLocal(page2);
     await page2.goto(fileUrl(exportedPath));
     await ready(page2);
     await expect(page2.locator('[data-cm-slot="Investigating"] [data-cm-part="api-saturation"]')).toHaveCount(1);
@@ -450,6 +451,7 @@ test("exporting after a widget move refreshes later prose text comment offsets (
     const ctx = await browser.newContext();
     try {
       const page2 = await ctx.newPage();
+      await routeExampleLibsLocal(page2);
       await page2.goto(fileUrl(exportedPath));
       await ready(page2);
       await expect(page2.locator("#offsetAfter > #offsetCard")).toHaveCount(1);

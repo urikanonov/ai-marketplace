@@ -107,26 +107,37 @@ test.describe("a spec that opens a shipped example reaches no network (CMH-BUILD
   test("every spec that opens a shipped example installs a hermetic deny-all (CMH-BUILD-30)", () => {
     // The sweep above proves the HELPER is complete; it cannot see how OTHER specs open these same
     // documents. That gap is the actual #1305 defect, so it is checked here at the source level.
-    // This is a net, not a proof (it cannot tell a conditional call from an unconditional one), so
-    // keep the call unconditional in the spec you write.
+    // The check is SEGMENT-scoped, not file-scoped: a hermetic call somewhere else in the file does
+    // not cover an unrouted navigation, which is how a spec that opened a shipped example with no
+    // routing at all sat in a file that also (elsewhere) called `denyExternalNetwork`.
     const dir = path.join(DEV, "tests");
     const HERMETIC = ["routeExampleLibsLocal(", "routeMermaidLocal(", "denyExternalNetwork("];
-    const shipped = new Set(DOCS);
+    // Each test, describe block or module-level function is its own segment: the route and the
+    // navigation it protects have to live together, which is how every correct call site is
+    // already written (including the `openExample` helpers).
+    const CUT = /^(async function |function |test\(|test\.describe|  test\()/;
     const offenders = [];
-    for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".spec.js")).sort()) {
-      if (f === path.basename(new URL(import.meta.url).pathname)) continue;
+    for (const f of fs.readdirSync(dir).filter((n) => n.endsWith(".spec.js")).sort()) {
       const src = fs.readFileSync(path.join(dir, f), "utf8");
-      // Require BOTH the shipped examples DIRECTORY and a shipped example's filename, so a staged
-      // fixture or a download's `suggestedFilename` that merely looks like `report-*.html` is not
-      // mistaken for one of these documents.
-      const usesExamplesDir = /\bEXAMPLES\b/.test(src) || /["']examples["']/.test(src) || /\/examples\//.test(src);
-      const namesShipped = [...shipped].some((d) => src.includes(d));
-      if (!(/\.goto\(/.test(src) && usesExamplesDir && namesShipped)) continue;
-      // A spec may instead install its own catch-all deny (the offline-export specs do).
-      const ownCatchAll = /route\(\s*\/\^https\?/.test(src);
-      if (ownCatchAll || HERMETIC.some((h) => src.includes(h))) continue;
-      offenders.push(f);
+      if (!DOCS.some((d) => src.includes(d))) continue;
+      // A module-level constant that resolves to a shipped example counts as naming it, since that
+      // is how most of these specs spell the path.
+      const consts = [...src.matchAll(/^const (\w+) = ([^;]*);/gm)]
+        .filter((m) => DOCS.some((d) => m[2].includes(d))).map((m) => m[1]);
+      const lines = src.split("\n");
+      const starts = [...new Set([0, ...lines.map((l, i) => (CUT.test(l) ? i : -1)).filter((i) => i >= 0)])];
+      const segs = starts.map((a, k) => lines.slice(a, starts[k + 1] === undefined ? lines.length : starts[k + 1]).join("\n"));
+      const hermetic = (body) => /route\(\s*\/\^https\?/.test(body) || HERMETIC.some((h) => body.includes(h));
+      // Routing installed in a `beforeEach`/`beforeAll` hook covers the tests it runs before, so a
+      // spec that routes there and navigates in the test body is correct, not an offender.
+      const hookCovers = segs.some((body) => /\bbefore(Each|All)\(/.test(body) && hermetic(body));
+      for (let k = 0; k < segs.length; k += 1) {
+        const opensShipped = segs[k].split("\n").some((l) => l.includes(".goto(")
+          && (DOCS.some((d) => l.includes(d)) || consts.some((c) => new RegExp(`\\b${c}\\b`).test(l))));
+        if (!opensShipped || hookCovers || hermetic(segs[k])) continue;
+        offenders.push(`${f}:${starts[k] + 1}`);
+      }
     }
-    expect(offenders, "these specs open a shipped example without routing its CDN libraries locally").toEqual([]);
+    expect(offenders, "these open a shipped example without routing its CDN libraries locally").toEqual([]);
   });
 });

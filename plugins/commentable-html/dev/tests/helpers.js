@@ -562,14 +562,40 @@ async function serveMermaidLocal(page) {
 // CMH-MMD-12). Only call this where mermaid is actually SERVED (routeExampleLibsLocal /
 // routeMermaidLocal): the loader publishes the promise after its import resolves, so a spec that
 // blocks mermaid would wait for a signal that never comes.
-export async function awaitMermaidRendered(page) {
+//
+// It SETTLES rather than snapshots. The layer REPLACES `__cmhMermaidAuditsSettled` each time it
+// reserves another audit, and a reveal/resize can reserve one (and a repair can re-render, growing
+// the page) after a single read returned. So re-read both globals until their identity stops
+// changing and every host is `data-processed`. The default budget is well inside Playwright's 30s
+// per-test default, so the "mermaid never loaded" case fails with a message that names mermaid
+// instead of surfacing as an unattributable hook timeout.
+export async function awaitMermaidRendered(page, { timeout = 15000 } = {}) {
   if (!await page.evaluate(() => !!document.querySelector("pre.mermaid, div.mermaid"))) return;
-  await page.waitForFunction(() => !!window.__cmhMermaidReady, null, { timeout: 30000 });
-  await page.evaluate(async () => {
-    // A diagram that fails to render is the calling spec's assertion to make, not this helper's.
-    try { await window.__cmhMermaidReady; } catch (e) { /* ignore */ }
-    try { await window.__cmhMermaidAuditsSettled; } catch (e) { /* ignore */ }
-  });
+  try {
+    await page.waitForFunction(() => !!window.__cmhMermaidReady, null, { timeout });
+  } catch (e) {
+    throw new Error("awaitMermaidRendered: the document has diagrams but never published "
+      + "window.__cmhMermaidReady - is mermaid actually being served to this page?");
+  }
+  const deadline = Date.now() + timeout;
+  for (let stable = 0; stable < 2 && Date.now() < deadline; ) {
+    // The loader handles a malformed diagram itself and does not starve its siblings (CMH-MMD-07),
+    // so a REJECTION here means the render pipeline broke. Report it rather than returning quietly
+    // and letting the caller measure a page that never settled.
+    const state = await page.evaluate(async () => {
+      const why = (e) => (e && e.message ? e.message : String(e));
+      const before = { r: window.__cmhMermaidReady, a: window.__cmhMermaidAuditsSettled };
+      try { await before.r; } catch (e) { return { failure: "__cmhMermaidReady rejected: " + why(e) }; }
+      try { await before.a; } catch (e) { return { failure: "__cmhMermaidAuditsSettled rejected: " + why(e) }; }
+      return {
+        changed: window.__cmhMermaidReady !== before.r || window.__cmhMermaidAuditsSettled !== before.a,
+        pending: document.querySelectorAll("pre.mermaid:not([data-processed]), div.mermaid:not([data-processed])").length,
+      };
+    });
+    if (state.failure) throw new Error("awaitMermaidRendered: " + state.failure);
+    stable = (state.changed || state.pending) ? 0 : stable + 1;
+    if (stable < 2) await page.waitForTimeout(50);
+  }
 }
 
 // Serve mermaid locally AND deny every other remote, for a spec that stages its own content.

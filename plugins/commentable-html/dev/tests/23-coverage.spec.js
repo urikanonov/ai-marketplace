@@ -9,7 +9,6 @@ import {
   routeMermaidLocal,
   SKILL,
   PLUGIN,
-  routeOfflineExportLibs,
   routeExampleLibsLocal,
 } from "./helpers.js";
 

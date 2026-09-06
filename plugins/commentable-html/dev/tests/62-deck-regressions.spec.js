@@ -6,6 +6,7 @@ import {
   copiedBundle,
   installClipboardCapture,
   ready,
+  awaitMermaidRendered,
   routeExampleLibsLocal,
   startStaticServer,
   enterCommentMode,
@@ -55,6 +56,9 @@ async function openShowcaseDeck(page) {
   const server = await startStaticServer(EXAMPLES);
   await page.goto(server.url + "/deck-showcase.html");
   await ready(page);
+  // The diagram slide is reclassified and re-fitted from a rAF after its SVG lands, so every
+  // geometry assertion below needs the render to be finished, not merely started.
+  await awaitMermaidRendered(page);
   return server;
 }
 

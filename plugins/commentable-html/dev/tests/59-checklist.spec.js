@@ -278,7 +278,6 @@ test("CMH-DEMO-04: the shipped checklist demo renders both shapes, aggregates, a
   // Toggling a leaf persists across a reload of the same file.
   await ctrl(page, "rollback").click(); // blank -> check
   await expect(ctrl(page, "rollback")).toHaveAttribute("data-cmh-check-state", "check");
-  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(CHECKLIST_DEMO));
   await ready(page);
   await expect(ctrl(page, "rollback")).toHaveAttribute("data-cmh-check-state", "check");

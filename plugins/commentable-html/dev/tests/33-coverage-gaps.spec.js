@@ -5,6 +5,7 @@ import {
   openInline, ready, openComposerFor, fileUrl, INLINE, SKILL,
   installClipboardCapture, stageInline, startStaticServer, routeMermaidLocal,
   routeOfflineExportLibs,
+  routeExampleLibsLocal,
 } from "./helpers.js";
 
 const EXAMPLE = path.join(SKILL, "..", "..", "examples", "report-community-garden.html");
@@ -126,6 +127,7 @@ test("saving a blank note marks the textarea invalid and keeps the composer open
 });
 
 test("closing a composer returns focus to the diff line that opened it (CMH-A11Y-02)", async ({ page }) => {
+  await routeExampleLibsLocal(page);
   await page.goto(fileUrl(EXAMPLE));
   await ready(page);
   const line = page.locator(".cmh-dl-add").first();

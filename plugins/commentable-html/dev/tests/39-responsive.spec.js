@@ -46,6 +46,9 @@ for (const [name, file] of Object.entries(EXAMPLES)) {
       test.use({ viewport: { width, height: 780 } });
 
       test.beforeEach(async ({ page }) => {
+        // The load plus the diagram renders now dominate this test, so the default 30s budget is
+        // too tight to also leave `awaitMermaidRendered` room to fail with its own message.
+        test.setTimeout(90000);
         // The examples load mermaid and Chart.js from the pinned CDN (CMH-SIZE-08/09); serve both
         // from the local copies (CMH-BUILD-30) so an overflow measurement never depends on egress
         // or CDN timing. Serving them locally makes the diagrams render FAST rather than never, so

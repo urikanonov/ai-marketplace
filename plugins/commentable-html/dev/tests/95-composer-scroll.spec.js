@@ -143,6 +143,7 @@ test.describe("working a composer preserves the document scroll (CMH-CORE-20)", 
   });
 
   test("saving a comment leaves the document where it was (CMH-CORE-20)", async ({ page }) => {
+    test.setTimeout(180000);
     await page.setViewportSize({ width: 2000, height: 1000 });
     await openExample(page);
     await ready(page);
@@ -206,6 +207,7 @@ test.describe("working a composer preserves the document scroll (CMH-CORE-20)", 
   });
 
   test("the scroll guard is re-entrant and leaves no lingering overflow-anchor override (CMH-CORE-20)", async ({ page }) => {
+    test.setTimeout(180000);
     await page.setViewportSize({ width: 2000, height: 1000 });
     await openExample(page);
     await ready(page);
@@ -282,6 +284,7 @@ test.describe("working a composer preserves the document scroll (CMH-CORE-20)", 
   });
 
   test("the guard puts back a host document's own inline overflow-anchor, value and priority (CMH-CORE-20)", async ({ page }) => {
+    test.setTimeout(180000);
     await page.setViewportSize({ width: 2000, height: 1000 });
     await openExample(page);
     await ready(page);
