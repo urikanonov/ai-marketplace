@@ -176,6 +176,8 @@ function Set-ClaudeCacheVersion([string]$claudeHome, [string]$plugin, [string]$v
 function Reset-ClaudeMock {
     $global:ClaudeCalls = @()
     $global:ClaudeCatalogCalls = @()
+    $global:ClaudePopulateSelfVersionOn = $null
+    $global:ClaudePopulatedSelfVersion = $null
     Set-Item -Path Function:global:claude -Value {
         $call = [string]::Join(" ", $args)
         if ($call -like "plugin marketplace update *") {
@@ -185,8 +187,14 @@ function Reset-ClaudeMock {
             return
         }
         $global:ClaudeCalls += , $call
+        $target = ($args | Select-Object -Last 1)
+        if ($global:ClaudePopulateSelfVersionOn -and
+            $target -like "$($global:ClaudePopulateSelfVersionOn)@*" -and
+            $global:ClaudePopulatedSelfVersion) {
+            Set-ClaudeCacheVersion $env:CLAUDE_CONFIG_DIR $self $global:ClaudePopulatedSelfVersion
+        }
         $global:LASTEXITCODE = 0
-        Write-Output ("updated " + ($args | Select-Object -Last 1))
+        Write-Output ("updated " + $target)
     }
 }
 
@@ -807,6 +815,23 @@ try {
     Assert-True ($status22b.managedResult -eq "success") "UPD-22: managed-plugin success is preserved when self-update fails"
     Assert-True ($status22b.selfUpdateResult -eq "failed") "UPD-22: self-update failure is recorded separately"
     Remove-Item -Recurse -Force $h22b
+
+    Reset-ClaudeMock
+    $global:ClaudePopulateSelfVersionOn = "alpha"
+    $global:ClaudePopulatedSelfVersion = "2.0.0"
+    $c22 = New-ClaudeSandbox @{
+        "alpha@$marketplace" = $true
+        "$self@$marketplace" = $true
+    }
+    Set-ClaudeCacheVersion $c22 "alpha" "1.0.0"
+    $activeVersion22c = (Get-Content -Path (Join-Path $pkgRoot "plugin.json") -Raw | ConvertFrom-Json).version
+    Set-ClaudeCacheVersion $c22 $self $activeVersion22c
+    Invoke-ClaudeHook $c22
+    $status22c = Get-Content -Path (Get-StatusPath $c22) -Raw | ConvertFrom-Json
+    $selfOutcome22c = @($status22c.plugins | Where-Object { $_.name -eq $self })[0]
+    Assert-True ($selfOutcome22c.beforeVersion -eq $activeVersion22c) "UPD-22: Claude self-update compares against the running package, not a newly populated cache entry"
+    Assert-True ($status22c.restartRequired -eq $true) "UPD-22: Claude records restartRequired when N+1 entered the cache before the self-update phase"
+    Remove-Item -Recurse -Force $c22
 } catch { $script:failures += "UPD-22 threw: $_" }
 
 Write-Host "== UPD-23 structured status is atomic and tracks attempts separately from success =="
@@ -964,7 +989,19 @@ try {
     $skill28 = Get-Content -Path (Join-Path (Join-Path (Join-Path $pkgRoot "skills") "marketplace-update") "SKILL.md") -Raw
     Assert-True ($skill28 -match "(?i)check updater health") "UPD-28: the bundled skill triggers on updater-health requests"
     Assert-True ($skill28 -match "(?i)-Mode health") "UPD-28: the bundled skill invokes the read-only health mode"
-    $interrupted28 = $healthJson28
+    $activated28 = Get-Content -Path (Get-StatusPath $h28) -Raw | ConvertFrom-Json
+    $activated28.restartRequired = $true
+    $activeVersion28 = (Get-Content -Path (Join-Path $pkgRoot "plugin.json") -Raw | ConvertFrom-Json).version
+    $activated28.activeUpdaterVersion = "1.5.0"
+    $activated28.plugins += [pscustomobject]@{ name = $self; finalVersion = $activeVersion28 }
+    $activated28 | ConvertTo-Json -Depth 8 | Set-Content -Path (Get-StatusPath $h28) -Encoding utf8
+    $sameSessionHealth28 = @(Invoke-Hook $h28 "health") -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True ($sameSessionHealth28.activeUpdaterVersion -eq "1.5.0" -and $sameSessionHealth28.restartRequired -eq $true) "UPD-28: health keeps restartRequired while the updated package is only on disk"
+    Invoke-Hook $h28
+    $activatedHealth28 = @(Invoke-Hook $h28 "health") -join [Environment]::NewLine | ConvertFrom-Json
+    Assert-True ($activatedHealth28.activeUpdaterVersion -eq $activeVersion28 -and $activatedHealth28.restartRequired -eq $false) "UPD-28: the next session-start pass activates the updated package and clears restartRequired"
+
+    $interrupted28 = $activatedHealth28
     $interrupted28.result = "running"
     $interrupted28.reason = "Update pass started."
     $interrupted28 | ConvertTo-Json -Depth 8 | Set-Content -Path (Get-StatusPath $h28) -Encoding utf8
@@ -1063,6 +1100,18 @@ try {
     $hookBody28 = Get-Content -Path $hookScript -Raw
     Assert-True ($hookBody28 -notmatch '\.claude-plugin\\plugin\.json') "UPD-28: Claude manifest lookup does not embed a Windows-only path separator"
 } catch { $script:failures += "UPD-28 threw: $_" }
+
+Write-Host "== UPD-29 real CLI lifecycle suite is wired into both platform jobs =="
+try {
+    $lifecycleScript29 = Join-Path $here "real_cli_lifecycle.py"
+    $cliPackage29 = Get-Content -Path (Join-Path (Join-Path $here "real-cli") "package.json") -Raw | ConvertFrom-Json
+    $workflow29 = Get-Content -Path (Join-Path (Join-Path (Join-Path $repoRoot ".github") "workflows") "pwsh-tests.yml") -Raw
+    Assert-True (Test-Path $lifecycleScript29) "UPD-29: the hermetic real-CLI lifecycle harness exists"
+    Assert-True ($workflow29 -match 'python plugins/urikan-ai-marketplace-auto-updater/dev/tests/real_cli_lifecycle\.py') "UPD-29: the required cross-platform job runs the real-CLI lifecycle harness"
+    Assert-True ($workflow29 -match 'npm ci --ignore-scripts --prefix plugins/urikan-ai-marketplace-auto-updater/dev/tests/real-cli') "UPD-29: CI installs the real CLIs from the committed lockfile"
+    Assert-True ($cliPackage29.dependencies.'@github/copilot' -eq "1.0.80") "UPD-29: the Copilot CLI lifecycle dependency is pinned"
+    Assert-True ($cliPackage29.dependencies.'@anthropic-ai/claude-code' -eq "2.1.240") "UPD-29: the Claude CLI lifecycle dependency is pinned"
+} catch { $script:failures += "UPD-29 threw: $_" }
 
 Remove-Item Function:copilot -ErrorAction SilentlyContinue
 Remove-Item Function:claude -ErrorAction SilentlyContinue

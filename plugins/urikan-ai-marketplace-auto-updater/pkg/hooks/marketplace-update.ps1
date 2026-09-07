@@ -501,6 +501,17 @@ function Get-HealthReport {
     }
     $lastAttempt = if ($null -ne $saved) { $saved.lastAttempt } else { $null }
     $restartRequired = if ($null -ne $saved) { [bool]$saved.restartRequired } else { $false }
+    $activeUpdaterVersion = if ($null -ne $saved -and $null -ne $saved.activeUpdaterVersion) {
+        [string]$saved.activeUpdaterVersion
+    } else {
+        Get-ActiveUpdaterVersion
+    }
+    if ($restartRequired -and $activeUpdaterVersion -and $null -ne $saved -and $null -ne $saved.plugins) {
+        $savedSelf = @($saved.plugins | Where-Object { $_.name -eq $self } | Select-Object -Last 1)
+        if ($savedSelf.Count -gt 0 -and $savedSelf[0].finalVersion -eq $activeUpdaterVersion) {
+            $restartRequired = $false
+        }
+    }
     $marketplaceUpdaterVersion = Get-MarketplaceVersion $self
     $selfState = @($plugins | Where-Object { $_.name -eq $self } | Select-Object -First 1)
     $installed = $selfState.Count -gt 0 -and $selfState[0].installed
@@ -528,7 +539,7 @@ function Get-HealthReport {
         agent = $Agent
         installed = $installed
         enabled = $enabled
-        activeUpdaterVersion = Get-ActiveUpdaterVersion
+        activeUpdaterVersion = $activeUpdaterVersion
         marketplaceUpdaterVersion = $marketplaceUpdaterVersion
         lastAttempt = $lastAttempt
         lastSuccess = if ($null -ne $lastSuccess) { $lastSuccess.ToString("o") } else { $null }
@@ -687,7 +698,11 @@ try {
     $orderedPlugins = @($managedPlugins)
     if ($selfInstalled) { $orderedPlugins += $self }
     foreach ($plugin in $orderedPlugins) {
-        $beforeVersion = Get-InstalledVersion $plugin
+        $beforeVersion = if ($plugin -eq $self -and $state.activeUpdaterVersion) {
+            [string]$state.activeUpdaterVersion
+        } else {
+            Get-InstalledVersion $plugin
+        }
         $targetVersion = Get-MarketplaceVersion $plugin
         $timer = [Diagnostics.Stopwatch]::StartNew()
         $exitCode = $null

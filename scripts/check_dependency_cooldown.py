@@ -64,6 +64,7 @@ from pathlib import PurePosixPath
 COOLDOWN_DAYS = 14
 LOCKFILE_PATTERNS = (
     "plugins/*/dev/package-lock.json",
+    "plugins/*/dev/tests/real-cli/package-lock.json",
     "site/tests/package-lock.json",
 )
 REQUEST_TIMEOUT_SECONDS = 10

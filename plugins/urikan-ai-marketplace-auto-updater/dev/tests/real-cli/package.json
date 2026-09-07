@@ -1,0 +1,10 @@
+{
+  "name": "updater-real-cli-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pinned real CLIs for the hermetic updater lifecycle test.",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.240",
+    "@github/copilot": "1.0.80"
+  }
+}
