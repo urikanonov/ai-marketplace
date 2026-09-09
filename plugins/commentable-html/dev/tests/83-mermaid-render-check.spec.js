@@ -1,15 +1,14 @@
 import { test, expect } from "@playwright/test";
 import fs from "fs";
 import {
-  ready, startStaticServer, stageContent, routeMermaidLocal, PLUGIN,
+  ready, startStaticServer, stageContent, routeMermaidLocal, awaitMermaidRendered, PLUGIN,
 } from "./helpers.js";
 
-// CMH-MMD-12: a report diagram is verified AFTER mermaid renders it. Two invariants are measured -
-// every label's laid-out box fits the box that was sized for it (an HTML label inside its
-// <foreignObject>, an SVG <text> label inside its node shape), and the drawn content (getBBox)
-// actually fills the SVG's viewBox - and a diagram that fails either is repaired once by re-rendering
-// that single host with htmlLabels:false (the deck-proven path that cannot re-flow) plus, if the
-// bounds are still wrong, a viewBox re-fit to the measured content bbox.
+// CMH-MMD-12: a report diagram is verified AFTER mermaid renders it. Labels must fit their boxes,
+// drawn content must fill the SVG viewBox, and HTML-label diagrams must remain at a legible scale.
+// A diagram that fails any invariant is repaired once by re-rendering that single host with
+// htmlLabels:false (the deck-proven path that cannot re-flow) plus, if the bounds are still wrong,
+// a viewBox re-fit to the measured content bbox.
 
 // The reported failure shape: a wide flowchart whose nodes carry multi-line HTML labels. The <br/>
 // line breaks matter - mermaid reads the diagram source from innerHTML, so a repair that re-rendered
@@ -24,6 +23,55 @@ const DIAGRAM =
   + '  D --> F["Role two<br/>Bucket: Store B tag<br/>queue: queue-b"]\n'
   + '  E --> H["Store A<br/>query surface"]\n'
   + '  F --> I["Store B"]</pre></section>';
+
+const REPORTED_NEXUS_DIAGRAM =
+  '<style>#commentRoot .mermaid foreignObject .nodeLabel { '
+  + 'font-size: 240px !important; line-height: 10 !important; }</style>'
+  + '<section><h2>Exporting Profiles to Nexus Telemetry</h2>'
+  + '<p>End to end, this is where the export sits in the pipeline that carries profile data to the Nexus consumers:</p>'
+  + '<figure style="margin-top: 2rem; margin-bottom: 2rem;">'
+  + '<pre class="mermaid cm-skip">%%{init: {"themeVariables": {"fontSize": "24px"}, '
+  + '"flowchart": {"nodeSpacing": 55, "rankSpacing": 45, "padding": 18, '
+  + '"subGraphTitleMargin": {"top": 6, "bottom": 20}}}}%%\n'
+  + 'flowchart LR\n'
+  + '  DP(["Detection Platform&lt;br/&gt;(profile processor services)"])\n'
+  + '  subgraph COSMOS["Azure Cosmos DB"]\n'
+  + '    direction TB\n'
+  + '    COL[("Profile collections")]\n'
+  + '    LEASE[("Leases")]\n'
+  + '  end\n'
+  + '  CF["Change Feed"]\n'
+  + '  PCD{{"Profile Changes&lt;br/&gt;Dispatcher"}}\n'
+  + '  subgraph SA["Storage Account (nexustelsender)"]\n'
+  + '    direction TB\n'
+  + '    AIAGENT[/"AIAgentInfo"/]\n'
+  + '    DPU[/"dispatcherprofileupdates"/]\n'
+  + '  end\n'
+  + '  TFI{{"Telemetry Frontend&lt;br/&gt;Internal"}}\n'
+  + '  TP(["Telemetry Pipelines"])\n'
+  + '  EKGU{{"EKG Uploader"}}\n'
+  + '  EKG(["EKG"])\n'
+  + '  RAVEN(["Raven Processor"])\n'
+  + '  DP --> |"updates profile collections"| COL\n'
+  + '  COL --> CF\n'
+  + '  CF --> PCD\n'
+  + '  PCD --> |"Generic ETW wrapped in CyberReport"| SA\n'
+  + '  SA --> TFI\n'
+  + '  TFI --> TP\n'
+  + '  TP --> EKGU\n'
+  + '  EKGU --> EKG\n'
+  + '  TP --> RAVEN\n'
+  + '  TP --> |"Processed telemetry"| DP\n'
+  + '  classDef svc fill:#2563eb,stroke:#1e40af,color:#ffffff;\n'
+  + '  classDef platform fill:#4b5563,stroke:#111827,color:#ffffff;\n'
+  + '  classDef cosmos fill:#0e7490,stroke:#155e75,color:#ffffff;\n'
+  + '  classDef storage fill:#b45309,stroke:#92400e,color:#ffffff;\n'
+  + '  classDef endpoint fill:#7c3aed,stroke:#5b21b6,color:#ffffff;\n'
+  + '  class PCD,TFI,EKGU svc;\n'
+  + '  class DP,TP platform;\n'
+  + '  class COL,LEASE cosmos;\n'
+  + '  class AIAGENT,DPU storage;\n'
+  + '  class EKG,RAVEN endpoint;</pre></figure></section>';
 
 // Measured independently of the runtime helpers, so the spec cannot pass just because the runtime
 // agrees with itself. `overflow` is the worst laid-out label box minus the box sized for it, in SVG
@@ -82,6 +130,7 @@ const MEASURE = () => {
       // gantt diagram has neither a <foreignObject> nor a g.node), so they are counted rather than
       // required per diagram - the corpus-level assertion below is what stops a vacuous pass.
       bounded,
+      scale: vb.length === 4 && vb[2] > 0 ? svg.clientWidth / vb[2] : 0,
       labelBoxes: boxesSeen,
       foreignObjects: svg.querySelectorAll("foreignObject").length,
       nodes: svg.querySelectorAll("g.node").length,
@@ -114,6 +163,194 @@ async function stageAndServe(key, source) {
 }
 
 test.describe("mermaid render self-check (CMH-MMD-12)", () => {
+  test("CMH-MMD-12: the reported Nexus architecture diagram renders with bounded geometry", async ({ page }) => {
+    test.setTimeout(120000);
+    await page.setViewportSize({ width: 1000, height: 1100 });
+    const { dir } = stageContent(REPORTED_NEXUS_DIAGRAM, {
+      key: "cmh-mmd-nexus-regression",
+      source: "exporting-profiles-to-nexus.html",
+    });
+    const server = await startStaticServer(dir);
+    try {
+      await routeMermaidLocal(page);
+      await page.addInitScript(() => document.documentElement.setAttribute("data-theme", "dark"));
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page, { timeout: 30000 });
+
+      const geometry = await page.locator("#commentRoot .mermaid svg").evaluate((svg) => {
+        const viewBox = (svg.getAttribute("viewBox") || "").trim().split(/[\s,]+/).map(Number);
+        const nodes = [...svg.querySelectorAll("g.node")].map((node) => node.getBBox());
+        return {
+          viewBox,
+          nodes: nodes.length,
+          scale: svg.clientWidth / viewBox[2],
+          rightmostNode: Math.max(...nodes.map((box) => box.x + box.width)),
+          bottommostNode: Math.max(...nodes.map((box) => box.y + box.height)),
+        };
+      });
+
+      expect(geometry.nodes).toBe(12);
+      expect(geometry.viewBox[2], "viewBox width stays near the healthy 3002-unit render").toBeLessThan(5000);
+      expect(geometry.viewBox[3], "viewBox height stays near the healthy 577-unit render").toBeLessThan(1500);
+      expect(geometry.scale, "the repaired diagram is legible at its layout size").toBeGreaterThanOrEqual(0.05);
+      expect(geometry.rightmostNode, "no node is stranded tens of thousands of units away").toBeLessThan(5000);
+      expect(geometry.bottommostNode, "no node is stranded tens of thousands of units down").toBeLessThan(1500);
+      expect(await page.evaluate(() => window.__cmhMermaidRepairs)).toBe(1);
+      await expect(page.locator("#commentRoot .mermaid svg foreignObject")).toHaveCount(0);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-12: an SVG-text repair that remains below the legibility floor is rolled back", async ({ page }) => {
+    test.setTimeout(120000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const { dir, server } = await stageAndServe("cmh-mmd-scale-rollback", "scale-rollback.html");
+    try {
+      await routeMermaidLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page, { timeout: 30000 });
+
+      const result = await page.evaluate(async () => {
+        const host = document.querySelector("#commentRoot .mermaid");
+        const original = host.querySelector("svg");
+        original.setAttribute("viewBox", "0 0 30000 30000");
+        window.__cmhMermaidRerender = (el) => {
+          const ns = "http://www.w3.org/2000/svg";
+          const svg = original.cloneNode(true);
+          svg.setAttribute("viewBox", "0 0 30000 30000");
+          svg.querySelectorAll("foreignObject").forEach((node) => node.remove());
+          const bounds = document.createElementNS(ns, "rect");
+          bounds.setAttribute("width", "29000");
+          bounds.setAttribute("height", "29000");
+          bounds.setAttribute("fill", "none");
+          svg.appendChild(bounds);
+          el.textContent = "";
+          el.appendChild(svg);
+          return Promise.resolve(true);
+        };
+        const repaired = await window.__cmhMermaidAudit(host);
+        return {
+          repaired,
+          sameSvg: host.querySelector("svg") === original,
+          repairs: window.__cmhMermaidRepairs,
+        };
+      });
+
+      expect(result.repaired).toBe(false);
+      expect(result.sameSvg).toBe(true);
+      expect(result.repairs).toBe(0);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-12: every accepted repair must finish above the legibility floor", async ({ page }) => {
+    test.setTimeout(120000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const { dir, server } = await stageAndServe("cmh-mmd-repair-floor", "repair-floor.html");
+    try {
+      await routeMermaidLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page, { timeout: 30000 });
+
+      const result = await page.evaluate(async () => {
+        const host = document.querySelector("#commentRoot .mermaid");
+        const original = host.querySelector("svg");
+        original.setAttribute("viewBox", "0 0 6000 1200");
+        window.__cmhMermaidRerender = (el) => {
+          const ns = "http://www.w3.org/2000/svg";
+          const svg = original.cloneNode(true);
+          svg.setAttribute("viewBox", "0 0 30000 30000");
+          svg.querySelectorAll("foreignObject").forEach((node) => node.remove());
+          const bounds = document.createElementNS(ns, "rect");
+          bounds.setAttribute("width", "29000");
+          bounds.setAttribute("height", "29000");
+          bounds.setAttribute("fill", "none");
+          svg.appendChild(bounds);
+          el.textContent = "";
+          el.appendChild(svg);
+          return Promise.resolve(true);
+        };
+        const repaired = await window.__cmhMermaidAudit(host);
+        return {
+          repaired,
+          sameSvg: host.querySelector("svg") === original,
+          repairs: window.__cmhMermaidRepairs,
+        };
+      });
+
+      expect(result.repaired).toBe(false);
+      expect(result.sameSvg).toBe(true);
+      expect(result.repairs).toBe(0);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-12: crossing the legibility floor re-audits below the resize hysteresis", async ({ page }) => {
+    test.setTimeout(120000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const { dir, server } = await stageAndServe("cmh-mmd-scale-crossing", "scale-crossing.html");
+    try {
+      await routeMermaidLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page, { timeout: 30000 });
+      await page.evaluate(() => {
+        const host = document.querySelector("#commentRoot .mermaid");
+        const svg = host.querySelector("svg");
+        const width = svg.clientWidth;
+        const height = svg.clientHeight;
+        host._cmhMmdAuditScale = 0.051;
+        svg.setAttribute("viewBox", `0 0 ${width / 0.0495} ${height / 0.0495}`);
+      });
+      await page.setViewportSize({ width: 1270, height: 900 });
+
+      await expect
+        .poll(async () => {
+          await page.evaluate(() => window.__cmhMermaidAuditsSettled);
+          return page.evaluate(() => window.__cmhMermaidRepairs);
+        }, { timeout: 30000 })
+        .toBe(1);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-12: an ancestor transform does not false-positive the layout scale", async ({ page }) => {
+    test.setTimeout(120000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const content = '<div id="scaled-diagram">' + DIAGRAM + "</div>";
+    const { dir } = stageContent(content, { key: "cmh-mmd-transform", source: "transform.html" });
+    const server = await startStaticServer(dir);
+    try {
+      await routeMermaidLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page, { timeout: 30000 });
+
+      const repaired = await page.evaluate(async () => {
+        document.querySelector("#scaled-diagram").style.cssText =
+          "transform:scale(.1);transform-origin:0 0";
+        return window.__cmhMermaidAudit(document.querySelector("#commentRoot .mermaid"));
+      });
+      expect(repaired).toBe(false);
+      expect(await page.evaluate(() => window.__cmhMermaidRepairs)).toBe(0);
+      await expect(page.locator("#commentRoot .mermaid svg foreignObject")).not.toHaveCount(0);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("CMH-MMD-12: a report diagram with under-sized label boxes and an inflated viewBox is repaired once", async ({ page }) => {
     test.setTimeout(120000);
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -133,6 +370,7 @@ test.describe("mermaid render self-check (CMH-MMD-12)", () => {
       expect(before[0].foreignObjects).toBeGreaterThan(0);
       expect(before[0].overflow).toBeLessThan(4);
       expect(Math.min(before[0].fillW, before[0].fillH)).toBeGreaterThan(0.8);
+      expect(before[0].scale).toBeGreaterThanOrEqual(0.05);
       expect(await page.evaluate(() => window.__cmhMermaidRepairs)).toBe(0);
 
       // The measurement is scale-invariant: narrowing the column CSS-scales the diagram down, and a
@@ -472,6 +710,9 @@ test.describe("shipped example reports satisfy the mermaid render invariants (CM
           // runtime's own MMD_FILL_MIN of 0.7.
           expect(Math.min(m.fillW, m.fillH), `viewBox fill in ${file}`).toBeGreaterThan(0.7);
           expect(Math.max(m.fillW, m.fillH), `best-axis viewBox fill in ${file}`).toBeGreaterThan(0.8);
+          if (m.foreignObjects) {
+            expect(m.scale, `HTML-label scale in ${file}`).toBeGreaterThanOrEqual(0.05);
+          }
           diagrams += 1;
           labelBoxes += m.labelBoxes;
         }

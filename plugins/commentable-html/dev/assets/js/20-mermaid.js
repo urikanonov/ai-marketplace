@@ -358,9 +358,9 @@ function mermaidViewBoxDims(svg) {
    A report diagram is rendered with HTML node labels inside a <foreignObject>, whose content the
    browser re-lays-out against whatever context the SVG ends up in. When that goes wrong the node
    boxes are too small for their labels (clipped mid-word) and the viewBox is much larger than what
-   was actually drawn (the diagram sits small in a corner with the rest blank). Both are measurable
-   after the fact, so the layer measures them once per diagram and repairs a bad render instead of
-   laying it out faithfully. */
+   was actually drawn, or both the drawing and viewBox inflate until the browser compresses the
+   diagram below a legible scale. The layer measures these faults once per diagram and repairs a bad
+   render instead of laying it out faithfully. */
 
 // Slack on a label box, in SVG user units. mermaid sizes each box from its own text measurement, so
 // a healthy render overflows by exactly 0 (measured across every shipped example); the allowance
@@ -374,6 +374,10 @@ var MMD_FILL_MIN = 0.7;
 // Absolute allowance for the diagram's own padding (mermaid insets its content by 8 user units per
 // side), so a small diagram is not judged broken by its own margins.
 var MMD_FILL_PAD = 24;
+// An HTML-label report diagram compressed below this layout-CSS-px-per-user-unit scale is unreadable.
+// This catches a host-style interaction that inflates both the nodes and their viewBox together:
+// content fill still looks healthy, but the resulting diagram is tens of thousands of units wide.
+var MMD_MIN_USER_SCALE = 0.05;
 // Re-measure a host only when its rendered scale has moved by more than this fraction. The fault is
 // scale-dependent (an HTML label re-flows against the SCALED context), so a diagram that was healthy
 // at load can break when the column - and with it the diagram's CSS scale - changes on a resize,
@@ -403,6 +407,19 @@ function mermaidUserScale(svg) {
   const vb = mermaidViewBoxDims(svg);
   const w = svg.getBoundingClientRect ? svg.getBoundingClientRect().width : 0;
   if (vb && w > 0) return w / vb.w;
+  return 1;
+}
+// Layout CSS px per SVG user unit. Unlike getScreenCTM(), computed width ignores browser zoom and
+// ancestor transforms, so the legibility guard only reacts to Mermaid's own oversized design space.
+function mermaidLayoutScale(svg) {
+  const vb = mermaidViewBoxDims(svg);
+  let width = 0;
+  try {
+    const cssWidth = getComputedStyle(svg).width;
+    if (/^\d*\.?\d+px$/.test(cssWidth)) width = parseFloat(cssWidth) || 0;
+  } catch (e) {}
+  if (!(width > 0)) width = svg && svg.clientWidth;
+  if (vb && width > 0) return width / vb.w;
   return 1;
 }
 // Worst amount (SVG user units) by which a laid-out label sticks out of the box that was sized for
@@ -472,12 +489,17 @@ function mermaidContentFill(svg) {
 function mermaidRenderFaults(svg) {
   const labels = mermaidLabelOverflow(svg);
   const fill = mermaidContentFill(svg);
+  const scale = mermaidLayoutScale(svg);
   const underfilled = !!fill && fill.w < MMD_FILL_MIN && fill.h < MMD_FILL_MIN;
+  const underscaled = labels.boxes > 0 && !!svg.querySelector("foreignObject") &&
+    scale < MMD_MIN_USER_SCALE;
   return {
     overflow: labels.worst,
     labelBoxes: labels.boxes,
     fill: fill,
-    bad: labels.worst > MMD_LABEL_SLACK || underfilled,
+    scale: scale,
+    underscaled: underscaled,
+    bad: labels.worst > MMD_LABEL_SLACK || underfilled || underscaled,
   };
 }
 // The tighter of the two fill ratios. Unmeasurable bounds score 0, NOT 1: this value only ever
@@ -545,7 +567,7 @@ function auditMermaidRender(host) {
   if (!(host.offsetWidth || host.offsetHeight || (host.getClientRects && host.getClientRects().length))) {
     return Promise.resolve(false);
   }
-  host._cmhMmdAuditScale = mermaidUserScale(svg);
+  host._cmhMmdAuditScale = mermaidLayoutScale(svg);
   const before = mermaidRenderFaults(svg);
   if (!before.bad) return Promise.resolve(false);
   const beforeNodes = host.querySelectorAll(MERMAID_RENDERED_SEL).length;
@@ -565,7 +587,7 @@ function auditMermaidRender(host) {
       updateMermaidWidthClass(host);
       attachMermaidHostHandlers(host);
       const fixed = host.querySelector("svg");
-      if (fixed) host._cmhMmdAuditScale = mermaidUserScale(fixed);
+      if (fixed) host._cmhMmdAuditScale = mermaidLayoutScale(fixed);
     } catch (e) {}
     return true;
   };
@@ -591,11 +613,14 @@ function auditMermaidRender(host) {
     // label arm only votes when the fresh render actually compared boxes; otherwise the fill is the
     // only evidence there is, and it has to be a strict improvement.
     const labelsComparable = after.labelBoxes > 0;
+    const legibilityRecovered = after.scale >= MMD_MIN_USER_SCALE;
     const notWorse = host.querySelectorAll(MERMAID_RENDERED_SEL).length >= beforeNodes &&
       (!labelsComparable || after.overflow <= before.overflow + 0.5) &&
-      afterFill >= beforeFill - 0.01;
+      afterFill >= beforeFill - 0.01 &&
+      legibilityRecovered;
     const strictlyBetter = (labelsComparable && after.overflow < before.overflow - 0.5) ||
-      afterFill > beforeFill + 0.01;
+      afterFill > beforeFill + 0.01 ||
+      (before.underscaled && legibilityRecovered);
     // Keep the replacement only when it is no worse AND it actually achieved something: a
     // re-render that comes back just as broken must not be presented (or counted) as a repair.
     if (notWorse && (!after.bad || strictlyBetter) && (labelsComparable || strictlyBetter)) return true;
@@ -615,8 +640,13 @@ function maybeAuditMermaidRender(host) {
   if (typeof prev === "number") {
     const svg = host.querySelector && host.querySelector("svg");
     if (!svg) return Promise.resolve(false);
-    const now = mermaidUserScale(svg);
-    if (!(prev > 0) || Math.abs(now - prev) / prev < MMD_RESCALE_MIN) return Promise.resolve(false);
+    const now = mermaidLayoutScale(svg);
+    const crossesLegibilityFloor = !!svg.querySelector("foreignObject") &&
+      (prev < MMD_MIN_USER_SCALE) !== (now < MMD_MIN_USER_SCALE);
+    if (!(prev > 0) ||
+        (!crossesLegibilityFloor && Math.abs(now - prev) / prev < MMD_RESCALE_MIN)) {
+      return Promise.resolve(false);
+    }
   }
   return trackMermaidAudit(auditMermaidRender(host));
 }
@@ -1122,5 +1152,3 @@ function setupMermaidLayer() {
     setupMermaidLayer._widthObs = widthObs;
   }
 }
-
-

@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.850.2] - 2026-09-09
+
+### Fixed
+
+- Mermaid flowcharts no longer collapse into tiny, unreadable nodes when document-level HTML-label
+  styles inflate both the drawing and its viewBox. The post-render audit now detects diagrams
+  compressed below a legible layout scale and uses the existing bounded SVG-text repair without
+  mistaking browser zoom or an ancestor transform for broken Mermaid geometry.
+
 ## [1.850.1] - 2026-09-06
 
 ### Changed
