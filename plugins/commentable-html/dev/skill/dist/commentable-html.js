@@ -725,7 +725,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.850.1";
+const CMH_VERSION= "1.850.2";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -1980,6 +1980,8 @@ return null;
 var MMD_LABEL_SLACK=4;
 var MMD_FILL_MIN=0.7;
 var MMD_FILL_PAD=24;
+var MMD_MIN_USER_SCALE=0.05;
+var MMD_MAX_HTML_LABEL_SPAN=1000;
 var MMD_RESCALE_MIN=0.05;
 window.__cmhMermaidRepairs=0;
 window.__cmhMermaidAuditsSettled=Promise.resolve();
@@ -1997,6 +1999,28 @@ const vb=mermaidViewBoxDims(svg);
 const w=svg.getBoundingClientRect?svg.getBoundingClientRect().width:0;
 if(vb&&w>0)return w/vb.w;
 return 1;
+}
+function mermaidLayoutScale(svg){
+const vb=mermaidViewBoxDims(svg);
+let width=0;
+try{
+const cssWidth=getComputedStyle(svg).width;
+if(/^\d*\.?\d+px$/.test(cssWidth))width=parseFloat(cssWidth)||0;
+}catch(e){}
+if(!(width>0))width=svg&&svg.clientWidth;
+if(vb&&width>0)return width/vb.w;
+return 1;
+}
+function mermaidHtmlLabelSpan(svg){
+let largest=0;
+if(!svg||!svg.querySelectorAll)return largest;
+svg.querySelectorAll("foreignObject").forEach(function(fo){
+const w=fo.width&&fo.width.baseVal?fo.width.baseVal.value:parseFloat(fo.getAttribute("width"));
+const h=fo.height&&fo.height.baseVal?fo.height.baseVal.value:parseFloat(fo.getAttribute("height"));
+if(isFinite(w))largest=Math.max(largest,w);
+if(isFinite(h))largest=Math.max(largest,h);
+});
+return largest;
 }
 function mermaidLabelOverflow(svg){
 const out={worst:0,boxes:0};
@@ -2046,12 +2070,19 @@ inner:{x:x,y:y,w:overlapW,h:overlapH},
 function mermaidRenderFaults(svg){
 const labels=mermaidLabelOverflow(svg);
 const fill=mermaidContentFill(svg);
+const scale=mermaidLayoutScale(svg);
+const htmlLabelSpan=mermaidHtmlLabelSpan(svg);
 const underfilled=!!fill&&fill.w<MMD_FILL_MIN&&fill.h<MMD_FILL_MIN;
+const underscaled=labels.boxes>0&&!!svg.querySelector("foreignObject")&&
+scale<MMD_MIN_USER_SCALE&&htmlLabelSpan>MMD_MAX_HTML_LABEL_SPAN;
 return{
 overflow:labels.worst,
 labelBoxes:labels.boxes,
 fill:fill,
-bad:labels.worst>MMD_LABEL_SLACK||underfilled,
+scale:scale,
+htmlLabelSpan:htmlLabelSpan,
+underscaled:underscaled,
+bad:labels.worst>MMD_LABEL_SLACK||underfilled||underscaled,
 };
 }
 function mermaidFillFloor(faults){
@@ -2095,7 +2126,7 @@ if(!svg)return Promise.resolve(false);
 if(!(host.offsetWidth||host.offsetHeight||(host.getClientRects&&host.getClientRects().length))){
 return Promise.resolve(false);
 }
-host._cmhMmdAuditScale=mermaidUserScale(svg);
+host._cmhMmdAuditScale=mermaidLayoutScale(svg);
 const before=mermaidRenderFaults(svg);
 if(!before.bad)return Promise.resolve(false);
 const beforeNodes=host.querySelectorAll(MERMAID_RENDERED_SEL).length;
@@ -2112,7 +2143,7 @@ refreshDeckDiagram(host);
 updateMermaidWidthClass(host);
 attachMermaidHostHandlers(host);
 const fixed=host.querySelector("svg");
-if(fixed)host._cmhMmdAuditScale=mermaidUserScale(fixed);
+if(fixed)host._cmhMmdAuditScale=mermaidLayoutScale(fixed);
 }catch(e){}
 return true;
 };
@@ -2129,11 +2160,14 @@ refitMermaidViewBox(fresh);
 const after=mermaidRenderFaults(fresh);
 const afterFill=mermaidFillFloor(after);
 const labelsComparable=after.labelBoxes>0;
+const legibilityRecovered=after.scale>=MMD_MIN_USER_SCALE;
 const notWorse=host.querySelectorAll(MERMAID_RENDERED_SEL).length>=beforeNodes&&
 (!labelsComparable||after.overflow<=before.overflow+0.5)&&
-afterFill>=beforeFill-0.01;
+afterFill>=beforeFill-0.01&&
+legibilityRecovered;
 const strictlyBetter=(labelsComparable&&after.overflow<before.overflow-0.5)||
-afterFill>beforeFill+0.01;
+afterFill>beforeFill+0.01||
+(before.underscaled&&legibilityRecovered);
 if(notWorse&&(!after.bad||strictlyBetter)&&(labelsComparable||strictlyBetter))return true;
 host.textContent= "";
 host.appendChild(svg);
@@ -2146,8 +2180,13 @@ const prev=host._cmhMmdAuditScale;
 if(typeof prev=== "number"){
 const svg=host.querySelector&&host.querySelector("svg");
 if(!svg)return Promise.resolve(false);
-const now=mermaidUserScale(svg);
-if(!(prev>0)||Math.abs(now-prev)/prev<MMD_RESCALE_MIN)return Promise.resolve(false);
+const now=mermaidLayoutScale(svg);
+const crossesLegibilityFloor=!!svg.querySelector("foreignObject")&&
+(prev<MMD_MIN_USER_SCALE)!==(now<MMD_MIN_USER_SCALE);
+if(!(prev>0)||
+(!crossesLegibilityFloor&&Math.abs(now-prev)/prev<MMD_RESCALE_MIN)){
+return Promise.resolve(false);
+}
 }
 return trackMermaidAudit(auditMermaidRender(host));
 }
