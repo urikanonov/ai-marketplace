@@ -351,6 +351,41 @@ test.describe("mermaid render self-check (CMH-MMD-12)", () => {
     }
   });
 
+  test("CMH-MMD-12: browser zoom does not false-positive a responsive diagram near the scale floor", async ({ page }) => {
+    test.setTimeout(120000);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const { dir, server } = await stageAndServe("cmh-mmd-browser-zoom", "browser-zoom.html");
+    try {
+      await routeMermaidLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page, { timeout: 30000 });
+
+      const result = await page.evaluate(async () => {
+        const host = document.querySelector("#commentRoot .mermaid");
+        const svg = host.querySelector("svg");
+        const vb = (svg.getAttribute("viewBox") || "").trim().split(/[\s,]+/).map(Number);
+        const layoutBefore = parseFloat(getComputedStyle(svg).width);
+        svg.setAttribute("viewBox", `0 0 ${layoutBefore / 0.051} ${vb[3]}`);
+        const physicalBefore = svg.getBoundingClientRect().width;
+        document.body.style.zoom = "200%";
+        const layoutAfter = parseFloat(getComputedStyle(svg).width);
+        const physicalAfter = svg.getBoundingClientRect().width;
+        const repaired = await window.__cmhMermaidAudit(host);
+        return { repaired, layoutBefore, layoutAfter, physicalBefore, physicalAfter };
+      });
+
+      expect(result.layoutAfter).toBeLessThan(result.layoutBefore * 0.6);
+      expect(result.physicalAfter).toBeGreaterThan(result.layoutAfter * 1.9);
+      expect(result.repaired).toBe(false);
+      expect(await page.evaluate(() => window.__cmhMermaidRepairs)).toBe(0);
+      await expect(page.locator("#commentRoot .mermaid svg foreignObject")).not.toHaveCount(0);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("CMH-MMD-12: a report diagram with under-sized label boxes and an inflated viewBox is repaired once", async ({ page }) => {
     test.setTimeout(120000);
     await page.setViewportSize({ width: 1280, height: 900 });

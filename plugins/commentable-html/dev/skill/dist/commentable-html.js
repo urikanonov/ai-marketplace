@@ -1981,6 +1981,7 @@ var MMD_LABEL_SLACK=4;
 var MMD_FILL_MIN=0.7;
 var MMD_FILL_PAD=24;
 var MMD_MIN_USER_SCALE=0.05;
+var MMD_MAX_HTML_LABEL_SPAN=1000;
 var MMD_RESCALE_MIN=0.05;
 window.__cmhMermaidRepairs=0;
 window.__cmhMermaidAuditsSettled=Promise.resolve();
@@ -2009,6 +2010,17 @@ if(/^\d*\.?\d+px$/.test(cssWidth))width=parseFloat(cssWidth)||0;
 if(!(width>0))width=svg&&svg.clientWidth;
 if(vb&&width>0)return width/vb.w;
 return 1;
+}
+function mermaidHtmlLabelSpan(svg){
+let largest=0;
+if(!svg||!svg.querySelectorAll)return largest;
+svg.querySelectorAll("foreignObject").forEach(function(fo){
+const w=fo.width&&fo.width.baseVal?fo.width.baseVal.value:parseFloat(fo.getAttribute("width"));
+const h=fo.height&&fo.height.baseVal?fo.height.baseVal.value:parseFloat(fo.getAttribute("height"));
+if(isFinite(w))largest=Math.max(largest,w);
+if(isFinite(h))largest=Math.max(largest,h);
+});
+return largest;
 }
 function mermaidLabelOverflow(svg){
 const out={worst:0,boxes:0};
@@ -2059,14 +2071,16 @@ function mermaidRenderFaults(svg){
 const labels=mermaidLabelOverflow(svg);
 const fill=mermaidContentFill(svg);
 const scale=mermaidLayoutScale(svg);
+const htmlLabelSpan=mermaidHtmlLabelSpan(svg);
 const underfilled=!!fill&&fill.w<MMD_FILL_MIN&&fill.h<MMD_FILL_MIN;
 const underscaled=labels.boxes>0&&!!svg.querySelector("foreignObject")&&
-scale<MMD_MIN_USER_SCALE;
+scale<MMD_MIN_USER_SCALE&&htmlLabelSpan>MMD_MAX_HTML_LABEL_SPAN;
 return{
 overflow:labels.worst,
 labelBoxes:labels.boxes,
 fill:fill,
 scale:scale,
+htmlLabelSpan:htmlLabelSpan,
 underscaled:underscaled,
 bad:labels.worst>MMD_LABEL_SLACK||underfilled||underscaled,
 };

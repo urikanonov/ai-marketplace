@@ -378,6 +378,10 @@ var MMD_FILL_PAD = 24;
 // This catches a host-style interaction that inflates both the nodes and their viewBox together:
 // content fill still looks healthy, but the resulting diagram is tens of thousands of units wide.
 var MMD_MIN_USER_SCALE = 0.05;
+// Only treat low scale as a render fault when an HTML label is itself abnormally large in Mermaid's
+// design space. Responsive layout width also shrinks under browser zoom, while intrinsic label
+// geometry does not, so this gate separates a broken render from a healthy zoomed diagram.
+var MMD_MAX_HTML_LABEL_SPAN = 1000;
 // Re-measure a host only when its rendered scale has moved by more than this fraction. The fault is
 // scale-dependent (an HTML label re-flows against the SCALED context), so a diagram that was healthy
 // at load can break when the column - and with it the diagram's CSS scale - changes on a resize,
@@ -409,8 +413,7 @@ function mermaidUserScale(svg) {
   if (vb && w > 0) return w / vb.w;
   return 1;
 }
-// Layout CSS px per SVG user unit. Unlike getScreenCTM(), computed width ignores browser zoom and
-// ancestor transforms, so the legibility guard only reacts to Mermaid's own oversized design space.
+// Layout CSS px per SVG user unit. Unlike getScreenCTM(), computed width ignores ancestor transforms.
 function mermaidLayoutScale(svg) {
   const vb = mermaidViewBoxDims(svg);
   let width = 0;
@@ -421,6 +424,17 @@ function mermaidLayoutScale(svg) {
   if (!(width > 0)) width = svg && svg.clientWidth;
   if (vb && width > 0) return width / vb.w;
   return 1;
+}
+function mermaidHtmlLabelSpan(svg) {
+  let largest = 0;
+  if (!svg || !svg.querySelectorAll) return largest;
+  svg.querySelectorAll("foreignObject").forEach(function (fo) {
+    const w = fo.width && fo.width.baseVal ? fo.width.baseVal.value : parseFloat(fo.getAttribute("width"));
+    const h = fo.height && fo.height.baseVal ? fo.height.baseVal.value : parseFloat(fo.getAttribute("height"));
+    if (isFinite(w)) largest = Math.max(largest, w);
+    if (isFinite(h)) largest = Math.max(largest, h);
+  });
+  return largest;
 }
 // Worst amount (SVG user units) by which a laid-out label sticks out of the box that was sized for
 // it, plus how many boxes were actually compared. An HTML label is measured against its
@@ -490,14 +504,16 @@ function mermaidRenderFaults(svg) {
   const labels = mermaidLabelOverflow(svg);
   const fill = mermaidContentFill(svg);
   const scale = mermaidLayoutScale(svg);
+  const htmlLabelSpan = mermaidHtmlLabelSpan(svg);
   const underfilled = !!fill && fill.w < MMD_FILL_MIN && fill.h < MMD_FILL_MIN;
   const underscaled = labels.boxes > 0 && !!svg.querySelector("foreignObject") &&
-    scale < MMD_MIN_USER_SCALE;
+    scale < MMD_MIN_USER_SCALE && htmlLabelSpan > MMD_MAX_HTML_LABEL_SPAN;
   return {
     overflow: labels.worst,
     labelBoxes: labels.boxes,
     fill: fill,
     scale: scale,
+    htmlLabelSpan: htmlLabelSpan,
     underscaled: underscaled,
     bad: labels.worst > MMD_LABEL_SLACK || underfilled || underscaled,
   };
