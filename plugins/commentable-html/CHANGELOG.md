@@ -4,6 +4,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.851.0] - 2026-09-26
+
+### Added
+
+- Every sidebar comment now has a `Copy` button beside `Select`, so one comment thread can be
+  handed back immediately without changing the current selection or using `Copy selected`.
+
 ## [1.850.2] - 2026-09-09
 
 ### Fixed
