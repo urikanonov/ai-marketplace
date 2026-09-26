@@ -116,6 +116,42 @@ test.describe("side-pane comment selection", () => {
     await expect(page.locator(`${CARD} ${PICK}`)).toHaveCount(3);
   });
 
+  test("each comment card can copy its thread directly without changing the selection (CMH-PICK-10)", async ({ page }) => {
+    const ids = await seedThree(page);
+    await addReply(page, ids[1], "beta refinement");
+    await pick(page, ids[0]);
+
+    const copyButtons = page.locator(`${CARD} .cm-copy-one`);
+    await expect(copyButtons).toHaveCount(3);
+    const copy = card(page, ids[1]).locator(".cm-copy-one");
+    await expect(copy).toHaveAttribute("aria-label", /^Copy comment #\d+$/);
+    expect(await copy.evaluate((button) =>
+      button.previousElementSibling?.matches("label.cm-pick-label")
+    ), "Copy sits directly beside Select").toBe(true);
+
+    await copy.click();
+    const bundle = await lastCopied(page);
+    expect(bundle, "the direct bundle reached the clipboard").toBeTruthy();
+    expect(bundle).toContain("beta note");
+    expect(bundle).toContain("beta refinement");
+    expect(bundle).not.toContain("alpha note");
+    expect(bundle).not.toContain("gamma note");
+    expect(bundle).toMatch(/^Scope: single comment only \(1 of 3 open comment threads\)$/m);
+
+    const trailer = machineTrailerBody(bundle);
+    const handled = JSON.parse(/HANDLED_IDS_JSON: (.*)/.exec(trailer)[1]);
+    expect(handled).toContain(ids[1]);
+    expect(handled).not.toContain(ids[0]);
+    expect(handled).not.toContain(ids[2]);
+    expect(handled.length, "the root plus its one reply").toBe(2);
+
+    await expect(card(page, ids[0]).locator(PICK)).toBeChecked();
+    await expect(card(page, ids[1]).locator(PICK)).not.toBeChecked();
+    await expect(card(page, ids[2]).locator(PICK)).not.toBeChecked();
+    await expect(page.locator("#cmSelectCount")).toHaveText(/1 comment selected/);
+    await expect(page.locator("#btnCopyAll")).toHaveText(/Copy selected/);
+  });
+
   test("picking and clearing never re-render the list, so an open draft survives (CMH-PICK-01, CMH-PICK-05)", async ({ page }) => {
     const ids = await seedThree(page);
     // A dirty inline reply draft on one card. Toggling a pick on ANOTHER card must not rebuild the

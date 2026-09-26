@@ -3,7 +3,7 @@
 // (each root plus its replies) are emitted, and the tracked non-comment changes are left out
 // entirely, because a selection is a comment-only scope. With no selection this is the unchanged
 // all-or-nothing bundle.
-function buildCopyText(pickedIds) {
+function buildCopyText(pickedIds, partialScope) {
   // A fresh formatting pass: drop the render-pass zone-formatter memo so a host timezone change
   // since the last render cannot label the bundle with the old zone name (CMH-SIDE-13).
   if (typeof cmhForgetZoneFormatter === "function") cmhForgetZoneFormatter();
@@ -99,7 +99,7 @@ function buildCopyText(pickedIds) {
     if ((typeof widgetStateChanges === "function") && widgetStateChanges().length) held.push("widget-layout");
     if ((typeof checklistChanges === "function") && checklistChanges().length) held.push("checklist");
     if ((typeof notesChanges === "function") && notesChanges().length) held.push("note");
-    lines.push(`Scope: selected comments only (${sorted.length} of ${openRoots} open comment threads)`);
+    lines.push(`Scope: ${partialScope || "selected comments only"} (${sorted.length} of ${openRoots} open comment threads)`);
     if (held.length) {
       lines.push(`Withheld: tracked ${held.join(", ")} changes are still pending but are NOT in this partial hand-back - the empty JSON objects in the machine trailer mean "out of scope here", not "nothing pending". Use Copy all to hand those back.`);
     }
@@ -400,6 +400,15 @@ async function copyAll() {
   const n = roots.length;
   const replyCount = live.length - roots.length;
   const text = buildCopyText(picked);
+  const copied = await _copyBundleToClipboard(text);
+  if (copied) {
+    const extra = changes.length ? ` plus ${changes.length} layout change${changes.length === 1 ? "" : "s"}` : "";
+    const reps = replyCount ? ` (with ${replyCount} repl${replyCount === 1 ? "y" : "ies"})` : "";
+    const scope = picked.length ? " selected" : "";
+    showToast(`Copied ${n}${scope} comment${n === 1 ? "" : "s"}${reps}${extra}. They stay here until the agent marks them handled in the HTML.`);
+  }
+}
+async function _copyBundleToClipboard(text) {
   let copied = false;
   try { await navigator.clipboard.writeText(text); copied = true; }
   catch (e) {
@@ -413,15 +422,22 @@ async function copyAll() {
       // Do NOT claim success: the reviewer may have cancelled the prompt without copying.
       showToast("Automatic copy was blocked - the bundle was shown for manual copy.",
         { alert: true, duration: 6000 });
-      return;
+      return false;
     }
   }
-  if (copied) {
-    const extra = changes.length ? ` plus ${changes.length} layout change${changes.length === 1 ? "" : "s"}` : "";
-    const reps = replyCount ? ` (with ${replyCount} repl${replyCount === 1 ? "y" : "ies"})` : "";
-    const scope = picked.length ? " selected" : "";
-    showToast(`Copied ${n}${scope} comment${n === 1 ? "" : "s"}${reps}${extra}. They stay here until the agent marks them handled in the HTML.`);
-  }
+  return copied;
+}
+async function copyCommentThread(id) {
+  const live = withoutHandled(comments);
+  const rootComment = live.find(function (c) { return c.id === id && !c.parentId; });
+  if (!rootComment) return;
+  const thread = live.filter(function (c) { return c.id === id || c.parentId === id; });
+  const text = buildCopyText([id], "single comment only");
+  const copied = await _copyBundleToClipboard(text);
+  if (!copied) return;
+  const replyCount = thread.length - 1;
+  const reps = replyCount ? ` with ${replyCount} repl${replyCount === 1 ? "y" : "ies"}` : "";
+  showToast(`Copied this comment${reps}. It stays here until the agent marks it handled in the HTML.`);
 }
 cmhEl("btnCopyAll").addEventListener("click", copyAll);
 cmhEl("btnCopyAllTop").addEventListener("click", copyAll);
