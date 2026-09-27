@@ -105,7 +105,8 @@ body.cm-nonportable .cm-inline-only { display: none !important; }
 .cm-toolbar .cm-icon-btn { padding: var(--cp-chrome-button-y) calc(var(--cp-chrome-action-x) * 0.75); }
 .cm-toolbar-menu {
   position: absolute; top: calc(100% + 0.5rem); right: 0; z-index: 120;
-  min-width: 12rem; display: flex; flex-direction: column; gap: calc(var(--cp-chrome-button-gap) * 0.5);
+  width: min(18rem, calc(100vw - 2rem)); max-height: min(80vh, 34rem); overflow-y: auto;
+  display: flex; flex-direction: column; gap: calc(var(--cp-chrome-button-gap) * 0.5);
   padding: var(--cp-chrome-gap); background: var(--cp-surface); color: var(--cp-text);
   border: 1px solid var(--cp-border); border-radius: 12px; box-shadow: var(--cp-shadow);
 }
