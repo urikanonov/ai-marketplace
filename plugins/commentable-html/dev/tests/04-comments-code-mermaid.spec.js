@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import {
   openInline, addTextComment, installClipboardCapture, ready,
-  startStaticServer, routeMermaidLocal, stageInline, stageContent, SKILL,
+  startStaticServer, routeMermaidLocal, awaitMermaidRendered, stageInline, stageContent, SKILL,
 } from "./helpers.js";
 
 test.describe("code comments", () => {
@@ -434,6 +434,7 @@ test.describe("mermaid diagram sizing (report / non-deck)", () => {
       await routeMermaidLocal(page);
       await page.goto(server.url + "/test-doc.html");
       await ready(page);
+      await awaitMermaidRendered(page);
       await expect
         .poll(() => page.locator("#sec-diagram pre.mermaid svg g.node").count(), { timeout: 20000 })
         .toBe(3);
@@ -449,7 +450,6 @@ test.describe("mermaid diagram sizing (report / non-deck)", () => {
           container: host.clientWidth,
         };
       });
-      console.log("DEBUG_M", JSON.stringify(m));
       // Classified narrow (not wide) and scaled UP beyond its intrinsic width toward the column...
       expect(m.wide).toBe(false);
       expect(m.narrow).toBe(true);
@@ -479,6 +479,7 @@ test.describe("mermaid diagram sizing (report / non-deck)", () => {
       await routeMermaidLocal(page);
       await page.goto(server.url + "/test-doc.html");
       await ready(page);
+      await awaitMermaidRendered(page);
       await expect
         .poll(() => page.locator("#sec-diagram pre.mermaid svg g.node").count(), { timeout: 20000 })
         .toBe(7);

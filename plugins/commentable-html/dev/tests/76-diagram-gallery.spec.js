@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { ready, startStaticServer, routeMermaidLocal, stageContent } from "./helpers.js";
+import { ready, startStaticServer, routeMermaidLocal, awaitMermaidRendered, stageContent } from "./helpers.js";
 
 // Hermetic coverage for the shipped `.cmh-diagram-gallery` helper (CMH-CONTENT-19), decoupled from any
 // demo report: a staged document with exactly the diagrams each case needs. Everything is served over
@@ -27,6 +27,7 @@ async function stageGallery(page, inner, key) {
   await routeMermaidLocal(page);
   await page.goto(server.url + "/test-doc.html");
   await ready(page);
+  await awaitMermaidRendered(page);
   return server;
 }
 
