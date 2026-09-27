@@ -4,6 +4,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.853.0] - 2026-09-27
+
+### Changed
+
+- Updated Mermaid to 12.0.0 while preserving complete gallery diagrams, deterministic render
+  readiness, authored multi-line labels, and rollback of degraded repair renders.
+
 ## [1.852.0] - 2026-09-27
 
 ### Added

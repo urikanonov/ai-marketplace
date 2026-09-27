@@ -589,7 +589,12 @@ export async function awaitMermaidRendered(page, { timeout = 15000 } = {}) {
       try { await before.a; } catch (e) { return { failure: "__cmhMermaidAuditsSettled rejected: " + why(e) }; }
       return {
         changed: window.__cmhMermaidReady !== before.r || window.__cmhMermaidAuditsSettled !== before.a,
-        pending: document.querySelectorAll("pre.mermaid:not([data-processed]), div.mermaid:not([data-processed])").length,
+        pending: [...document.querySelectorAll("pre.mermaid, div.mermaid")].filter((host) => {
+          if (!host.hasAttribute("data-processed")) return true;
+          const svg = host.querySelector("svg");
+          const vb = ((svg && svg.getAttribute("viewBox")) || "").trim().split(/[\s,]+/).map(Number);
+          return vb.length !== 4 || !vb.every(Number.isFinite) || !(vb[2] > 0) || !(vb[3] > 0);
+        }).length,
       };
     });
     if (state.failure) throw new Error("awaitMermaidRendered: " + state.failure);

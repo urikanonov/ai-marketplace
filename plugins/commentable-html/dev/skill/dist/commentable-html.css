@@ -1355,7 +1355,7 @@ justify-content: center; align-items: flex-start;
 #commentRoot .cmh-diagram-gallery > div.mermaid,
 #commentRoot .cmh-diagram-gallery > figure {
 flex: 0 1 auto; min-width: 0; margin: 0; box-sizing: border-box;
-max-width: 100%; max-width: min(100%, 48rem); overflow-x: auto; overflow-y: hidden;
+max-width: 100%; max-width: min(100%, 53rem); overflow-x: auto; overflow-y: hidden;
 display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
 padding: 0.85rem; border: 1px solid var(--cp-border); border-radius: 12px;
 background: var(--cp-surface-soft);

@@ -394,6 +394,7 @@ test.describe("mermaid render self-check (CMH-MMD-12)", () => {
       await routeMermaidLocal(page);
       await page.goto(server.url + "/test-doc.html");
       await ready(page);
+      await awaitMermaidRendered(page, { timeout: 30000 });
       await expect
         .poll(() => page.locator("#commentRoot .mermaid svg g.node").count(), { timeout: 30000 })
         .toBeGreaterThanOrEqual(8);
@@ -478,7 +479,17 @@ test.describe("mermaid render self-check (CMH-MMD-12)", () => {
       const multiBefore = linesBefore.filter((l) => l.includes("|")).length;
       const multiAfter = linesAfter.filter((l) => l.includes("|")).length;
       expect(multiBefore, "the fixture has several multi-line labels").toBeGreaterThanOrEqual(4);
-      expect(multiAfter, "the repair kept every authored <br/> line break").toBe(multiBefore);
+      expect(multiAfter, "the repair kept every authored <br/> line break").toBeGreaterThanOrEqual(multiBefore);
+      for (const expected of [
+        "Preprocessor(stamps attributes)",
+        "Consumer job(shared filtering code)",
+        "Role oneBucket: Store A tagqueue: queue-a",
+        "Role twoBucket: Store B tagqueue: queue-b",
+        "Store Aquery surface",
+      ]) {
+        const rendered = linesAfter.find((line) => line.replace(/[|\s]/g, "") === expected.replace(/\s/g, ""));
+        expect(rendered, `the repair kept authored rows for "${expected}"`).toContain("|");
+      }
       expect(linesAfter.join(" ")).toContain("Preprocessor");
 
       // The node comment still rings a node after the repair.
@@ -578,7 +589,7 @@ test.describe("mermaid render self-check (CMH-MMD-12)", () => {
             const g = document.createElementNS(ns, "g");
             g.setAttribute("class", "node");
             const r = document.createElementNS(ns, "rect");
-            r.setAttribute("x", String(i * 12));
+            r.setAttribute("x", String(kind === "same-nodes-worse-fill" ? 7000 + i * 12 : i * 12));
             r.setAttribute("width", "40");
             r.setAttribute("height", "20");
             g.appendChild(r);
