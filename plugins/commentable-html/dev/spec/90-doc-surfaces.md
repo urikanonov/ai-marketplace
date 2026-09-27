@@ -110,6 +110,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-SIDE-13 | tutorial, help | opt-out: a zone label appended to timestamps the deck panel already shows; it needs no slide of its own |
 | CMH-MENU-PREF-10 | tutorial, help | opt-out: an in-runtime panel preference a reviewer sets in the More menu, not something a viewer needs shown on a slide |
 | CMH-MENU-PREF-11 | tutorial, help | opt-out: the same timestamps re-labelled UTC; a slide would show a clock in a different zone, which is nothing to demonstrate |
+| CMH-MENU-PREF-12 | help | opt-out: an in-runtime collapsed-menu access path, not something a viewer needs shown on a slide |
 | CMH-LINK-05 | opt-out: an authoring-time validator warning (agent/author-facing) that enforces the already-documented new-tab link behavior; no new reader-facing capability | opt-out: authoring-time validator warning (agent/author-facing), not a deck topic |
 | CMH-DECK-SHOWCASE-18 | site | deck |
 | CMH-BUILD-15 | opt-out: internal build invariant that stamps the demo examples' build date; the user-facing "Generated on" line itself is CMH-SIDE-03 | opt-out: internal build/authoring invariant, not a deck topic |

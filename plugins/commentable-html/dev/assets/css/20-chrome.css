@@ -160,12 +160,14 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
 }
 .cm-sidebar .cm-sidebar-export-menu button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 /* The More menu reuses the export-menu shell; mark Clear as destructive. */
+.cm-toolbar-menu .cm-menu-group,
 .cm-sidebar-more-menu .cm-menu-group { padding: 0.3rem 0.45rem 0.15rem; font-size: var(--cp-chrome-tiny-font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--cp-text-soft); font-weight: 700; }
 .cm-sidebar-more-menu button.danger { color: var(--cp-danger); }
 .cm-sidebar-more-menu button.danger:hover { background: var(--cp-danger-soft); color: var(--cp-danger); }
 /* Preference rows (role=menuitemcheckbox): a square box that fills with a tick when checked, and a
    label that WRAPS rather than widening the menu past the panel (the Manage actions keep nowrap).
    The override row is indented so it reads as nested under the default it can override. */
+.cm-toolbar-menu button.cm-menu-check,
 .cm-sidebar .cm-sidebar-more-menu button.cm-menu-check { white-space: normal; overflow: visible; text-overflow: clip; align-items: flex-start; }
 .cm-menu-check-box {
   flex: none; width: 0.85rem; height: 0.85rem; margin-top: 0.1rem;
@@ -178,6 +180,7 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   width: 0.22rem; height: 0.45rem; border: solid var(--cp-bg-elevated);
   border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
+.cm-toolbar-menu button.cm-menu-check-sub,
 .cm-sidebar .cm-sidebar-more-menu button.cm-menu-check-sub { padding-left: calc(var(--cp-chrome-action-x) + 0.9rem); }
 /* On phones every ITEM in either dropdown is a touch target too (CMH-RESP-15). Both menu TOGGLES
    already get 44px from CMH-SIDE-12, so leaving the items at ~31px made a thumb-sized door onto a

@@ -725,7 +725,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.851.0";
+const CMH_VERSION= "1.852.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -8913,6 +8913,77 @@ cmhEl("btnCloseSidebar").addEventListener("click",closeSidebar);
 const b=cmhEl("btnShowTop");
 if(b)b.addEventListener("click",openSidebar);
 })();
+function cmhPreferenceMenus(){
+return[
+cmhLayerBlock(document,"toolbarMenu"),
+cmhLayerBlock(document,"sidebarMoreMenu"),
+].filter(Boolean);
+}
+function cmhPreferenceRow(menu,kind){
+const ids=menu.id=== "toolbarMenu"
+?{
+"auto-open":"btnAutoOpenPanelTop",
+"auto-open-override":"btnAutoOpenPanelOverrideTop",
+"utc-times":"btnUtcTimesTop",
+}
+:{
+"auto-open":"btnAutoOpenPanel",
+"auto-open-override":"btnAutoOpenPanelOverride",
+"utc-times":"btnUtcTimes",
+};
+return menu.querySelector('[data-cmh-pref="'+kind+'"]')
+||menu.querySelector("#"+ids[kind]);
+}
+function cmhSyncPreferenceRows(){
+const pinned=autoOpenPanelOverride();
+cmhPreferenceMenus().forEach((menu)=>{
+const prefDefault=cmhPreferenceRow(menu,"auto-open");
+const prefOverride=cmhPreferenceRow(menu,"auto-open-override");
+const prefUtc=cmhPreferenceRow(menu,"utc-times");
+if(prefDefault)prefDefault.setAttribute("aria-checked",autoOpenPanelDefault()?"true":"false");
+if(prefUtc)prefUtc.setAttribute("aria-checked",utcTimesEnabled()?"true":"false");
+if(!prefOverride)return;
+prefOverride.setAttribute("aria-checked",pinned===null?"false":"true");
+const label=prefOverride.querySelector(".cm-menu-check-label");
+if(label){
+label.textContent=pinned===null
+?"Override for this document"
+:("Override for this document: "+(pinned?"On":"Off"));
+}
+});
+}
+function cmhWirePreferenceMenu(menu){
+if(!menu)return;
+const rows=[
+[cmhPreferenceRow(menu,"auto-open"),()=>setAutoOpenPanelDefault(!autoOpenPanelDefault())],
+[cmhPreferenceRow(menu,"auto-open-override"),()=>(
+setAutoOpenPanelOverride(autoOpenPanelOverride()===null?!autoOpenPanelDefault():null)
+)],
+[cmhPreferenceRow(menu,"utc-times"),()=>setUtcTimes(!utcTimesEnabled())],
+];
+rows.forEach((pair)=>{
+const el=pair[0];
+const toggle=pair[1];
+if(!el)return;
+el.addEventListener("click",(e)=>{
+e.__cmhKeepMenuOpen=true;
+if(toggle()===false&&typeof showToast=== "function"){
+showToast("Could not save that preference - this browser's storage is full or blocked.",{
+alert:true,
+duration:8000,
+action:(typeof openStorageManager=== "function")
+?{label:"Manage storage",onClick:function(){openStorageManager();}}
+:null,
+});
+}
+cmhSyncPreferenceRows();
+});
+});
+}
+window.addEventListener("storage",(e)=>{
+if(!e||e.key==null||e.key===AUTO_OPEN_PANEL_KEY||e.key===AUTO_OPEN_PANEL_DOC_KEY
+||e.key===UTC_TIMES_KEY)cmhSyncPreferenceRows();
+});
 (function(){
 const btn=cmhEl("btnToolbarMenu");
 const menu=cmhEl("toolbarMenu");
@@ -8940,7 +9011,10 @@ bar.insertBefore(cmBrandSiteMark("cm-toolbar-brand"),more);
 function setOpen(open){
 menu.hidden=!open;
 btn.setAttribute("aria-expanded",open?"true":"false");
-if(open&&window.__cmhPrioritizeEscapePopup)window.__cmhPrioritizeEscapePopup(popup);
+if(open){
+cmhSyncPreferenceRows();
+if(window.__cmhPrioritizeEscapePopup)window.__cmhPrioritizeEscapePopup(popup);
+}
 }
 const popup={
 isOpen:()=>!menu.hidden,
@@ -8950,8 +9024,9 @@ btn.focus();
 },
 };
 if(window.__cmhRegisterEscapePopup)window.__cmhRegisterEscapePopup(popup);
+cmhWirePreferenceMenu(menu);
 btn.addEventListener("click",(e)=>{e.stopPropagation();setOpen(menu.hidden);});
-menu.addEventListener("click",()=>setOpen(false));
+menu.addEventListener("click",(e)=>{if(!e.__cmhKeepMenuOpen)setOpen(false);});
 document.addEventListener("click",(e)=>{
 if(!menu.hidden&&!menu.contains(e.target)&&!btn.contains(e.target))setOpen(false);
 });
@@ -8997,7 +9072,7 @@ const other=cmhEl("sidebarExportMenu");
 if(other)other.hidden=true;
 const otherBtn=cmhEl("btnSidebarExportMenu");
 if(otherBtn)otherBtn.setAttribute("aria-expanded","false");
-syncPrefRows();
+cmhSyncPreferenceRows();
 setRovingTabStop(null);
 if(window.__cmhPrioritizeEscapePopup)window.__cmhPrioritizeEscapePopup(popup);
 }
@@ -9010,6 +9085,7 @@ btn.focus();
 },
 };
 if(window.__cmhRegisterEscapePopup)window.__cmhRegisterEscapePopup(popup);
+cmhWirePreferenceMenu(menu);
 btn.addEventListener("click",(e)=>{
 e.stopPropagation();
 const open=menu.hidden;
@@ -9020,48 +9096,7 @@ menu.addEventListener("click",(e)=>{if(!e.__cmhKeepMenuOpen)setOpen(false);});
 document.addEventListener("click",(e)=>{
 if(!menu.hidden&&!menu.contains(e.target)&&!btn.contains(e.target))setOpen(false);
 });
-const prefDefault=menu.querySelector("#btnAutoOpenPanel");
-const prefOverride=menu.querySelector("#btnAutoOpenPanelOverride");
-const prefUtc=menu.querySelector("#btnUtcTimes");
-function syncPrefRows(){
-if(prefUtc)prefUtc.setAttribute("aria-checked",utcTimesEnabled()?"true":"false");
-if(prefDefault)prefDefault.setAttribute("aria-checked",autoOpenPanelDefault()?"true":"false");
-if(!prefOverride)return;
-const pinned=autoOpenPanelOverride();
-prefOverride.setAttribute("aria-checked",pinned===null?"false":"true");
-const label=prefOverride.querySelector(".cm-menu-check-label");
-if(label){
-label.textContent=pinned===null
-?"Override for this document"
-:("Override for this document: "+(pinned?"On":"Off"));
-}
-}
-function wirePrefRow(el,toggle){
-if(!el)return;
-el.addEventListener("click",(e)=>{
-e.__cmhKeepMenuOpen=true;
-if(toggle()===false&&typeof showToast=== "function"){
-showToast("Could not save that preference - this browser's storage is full or blocked.",{
-alert:true,
-duration:8000,
-action:(typeof openStorageManager=== "function")
-?{label:"Manage storage",onClick:function(){openStorageManager();}}
-:null,
-});
-}
-syncPrefRows();
-});
-}
-wirePrefRow(prefDefault,()=>setAutoOpenPanelDefault(!autoOpenPanelDefault()));
-wirePrefRow(prefOverride,()=>{
-return setAutoOpenPanelOverride(autoOpenPanelOverride()===null?!autoOpenPanelDefault():null);
-});
-wirePrefRow(prefUtc,()=>setUtcTimes(!utcTimesEnabled()));
-syncPrefRows();
-window.addEventListener("storage",(e)=>{
-if(!e||e.key==null||e.key===AUTO_OPEN_PANEL_KEY||e.key===AUTO_OPEN_PANEL_DOC_KEY
-||e.key===UTC_TIMES_KEY)syncPrefRows();
-});
+cmhSyncPreferenceRows();
 function items(){
 return Array.prototype.slice.call(menu.querySelectorAll("button:not([disabled])"))
 .filter((el)=>!el.hidden&&(el.getClientRects().length>0||el===document.activeElement));
@@ -10143,6 +10178,7 @@ del.addEventListener("click",function(){
 inlineConfirm(del,"Delete shared preferences?",function(){
 _cmhDeleteKeys(keys);
 if(typeof cmhApplyTimeZoneChange=== "function")cmhApplyTimeZoneChange();
+if(typeof cmhSyncPreferenceRows=== "function")cmhSyncPreferenceRows();
 announceRetry();
 render();
 });
@@ -14115,6 +14151,11 @@ return'<details class="cm-help-topic'+(open?' cm-help-default-open':'')+'"'+(ope
 const hasToolbarClear=!!cmhEl("btnClearAllTop");
 const isDeck=!!document.querySelector('#commentRoot[data-cmh-mode="deck"]')
 ||document.body.classList.contains("cmh-deck-present");
+const toolbarMenu=cmhLayerBlock(document,"toolbarMenu");
+const hasToolbarPrefs=!isDeck&&!!toolbarMenu
+&&!!toolbarMenu.querySelector("#btnAutoOpenPanelTop")
+&&!!toolbarMenu.querySelector("#btnAutoOpenPanelOverrideTop")
+&&!!toolbarMenu.querySelector("#btnUtcTimesTop");
 const hasBrandMark=!isDeck&&!!document.querySelector(".cm-toolbar > a.cm-brand-link");
 const hasMenuBrandMark=!isDeck&&!!document.querySelector("#toolbarMenu a.cm-brand-link");
 box.innerHTML=
@@ -14196,7 +14237,7 @@ T('The panel and toolbar',
 '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, the <strong>Export</strong> button opens the file-format menu. The <strong>Search</strong> button in the ribbon reveals a search field (hidden by default) that filters the list by each comment\'s note text.</li>'+
 '<li><strong>Hand back only some comments:</strong> each comment card has <strong>Select</strong> and <strong>Copy</strong> controls. Use <strong>Copy</strong> to hand back that one thread immediately, or tick one or more cards and <strong>Copy all</strong> becomes <strong>Copy selected</strong>, copying just those threads (with their replies). Either partial bundle says plainly what it contains and names any tracked note, checklist, or layout changes it is holding back, so the agent never assumes the rest were dealt with. A bar above the list shows how many are selected and offers <strong>Clear selection</strong> to unpick everything without deleting a thing, and while a selection exists <em>More</em> also offers <strong>Delete selected comments</strong>, which deletes only those. If the search box is filtering the list, the bar and the delete confirmation both say how many of your picks are hidden, so nothing is deleted out of sight. The selection is per-session: it is never saved, never travels inside an exported file, and a reload starts fresh. With the panel collapsed, the floating toolbar\'s <kbd>...</kbd> menu carries <strong>Clear selection</strong> too.</li>'+
 '<li><strong>Each card\'s actions sit on one row:</strong> <strong>Reply</strong>, <strong>jump</strong> (scroll to what the comment is anchored to), <strong>edit</strong>, and <strong>delete</strong>, with delete at the far end so it is hard to hit by accident.</li>'+
-'<li><strong>More</strong> opens a menu with a <strong>Preferences</strong> group and the <strong>Manage storage</strong> and <strong>Delete all comments</strong> actions. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu holds the export actions, Manage storage, '+(hasToolbarClear?'<strong>Delete all comments</strong> (the same confirmed deletion), ':'')+'and <strong>Help &amp; About</strong>.</li>'+
+'<li><strong>More</strong> opens a menu with a <strong>Preferences</strong> group and the <strong>Manage storage</strong> and <strong>Delete all comments</strong> actions. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu '+(hasToolbarPrefs?'keeps those same preferences available alongside ':'holds ')+'the export actions, Manage storage, '+(hasToolbarClear?'<strong>Delete all comments</strong> (the same confirmed deletion), ':'')+'and <strong>Help &amp; About</strong>.</li>'+
 (hasBrandMark?'<li>The <strong>comment-bubble mark</strong> just left of the <kbd>...</kbd> button in the floating toolbar'+(hasMenuBrandMark?' - and the matching mark at the top of that menu -':'')+' opens the Commentable HTML site in a new tab.</li>':'')+
 '<li><strong>Auto-open panel on comment</strong> (in <em>More &gt; Preferences</em>) decides whether this panel opens <em>itself</em>. It is <strong>on</strong> by default and is your setting for <em>every</em> commentable-html document in this browser, so turning it off once lets you read full width and dip into the panel only when you want it: saving a comment, reopening a document that already has review items, and a first review-note, checklist, or widget layout change all leave the panel exactly where you put it. Your comment is still saved and still highlighted either way, and <strong>Comments</strong> in the floating toolbar always brings the panel back.</li>'+
 '<li><strong>Override for this document</strong>, indented under it, is the exception: leave it unchecked and this document follows the default above; check it and this document keeps its own setting (the label then shows it, for example <em>Override for this document: Off</em>) no matter how you later change the default. Unchecking it makes the document follow the default again.</li>'+
