@@ -1,3 +1,79 @@
+function cmhPreferenceMenus() {
+  return [
+    cmhLayerBlock(document, "toolbarMenu"),
+    cmhLayerBlock(document, "sidebarMoreMenu"),
+  ].filter(Boolean);
+}
+
+function cmhPreferenceRow(menu, kind) {
+  const ids = menu.id === "toolbarMenu"
+    ? {
+        "auto-open": "btnAutoOpenPanelTop",
+        "auto-open-override": "btnAutoOpenPanelOverrideTop",
+        "utc-times": "btnUtcTimesTop",
+      }
+    : {
+        "auto-open": "btnAutoOpenPanel",
+        "auto-open-override": "btnAutoOpenPanelOverride",
+        "utc-times": "btnUtcTimes",
+      };
+  return menu.querySelector('[data-cmh-pref="' + kind + '"]')
+    || menu.querySelector("#" + ids[kind]);
+}
+
+function cmhSyncPreferenceRows() {
+  const pinned = autoOpenPanelOverride();
+  cmhPreferenceMenus().forEach((menu) => {
+    const prefDefault = cmhPreferenceRow(menu, "auto-open");
+    const prefOverride = cmhPreferenceRow(menu, "auto-open-override");
+    const prefUtc = cmhPreferenceRow(menu, "utc-times");
+    if (prefDefault) prefDefault.setAttribute("aria-checked", autoOpenPanelDefault() ? "true" : "false");
+    if (prefUtc) prefUtc.setAttribute("aria-checked", utcTimesEnabled() ? "true" : "false");
+    if (!prefOverride) return;
+    prefOverride.setAttribute("aria-checked", pinned === null ? "false" : "true");
+    const label = prefOverride.querySelector(".cm-menu-check-label");
+    if (label) {
+      label.textContent = pinned === null
+        ? "Override for this document"
+        : ("Override for this document: " + (pinned ? "On" : "Off"));
+    }
+  });
+}
+
+function cmhWirePreferenceMenu(menu) {
+  if (!menu) return;
+  const rows = [
+    [cmhPreferenceRow(menu, "auto-open"), () => setAutoOpenPanelDefault(!autoOpenPanelDefault())],
+    [cmhPreferenceRow(menu, "auto-open-override"), () => (
+      setAutoOpenPanelOverride(autoOpenPanelOverride() === null ? !autoOpenPanelDefault() : null)
+    )],
+    [cmhPreferenceRow(menu, "utc-times"), () => setUtcTimes(!utcTimesEnabled())],
+  ];
+  rows.forEach((pair) => {
+    const el = pair[0];
+    const toggle = pair[1];
+    if (!el) return;
+    el.addEventListener("click", (e) => {
+      e.__cmhKeepMenuOpen = true;
+      if (toggle() === false && typeof showToast === "function") {
+        showToast("Could not save that preference - this browser's storage is full or blocked.", {
+          alert: true,
+          duration: 8000,
+          action: (typeof openStorageManager === "function")
+            ? { label: "Manage storage", onClick: function () { openStorageManager(); } }
+            : null,
+        });
+      }
+      cmhSyncPreferenceRows();
+    });
+  });
+}
+
+window.addEventListener("storage", (e) => {
+  if (!e || e.key == null || e.key === AUTO_OPEN_PANEL_KEY || e.key === AUTO_OPEN_PANEL_DOC_KEY
+    || e.key === UTC_TIMES_KEY) cmhSyncPreferenceRows();
+});
+
 /* ---------- Toolbar overflow menu (declutters the save/export actions) ---------- */
 (function () {
   const btn = cmhEl("btnToolbarMenu");
@@ -29,7 +105,10 @@
   function setOpen(open) {
     menu.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
-    if (open && window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
+    if (open) {
+      cmhSyncPreferenceRows();
+      if (window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
+    }
   }
   const popup = {
     isOpen: () => !menu.hidden,
@@ -39,8 +118,9 @@
     },
   };
   if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
+  cmhWirePreferenceMenu(menu);
   btn.addEventListener("click", (e) => { e.stopPropagation(); setOpen(menu.hidden); });
-  menu.addEventListener("click", () => setOpen(false));
+  menu.addEventListener("click", (e) => { if (!e.__cmhKeepMenuOpen) setOpen(false); });
   document.addEventListener("click", (e) => {
     if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
   });
@@ -92,7 +172,7 @@
       if (other) other.hidden = true;
       const otherBtn = cmhEl("btnSidebarExportMenu");
       if (otherBtn) otherBtn.setAttribute("aria-expanded", "false");
-      syncPrefRows();
+      cmhSyncPreferenceRows();
       setRovingTabStop(null);
       if (window.__cmhPrioritizeEscapePopup) window.__cmhPrioritizeEscapePopup(popup);
     }
@@ -105,6 +185,7 @@
     },
   };
   if (window.__cmhRegisterEscapePopup) window.__cmhRegisterEscapePopup(popup);
+  cmhWirePreferenceMenu(menu);
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     const open = menu.hidden;
@@ -121,66 +202,7 @@
     if (!menu.hidden && !menu.contains(e.target) && !btn.contains(e.target)) setOpen(false);
   });
 
-  /* Preferences group: "Auto-open panel on comment" is the CROSS-DOCUMENT default, and the nested
-     "Override for this document" row decides the scope. Unchecked, this document follows the row
-     above it; checked, it pins the value that DIFFERS from the default (the only override a
-     reviewer can act on) and its label carries that document-local state, while the default row
-     keeps showing the untouched default. Both rows are role=menuitemcheckbox, so activation
-     toggles in place and the menu stays open for the second scope. Every lookup is scoped INSIDE
-     the menu and guarded: an older file's COMMENT UI region has no Preferences rows, and authored
-     content carrying the same id must never be mistaken for one. */
-  const prefDefault = menu.querySelector("#btnAutoOpenPanel");
-  const prefOverride = menu.querySelector("#btnAutoOpenPanelOverride");
-  const prefUtc = menu.querySelector("#btnUtcTimes");
-  function syncPrefRows() {
-    if (prefUtc) prefUtc.setAttribute("aria-checked", utcTimesEnabled() ? "true" : "false");
-    if (prefDefault) prefDefault.setAttribute("aria-checked", autoOpenPanelDefault() ? "true" : "false");
-    if (!prefOverride) return;
-    const pinned = autoOpenPanelOverride();
-    prefOverride.setAttribute("aria-checked", pinned === null ? "false" : "true");
-    const label = prefOverride.querySelector(".cm-menu-check-label");
-    if (label) {
-      label.textContent = pinned === null
-        ? "Override for this document"
-        : ("Override for this document: " + (pinned ? "On" : "Off"));
-    }
-  }
-  function wirePrefRow(el, toggle) {
-    if (!el) return;
-    el.addEventListener("click", (e) => {
-      e.__cmhKeepMenuOpen = true;
-      // A refused write is not always private mode: a storage-full browser refuses it too, and
-      // silently snapping the row back would look like a broken control.
-      if (toggle() === false && typeof showToast === "function") {
-        // A direct Manage-storage action: this is a PREFERENCE write, so there is no pending
-        // comment-store write for cmhStorageAction to attach to.
-        showToast("Could not save that preference - this browser's storage is full or blocked.", {
-          alert: true,
-          duration: 8000,
-          action: (typeof openStorageManager === "function")
-            ? { label: "Manage storage", onClick: function () { openStorageManager(); } }
-            : null,
-        });
-      }
-      syncPrefRows();
-    });
-  }
-  wirePrefRow(prefDefault, () => setAutoOpenPanelDefault(!autoOpenPanelDefault()));
-  wirePrefRow(prefOverride, () => {
-    return setAutoOpenPanelOverride(autoOpenPanelOverride() === null ? !autoOpenPanelDefault() : null);
-  });
-  // The write itself re-stamps (setUtcTimes -> cmhApplyTimeZoneChange), so this row only reports a
-  // refusal and re-syncs its own state.
-  wirePrefRow(prefUtc, () => setUtcTimes(!utcTimesEnabled()));
-  syncPrefRows();
-  // Another tab (or another document in this browser) can change the shared default while this
-  // menu is open; refresh the rows so an activation never toggles from a stale state. The matching
-  // TIMESTAMP re-stamp is registered in 50-sidebar.js, not here: it must keep working in a document
-  // whose COMMENT UI region has no Preferences rows, where this whole block never runs.
-  window.addEventListener("storage", (e) => {
-    if (!e || e.key == null || e.key === AUTO_OPEN_PANEL_KEY || e.key === AUTO_OPEN_PANEL_DOC_KEY
-      || e.key === UTC_TIMES_KEY) syncPrefRows();
-  });
+  cmhSyncPreferenceRows();
 
   // Roving focus across the menu's items (Up/Down/Home/End) with ONE tab stop, the pattern
   // role="menu" implies (and the one #contextMenu already uses): the items carry tabindex="-1" and

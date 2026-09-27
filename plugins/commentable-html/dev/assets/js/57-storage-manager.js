@@ -847,6 +847,7 @@ function openStorageManager(opts) {
         // storage event: without this, deleting it would leave the footer (and any surface no later
         // render touches) stamped in the old zone beside cards drawn in the new one.
         if (typeof cmhApplyTimeZoneChange === "function") cmhApplyTimeZoneChange();
+        if (typeof cmhSyncPreferenceRows === "function") cmhSyncPreferenceRows();
         announceRetry();
         render();
       });
