@@ -400,16 +400,13 @@ function renderComments() {
     const jumpBtn = isDocument ? "" : isSlide
       ? `<button type="button" class="cm-card-btn" data-act="jump" title="Go to this slide">jump</button>`
       : `<button type="button" class="cm-card-btn" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
-    // The per-comment pick control (issue #1289). It sits in the meta row's action slot, where the
-    // jump/edit/delete trio used to be - those moved onto the Reply row so the card ships ONE
-    // definition of "an action" - and it is a real checkbox, so it is keyboard-operable and
-    // announced as one for free. The label, the checked flag and the article's class list are
-    // built OUTSIDE the template literal: an interpolation inside an attribute would be minified
-    // to a spelling the source does not contain, which the shipped-layer guard forbids.
+    // The per-comment selection and direct-copy controls. They sit together in the meta row's
+    // action slot, while the thread-editing actions stay together on the Reply row below.
     const picked = (typeof isCommentPicked === "function") && isCommentPicked(c.id);
     const pickLabel = "Select comment #" + (i + 1);
+    const copyLabel = "Copy comment #" + (i + 1);
     const pickChecked = picked ? " checked" : "";
-    const pickHtml = `<span class="acts cm-pick"><label class="cm-pick-label" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label></span>`;
+    const pickHtml = `<span class="acts cm-pick-actions"><label class="cm-pick-label cm-pick" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label><button type="button" class="cm-copy-one" data-act="copy" aria-label="${copyLabel}" title="Copy only this comment thread">Copy</button></span>`;
     const articleClass = picked ? (cardClass + " cm-card-picked") : cardClass;
     const rootPill = (typeof authorPillHtml === "function") ? authorPillHtml(c.author) : "";
     const replies = (typeof repliesOf === "function") ? repliesOf(c.id, comments) : [];
@@ -1184,6 +1181,15 @@ listEl.addEventListener("click", (e) => {
   if (e.target.closest("a")) return;
   const id = card.dataset.cid;
   const act = e.target.dataset.act;
+  if (act === "copy") {
+    if (typeof copyCommentThread === "function") {
+      copyCommentThread(id).catch(function (err) {
+        try { console.warn("commentable-html: copy comment failed:", err); } catch (e2) { /* no-op */ }
+        showToast("Could not copy this comment.", { alert: true, duration: 6000 });
+      });
+    }
+    return;
+  }
   if (act === "reply") {
     if (comments.some(x => x.id === id && !isReply(x))) openInlineReply(card, id);
     return;

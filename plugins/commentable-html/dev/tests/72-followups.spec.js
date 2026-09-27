@@ -637,8 +637,8 @@ test.describe("visual-audit follow-ups", () => {
     await setDensity(page, "");
   });
 
-  // The side pane's LAST compact controls (issue #1167): the search row, the two dropdown menus'
-  // items, and the card `edit` action's WIDTH. CMH-RESP-14 deliberately did not claim the pane was
+  // The side pane's compact controls (issue #1167): the search row, the two dropdown menus'
+  // items, and every card action's WIDTH. CMH-RESP-14 deliberately did not claim the pane was
   // finished; this is the rest of it.
   test("the side pane search row, dropdown menu items and card edit action are >=44px touch targets on mobile (CMH-RESP-15)", async ({ page }) => {
     // 320x720 is the narrowest phone the repo targets, and it is tall enough to afford the search
@@ -755,7 +755,7 @@ test.describe("visual-audit follow-ups", () => {
       await expect(page.locator("#cmSearchInput")).toHaveValue("");
       await expect(page.locator(".cm-card.cm-hidden")).toHaveCount(0);
       const acts = await measure(".cm-card:not(.cm-hidden) .cm-card-acts button, .cm-card:not(.cm-hidden) .meta .acts button");
-      expect(acts.length, `${at}: the card rows hold exactly their actions`).toBe(6);
+      expect(acts.length, `${at}: the card rows hold exactly their actions`).toBe(7);
       for (const b of acts) {
         expect(b.h, `${at}: card action '${b.l}' height`).toBeGreaterThanOrEqual(44);
         expect(b.w, `${at}: card action '${b.l}' width`).toBeGreaterThanOrEqual(44);
