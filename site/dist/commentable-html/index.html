@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.850.2<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.852.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -487,6 +487,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.852.0] - 2026-09-27</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>The collapsed toolbar&#x27;s three-dots menu now exposes the same auto-open, per-document override, and UTC timestamp preferences as the sidebar More menu, with both surfaces kept in sync.</li>
+            </ul>
+          </div>
+          <div class="release">
+            <div class="rel-head"><h3>[1.851.0] - 2026-09-26</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Every sidebar comment now has a <code>Copy</code> button beside <code>Select</code>, so one comment thread can be handed back immediately without changing the current selection or using <code>Copy selected</code>.</li>
+            </ul>
+          </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
+          <div class="release">
             <div class="rel-head"><h3>[1.850.2] - 2026-09-09</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -500,8 +516,6 @@
               <li>Removed the legacy companion-file mode from the website, tutorial, in-document Help, public plugin guidance, and showcase deck. Existing companion-mode documents remain supported by the runtime, validator, migration tool, and technical compatibility references.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.850.0] - 2026-09-04</h3></div>
             <div class="group-label">Fixed</div>
@@ -528,31 +542,7 @@
               <li>The in-document <code>Contents</code> list is collapsible. Its title row gains a caret that folds the list away and unfolds it (clicking a folded title unfolds it too), so a long report&#x27;s table of contents stops being a wall to scroll past on every visit. The choice is remembered per document in this browser, and it is reader state rather than document state: the caret is text-free <code>cm-skip</code> chrome that spends no character of the offset space comments are anchored in, folding only toggles a class (no node is removed, so every comment keeps its anchor), no export bakes the caret or the fold in, and a print or Save as PDF still carries the whole list. Jumping to a comment anchored on a Contents entry unfolds every folded list it sits in, so the jump is never a no-op.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.847.0] - 2026-09-03</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li><strong>Select individual comments and hand back only those.</strong> Every card in the side pane now carries a <code>Select</code> checkbox. With at least one comment picked, <code>Copy all</code> becomes <code>Copy selected</code> and copies only those threads (each root with its replies) - both the Markdown body and the machine-readable <code>HANDLED_IDS_JSON</code> array - so the agent can never mark a comment you kept back as handled. The partial bundle declares itself with a <code>Scope: selected comments only (N of M open comment threads)</code> line, names any tracked note, checklist, or widget-layout changes it is holding back on a <code>Withheld:</code> line, and leaves those change sections out, because a selection is a comment-only scope.</li>
-              <li>A selection bar above the list shows the live count and offers <code>Clear selection</code>, which deselects everything without deleting anything, and the <code>More</code> menu grows a <code>Clear selected comments</code> item (hidden until something is picked) that deletes only the selected threads after the same confirmation Clear all uses. While the comment search is filtering the list the bar and the confirmation both say how many of your picks are hidden, so nothing is deleted out of sight. With the panel collapsed, the floating toolbar&#x27;s overflow menu carries <code>Clear selection</code> too and the copy button&#x27;s tooltip names the count, so a selection is never something you can act on but not inspect. The selection is per-session: it is never persisted, never travels inside an exported file, and it prunes itself when a selected comment is deleted.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>A comment card now ships ONE definition of &quot;an action&quot;: <code>jump</code>, <code>edit</code> and <code>delete</code> moved onto the same row as <code>Reply</code> and share its bordered-pill look, instead of being small plain text buttons on the meta line above an accent pill below. <code>delete</code> sits at the row&#x27;s end so the destructive action stays clear of <code>Reply</code>, and all four keep their &gt;=44px phone touch targets.</li>
-              <li>The <code>dist/commentable-html.js</code> and <code>dist/commentable-html.assets.js</code> size ceilings in <code>dev/tools/size-budget.json</code> are raised to 677,000 and 865,000 bytes. Both sat at 99% of their previous ceiling before this release, leaving no room for the selection layer; the new values restore the documented ~5% headroom over the current build.</li>
-            </ul>
-          </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.846.0] - 2026-09-03</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Decks now use one direct comments button instead of the three-state comment-options menu. Clicking it opens the side panel immediately, and a live count bubble appears on the button when comments exist. The panel&#x27;s existing Auto-open preference under More remains the way to keep the panel closed while comments are added.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The side-panel brand icon now follows the document type and version metadata, keeping it away from the Comments count so the two no longer overlap at the demo deck&#x27;s panel width.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">412 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">414 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -95,6 +95,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-PICK-07 | help | opt-out: a transience-and-pruning invariant of the selection, with nothing to demonstrate on a slide |
 | CMH-PICK-08 | help | deck |
 | CMH-PICK-09 | help | opt-out: a disclosure that fires only while the comment search is filtering a selection, too conditional to demonstrate on a slide |
+| CMH-PICK-10 | help | deck |
 | CMH-UI-12 | opt-out: click-target sizing of the already-documented Open comment bubble, no new capability | opt-out: control sizing, nothing to demonstrate on a slide |
 | CMH-UI-13 | help | opt-out: a second entry point into the already-shown clear-all flow; the deck's own toolbar demo covers the overflow menu, and a destructive clear is not a slide to run live |
 | CMH-UI-14 | opt-out: a timing repair to the already-documented tooltip layer (CMH-UI-05), restoring the tip a mid-animation focus used to lose; no new capability to document | opt-out: a tooltip-timing repair, nothing a viewer can see on a slide |
@@ -109,6 +110,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-SIDE-13 | tutorial, help | opt-out: a zone label appended to timestamps the deck panel already shows; it needs no slide of its own |
 | CMH-MENU-PREF-10 | tutorial, help | opt-out: an in-runtime panel preference a reviewer sets in the More menu, not something a viewer needs shown on a slide |
 | CMH-MENU-PREF-11 | tutorial, help | opt-out: the same timestamps re-labelled UTC; a slide would show a clock in a different zone, which is nothing to demonstrate |
+| CMH-MENU-PREF-12 | help | opt-out: an in-runtime collapsed-menu access path, not something a viewer needs shown on a slide |
 | CMH-LINK-05 | opt-out: an authoring-time validator warning (agent/author-facing) that enforces the already-documented new-tab link behavior; no new reader-facing capability | opt-out: authoring-time validator warning (agent/author-facing), not a deck topic |
 | CMH-DECK-SHOWCASE-18 | site | deck |
 | CMH-BUILD-15 | opt-out: internal build invariant that stamps the demo examples' build date; the user-facing "Generated on" line itself is CMH-SIDE-03 | opt-out: internal build/authoring invariant, not a deck topic |

@@ -2,9 +2,10 @@
 // cross-document default and a per-document override. With it off, saving a comment still stores
 // and highlights the comment - only the panel stays where the reviewer left it.
 import { test, expect } from "@playwright/test";
+import fs from "fs";
 import {
   fileUrl, ready, stageContent, stageDeck, addTextComment, openSidebarMoreMenu,
-  openComposerFor,
+  openComposerFor, openToolbarMenu,
 } from "./helpers.js";
 
 const DOC = `
@@ -16,6 +17,10 @@ const GLOBAL_KEY = "commentable-html::autoOpenPanelDefault";
 
 const DEFAULT_ROW = "#btnAutoOpenPanel";
 const OVERRIDE_ROW = "#btnAutoOpenPanelOverride";
+const UTC_ROW = "#btnUtcTimes";
+const DEFAULT_ROW_TOP = "#btnAutoOpenPanelTop";
+const OVERRIDE_ROW_TOP = "#btnAutoOpenPanelOverrideTop";
+const UTC_ROW_TOP = "#btnUtcTimesTop";
 
 async function open(page, key, { content = DOC } = {}) {
   const staged = stageContent(content, { key });
@@ -83,6 +88,127 @@ test("CMH-MENU-PREF-01: the More menu carries a Preferences group with a default
   await over.click();
   await expect(menu).toBeVisible();
   await expect(over).toHaveAttribute("aria-checked", "true");
+});
+
+test("CMH-MENU-PREF-12: the collapsed toolbar menu exposes synchronized preference rows", async ({ page }) => {
+  await open(page, "cmh-pref-12");
+  await openToolbarMenu(page);
+  const toolbarMenu = page.locator("#toolbarMenu");
+  await expect(toolbarMenu.locator(".cm-menu-group", { hasText: "Preferences" })).toHaveCount(1);
+  const toolbarDefault = toolbarMenu.locator(DEFAULT_ROW_TOP);
+  const toolbarOverride = toolbarMenu.locator(OVERRIDE_ROW_TOP);
+  const toolbarUtc = toolbarMenu.locator(UTC_ROW_TOP);
+
+  for (const row of [toolbarDefault, toolbarOverride, toolbarUtc]) {
+    await expect(row).toBeVisible();
+    await expect(row).toHaveAttribute("role", "checkbox");
+  }
+  await expect(toolbarDefault).toHaveText(/Auto-open panel on comment/);
+  await expect(toolbarOverride).toHaveText(/Override for this document/);
+  await expect(toolbarUtc).toHaveText(/Show times in UTC/);
+
+  await toolbarDefault.click();
+  await toolbarOverride.click();
+  await toolbarUtc.click();
+  await expect(toolbarMenu).toBeVisible();
+  await expect(toolbarDefault).toHaveAttribute("aria-checked", "false");
+  await expect(toolbarOverride).toHaveAttribute("aria-checked", "true");
+  await expect(toolbarOverride).toHaveText(/Override for this document: On/);
+  await expect(toolbarUtc).toHaveAttribute("aria-checked", "true");
+
+  await page.keyboard.press("Escape");
+  const sidebarMenu = await openPrefs(page);
+  await expect(sidebarMenu.locator(DEFAULT_ROW)).toHaveAttribute("aria-checked", "false");
+  await expect(sidebarMenu.locator(OVERRIDE_ROW)).toHaveAttribute("aria-checked", "true");
+  await expect(sidebarMenu.locator(OVERRIDE_ROW)).toHaveText(/Override for this document: On/);
+  await expect(sidebarMenu.locator(UTC_ROW)).toHaveAttribute("aria-checked", "true");
+});
+
+test("CMH-MENU-PREF-12: current companion assets keep legacy sidebar preference rows working", async ({ page }) => {
+  const staged = stageContent(DOC, { key: "old" });
+  let html = fs.readFileSync(staged.html, "utf8");
+  html = html
+    .replace(/^.*id="btnAutoOpenPanelTop".*\r?\n/gm, "")
+    .replace(/^.*id="btnAutoOpenPanelOverrideTop".*\r?\n/gm, "")
+    .replace(/^.*id="btnUtcTimesTop".*\r?\n/gm, "")
+    .replace(/ data-cmh-pref="[^"]+"/g, "");
+  fs.writeFileSync(staged.html, html);
+
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+  const menu = await openPrefs(page);
+  const row = menu.locator(DEFAULT_ROW);
+  await expect(row).toHaveAttribute("aria-checked", "true");
+  await row.click();
+  await expect(menu).toBeVisible();
+  await expect(row).toHaveAttribute("aria-checked", "false");
+  expect(await globalPref(page)).toBe("0");
+});
+
+test("CMH-MENU-PREF-12: preference syncing never rewrites authored data attributes", async ({ page }) => {
+  const content = DOC
+    + '<button id="authored-pref" data-cmh-pref="auto-open" aria-checked="mixed">'
+    + '<span class="cm-menu-check-label">Authored label</span></button>';
+  await open(page, "cmh-pref-12-authored", { content });
+  await openToolbarMenu(page);
+  await page.locator(DEFAULT_ROW_TOP).click();
+  const authored = page.locator("#authored-pref");
+  await expect(authored).toHaveAttribute("aria-checked", "mixed");
+  await expect(authored.locator(".cm-menu-check-label")).toHaveText("Authored label");
+});
+
+test("CMH-MENU-PREF-12: missing chrome never turns authored menu ids into preference controls", async ({ page }) => {
+  const content = DOC
+    + '<div id="toolbarMenu"><button data-cmh-pref="auto-open" aria-checked="mixed">'
+    + '<span class="cm-menu-check-label">Authored label</span></button></div>';
+  await open(page, "cmh-pref-12-authored-menu-id", { content });
+  await page.evaluate(() => {
+    const menus = Array.from(document.querySelectorAll("#toolbarMenu"));
+    menus.find((menu) => !document.getElementById("commentRoot").contains(menu))?.remove();
+    document.getElementById("sidebarMoreMenu")?.remove();
+    window.dispatchEvent(new StorageEvent("storage", {
+      key: "commentable-html::autoOpenPanelDefault",
+      newValue: "0",
+    }));
+  });
+  const authored = page.locator("#commentRoot #toolbarMenu");
+  await expect(authored.locator("[data-cmh-pref]")).toHaveAttribute("aria-checked", "mixed");
+  await expect(authored.locator(".cm-menu-check-label")).toHaveText("Authored label");
+});
+
+test("CMH-MENU-PREF-12: deleting shared preferences re-syncs an open toolbar menu", async ({ page }) => {
+  await page.addInitScript(() => {
+    const real = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (window.__cmhFailPreferenceWrites && typeof key === "string"
+        && (key.indexOf("autoOpenPanel") !== -1 || key.indexOf("utcTimes") !== -1)) {
+        const err = new Error("quota");
+        err.name = "QuotaExceededError";
+        throw err;
+      }
+      return real.call(this, key, value);
+    };
+  });
+  await open(page, "cmh-pref-12-delete-shared");
+  await openToolbarMenu(page);
+  const toolbarMenu = page.locator("#toolbarMenu");
+  await toolbarMenu.locator(DEFAULT_ROW_TOP).click();
+  await toolbarMenu.locator(UTC_ROW_TOP).click();
+  await expect(toolbarMenu.locator(DEFAULT_ROW_TOP)).toHaveAttribute("aria-checked", "false");
+  await expect(toolbarMenu.locator(UTC_ROW_TOP)).toHaveAttribute("aria-checked", "true");
+
+  await page.evaluate(() => { window.__cmhFailPreferenceWrites = true; });
+  await toolbarMenu.locator(DEFAULT_ROW_TOP).click();
+  await expect(page.locator("#toast").getByRole("button", { name: "Manage storage" })).toBeVisible();
+  await page.evaluate(() => { window.__cmhFailPreferenceWrites = false; });
+  await page.locator("#toast").getByRole("button", { name: "Manage storage" }).click();
+  await expect(toolbarMenu).toBeVisible();
+  const shared = page.locator(".cm-storage-global");
+  await shared.getByRole("button", { name: /Delete shared preferences/ }).click();
+  await page.locator(".cm-storage-confirm .cm-storage-danger").click();
+
+  await expect(toolbarMenu.locator(DEFAULT_ROW_TOP)).toHaveAttribute("aria-checked", "true");
+  await expect(toolbarMenu.locator(UTC_ROW_TOP)).toHaveAttribute("aria-checked", "false");
 });
 
 test("CMH-MENU-PREF-02: with the default off a saved comment is stored and highlighted but the panel stays put", async ({ page }) => {

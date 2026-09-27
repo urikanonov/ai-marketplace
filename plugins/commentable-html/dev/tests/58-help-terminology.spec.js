@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openInline, ready, openToolbarMenu } from "./helpers.js";
+import { fileUrl, openInline, ready, stageDeck, openToolbarMenu } from "./helpers.js";
 
 // Help panel: the About author link and terminology kept in sync with current button labels.
 
@@ -114,6 +114,37 @@ test.describe("Help terminology matches the current button labels", () => {
     await search.fill("panel and toolbar");
     const panelText = await page.locator(".cm-help-topic:visible", { hasText: "The panel and toolbar" }).innerText();
     expect(panelText).not.toMatch(/collapsed[\s\S]*overflow[\s\S]*Delete all comments/);
+  });
+
+  test("a legacy shell without toolbar preferences does not advertise them (CMH-MENU-PREF-12)", async ({ page }) => {
+    await openInline(page);
+    await page.evaluate(() => {
+      ["btnAutoOpenPanelTop", "btnAutoOpenPanelOverrideTop", "btnUtcTimesTop"].forEach((id) => {
+        const row = document.getElementById(id);
+        if (row) row.remove();
+      });
+    });
+    await openToolbarMenu(page);
+    await page.click("#btnHelpTop");
+    await expect(page.locator(".cm-help")).toBeVisible();
+    const search = page.locator(".cm-help-search-input");
+    await search.fill("panel and toolbar");
+    const panelText = await page.locator(".cm-help-topic:visible", { hasText: "The panel and toolbar" }).innerText();
+    expect(panelText).not.toContain("same preferences");
+  });
+
+  test("deck Help does not advertise the hidden toolbar preferences (CMH-MENU-PREF-12)", async ({ page }) => {
+    const deck = stageDeck(
+      '<section class="slide active" data-slide-id="slide-1"><h2>Deck</h2><p>Content</p></section>',
+      { key: "cmh-menu-pref-help-deck" },
+    );
+    await page.goto(fileUrl(deck.html));
+    await ready(page);
+    await page.locator("#btnHelp").evaluate((button) => button.click());
+    const search = page.locator(".cm-help-search-input");
+    await search.fill("panel and toolbar");
+    const panelText = await page.locator(".cm-help-topic:visible", { hasText: "The panel and toolbar" }).innerText();
+    expect(panelText).not.toContain("same preferences");
   });
 });
 

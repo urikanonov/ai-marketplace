@@ -18,7 +18,11 @@ const SITE_LINK_NAME = SITE_LINK_LABEL + " (opens in a new tab)";
 const MENU_FOCUS_IDENTITY = (el) => Array.from(el.querySelectorAll("*"))
   .filter((node) => node.tabIndex >= 0 && !node.hidden)
   .map((node) => node.id || (node.matches("a.cm-brand-link") ? "brand-site-link" : node.tagName.toLowerCase()));
-const MENU_ACTION_IDS = ["btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop", "btnPrintTop", "btnStorageTop", "btnClearAllTop", "btnHelpTop"];
+const MENU_ACTION_IDS = [
+  "btnAutoOpenPanelTop", "btnAutoOpenPanelOverrideTop", "btnUtcTimesTop",
+  "btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop",
+  "btnPrintTop", "btnStorageTop", "btnClearAllTop", "btnHelpTop",
+];
 const TOOLBAR_MARK = ".cm-toolbar > a.cm-brand-link";
 const MENU_MARK = "#toolbarMenu a.cm-brand-link.cm-toolbar-menu-brand";
 
