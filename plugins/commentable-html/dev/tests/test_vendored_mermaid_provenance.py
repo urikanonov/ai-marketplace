@@ -42,8 +42,9 @@ VENDOR = os.path.join(_paths.ASSETS, "vendor")
 BUNDLE = os.path.join(VENDOR, "mermaid.min.js")
 UPSTREAM = os.path.join(VENDOR, "UPSTREAM.md")
 
-# mermaid's own getVersion() source, the single place the bundle states its identity.
-_BUNDLE_VERSION = re.compile(r"version:\s*[\"'](\d+\.\d+\.\d+)[\"']")
+# Mermaid's own getVersion() source, excluding unrelated dependencies that also expose a version.
+_BUNDLE_VERSION = re.compile(
+    r"\{version:[\"'](\d+\.\d+\.\d+)[\"']\},[^;]{0,120}?\.version,[\"']getVersion[\"']")
 # The banner esbuild emits for each bundled dependency's licence.
 _BUNDLED_DOMPURIFY = re.compile(r"@license DOMPurify (\d+\.\d+\.\d+)")
 
