@@ -191,6 +191,9 @@ test.describe("side-pane comment selection", () => {
         expect(layout.height).toBeGreaterThanOrEqual(44);
       }
     }
+    await page.locator("#btnHelp").click();
+    const actionHelp = page.locator(".cm-help li").filter({ hasText: "Each card's actions" });
+    await expect(actionHelp).toContainText("edit, Copy, and delete");
   });
 
   test("picking and clearing never re-render the list, so an open draft survives (CMH-PICK-01, CMH-PICK-05)", async ({ page }) => {
