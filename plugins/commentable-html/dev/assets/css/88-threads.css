@@ -136,7 +136,7 @@ html[data-theme="dark"] .cm-author-pill {
 .cm-card .cm-reply .note { margin: 0; }
 .cm-card .cm-reply .meta { opacity: 0.9; }
 .cm-card .cm-reply-row { margin-top: 0.45rem; }
-/* One look for every per-card action (issue #1289): Reply, jump, edit and delete share ONE row and
+/* One look for every per-card action: Reply, jump, edit, Copy and delete share ONE row and
    ONE bordered-pill style, so a card no longer ships two competing definitions of "an action". */
 .cm-card .cm-card-acts {
   display: flex;

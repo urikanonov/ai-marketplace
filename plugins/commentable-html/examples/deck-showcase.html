@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.853.0" />
+<meta name="commentable-html-version" content="1.853.1" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.853.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.853.1","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -79,7 +79,7 @@ html.cmh-awaiting-style body { visibility: hidden; }
      content, not a template-owned region.
 -->
 <div class="app">
-<main id="commentRoot" data-cmh-content-root data-comment-key="deck-e0fac5524d" data-doc-label="Commentable HTML Showcase" data-doc-source="deck-showcase.html" data-generated="2026-09-27" data-cmh-mode="deck">
+<main id="commentRoot" data-cmh-content-root data-comment-key="deck-e0fac5524d" data-doc-label="Commentable HTML Showcase" data-doc-source="deck-showcase.html" data-generated="2026-10-05" data-cmh-mode="deck">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
 <style id="cmh-deck-stage">
@@ -5569,7 +5569,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.853.0";
+const CMH_VERSION= "1.853.1";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -12325,7 +12325,7 @@ const picked=(typeof isCommentPicked=== "function")&&isCommentPicked(c.id);
 const pickLabel= "Select comment #"+(i+1);
 const copyLabel= "Copy comment #"+(i+1);
 const pickChecked=picked?" checked":"";
-const pickHtml=`<span class="acts cm-pick-actions"><label class="cm-pick-label cm-pick" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label><button type="button" class="cm-copy-one" data-act="copy" aria-label="${copyLabel}" title="Copy only this comment thread">Copy</button></span>`;
+const pickHtml=`<span class="acts cm-pick-actions"><label class="cm-pick-label cm-pick" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label></span>`;
 const articleClass=picked?(cardClass+" cm-card-picked"):cardClass;
 const rootPill=(typeof authorPillHtml=== "function")?authorPillHtml(c.author):"";
 const replies=(typeof repliesOf=== "function")?repliesOf(c.id,comments):[];
@@ -12364,6 +12364,7 @@ return`
           <button type="button" class="cm-reply-btn cm-card-btn" data-act="reply" title="Reply to this comment">Reply</button>
           ${jumpBtn}
           <button type="button" class="cm-card-btn" data-act="edit" title="Edit comment">edit</button>
+          <button type="button" class="cm-copy-one cm-card-btn" data-act="copy" aria-label="${copyLabel}" title="Copy only this comment thread">Copy</button>
           <button type="button" class="cm-card-btn del" data-act="del" title="${delTitle}">delete</button>
         </span>
       </div>

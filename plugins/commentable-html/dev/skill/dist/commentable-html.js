@@ -725,7 +725,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.853.0";
+const CMH_VERSION= "1.853.1";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -7481,7 +7481,7 @@ const picked=(typeof isCommentPicked=== "function")&&isCommentPicked(c.id);
 const pickLabel= "Select comment #"+(i+1);
 const copyLabel= "Copy comment #"+(i+1);
 const pickChecked=picked?" checked":"";
-const pickHtml=`<span class="acts cm-pick-actions"><label class="cm-pick-label cm-pick" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label><button type="button" class="cm-copy-one" data-act="copy" aria-label="${copyLabel}" title="Copy only this comment thread">Copy</button></span>`;
+const pickHtml=`<span class="acts cm-pick-actions"><label class="cm-pick-label cm-pick" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label></span>`;
 const articleClass=picked?(cardClass+" cm-card-picked"):cardClass;
 const rootPill=(typeof authorPillHtml=== "function")?authorPillHtml(c.author):"";
 const replies=(typeof repliesOf=== "function")?repliesOf(c.id,comments):[];
@@ -7520,6 +7520,7 @@ return`
           <button type="button" class="cm-reply-btn cm-card-btn" data-act="reply" title="Reply to this comment">Reply</button>
           ${jumpBtn}
           <button type="button" class="cm-card-btn" data-act="edit" title="Edit comment">edit</button>
+          <button type="button" class="cm-copy-one cm-card-btn" data-act="copy" aria-label="${copyLabel}" title="Copy only this comment thread">Copy</button>
           <button type="button" class="cm-card-btn del" data-act="del" title="${delTitle}">delete</button>
         </span>
       </div>

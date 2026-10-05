@@ -4,6 +4,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.853.1] - 2026-10-05
+
+### Changed
+
+- Moved each comment card's Copy button immediately after edit in the action row, with the same
+  bordered styling and mobile touch target. Select stays in the metadata row.
+
 ## [1.853.0] - 2026-09-27
 
 ### Changed
