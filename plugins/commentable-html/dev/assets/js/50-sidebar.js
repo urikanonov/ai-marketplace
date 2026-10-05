@@ -400,13 +400,11 @@ function renderComments() {
     const jumpBtn = isDocument ? "" : isSlide
       ? `<button type="button" class="cm-card-btn" data-act="jump" title="Go to this slide">jump</button>`
       : `<button type="button" class="cm-card-btn" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
-    // The per-comment selection and direct-copy controls. They sit together in the meta row's
-    // action slot, while the thread-editing actions stay together on the Reply row below.
     const picked = (typeof isCommentPicked === "function") && isCommentPicked(c.id);
     const pickLabel = "Select comment #" + (i + 1);
     const copyLabel = "Copy comment #" + (i + 1);
     const pickChecked = picked ? " checked" : "";
-    const pickHtml = `<span class="acts cm-pick-actions"><label class="cm-pick-label cm-pick" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label><button type="button" class="cm-copy-one" data-act="copy" aria-label="${copyLabel}" title="Copy only this comment thread">Copy</button></span>`;
+    const pickHtml = `<span class="acts cm-pick-actions"><label class="cm-pick-label cm-pick" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label></span>`;
     const articleClass = picked ? (cardClass + " cm-card-picked") : cardClass;
     const rootPill = (typeof authorPillHtml === "function") ? authorPillHtml(c.author) : "";
     const replies = (typeof repliesOf === "function") ? repliesOf(c.id, comments) : [];
@@ -445,6 +443,7 @@ function renderComments() {
           <button type="button" class="cm-reply-btn cm-card-btn" data-act="reply" title="Reply to this comment">Reply</button>
           ${jumpBtn}
           <button type="button" class="cm-card-btn" data-act="edit" title="Edit comment">edit</button>
+          <button type="button" class="cm-copy-one cm-card-btn" data-act="copy" aria-label="${copyLabel}" title="Copy only this comment thread">Copy</button>
           <button type="button" class="cm-card-btn del" data-act="del" title="${delTitle}">delete</button>
         </span>
       </div>

@@ -297,12 +297,20 @@ test.describe("visual-audit follow-ups", () => {
     await addTextComment(page, "#commentRoot p", "side pane touch targets");
     await paneSettled(page);
 
-    // The door to the reply composer, measured against the card that owns it. Since CMH-PICK-08 the
-    // row also holds jump / edit / delete; gaps are not asserted here because the deliberate
-    // Reply-to-delete separation is pinned directly below.
-    await expectRowFitsEveryDensity(page, ".cm-card .cm-card-acts", ".cm-card",
-      "side pane card actions", ['.cm-reply-btn', '[data-act="jump"]', '[data-act="edit"]', '[data-act="del"]'],
-      { gaps: false });
+    const cardRow = ".cm-card .cm-card-acts";
+    await expectRowHolds(page, cardRow,
+      ['.cm-reply-btn', '[data-act="jump"]', '[data-act="edit"]', '[data-act="copy"]', '[data-act="del"]']);
+    for (const density of DENSITIES) {
+      await setDensity(page, density);
+      const info = await measureActionRow(page, cardRow, ".cm-card");
+      expectRowFits(info, `side pane card actions [density=${density || "default"}]`, 5, { gaps: false });
+      expect(rowLines(info), "five card actions fit at most two lines at 320px").toBeLessThanOrEqual(2);
+      const edit = info.boxes.find((b) => b.act === "edit");
+      const copy = info.boxes.find((b) => b.act === "copy");
+      expect(copy.line, "Copy stays on the same line as edit").toBe(edit.line);
+      expect(copy.left, "Copy stays to the right of edit").toBeGreaterThanOrEqual(edit.right);
+    }
+    await setDensity(page, "");
     // Reply's nearest neighbour is the card's DESTRUCTIVE delete action. Since CMH-PICK-08 the two
     // share ONE row, so the horizontal separation is what holds them apart: delete is pushed to the
     // row's end while Reply starts at its start edge. Pin the LARGER separation, so neither a

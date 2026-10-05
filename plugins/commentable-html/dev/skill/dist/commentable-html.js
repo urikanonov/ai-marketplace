@@ -725,7 +725,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.853.0";
+const CMH_VERSION= "1.853.1";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -7481,7 +7481,7 @@ const picked=(typeof isCommentPicked=== "function")&&isCommentPicked(c.id);
 const pickLabel= "Select comment #"+(i+1);
 const copyLabel= "Copy comment #"+(i+1);
 const pickChecked=picked?" checked":"";
-const pickHtml=`<span class="acts cm-pick-actions"><label class="cm-pick-label cm-pick" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label><button type="button" class="cm-copy-one" data-act="copy" aria-label="${copyLabel}" title="Copy only this comment thread">Copy</button></span>`;
+const pickHtml=`<span class="acts cm-pick-actions"><label class="cm-pick-label cm-pick" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label></span>`;
 const articleClass=picked?(cardClass+" cm-card-picked"):cardClass;
 const rootPill=(typeof authorPillHtml=== "function")?authorPillHtml(c.author):"";
 const replies=(typeof repliesOf=== "function")?repliesOf(c.id,comments):[];
@@ -7520,6 +7520,7 @@ return`
           <button type="button" class="cm-reply-btn cm-card-btn" data-act="reply" title="Reply to this comment">Reply</button>
           ${jumpBtn}
           <button type="button" class="cm-card-btn" data-act="edit" title="Edit comment">edit</button>
+          <button type="button" class="cm-copy-one cm-card-btn" data-act="copy" aria-label="${copyLabel}" title="Copy only this comment thread">Copy</button>
           <button type="button" class="cm-card-btn del" data-act="del" title="${delTitle}">delete</button>
         </span>
       </div>
@@ -14236,7 +14237,7 @@ T('The panel and toolbar',
 '<li>Below it, a row of captioned buttons - <strong>Search</strong>, <strong>Sort</strong>, <strong>More</strong>, <strong>Help</strong>, and <strong>Hide</strong>. <strong>Help</strong> opens this dialog; <strong>Hide</strong> collapses the panel, leaving a small floating toolbar to bring it back.</li>'+
 '<li><strong>Copy all</strong> (the primary button) copies every comment as a Markdown bundle to paste back to the agent; beside it, the <strong>Export</strong> button opens the file-format menu. The <strong>Search</strong> button in the ribbon reveals a search field (hidden by default) that filters the list by each comment\'s note text.</li>'+
 '<li><strong>Hand back only some comments:</strong> each comment card has <strong>Select</strong> and <strong>Copy</strong> controls. Use <strong>Copy</strong> to hand back that one thread immediately, or tick one or more cards and <strong>Copy all</strong> becomes <strong>Copy selected</strong>, copying just those threads (with their replies). Either partial bundle says plainly what it contains and names any tracked note, checklist, or layout changes it is holding back, so the agent never assumes the rest were dealt with. A bar above the list shows how many are selected and offers <strong>Clear selection</strong> to unpick everything without deleting a thing, and while a selection exists <em>More</em> also offers <strong>Delete selected comments</strong>, which deletes only those. If the search box is filtering the list, the bar and the delete confirmation both say how many of your picks are hidden, so nothing is deleted out of sight. The selection is per-session: it is never saved, never travels inside an exported file, and a reload starts fresh. With the panel collapsed, the floating toolbar\'s <kbd>...</kbd> menu carries <strong>Clear selection</strong> too.</li>'+
-'<li><strong>Each card\'s actions sit on one row:</strong> <strong>Reply</strong>, <strong>jump</strong> (scroll to what the comment is anchored to), <strong>edit</strong>, and <strong>delete</strong>, with delete at the far end so it is hard to hit by accident.</li>'+
+'<li><strong>Each card\'s actions share one group:</strong> <strong>Reply</strong>, <strong>jump</strong> (scroll to what the comment is anchored to), <strong>edit</strong>, <strong>Copy</strong>, and <strong>delete</strong>. Copy sits immediately to the right of edit with the same button styling, while delete stays at the far end so it is hard to hit by accident. On a narrow phone the group can wrap to two lines.</li>'+
 '<li><strong>More</strong> opens a menu with a <strong>Preferences</strong> group and the <strong>Manage storage</strong> and <strong>Delete all comments</strong> actions. While the panel is collapsed, the floating toolbar\'s overflow <kbd>...</kbd> menu '+(hasToolbarPrefs?'keeps those same preferences available alongside ':'holds ')+'the export actions, Manage storage, '+(hasToolbarClear?'<strong>Delete all comments</strong> (the same confirmed deletion), ':'')+'and <strong>Help &amp; About</strong>.</li>'+
 (hasBrandMark?'<li>The <strong>comment-bubble mark</strong> just left of the <kbd>...</kbd> button in the floating toolbar'+(hasMenuBrandMark?' - and the matching mark at the top of that menu -':'')+' opens the Commentable HTML site in a new tab.</li>':'')+
 '<li><strong>Auto-open panel on comment</strong> (in <em>More &gt; Preferences</em>) decides whether this panel opens <em>itself</em>. It is <strong>on</strong> by default and is your setting for <em>every</em> commentable-html document in this browser, so turning it off once lets you read full width and dip into the panel only when you want it: saving a comment, reopening a document that already has review items, and a first review-note, checklist, or widget layout change all leave the panel exactly where you put it. Your comment is still saved and still highlighted either way, and <strong>Comments</strong> in the floating toolbar always brings the panel back.</li>'+

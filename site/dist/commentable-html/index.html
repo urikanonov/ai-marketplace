@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.853.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.853.1<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -487,12 +487,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.853.1] - 2026-10-05</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Moved each comment card&#x27;s Copy button immediately after edit in the action row, with the same bordered styling and mobile touch target. Select stays in the metadata row.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.853.0] - 2026-09-27</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Updated Mermaid to 12.0.0 while preserving complete gallery diagrams, deterministic render readiness, authored multi-line labels, and rollback of degraded repair renders.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.852.0] - 2026-09-27</h3></div>
             <div class="group-label">Added</div>
@@ -500,8 +509,6 @@
               <li>The collapsed toolbar&#x27;s three-dots menu now exposes the same auto-open, per-document override, and UTC timestamp preferences as the sidebar More menu, with both surfaces kept in sync.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.851.0] - 2026-09-26</h3></div>
             <div class="group-label">Added</div>
@@ -535,14 +542,7 @@
               <li>The <code>Contents</code> caret is documented as a FLOW-DOCUMENT affordance. The runtime has always excluded decks (as it does the section-collapse carets and the side menu), but the spec row and the Help <code>Navigation</code> topic promised the caret unconditionally, so a deck slide carrying an authored <code>Contents</code> list read as broken. Both now say a deck gets no in-document navigation chrome and leaves such a list as plain content, and tests lock both the exclusion and the Help wording. The spec row also records the deliberate trade-off in the <code>aria-controls</code> fix above: on the invalid input where two elements share one id, the shadowed nav is re-identified, so an author rule keyed to that id stops matching it.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.849.1] - 2026-09-04</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Renamed the destructive <code>Clear selected comments</code> and <code>Clear all comments</code> actions to <code>Delete selected comments</code> and <code>Delete all comments</code> across the menus, storage manager, Help, tutorial, and showcase deck. <code>Clear selection</code> keeps its name because it only deselects comments.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">415 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">416 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

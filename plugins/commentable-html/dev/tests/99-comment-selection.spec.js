@@ -126,8 +126,8 @@ test.describe("side-pane comment selection", () => {
     const copy = card(page, ids[1]).locator(".cm-copy-one");
     await expect(copy).toHaveAttribute("aria-label", /^Copy comment #\d+$/);
     expect(await copy.evaluate((button) =>
-      button.previousElementSibling?.matches("label.cm-pick-label")
-    ), "Copy sits directly beside Select").toBe(true);
+      button.previousElementSibling?.matches('[data-act="edit"]')
+    ), "Copy sits directly after edit").toBe(true);
 
     await copy.click();
     const bundle = await lastCopied(page);
@@ -150,6 +150,50 @@ test.describe("side-pane comment selection", () => {
     await expect(card(page, ids[2]).locator(PICK)).not.toBeChecked();
     await expect(page.locator("#cmSelectCount")).toHaveText(/1 comment selected/);
     await expect(page.locator("#btnCopyAll")).toHaveText(/Copy selected/);
+  });
+
+  test("Copy follows edit with matching button styling on desktop and mobile (CMH-PICK-10)", async ({ page }) => {
+    await openDoc(page);
+    await addTextComment(page, "#pa", "copy button layout");
+    const root = page.locator(CARD);
+    const copy = root.getByRole("button", { name: /^Copy comment #/ });
+    for (const width of [1200, 390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect(copy).toBeVisible();
+      await expect(root.locator(".cm-entry-root .meta .cm-copy-one")).toHaveCount(0);
+      await expect(root.locator(".cm-entry-root .meta").locator(PICK)).toBeVisible();
+      const layout = await copy.evaluate((button) => {
+        const edit = button.previousElementSibling;
+        const read = (el) => {
+          const cs = getComputedStyle(el);
+          return Object.fromEntries([
+            "backgroundColor", "color", "border", "borderRadius", "fontFamily",
+            "fontSize", "fontWeight", "lineHeight", "padding", "minWidth", "minHeight",
+          ].map((key) => [key, cs[key]]));
+        };
+        const copyBox = button.getBoundingClientRect();
+        const editBox = edit.getBoundingClientRect();
+        return {
+          afterEdit: edit.matches('[data-act="edit"]'),
+          inActionRow: button.parentElement.matches(".cm-card-acts"),
+          copyStyle: read(button), editStyle: read(edit),
+          x: copyBox.x, editRight: editBox.right, y: copyBox.y, editY: editBox.y,
+          width: copyBox.width, height: copyBox.height,
+        };
+      });
+      expect(layout.afterEdit).toBe(true);
+      expect(layout.inActionRow).toBe(true);
+      expect(layout.copyStyle).toEqual(layout.editStyle);
+      expect(layout.x).toBeGreaterThanOrEqual(layout.editRight);
+      expect(layout.y).toBeCloseTo(layout.editY, 0);
+      if (width <= 640) {
+        expect(layout.width).toBeGreaterThanOrEqual(44);
+        expect(layout.height).toBeGreaterThanOrEqual(44);
+      }
+    }
+    await page.locator("#btnHelp").click();
+    const actionHelp = page.locator(".cm-help li").filter({ hasText: "Each card's actions" });
+    await expect(actionHelp).toContainText("edit, Copy, and delete");
   });
 
   test("picking and clearing never re-render the list, so an open draft survives (CMH-PICK-01, CMH-PICK-05)", async ({ page }) => {
@@ -549,12 +593,12 @@ test.describe("side-pane comment selection", () => {
     await addTextComment(page, "#commentRoot p", "unified action row");
     const row = page.locator(`${CARD} .cm-card-actions`).first();
     await expect(row).toHaveCount(1);
-    // All four actions live in that ONE row.
-    for (const act of ["reply", "jump", "edit", "del"]) {
+    // Every action lives in that ONE row.
+    for (const act of ["reply", "jump", "edit", "copy", "del"]) {
       await expect(row.locator(`[data-act="${act}"]`), `${act} is on the action row`).toHaveCount(1);
     }
     // ...and none of them is left behind on the meta line.
-    for (const act of ["jump", "edit", "del"]) {
+    for (const act of ["jump", "edit", "copy", "del"]) {
       await expect(page.locator(`${CARD} .cm-entry-root .meta [data-act="${act}"]`),
         `${act} is not duplicated on the meta line`).toHaveCount(0);
     }
@@ -577,10 +621,11 @@ test.describe("side-pane comment selection", () => {
         reply: read('[data-act="reply"]'),
         jump: read('[data-act="jump"]'),
         edit: read('[data-act="edit"]'),
+        copy: read('[data-act="copy"]'),
         del: read('[data-act="del"]'),
       };
     });
-    for (const act of ["jump", "edit", "del"]) {
+    for (const act of ["jump", "edit", "copy", "del"]) {
       expect(look[act].klass, `${act} carries the shared card-button class`).toContain("cm-card-btn");
       expect(look[act].border, `${act} border matches Reply`).toBe(look.reply.border);
       expect(look[act].radius, `${act} radius matches Reply`).toBe(look.reply.radius);
@@ -595,7 +640,7 @@ test.describe("side-pane comment selection", () => {
     await page.locator(`${CARD} .cm-reply-btn`).first().click();
     await expect(page.locator(`${CARD} .cm-reply-compose`)).toHaveCount(1);
     await expect(acts).toBeHidden();
-    for (const act of ["reply", "jump", "edit", "del"]) {
+    for (const act of ["reply", "jump", "edit", "copy", "del"]) {
       await expect(page.locator(`${CARD} .cm-card-acts [data-act="${act}"]`),
         `${act} is not usable beside the composer`).toBeHidden();
     }
