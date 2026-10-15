@@ -579,10 +579,13 @@ test.describe("side-pane comment selection", () => {
     // No ELEMENT carries the picked class (the class NAME is legitimately in the stylesheet).
     expect(html).not.toMatch(/class="[^"]*\bcm-card-picked\b/);
     // The embedded comments carry no per-comment selection flag either.
-    const embedded = /<script type="application\/json" id="embeddedComments">\s*([\s\S]*?)\s*<\/script>/.exec(html);
-    expect(embedded, "the export embedded its comments").toBeTruthy();
-    const arr = JSON.parse(embedded[1]);
-    expect(arr.length).toBe(3);
+    const arr = await page.evaluate((text) => {
+      const doc = new DOMParser().parseFromString(text, "text/html");
+      const embedded = doc.querySelector('script#embeddedComments[type="application/json"]');
+      return embedded ? JSON.parse(embedded.textContent) : null;
+    }, html);
+    expect(arr, "the export embedded its comments").not.toBeNull();
+    expect(arr).toHaveLength(3);
     arr.forEach((c) => {
       expect(Object.keys(c).join(","), "no selection flag rides along").not.toMatch(/pick|select/i);
     });

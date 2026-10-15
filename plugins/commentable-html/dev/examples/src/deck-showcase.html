@@ -320,6 +320,7 @@ svg {
 #commentRoot[data-cmh-mode="deck"] .show-card { padding: 26px 28px; min-height: 168px; }
 #commentRoot[data-cmh-mode="deck"] .show-card h3 { font-size: 31px; margin-bottom: 10px; color: var(--show-text); }
 #commentRoot[data-cmh-mode="deck"] .show-four .show-card h3 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 29px; }
+#commentRoot[data-cmh-mode="deck"] .show-discussion-steps .show-card h3 { white-space: normal; }
 #commentRoot[data-cmh-mode="deck"] .show-card p,
 #commentRoot[data-cmh-mode="deck"] .show-card li { font-size: 23px; line-height: 1.35; }
 #commentRoot[data-cmh-mode="deck"] .show-four .show-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
@@ -852,16 +853,28 @@ StormEvents
 
 <section class="slide" data-slide-id="slide-a1c0de60">
   <div class="show-kicker">Act 2 - Discuss, find, and keep it tidy</div>
-  <h2>Reply, format, find, and manage - all in the same file.</h2>
+  <h2>Discuss, decide, and keep the context.</h2>
   <div class="show-four">
-    <div class="show-card"><h3>Threads and authors</h3><p>Reply inline to turn a comment into a thread, and set "Commenting as" so every note and reply carries a colored author pill.</p><p class="show-card-example">Try it: comment on this line, then press Reply.</p></div>
-    <div class="show-card"><h3>Rich-text notes</h3><p>Comment bodies keep bold, italics, lists, and links - the composer stores formatted rich text, not just plain characters.</p><p class="show-card-example">Try it: bold a word in your next comment.</p></div>
+    <div class="show-card"><h3>Threads and authors</h3><p>Set "Commenting as". Discussion questions get AI answers, not edits; an explicit command uses the whole conversation. Answers stay in history after reload.</p><p class="show-card-example">Try it: select text, choose Discussion, then Reply.</p></div>
+    <div class="show-card"><h3>Rich-text notes</h3><p>Write bold, italic, lists, and links in comments and replies. Discussion replies default to questions; choose Command only when asking the owner to edit.</p><p class="show-card-example">Try it: bold a word in a discussion reply.</p></div>
     <div class="show-card"><h3>Find what needs review</h3><p>Per-section review badges, the section menu, and search / filter jump you straight to reviewed, still-open, or matching sections.</p><p class="show-card-example">Try it: open the section menu, then search.</p></div>
-    <div class="show-card"><h3>Storage and widgets</h3><p>The storage manager's pie chart and per-document table show what each file uses; boards and cards are commentable widgets you point at part by part.</p><p class="show-card-example">Try it: comment on a board card from the last slide.</p></div>
+    <div class="show-card"><h3>Storage and widgets</h3><p>Manage storage shows per-document usage. Boards, cards, and widgets remain individual review targets. Discussions use the same browser-local storage and exported snapshots.</p><p class="show-card-example">Try it: inspect Manage storage or comment on a card.</p></div>
   </div>
   <div class="show-demo-row">
-    <p class="show-lead">Every one of these runs live on this deck - it is a real commentable document, not a picture of one.</p>
+    <p class="show-lead">All run live here. Hand Copy or exported HTML to the AI; questions ask for answers and explicit commands request edits.</p>
   </div>
+</section>
+
+<section class="slide" data-slide-id="slide-a1c0de61">
+  <div class="show-kicker">Act 2 - Ask before authorizing an edit</div>
+  <h2>Ask, answer, then give a command.</h2>
+  <div class="show-four show-discussion-steps">
+    <div class="show-card"><h3>Ask an anchored question</h3><p>Select text and choose Discussion: ask AI. Replies default to questions and clarifications, never permission to change the document.</p><p class="show-card-example">No server or folder permissions.</p></div>
+    <div class="show-card"><h3>Hand the thread to the AI</h3><p>Copy all or Export as Shareable carries the complete conversation. The owner imports Copy or reads the exported HTML and persists a version-bound answer.</p><p class="show-card-example">Reload the answered HTML.</p></div>
+    <div class="show-card"><h3>Request the agreed edit</h3><p>Choose Command on a reply only when you want an edit. Your latest command supplies the instruction and the full history supplies context. Completed edits keep that history.</p><p class="show-card-example">Ordinary comments still request edits.</p></div>
+    <div class="show-card"><h3>Know what needs an answer</h3><p>Needs owner handoff / AI reply flags unanswered questions, not an AI-read receipt. Copy/export does not clear it. Only a matching current-version answer resolves the question; a follow-up reopens it.</p><p class="show-card-example">Answered is not the same as handled.</p></div>
+  </div>
+  <div class="show-demo-row"><p class="show-lead">The browser does not contact an AI automatically. Copy and exported HTML are snapshot handoffs, not live multi-person sync.</p></div>
 </section>
 
 <section class="slide" data-slide-id="slide-12668385">

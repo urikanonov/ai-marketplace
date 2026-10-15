@@ -64,7 +64,7 @@
           <li><strong>Generate.</strong> Ask an AI chat or terminal agent to produce your report or document as a commentable HTML file.</li>
           <li><strong>Review.</strong> Open the file in your browser and leave inline comments anywhere: text, tables, code, KQL, charts, diagrams, diffs, or images.</li>
           <li><strong>Hand back.</strong> Click <strong>Copy all</strong> and paste the bundle back to the agent (or export the file and send it along).</li>
-          <li><strong>Refresh and repeat.</strong> The agent edits the source and marks your comments handled; reload the updated file and the addressed comments disappear. Repeat until none remain.</li>
+          <li><strong>Refresh and repeat.</strong> The agent edits the source for edit requests or replies in a discussion for questions. Reload the updated file: handled edit comments disappear, while discussion history stays available for follow-ups.</li>
           </ol>
           <p>The rest of this tutorial walks through step 2 in detail: every kind of thing you can comment on, and how to hand the batch back.</p>
           <h3>1. Open the example</h3>
@@ -88,7 +88,7 @@
           <li>Type a note, then click Save or press Ctrl+Enter.</li>
           <li>The selected text is highlighted and a card appears in the sidebar.</li>
           </ol>
-          <p><img src="assets/garden-05-composer.png?v=7a17f40513e9" alt="The comment composer open on a selected phrase, with the quoted text and a note field" loading="lazy" /></p>
+          <p><img src="assets/garden-05-composer.png?v=ccbb895e2fb4" alt="The comment composer open on a selected phrase, with the quoted text and a note field" loading="lazy" /></p>
           <p><img src="assets/garden-06-comment-saved.png?v=da01d3247ff2" alt="The saved comment highlighted in the text with its card in the sidebar" loading="lazy" /></p>
           <h3>4. Comment on a table cell</h3>
           <ol>
@@ -158,7 +158,7 @@
           <li>Wrap the current selection by clicking a toolbar button or pressing a shortcut: <code>Ctrl/Cmd+B</code> for <code>**bold**</code>, <code>Ctrl/Cmd+I</code> for <code>*italic*</code>, <code>Ctrl/Cmd+U</code> for <code>__underline__</code>, and <code>Ctrl/Cmd+K</code> to turn the selection into a link. Start a line with <code>- </code> for a bullet list, wrap text in backticks for inline code, and use <code>~~text~~</code> for strikethrough.</li>
           <li>Type or paste a bare <code>http(s)://</code> address and it becomes clickable on its own. Only <code>http</code>, <code>https</code>, and <code>mailto</code> links are made clickable; anything else stays plain text.</li>
           </ol>
-          <p><img src="assets/garden-15-format-toolbar.png?v=720b97426ece" alt="The comment composer with its formatting toolbar above a note being written with bold text, a link, and a bullet list" loading="lazy" /></p>
+          <p><img src="assets/garden-15-format-toolbar.png?v=3bb8baee5694" alt="The comment composer with its formatting toolbar above a note being written with bold text, a link, and a bullet list" loading="lazy" /></p>
           <p>Once saved, the note renders its formatting in the sidebar card and the inline popover, while the stored note keeps the exact text you typed - so <strong>Copy all</strong> still hands the agent the raw markers.</p>
           <p><img src="assets/garden-16-rich-card.png?v=edec975c43dd" alt="A saved comment card in the sidebar showing bold text, a clickable link, and a bullet list" loading="lazy" /></p>
           <h3>13. Track review progress per section</h3>
@@ -195,10 +195,11 @@
           </ol>
           <p><img src="assets/garden-14-thread.png?v=63ac5838ecdd" alt="The comments panel showing the Commenting as control and a comment thread with two author pills and a reply" loading="lazy" /></p>
           <h3>17. Hand your comments back</h3>
+          <p><strong>Questions instead of edits:</strong> choose <strong>Discussion: ask AI</strong> in a new comment&#x27;s <strong>Comment purpose</strong>. The AI should answer in the thread without changing the document. Continue with <strong>Reply</strong>; when you do want an edit, explicitly choose <strong>Command: edit the document using this discussion</strong> under <strong>Reply purpose</strong>. Copy includes the complete conversation as context and only pending requests as work to perform. Answers stay in history; editing a question reopens it. Ordinary comments remain edit requests. The owner uses <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/dev/skill/tools/authoring/review_threads.py"><code>review_threads.py</code></a> to import a Copy bundle or read exported HTML, persist version-bound answers, and acknowledge completed commands. See <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/dev/skill/references/discussions.md">AI discussions</a> for the tested CLI commands. Discussions work in the standalone HTML without a server or folder permissions. The browser does not contact an AI automatically: hand back Copy or an exported file, then reload the answered HTML the owner returns.</p>
           <ol>
           <li>Click <strong>Copy all</strong> in the toolbar or the sidebar.</li>
           <li>This copies every comment as a Markdown bundle: where each comment is, the quoted text, and your note, ending with a machine-readable handled-ids line.</li>
-          <li>Paste the bundle back to the agent. It addresses each comment and marks it handled in the same file.</li>
+          <li>Paste the bundle back to the agent. It applies ordinary edit requests and marks those handled, answers pending questions in their discussions, and edits for explicit discussion commands only. Discussion history is retained.</li>
           </ol>
           <p><img src="assets/garden-09-copyall.png?v=9bfa4978930e" alt="The Copy all action with the comments panel populated" loading="lazy" /></p>
           <h3>18. Export, manage storage, and delete comments</h3>
@@ -212,7 +213,9 @@
           </ol>
           <p><img src="assets/garden-12-export-menu.png?v=0e2b2d79a7c6" alt="The sidebar export menu open, listing Shareable, Offline, Markdown, Plain HTML, and PDF" loading="lazy" /></p>
           <h3>19. Refresh and repeat</h3>
-          <p>Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.</p>
+          <p>Discussion history remains visible after answering: look for <strong>Answered</strong>, <strong>Awaiting answer</strong>, or <strong>Edit requested</strong>. <strong>Needs owner handoff / AI reply</strong> stays visible while any current question has no matching AI answer, even if the thread also has a command. It means <strong>unanswered</strong>, not &quot;the AI has never seen this&quot;: Copy and export are not AI-read receipts. The owner can paste requests or have the AI read the exported HTML. Only a persisted answer matching the question&#x27;s current id/version clears it; editing or asking again reopens it. Discussion ids are never pruned as handled edit comments.</p>
+          <p>With explicit owner consent, a scheduled prompt can answer pending questions in one named HTML file without changing authored content. Commands still wait for the owner, and browser-only comments still need Copy/import or export. The agent must never create that schedule automatically.</p>
+          <p>Reload the file the agent hands back. Ordinary comments it marked handled are pruned automatically; discussion answers stay in history. Repeat the loop until the review is resolved.</p>
           <p>To share the review with another person instead, use the export menu&#x27;s <strong>Shareable</strong> action to bake the comments into a single self-contained copy, or <strong>Plain HTML</strong> to hand over a clean copy with the commenting layer removed.</p>
           <p>Use <strong>Export Offline</strong> for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Shareable export, strips remote loaders, conditionally inlines Mermaid / Chart.js, and reopens with the <strong>Offline</strong> badge while keeping live diagrams and chart tooltips. The export itself downloads the library it inlines once and checks it against a hash recorded when the document was generated, so this one step needs a connection - it sends no referrer, and if the download fails or does not match you get an error and no file rather than a copy whose diagrams cannot render. The file it writes needs no network at all.</p>
           <h3>20. Review a board document</h3>

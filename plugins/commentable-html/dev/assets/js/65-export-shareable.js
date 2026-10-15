@@ -276,6 +276,7 @@ function _cmhTagAttributes(tag) {
       continue;
     }
     const name = tag.slice(nameStart, pos).toLowerCase();
+    const nameEnd = pos;
     while (_CMH_SPACE_CH.test(tag[pos] || "")) pos += 1;
     let valueStart = null;
     let valueEnd = null;
@@ -296,7 +297,7 @@ function _cmhTagAttributes(tag) {
         valueEnd = pos;
       }
     }
-    attrs.push({ name, valueStart, valueEnd, quote });
+    attrs.push({ name, nameStart, nameEnd, valueStart, valueEnd, quote });
   }
   return attrs;
 }
@@ -465,7 +466,8 @@ function _buildSavedHtml(baseHtml, commentArr) {
   // The escaped slashes below (<\/script>, application\/json) keep the HTML
   // parser from treating the strings as a real closing tag inside this
   // <script> body. At runtime the strings hold the unescaped characters.
-  const repl = '<script type="application\/json" id="embeddedComments">\n'
+  const repl = '<script type="application\/json" data-cmh-review-revision="'
+             + cmhRandomReviewId("r") + '" id="embeddedComments">\n'
              + json
              + '\n<\/script>';
   // Locate the embedded-comments script STRUCTURALLY (see _cmhVerifiedScriptRange): a real,

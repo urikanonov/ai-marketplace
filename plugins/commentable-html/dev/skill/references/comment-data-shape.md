@@ -9,6 +9,7 @@
   - [Diff-line comments (`anchorType: "diff"`)](#diff-line-comments-anchortype-diff)
   - [Widget/part comments (`anchorType: "widget"`)](#widgetpart-comments-anchortype-widget)
   - [Document-wide comments (`anchorType: "document"`)](#document-wide-comments-anchortype-document)
+- [Discussion and reply metadata](#discussion-and-reply-metadata)
 
 ## Per-comment data shape
 
@@ -148,3 +149,42 @@ All context fields for text comments are computed by `captureContext(start, end,
 
 On load, `backfillContext()` repopulates all of these for any pre-existing text comments that lack them. Mermaid comments are skipped by the backfill (they have no `start`/`end`) and their highlights are restored separately by `setupMermaidLayer()`. Both the sidebar card and the copy payload surface every field, so an isolated quote like `"Archive"` is always shipped with its disambiguating heading path, containing block, and match index.
 
+## Discussion and reply metadata
+
+All supported anchors can start a discussion. A discussion root adds
+`threadType:"discussion"`, `intent:"question"`, and
+`requestVersion:"r<32-lowercase-hex>"` to its normal anchor fields. Ordinary edit comments
+remain unchanged. Replies use `parentId` to reference the root and inherit its anchor.
+
+Human discussion replies carry `intent:"question"` or `"command"` and their own opaque
+`requestVersion`. Editing the message or purpose changes that version. Only an explicit
+pending command requests an edit; historical messages remain context.
+
+An AI reply adds these fields:
+
+```json
+{
+  "id": "c<safe-id>",
+  "parentId": "c<discussion-root>",
+  "note": "the answer or completed-edit acknowledgement",
+  "createdAt": "2026-10-08T12:00:00.000Z",
+  "author": "AI",
+  "role": "assistant",
+  "intent": "answer",
+  "respondsTo": [{"id": "c<question-id>", "version": "r<32-lowercase-hex>"}]
+}
+```
+
+Use `intent:"applied"` for acknowledgement of an already-performed command, not to perform
+the edit. An answer closes only the referenced question version; an applied acknowledgement
+closes only its command version. Neither prunes the conversation. Names and roles are
+self-asserted labels, not authentication.
+
+The owned `embeddedComments` script may also carry a snapshot-level
+`data-cmh-review-revision="r<32-lowercase-hex>"` attribute, revised by supported exports and
+owner writes even when the array is empty. Copy includes that original revision and selected
+six-string base rows, separately from message request versions, to reject stale imports that
+would resurrect deleted messages. See [Copy payload](copy-payload.md) for the trailer contract.
+
+See [AI discussions](discussions.md) for the import/reply tools, bounded snapshot handoff,
+exact-version acknowledgements, and optional question-only answering.

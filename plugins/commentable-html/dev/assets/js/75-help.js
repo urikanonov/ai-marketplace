@@ -104,6 +104,23 @@ function showHelp(restoreEl) {
           '<li><strong>The box grows as you write:</strong> every place you type a note - the reply editor, the comment composer, and the in-document comment dialog - expands to fit what you have written, so a long reply needs no scrolling inside the box and no dragging. It stops growing at a sensible height and scrolls from there, shrinks back when you delete text, and if you drag its resize handle your size wins.</li>' +
           '<li><strong>Threads travel together:</strong> <strong>Copy all</strong>, the Markdown export, and the print appendix emit each thread as an initial comment followed by its labelled replies, so the agent reads the refinements in context.</li>' +
         '</ul>') +
+      T('AI discussions: questions and explicit edit commands',
+        '<p>Select text, open <strong>Add Comment</strong>, and choose <strong>Discussion: ask AI</strong> '
+          + 'under <strong>Comment purpose</strong>. A question asks for an answer, not a document edit. '
+          + 'Ordinary comments remain edit requests by default.</p>'
+        + '<p><strong>Reply</strong> continues the discussion as a question. Choose '
+          + '<strong>Command: edit the document using this discussion</strong> only when you want an edit. '
+          + 'The AI uses the whole conversation as context and that command as the instruction.</p>'
+        + '<p><strong>Copy all</strong> or per-thread Copy hands back pending questions/commands and the '
+          + 'complete transcript. AI answers are labelled and kept as history; they are not new edit requests. '
+          + 'Editing a question reopens it, so an old answer never closes your changed question.</p>'
+        + '<p>Discussions work in this standalone HTML without a server or folder permissions. '
+          + 'The browser does not contact an AI: hand back Copy or an exported HTML. The owner persists '
+          + 'answers with <code>review_threads.py</code>, then you reload the answered file. '
+          + 'Discussion cards show Awaiting answer, Answered, or Edit requested. '
+          + '<strong>Needs owner handoff / AI reply</strong> flags any unanswered current question, even '
+          + 'when a command is also pending. Copy and export do not prove the AI has seen it; '
+          + 'only a matching current-version answer clears it. Your purpose and draft survive panel re-renders.</p>') +
       T('The panel and toolbar',
         '<ul>' +
           '<li>The <strong>Comments</strong> heading carries a <strong>count bubble</strong> showing how many items still need attention: open comment threads plus any unresolved review-note and checklist changes (each top-level thread counts once, not its individual replies). The shareability badge and version sit at the right of the same row.</li>' +

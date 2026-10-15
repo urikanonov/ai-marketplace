@@ -319,9 +319,11 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   /* The editor autogrows (42-autogrow.js), so bound the whole surface to the viewport and let it
      scroll: a box taller than the screen could never be clamped back into view, which would put
      Cancel/Save permanently out of reach on a short (landscape phone) viewport. `border-box` keeps
-     that bound honest - it must include this surface's own padding and border - and `dvh` tracks the
-     viewport a mobile browser's retractable toolbars actually leave visible. */
-  box-sizing: border-box; max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); overflow-y: auto;
+     that bound honest - it must include this surface's own padding and border. The measured visual
+     height includes a keyboard that leaves `dvh` unchanged; viewport units are the initial fallback. */
+  box-sizing: border-box;
+  max-height: calc(var(--cmh-viewport-height, 100vh) - 16px);
+  max-height: calc(var(--cmh-viewport-height, 100dvh) - 16px); overflow-y: auto;
   background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 12px;
   box-shadow: var(--cp-shadow); padding: var(--cp-chrome-card-y);
   display: flex; flex-direction: column; gap: var(--cp-chrome-card-gap);

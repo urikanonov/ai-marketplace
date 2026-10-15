@@ -34,6 +34,20 @@ test.describe("comment interactions", () => {
     }, cid);
   }
 
+  async function parkComposerAtRight(page, composer) {
+    const box = await composer.boundingBox();
+    const handle = await composer.locator(".cm-composer-handle").boundingBox();
+    expect(box).toBeTruthy();
+    expect(handle).toBeTruthy();
+    const x = handle.x + handle.width / 2;
+    const y = handle.y + handle.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(page.viewportSize().width - box.width - 16 + x - box.x,
+      16 + y - box.y, { steps: 8 });
+    await page.mouse.up();
+  }
+
   test("a genuine pointer drag selects text and pops the Add-comment menu", async ({ page }) => {
     await openKitchenSink(page);
     // No synthetic selection: a real mouse down/move/up produces the browser
@@ -288,6 +302,8 @@ test.describe("comment interactions", () => {
     // it), so the browser still follows the link exactly as it would with no comment layer. The
     // event is dispatched rather than driven with the mouse so the assertion is about the default
     // action, not about where the navigation lands.
+    await expect(page.locator(".cm-comment-popover")).toBeVisible();
+    await expect(page.locator('.cm-comment-popover [data-act="edit"]')).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(page.locator(".cm-comment-popover")).toHaveCount(0);
     const notCancelled = await page.evaluate(() => {
@@ -1572,6 +1588,7 @@ test.describe("comment interactions", () => {
     // A new-comment composer holds an unsaved draft and stays open when the dialog opens, so its
     // controls are exposed to exactly the same swallow.
     const composer = await openComposerFor(page, "#commentRoot section:nth-of-type(2) p");
+    await parkComposerAtRight(page, composer);
     const ta = composer.locator("textarea");
     await ta.fill("pick me");
     await ta.evaluate((el) => el.setSelectionRange(0, 4));
@@ -1756,6 +1773,7 @@ test.describe("comment interactions", () => {
     // appended to `document.body`, which IS the root here, so this is the only mode in which that
     // branch of the predicate decides anything.
     const composer = await openComposerFor(page, "main p", { index: 1 });
+    await parkComposerAtRight(page, composer);
     const cta = composer.locator("textarea");
     await cta.fill("pick me");
     await cta.evaluate((el) => el.setSelectionRange(0, 4));
@@ -1858,13 +1876,15 @@ test.describe("comment interactions", () => {
     await expect.poll(() => page.evaluate(() => location.hash)).toBe("#navk");
   });
 
-  test("CMH-CORE-16: Escape and scrolling the anchor out of view close the inline dialog", async ({ page }) => {    await openKitchenSink(page);
+  test("CMH-CORE-16: Escape and scrolling the anchor out of view close the inline dialog", async ({ page }) => {
+    await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section:nth-of-type(1) p", "escape me");
     const cid = (await allCids(page))[0];
     const openPop = async () => {
       await page.locator(`mark.cm-hl[data-cid="${cid}"]`).first().hover();
       await page.locator("#hlBubble").click();
       await expect(page.locator(".cm-comment-popover")).toBeVisible();
+      await expect(page.locator('.cm-comment-popover [data-act="edit"]')).toBeFocused();
     };
     const pop = page.locator(".cm-comment-popover");
 

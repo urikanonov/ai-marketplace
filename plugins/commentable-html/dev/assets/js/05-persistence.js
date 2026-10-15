@@ -155,6 +155,7 @@ function saveComments() {
   // prune/convergence); the recoverable bytes survive a reload-without-edit. Startup clears the flag
   // after pruning, so a genuine user edit still persists.
   if (_cmhStoreUnreadable) return true;
+  if (typeof cmhPrepareDiscussionSave === "function") cmhPrepareDiscussionSave();
   try {
     // Always write the modern slot FIRST (an empty array serializes to "[]"); only on success
     // remove the legacy key, so a quota failure never leaves both slots empty (any legacy value

@@ -1,0 +1,22 @@
+/* Discussion purpose controls use the existing theme tokens. */
+.cm-purpose-control {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--cp-text-muted); font-size: 12px;
+}
+.cm-purpose-control > span { flex: none; }
+.cm-purpose-control select {
+  flex: 1; min-width: 0; min-height: 32px; padding: 5px;
+  color: var(--cp-text); background: var(--cp-bg); border: 1px solid var(--cp-border);
+  border-radius: 5px; font: inherit;
+}
+.cm-message-kind {
+  display: inline-block; margin-right: 6px; color: var(--cp-text-muted);
+  font-size: 11px; font-weight: 600;
+}
+.cm-discussion-status {
+  margin: 4px 0 8px; color: var(--cp-accent); font-size: 12px; font-weight: 600;
+}
+.cm-discussion-handoff { margin: -4px 0 8px; color: var(--cp-text-muted); font-size: 12px; }
+@media (max-width: 600px) {
+  .cm-purpose-control select { min-height: 44px; }
+}

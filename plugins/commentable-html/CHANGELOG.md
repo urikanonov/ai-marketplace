@@ -4,6 +4,33 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.854.0] - 2026-10-12
+
+### Added
+
+- Anchored AI discussions: questions do not request edits; explicit command replies use the
+  entire conversation as context. Version-bound answers preserve history and reopen edited
+  questions instead of pruning discussion ids.
+- `review_threads.py` for safe Copy-bundle imports, pending requests, persistent AI replies,
+  and owner-supervised edit acknowledgements; guidance for consent-only, questions-only
+  scheduled answering.
+- Needs owner handoff / AI reply on unresolved discussion questions. Copy and export are not
+  AI read receipts; only an answer to the current request version clears it.
+- Standalone discussions use the existing HTML, browser-local storage, and Copy/export
+  workflow without shared-folder permissions, a server, or live collaboration setup.
+
+### Changed
+
+- Copy discussion imports are snapshot-bound, reject stale/deleted/answered requests, and keep
+  exact pending retries as no-ops. Owner replies update embedded review state atomically.
+  Compact purpose controls and visual-viewport height caps keep discussion Save reachable when
+  the keyboard opens.
+
+### Fixed
+
+- The AI-discussion showcase wraps long card headings so wider fallback fonts cannot expand
+  the printed slide's grid or clip its content.
+
 ## [1.853.1] - 2026-10-05
 
 ### Changed

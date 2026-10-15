@@ -259,6 +259,8 @@ function renderComments() {
     _inlineDraft = {
       kind: _activeInlineEditor.kind, targetId: _activeInlineEditor.targetId,
       value: _dta ? _dta.value : "",
+      purpose: _del && _del.querySelector(".cm-purpose-control select")
+        ? _del.querySelector(".cm-purpose-control select").value : null,
       // The caret/selection is part of the draft: the side pane carries the formatting toolbar, so a
       // re-render that lands between "select a word" and "click Bold" must not collapse the range
       // (that would append bare markers instead of wrapping the word).
@@ -413,12 +415,12 @@ function renderComments() {
       const rp = (typeof authorPillHtml === "function") ? authorPillHtml(r.author) : "";
       return `
       <div class="cm-entry cm-reply" data-reply-cid="${r.id}">
-        <div class="note cmh-rich">${rp}${renderRichNote(r.note)}</div>
+        <div class="note cmh-rich">${cmhMessageKindHtml(r, c)}${rp}${renderRichNote(r.note)}</div>
         <div class="cmh-note-raw" hidden>${escapeHtml(r.note == null ? "" : r.note)}</div>
         <div class="meta">
           <span>${cmhTimeMetaHtml(r)}</span>
           <span class="acts">
-            <button type="button" data-act="reply-edit" title="Edit reply">edit</button>
+            ${r.role === "assistant" ? "" : '<button type="button" data-act="reply-edit" title="Edit reply">edit</button>'}
             <button type="button" class="del" data-act="reply-del" title="Delete reply">delete</button>
           </span>
         </div>
@@ -429,8 +431,9 @@ function renderComments() {
       ${sectionHtml}
       ${quoteHtml}
       ${pinHtml}
+      ${cmhDiscussionStatusHtml(c)}
       <div class="cm-entry cm-entry-root">
-        <div class="note cmh-rich">${rootPill}${renderRichNote(c.note)}</div>
+        <div class="note cmh-rich">${cmhMessageKindHtml(c, c)}${rootPill}${renderRichNote(c.note)}</div>
         <div class="cmh-note-raw" hidden>${escapeHtml(c.note == null ? "" : c.note)}</div>
         <div class="meta">
           <span>#${i + 1}${cmhTimeSuffixHtml(c)}</span>
@@ -538,6 +541,8 @@ function _reopenInlineDraft(snap) {
   if (_activeInlineEditor && _activeInlineEditor.el) {
     const el = _activeInlineEditor.el;
     const ta = el.querySelector("textarea");
+    const purpose = el.querySelector(".cm-purpose-control select");
+    if (purpose && snap.purpose != null) purpose.value = snap.purpose;
     let r = null;
     if (ta) {
       ta.value = snap.value;
@@ -1007,7 +1012,10 @@ function openInlineReply(card, rootId) {
         return;
       }
       const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-      comments.push(stampAuthor({ id: id, parentId: rootId, note: val, createdAt: new Date().toISOString() }));
+      const reply = stampAuthor({ id: id, parentId: rootId, note: val, createdAt: new Date().toISOString() });
+      const purpose = editor.querySelector(".cm-purpose-control select");
+      if (purpose) cmhStampDiscussion(reply, purpose.value);
+      comments.push(reply);
       const ok = saveComments();
       _activeInlineEditor = null;
       renderComments();
@@ -1015,6 +1023,9 @@ function openInlineReply(card, rootId) {
       _afterInlineSaveQuota(ok, "reply");
     },
     function () { _closeActiveInlineEditor(); });
+  if (cmhDiscussionRoot(comments.find(function (c) { return c.id === rootId; }))) {
+    editor.prepend(cmhPurposeControl("Reply purpose", "question", true));
+  }
   if (acts) acts.hidden = true;
   else if (btn) btn.hidden = true;
   row.appendChild(editor);
@@ -1033,6 +1044,7 @@ function openInlineNoteEdit(entry, cid) {
   if (!entry) return;
   const rc = comments.find(function (x) { return x.id === cid; });
   if (!rc) return;
+  if (rc.role === "assistant") return;
   const noteEl = entry.querySelector(".note");
   if (!noteEl) return;
   const isRootNote = (typeof isReply === "function") ? !isReply(rc) : !rc.parentId;
@@ -1081,6 +1093,8 @@ function openInlineNoteEdit(entry, cid) {
         return;
       }
       c.note = val; c.updatedAt = new Date().toISOString();
+      const purpose = editor.querySelector(".cm-purpose-control select");
+      if (purpose) cmhStampDiscussion(c, purpose.value);
       const ok = saveComments();
       _activeInlineEditor = null;
       renderComments();
@@ -1090,6 +1104,9 @@ function openInlineNoteEdit(entry, cid) {
     function () { _closeActiveInlineEditor(); },
     { label: isRootNote ? "Edit comment" : "Write a reply",
       placeholder: isRootNote ? "Edit this comment..." : "Write a reply..." });
+  if (!isRootNote && cmhDiscussionRoot(rc)) {
+    editor.prepend(cmhPurposeControl("Reply purpose", cmhDiscussionIntent(rc), true));
+  }
   entry.classList.add("cm-reply-editing");
   noteEl.hidden = true;
   noteEl.insertAdjacentElement("afterend", editor);

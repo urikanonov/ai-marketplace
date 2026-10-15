@@ -13,7 +13,7 @@ The review loop has four steps:
 1. **Generate.** Ask an AI chat or terminal agent to produce your report or document as a commentable HTML file.
 2. **Review.** Open the file in your browser and leave inline comments anywhere: text, tables, code, KQL, charts, diagrams, diffs, or images.
 3. **Hand back.** Click **Copy all** and paste the bundle back to the agent (or export the file and send it along).
-4. **Refresh and repeat.** The agent edits the source and marks your comments handled; reload the updated file and the addressed comments disappear. Repeat until none remain.
+4. **Refresh and repeat.** The agent edits the source for edit requests or replies in a discussion for questions. Reload the updated file: handled edit comments disappear, while discussion history stays available for follow-ups.
 
 The rest of this tutorial walks through step 2 in detail: every kind of thing you can comment on, and how to hand the batch back.
 
@@ -168,9 +168,22 @@ When you pass a document back and forth with someone else, attribute each commen
 
 ## 17. Hand your comments back
 
+**Questions instead of edits:** choose **Discussion: ask AI** in a new comment's **Comment purpose**.
+The AI should answer in the thread without changing the document. Continue with **Reply**; when
+you do want an edit, explicitly choose **Command: edit the document using this discussion** under
+**Reply purpose**. Copy includes the complete conversation as context and only pending requests
+as work to perform. Answers stay in history; editing a question reopens it. Ordinary comments
+remain edit requests. The owner uses
+[`review_threads.py`](https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/dev/skill/tools/authoring/review_threads.py) to import a Copy bundle
+or read exported HTML, persist version-bound answers, and acknowledge completed commands.
+See [AI discussions](https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/dev/skill/references/discussions.md) for the tested CLI commands.
+Discussions work in the standalone HTML without a server or folder permissions. The browser
+does not contact an AI automatically: hand back Copy or an exported file, then reload the
+answered HTML the owner returns.
+
 1. Click **Copy all** in the toolbar or the sidebar.
 2. This copies every comment as a Markdown bundle: where each comment is, the quoted text, and your note, ending with a machine-readable handled-ids line.
-3. Paste the bundle back to the agent. It addresses each comment and marks it handled in the same file.
+3. Paste the bundle back to the agent. It applies ordinary edit requests and marks those handled, answers pending questions in their discussions, and edits for explicit discussion commands only. Discussion history is retained.
 
 ![The Copy all action with the comments panel populated](assets/garden-09-copyall.png)
 
@@ -188,7 +201,20 @@ The comments panel header gathers the ways to save, share, and manage the review
 
 ## 19. Refresh and repeat
 
-Reload the file the agent hands back. Comments it marked handled are pruned automatically, so only open items remain. Repeat the loop until the panel is empty.
+Discussion history remains visible after answering: look for **Answered**, **Awaiting answer**,
+or **Edit requested**. **Needs owner handoff / AI reply** stays visible while any current question
+has no matching AI answer, even if the thread also has a command. It means **unanswered**, not
+"the AI has never seen this": Copy and export are not AI-read receipts. The owner
+can paste requests or have the AI read the exported HTML. Only a persisted answer
+matching the question's current id/version clears it; editing or asking again reopens it.
+Discussion ids are never pruned as handled edit comments.
+
+With explicit owner consent, a scheduled prompt can answer pending questions in one named
+HTML file without changing authored content. Commands still wait for the owner, and browser-only
+comments still need Copy/import or export. The agent must never create that schedule automatically.
+
+Reload the file the agent hands back. Ordinary comments it marked handled are pruned automatically;
+discussion answers stay in history. Repeat the loop until the review is resolved.
 
 To share the review with another person instead, use the export menu's **Shareable** action to bake the comments into a single self-contained copy, or **Plain HTML** to hand over a clean copy with the commenting layer removed.
 

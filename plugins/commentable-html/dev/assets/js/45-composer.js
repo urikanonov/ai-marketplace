@@ -179,6 +179,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   if (isCodeQuote) quoteEl.classList.add("cm-quote-code");
   quoteEl.textContent = el._quote;
   ta.value = comment ? comment.note : "";
+  cmhConfigureComposerPurpose(el, mode, comment);
 
   // Creating the composer mutates the document (preview marks, the appended surface) and then
   // positions the composer from the anchor's rect. Guard the whole block so the browser's scroll
@@ -447,8 +448,14 @@ function saveComposerElementInner(el) {
   }
   ta.removeAttribute("aria-invalid");
   ta.classList.remove("cm-invalid");
+  const purpose = el.querySelector(".cm-purpose-control select");
+  const beforeIds = new Set(comments.map(function (c) { return c.id; }));
   if (el._editingId) {
     const c = comments.find(c => c.id === el._editingId);
+    if (!c) {
+      showToast("This comment was deleted - copy your draft before closing.", { alert: true, duration: 8000 });
+      return;
+    }
     if (c) { c.note = note; c.updatedAt = new Date().toISOString(); }
   } else if (el._parentId) {
     // The thread root may have been deleted while this reply composer was open. Do not append
@@ -657,6 +664,9 @@ function saveComposerElementInner(el) {
     }
     window.getSelection().removeAllRanges();
   }
+  const savedComment = el._editingId ? comments.find(function (c) { return c.id === el._editingId; })
+    : comments.find(function (c) { return !beforeIds.has(c.id); });
+  if (purpose) cmhStampDiscussion(savedComment, purpose.value);
   const saved = saveComments();
   renderComments();
   closeComposerElement(el);
@@ -678,5 +688,4 @@ function saveComposerElementInner(el) {
     });
   }
 }
-
 

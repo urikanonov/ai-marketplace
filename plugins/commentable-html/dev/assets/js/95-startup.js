@@ -14,7 +14,8 @@ function getHandledIds() {
 function pruneHandled() {
   const handled = getHandledIds();
   const before = comments.length;
-  comments = comments.filter(c => !handled.has(c.id));
+  const discussions = new Set(comments.filter(c => !c.parentId && c.threadType === "discussion").map(c => c.id));
+  comments = comments.filter(c => discussions.has(c.id) || discussions.has(c.parentId) || !handled.has(c.id));
   // A handled root can strand its replies; drop those too so a thread is pruned whole.
   if (typeof pruneOrphanReplies === "function") pruneOrphanReplies();
   const removed = before - comments.length;
@@ -24,6 +25,9 @@ function pruneHandled() {
 function withoutHandled(arr) {
   const handled = getHandledIds();
   if (!handled.size) return arr;
+  const discussions = new Set((arr || []).filter(c => !c.parentId && c.threadType === "discussion").map(c => c.id));
+  discussions.forEach(id => handled.delete(id));
+  (arr || []).forEach(c => { if (discussions.has(c.parentId)) handled.delete(c.id); });
   // Also hide replies whose root was handled, so a stranded reply never leaks into Copy all.
   const present = new Set((arr || []).filter(c => c && !handled.has(c.id) && !(c && c.parentId)).map(c => c.id));
   return (arr || []).filter(c => !handled.has(c.id) && !(c && c.parentId && !present.has(c.parentId)));
@@ -375,6 +379,7 @@ restoreHighlights();
 // replaces them (honoring the "editing a comment will replace them" notice).
 _cmhStoreUnreadable = false;
 _cmhStartupInProgress = false;
+cmhInitDiscussionTracking();
 setupMermaidLayer();
 setupImageLayer();
 setupLinkLayer();
