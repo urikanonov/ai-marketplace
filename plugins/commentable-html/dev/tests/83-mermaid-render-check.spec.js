@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 import fs from "fs";
+import path from "path";
 import {
   ready, startStaticServer, stageContent, routeMermaidLocal, awaitMermaidRendered, PLUGIN,
+  routeExampleLibsLocal, openToolbarMenu, fileUrl,
 } from "./helpers.js";
 
 // CMH-MMD-12: a report diagram is verified AFTER mermaid renders it. Labels must fit their boxes,
@@ -23,6 +25,21 @@ const DIAGRAM =
   + '  D --> F["Role two<br/>Bucket: Store B tag<br/>queue: queue-b"]\n'
   + '  E --> H["Store A<br/>query surface"]\n'
   + '  F --> I["Store B"]</pre></section>';
+
+const GENERIC_GRAPH = `flowchart LR
+  A["Capture an input record"] --> B{"Is the request complete?"}
+  B -->|Yes| C["Show a result"]
+  B -->|No| D["Store the request temporarily"]
+  D --> E["Scheduled processing begins"]
+  E --> F["Prepare the next workflow step"]
+  F --> G["New input continues"]
+  F --> H["Process outstanding requests"]
+  H --> I["Record success and release temporary information"]`;
+// Actual failing SVG captured from the issue's public synthetic source in Chrome, not a
+// fabricated large viewBox: nodes are normal-sized while the layout routes edges far away.
+const OBSERVED_DISCONNECTED_SVG = fs.readFileSync(
+  new URL("./fixtures/mermaid-disconnected-observed.svg", import.meta.url), "utf8",
+);
 
 const REPORTED_NEXUS_DIAGRAM =
   '<style>#commentRoot .mermaid foreignObject .nodeLabel { '
@@ -155,6 +172,367 @@ const NODE_LABEL_LINES = () => {
     return parts.length > 1 || brs > 0 ? parts.join("|") + (brs > 0 && parts.length <= 1 ? "|" : "") : parts.join("|");
   }).filter(Boolean);
 };
+
+const EDGE_GEOMETRY = () => {
+  const svg = document.querySelector("#commentRoot .mermaid svg");
+  const boxes = [...svg.querySelectorAll("g.node")].map(n => n.getBoundingClientRect());
+  const scale = svg.getScreenCTM().a;
+  const gaps = [...svg.querySelectorAll("path.flowchart-link")].flatMap(p => {
+    return [0, p.getTotalLength()].map(length => {
+      const point = p.getPointAtLength(length).matrixTransform(p.getScreenCTM());
+      return Math.min(...boxes.map(r => Math.hypot(
+        Math.max(r.left - point.x, 0, point.x - r.right),
+        Math.max(r.top - point.y, 0, point.y - r.bottom),
+      ))) / scale;
+    });
+  });
+  return {
+    width: svg.viewBox.baseVal.width,
+    nodes: boxes.length,
+    endpoints: gaps.length,
+    worstGap: Math.max(...gaps),
+    foreignObjects: svg.querySelectorAll("foreignObject").length,
+    repairs: window.__cmhMermaidRepairs,
+  };
+};
+
+async function installObservedSvg(page) {
+  const observed = await page.locator("#commentRoot .mermaid").evaluate((host, svg) => {
+    host.innerHTML = svg;
+    return {
+      width: host.querySelector("svg").viewBox.baseVal.width,
+      nodeWidth: host.querySelector("g.node > rect").width.baseVal.value,
+    };
+  }, OBSERVED_DISCONNECTED_SVG);
+  expect(observed.width).toBeCloseTo(8149.150390625, 2);
+  expect(observed.nodeWidth).toBeCloseTo(152, 0);
+}
+
+async function expectConnectedRepair(page) {
+  await expect.poll(async () => (await page.evaluate(EDGE_GEOMETRY)).repairs, {
+    timeout: 10000,
+  }).toBe(1);
+  const after = await page.evaluate(EDGE_GEOMETRY);
+  expect(after.nodes).toBe(9);
+  expect(after.endpoints).toBe(16);
+  expect(after.worstGap).toBeLessThan(24);
+  expect(after.width).toBeLessThan(2000);
+  expect(after.foreignObjects).toBe(0);
+  const labels = await page.locator("#commentRoot .mermaid g.node").allTextContents();
+  const expected = [...GENERIC_GRAPH.matchAll(/"([^"]+)"/g)].map(match => match[1]);
+  const normalized = texts => texts.map(text => text.replace(/\s+/g, "")).sort();
+  expect(normalized(labels)).toEqual(normalized(expected));
+}
+
+test.describe("flowchart edge attachment (CMH-MMD-13)", () => {
+  test("CMH-MMD-13: the captured disconnected flowchart is repaired on first render", async ({ page }) => {
+    const { dir } = stageContent(`<section><pre class="mermaid cm-skip">${GENERIC_GRAPH}</pre></section>`);
+    const server = await startStaticServer(dir);
+    try {
+      await routeExampleLibsLocal(page);
+      await page.addInitScript(svg => {
+        const observer = new MutationObserver(() => {
+          const host = document.querySelector("#commentRoot .mermaid");
+          if (!host || !host.querySelector("svg")) return;
+          observer.disconnect();
+          host.innerHTML = svg;
+          window.__cmhTestCapturedRenderInstalled = true;
+        });
+        observer.observe(document, { childList: true, subtree: true });
+      }, OBSERVED_DISCONNECTED_SVG);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page);
+      expect(await page.evaluate(() => window.__cmhTestCapturedRenderInstalled)).toBe(true);
+      await expectConnectedRepair(page);
+      expect(page.__external).toEqual([]);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-13: the captured disconnected flowchart is repaired on layout change", async ({ page }) => {
+    const { dir } = stageContent(`<section><pre class="mermaid cm-skip">${GENERIC_GRAPH}</pre></section>`);
+    const server = await startStaticServer(dir);
+    try {
+      await page.setViewportSize({ width: 1500, height: 1000 });
+      await routeExampleLibsLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page);
+      expect((await page.evaluate(EDGE_GEOMETRY)).repairs).toBe(0);
+      await installObservedSvg(page);
+      await page.setViewportSize({ width: 1400, height: 1000 });
+      await expectConnectedRepair(page);
+      expect(page.__external).toEqual([]);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-13: the captured disconnected flowchart is repaired on reveal", async ({ page }) => {
+    const { dir } = stageContent(`<section style="display:none"><pre class="mermaid cm-skip">${GENERIC_GRAPH}</pre></section>`);
+    const server = await startStaticServer(dir);
+    try {
+      await page.setViewportSize({ width: 1500, height: 1000 });
+      await routeExampleLibsLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page);
+      await installObservedSvg(page);
+      expect(await page.evaluate(() => window.__cmhMermaidRepairs)).toBe(0);
+      await page.locator("#commentRoot section").evaluate(el => { el.style.display = ""; });
+      await expectConnectedRepair(page);
+      expect(page.__external).toEqual([]);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-13: intentionally sparse connected flowcharts are not repaired", async ({ page }) => {
+    const directive = '%%{init: {"layout":"dagre","flowchart":{"rankSpacing":1200,"nodeSpacing":600}}}%%\n';
+    const { dir } = stageContent(`<section><pre class="mermaid cm-skip">${directive}${GENERIC_GRAPH}</pre></section>`);
+    const server = await startStaticServer(dir);
+    try {
+      await page.setViewportSize({ width: 1500, height: 1000 });
+      await routeExampleLibsLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page);
+      const geometry = await page.evaluate(EDGE_GEOMETRY);
+      expect(geometry.width).toBeGreaterThan(8000);
+      expect(geometry.worstGap).toBeLessThan(24);
+      expect(geometry.nodes).toBe(9);
+      expect(geometry.repairs).toBe(0);
+      expect(geometry.foreignObjects).toBeGreaterThan(0);
+      expect(page.__external).toEqual([]);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-13: an improved but still disconnected replacement is rolled back", async ({ page }) => {
+    const { dir } = stageContent(`<section><pre class="mermaid cm-skip">${GENERIC_GRAPH}</pre></section>`);
+    const server = await startStaticServer(dir);
+    try {
+      await page.setViewportSize({ width: 1500, height: 1000 });
+      await routeExampleLibsLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page);
+      await page.evaluate(() => {
+        window.__cmhMermaidRerender = async host => {
+          const original = host.querySelector("svg");
+          const fresh = original.cloneNode(true);
+          original.replaceWith(fresh);
+          const boxes = [...fresh.querySelectorAll("g.node")].map(node => node.getBoundingClientRect());
+          fresh.querySelectorAll("path.flowchart-link").forEach(path => {
+            const matrix = path.getScreenCTM();
+            const points = [0, path.getTotalLength()].map(at => {
+              const point = path.getPointAtLength(at).matrixTransform(matrix);
+              const nearest = boxes.map(box => ({
+                x: Math.max(box.left, Math.min(point.x, box.right)),
+                y: Math.max(box.top, Math.min(point.y, box.bottom)),
+              })).sort((a, b) => Math.hypot(a.x - point.x, a.y - point.y) -
+                Math.hypot(b.x - point.x, b.y - point.y))[0];
+              point.x = (point.x + nearest.x) / 2;
+              point.y = (point.y + nearest.y) / 2;
+              return point.matrixTransform(matrix.inverse());
+            });
+            path.setAttribute("d", `M${points[0].x},${points[0].y}L${points[1].x},${points[1].y}`);
+          });
+          window.__cmhTestCandidateRendered = true;
+          return true;
+        };
+      });
+      await installObservedSvg(page);
+      const before = await page.evaluate(EDGE_GEOMETRY);
+      expect(before.worstGap).toBeGreaterThan(500);
+      await page.setViewportSize({ width: 1400, height: 1000 });
+      await expect.poll(() => page.evaluate(() => window.__cmhTestCandidateRendered)).toBe(true);
+      await page.evaluate(() => window.__cmhMermaidAuditsSettled);
+      const after = await page.evaluate(EDGE_GEOMETRY);
+      expect(after.repairs).toBe(0);
+      expect(after.nodes).toBe(9);
+      expect(after.worstGap).toBeCloseTo(before.worstGap, 0);
+      expect(after.width).toBe(before.width);
+      expect(page.__external).toEqual([]);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-13: a replacement that loses its edges is rolled back", async ({ page }) => {
+    const { dir } = stageContent(`<section><pre class="mermaid cm-skip">${GENERIC_GRAPH}</pre></section>`);
+    const server = await startStaticServer(dir);
+    try {
+      await routeExampleLibsLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page);
+      await page.evaluate(() => {
+        window.__cmhMermaidRerender = async host => {
+          const original = host.querySelector("svg");
+          const fresh = original.cloneNode(true);
+          fresh.querySelectorAll("path.flowchart-link").forEach(path => path.remove());
+          original.replaceWith(fresh);
+          window.__cmhTestCandidateRendered = true;
+          return true;
+        };
+      });
+      await installObservedSvg(page);
+      await page.setViewportSize({ width: 1400, height: 1000 });
+      await expect.poll(() => page.evaluate(() => window.__cmhTestCandidateRendered)).toBe(true);
+      await page.evaluate(() => window.__cmhMermaidAuditsSettled);
+      const after = await page.evaluate(EDGE_GEOMETRY);
+      expect(after.repairs).toBe(0);
+      expect(after.endpoints).toBe(16);
+      expect(after.worstGap).toBeGreaterThan(500);
+      expect(page.__external).toEqual([]);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-13: improving a legal edge gap does not mask clipped labels", async ({ page }) => {
+    const { dir, server } = await stageAndServe("legal-edge-gap");
+    try {
+      await routeExampleLibsLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page);
+      const result = await page.locator(".mermaid").evaluate(async host => {
+        host.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" aria-roledescription="flowchart-v2"
+          viewBox="-8 -60 316 100" width="316" height="100">
+          <g class="node"><rect width="100" height="20"/>
+            <g class="label"><text x="0" y="15" font-size="60">A</text></g></g>
+          <g class="node" transform="translate(200 0)"><rect width="100" height="20"/>
+            <g class="label"><text x="0" y="15" font-size="60">B</text></g></g>
+          <path class="flowchart-link" d="M108,10L192,10"/></svg>`;
+        const original = host.querySelector("svg");
+        const gap = svg => svg.querySelector("path").getPointAtLength(0).x -
+          svg.querySelector("g.node").getBBox().width;
+        const beforeGap = gap(original);
+        const labelHeight = original.querySelector("text").getBBox().height;
+        let candidateGap;
+        window.__cmhMermaidRerender = async target => {
+          const fresh = original.cloneNode(true);
+          fresh.querySelector("path").setAttribute("d", "M102,10L198,10");
+          target.replaceChildren(fresh);
+          candidateGap = gap(fresh);
+          return true;
+        };
+        const repaired = await window.__cmhMermaidAudit(host);
+        return { beforeGap, candidateGap, labelHeight, repaired,
+          keptOriginal: host.querySelector("svg") === original, repairs: window.__cmhMermaidRepairs };
+      });
+      expect(result.beforeGap).toBe(8);
+      expect(result.candidateGap).toBe(2);
+      expect(result.labelHeight).toBeGreaterThan(24);
+      expect(result.repaired).toBe(false);
+      expect(result.keptOriginal).toBe(true);
+      expect(result.repairs).toBe(0);
+      expect(page.__external).toEqual([]);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-13: nonuniform transforms do not false-positive SVG-text flowcharts", async ({ page }) => {
+    const source = '%%{init: {"htmlLabels":false,"flowchart":{"htmlLabels":false}}}%%\n' +
+      'flowchart TB\n A[One] --> B[Two] --> C[Three]';
+    const { dir } = stageContent(`<section><pre class="mermaid cm-skip">${source}</pre></section>`);
+    const server = await startStaticServer(dir);
+    try {
+      await routeExampleLibsLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page);
+      await expect(page.locator(".mermaid foreignObject")).toHaveCount(0);
+      expect(await page.locator(".mermaid").evaluate(host => !!host._cmhMmdRepairTried)).toBe(false);
+      for (const transform of ["scaleX(0.01)", "rotate(85deg)"]) {
+        await page.locator(".mermaid").evaluate(async (host, transform) => {
+          host.parentElement.style.transform = transform;
+          await window.__cmhMermaidAudit(host);
+        }, transform);
+        expect(await page.locator(".mermaid").evaluate(host => !!host._cmhMmdRepairTried)).toBe(false);
+      }
+      expect(await page.evaluate(() => window.__cmhMermaidRepairs)).toBe(0);
+      await expect(page.locator(".mermaid g.node")).toHaveCount(3);
+      expect(page.__external).toEqual([]);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-13: healthy hand-drawn flowcharts with clusters are not repaired", async ({ page }) => {
+    const source = '%%{init: {"look":"handDrawn","flowchart":{"rankSpacing":180}}}%%\n' +
+      'flowchart LR\n subgraph S[Group]\n A[One] --> B[Two]\n end\n B --> C[Three] --> D[Four]';
+    const { dir } = stageContent(`<section><pre class="mermaid cm-skip">${source}</pre></section>`);
+    const server = await startStaticServer(dir);
+    try {
+      await routeExampleLibsLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page);
+      await expect(page.locator(".mermaid g.rough-node")).toHaveCount(4);
+      await expect(page.locator(".mermaid g.cluster")).toHaveCount(1);
+      expect(await page.locator(".mermaid").evaluate(host => !!host._cmhMmdRepairTried)).toBe(false);
+      expect(await page.evaluate(() => window.__cmhMermaidRepairs)).toBe(0);
+      expect(page.__external).toEqual([]);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CMH-MMD-13: an offline export repairs the captured disconnected flowchart without network", async ({ page, browser }) => {
+    test.setTimeout(90000);
+    const { dir } = stageContent(`<section><pre class="mermaid cm-skip">${GENERIC_GRAPH}</pre></section>`);
+    const server = await startStaticServer(dir);
+    let context;
+    try {
+      await page.setViewportSize({ width: 1500, height: 1000 });
+      await routeExampleLibsLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page);
+      await openToolbarMenu(page);
+      const [download] = await Promise.all([
+        page.waitForEvent("download"),
+        page.locator("#btnExportOfflineTop").click(),
+      ]);
+      const exportedPath = path.join(dir, "offline.html");
+      await download.saveAs(exportedPath);
+      context = await browser.newContext({ offline: true, viewport: { width: 1500, height: 1000 } });
+      const offline = await context.newPage();
+      const external = [];
+      offline.on("request", request => {
+        if (/^https?:/.test(request.url())) external.push(request.url());
+      });
+      await offline.goto(fileUrl(exportedPath));
+      await ready(offline);
+      await awaitMermaidRendered(offline);
+      await installObservedSvg(offline);
+      await offline.setViewportSize({ width: 1400, height: 1000 });
+      await expectConnectedRepair(offline);
+      expect(external).toEqual([]);
+      expect(page.__external).toEqual([]);
+    } finally {
+      if (context) await context.close();
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 async function stageAndServe(key, source) {
   const { dir } = stageContent(DIAGRAM, { key, source });

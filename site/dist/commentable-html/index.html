@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.853.1<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.853.2<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -487,12 +487,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.853.2] - 2026-10-23</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Recover flowcharts whose normal-sized nodes are stranded far from their edge endpoints, making the diagram appear tiny across an oversized canvas. The existing SVG-text rerender now detects this malformed geometry on load, reveal, and layout changes, including offline exports, without compacting intentionally sparse connected diagrams.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.853.1] - 2026-10-05</h3></div>
             <div class="group-label">Changed</div>
             <ul>
               <li>Moved each comment card&#x27;s Copy button immediately after edit in the action row, with the same bordered styling and mobile touch target. Select stays in the metadata row.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.853.0] - 2026-09-27</h3></div>
             <div class="group-label">Changed</div>
@@ -500,8 +509,6 @@
               <li>Updated Mermaid to 12.0.0 while preserving complete gallery diagrams, deterministic render readiness, authored multi-line labels, and rollback of degraded repair renders.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.852.0] - 2026-09-27</h3></div>
             <div class="group-label">Added</div>
@@ -530,19 +537,7 @@
               <li>Removed the legacy companion-file mode from the website, tutorial, in-document Help, public plugin guidance, and showcase deck. Existing companion-mode documents remain supported by the runtime, validator, migration tool, and technical compatibility references.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.850.0] - 2026-09-04</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Two in-document <code>Contents</code> lists that share an authored <code>id</code> (invalid HTML, but it happens) no longer give both carets the same <code>aria-controls</code> target. Assistive technology resolves <code>aria-controls</code> with <code>getElementById</code>, which answers with the first element carrying the id, so the second caret announced a region it did not control. Each nav whose authored id does not resolve to itself now gets a minted runtime id; the authored id still supplies the stored fold identity, so nothing a reader folded is orphaned.</li>
-              <li>A <code>Contents</code> list that carries significant text DIRECTLY (an intro sentence beside its list, or entries written as bare text) now folds all the way. The fold is a CSS rule over element children, which cannot reach a text node, so such a list stayed half-folded with the caret claiming it was away. Each such text run is wrapped in a span the same rule hides and print restores; the wrapper is not <code>cm-skip</code>, so no comment anchor moves. &quot;Ignorable&quot; is only the whitespace CSS itself collapses, so a run made of <code>&amp;nbsp;</code> (which paints) folds away too, while ordinary source indentation still gains no wrapper. Deleting a comment anchored on that text re-establishes the wrap instead of dropping the run back into the nav bare, so the list stays fully foldable afterwards.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>The <code>Contents</code> caret is documented as a FLOW-DOCUMENT affordance. The runtime has always excluded decks (as it does the section-collapse carets and the side menu), but the spec row and the Help <code>Navigation</code> topic promised the caret unconditionally, so a deck slide carrying an authored <code>Contents</code> list read as broken. Both now say a deck gets no in-document navigation chrome and leaves such a list as plain content, and tests lock both the exclusion and the Help wording. The spec row also records the deliberate trade-off in the <code>aria-controls</code> fix above: on the invalid input where two elements share one id, the shadowed nav is re-identified, so an author rule keyed to that id stops matching it.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">416 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">417 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.853.2] - 2026-10-23
+
+### Fixed
+
+- Recover flowcharts whose normal-sized nodes are stranded far from their edge endpoints, making
+  the diagram appear tiny across an oversized canvas. The existing SVG-text rerender now detects
+  this malformed geometry on load, reveal, and layout changes, including offline exports, without
+  compacting intentionally sparse connected diagrams.
+
 ## [1.853.1] - 2026-10-05
 
 ### Changed

@@ -725,7 +725,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.853.1";
+const CMH_VERSION= "1.853.2";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -1982,6 +1982,7 @@ var MMD_FILL_MIN=0.7;
 var MMD_FILL_PAD=24;
 var MMD_MIN_USER_SCALE=0.05;
 var MMD_MAX_HTML_LABEL_SPAN=1000;
+var MMD_EDGE_GAP_MAX=64;
 var MMD_RESCALE_MIN=0.05;
 window.__cmhMermaidRepairs=0;
 window.__cmhMermaidAuditsSettled=Promise.resolve();
@@ -2067,11 +2068,63 @@ vb:vb,
 inner:{x:x,y:y,w:overlapW,h:overlapH},
 };
 }
+function mermaidEdgeGaps(svg){
+const out={worst:0,endpoints:0};
+if(!svg||svg.getAttribute("aria-roledescription")!== "flowchart-v2")return out;
+let toRoot;
+try{
+const matrix=svg.getScreenCTM();
+if(!matrix)return out;
+toRoot=matrix.inverse();
+}catch(e){return out;}
+if(![toRoot.a,toRoot.b,toRoot.c,toRoot.d,toRoot.e,toRoot.f].every(isFinite))return out;
+const boxes=Array.from(svg.querySelectorAll("g.node, g.rough-node, g.cluster"),function(node){
+let box,screen;
+try{box=node.getBBox();screen=node.getScreenCTM();}catch(e){return null;}
+if(!screen||!(box.width>0)||!(box.height>0))return null;
+const matrix=toRoot.multiply(screen);
+const corners=[
+[box.x,box.y],[box.x+box.width,box.y],
+[box.x,box.y+box.height],[box.x+box.width,box.y+box.height],
+].map(function(point){return new DOMPoint(point[0],point[1]).matrixTransform(matrix);});
+if(!corners.every(function(point){return isFinite(point.x)&&isFinite(point.y);}))return null;
+return{
+left:Math.min.apply(null,corners.map(function(point){return point.x;})),
+right:Math.max.apply(null,corners.map(function(point){return point.x;})),
+top:Math.min.apply(null,corners.map(function(point){return point.y;})),
+bottom:Math.max.apply(null,corners.map(function(point){return point.y;})),
+};
+}).filter(function(box){return box!==null;});
+if(!boxes.length)return out;
+svg.querySelectorAll("path.flowchart-link").forEach(function(path){
+let matrix,length;
+try{
+const screen=path.getScreenCTM();
+matrix=screen&&toRoot.multiply(screen);
+length=path.getTotalLength();
+}catch(e){return;}
+if(!matrix||!(length>0))return;
+[0,length].forEach(function(at){
+const point=path.getPointAtLength(at).matrixTransform(matrix);
+if(!isFinite(point.x)||!isFinite(point.y))return;
+let nearest=Infinity;
+boxes.forEach(function(box){
+const dx=Math.max(box.left-point.x,0,point.x-box.right);
+const dy=Math.max(box.top-point.y,0,point.y-box.bottom);
+nearest=Math.min(nearest,Math.hypot(dx,dy));
+});
+out.endpoints+=1;
+out.worst=Math.max(out.worst,nearest);
+});
+});
+return out;
+}
 function mermaidRenderFaults(svg){
 const labels=mermaidLabelOverflow(svg);
 const fill=mermaidContentFill(svg);
 const scale=mermaidLayoutScale(svg);
 const htmlLabelSpan=mermaidHtmlLabelSpan(svg);
+const edges=mermaidEdgeGaps(svg);
 const underfilled=!!fill&&fill.w<MMD_FILL_MIN&&fill.h<MMD_FILL_MIN;
 const underscaled=labels.boxes>0&&!!svg.querySelector("foreignObject")&&
 scale<MMD_MIN_USER_SCALE&&htmlLabelSpan>MMD_MAX_HTML_LABEL_SPAN;
@@ -2082,7 +2135,9 @@ fill:fill,
 scale:scale,
 htmlLabelSpan:htmlLabelSpan,
 underscaled:underscaled,
-bad:labels.worst>MMD_LABEL_SLACK||underfilled||underscaled,
+edgeGap:edges.worst,
+edgeEndpoints:edges.endpoints,
+bad:labels.worst>MMD_LABEL_SLACK||underfilled||underscaled||edges.worst>MMD_EDGE_GAP_MAX,
 };
 }
 function mermaidFillFloor(faults){
@@ -2164,9 +2219,12 @@ const legibilityRecovered=after.scale>=MMD_MIN_USER_SCALE;
 const notWorse=host.querySelectorAll(MERMAID_RENDERED_SEL).length>=beforeNodes&&
 (!labelsComparable||after.overflow<=before.overflow+0.5)&&
 afterFill>=beforeFill-0.01&&
+after.edgeEndpoints>=before.edgeEndpoints&&
+after.edgeGap<=MMD_EDGE_GAP_MAX&&
 legibilityRecovered;
 const strictlyBetter=(labelsComparable&&after.overflow<before.overflow-0.5)||
 afterFill>beforeFill+0.01||
+(before.edgeGap>MMD_EDGE_GAP_MAX&&after.edgeGap<=MMD_EDGE_GAP_MAX)||
 (before.underscaled&&legibilityRecovered);
 if(notWorse&&(!after.bad||strictlyBetter)&&(labelsComparable||strictlyBetter))return true;
 host.textContent= "";

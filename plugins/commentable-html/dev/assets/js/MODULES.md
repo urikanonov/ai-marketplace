@@ -63,7 +63,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `06-preferences.js` | CMH-MENU-PREF | Scoped reviewer preferences: the cross-document default and the per-document override behind "Auto-open panel on comment", plus the cross-document-only display zone behind "Show times in UTC" (`utcTimesEnabled` / `setUtcTimes`) and the applied-zone shadow state (`cmhUtcTimesChanged` / `cmhMarkUtcTimesApplied`) that keeps a re-stamp to the passes where the zone really moved. Each read/write is behind a try/catch guard. |
 | `10-offsets.js` | CMH-CORE, CMH-TEXT | Text-offset anchoring helpers. |
 | `15-context.js` | CMH-CORE, CMH-COPY, CMH-CTX | Section + surrounding-text context capture. |
-| `20-mermaid.js` | CMH-MMD, CMH-MMDLOAD, CMH-DECK, CMH-ANCHOR | Mermaid diagram commenting layer; deck diagram contain-fit sizing; hosts the shared `setActiveAdd()` single-affordance sentinel for all structural-anchor layers. |
+| `20-mermaid.js` | CMH-MMD, CMH-MMDLOAD, CMH-DECK, CMH-ANCHOR | Mermaid diagram commenting layer and render-fidelity recovery; deck diagram contain-fit sizing; hosts the shared `setActiveAdd()` single-affordance sentinel for all structural-anchor layers. |
 | `25-diff.js` | CMH-DIFF | Unified-diff / code-review rendering and anchoring. |
 | `26-highlight.js` | CMH-DIFF, CMH-HL, CMH-TOOL | In-page diff syntax highlighter (`cmhHighlightCode`), the dedicated Markdown tokenizer (`cmhHighlightMarkdown`), and the runtime fallback that highlights un-highlighted prose code blocks (`highlightCodeBlocks`). |
 | `30-images.js` | CMH-IMG, CMH-CHART | Image and chart-canvas comment layer. |

@@ -354,7 +354,7 @@ function mermaidViewBoxDims(svg) {
   return null;
 }
 
-/* ---------- Render self-check (CMH-MMD-12) ----------
+/* ---------- Render self-check (CMH-MMD-12, CMH-MMD-13) ----------
    A report diagram is rendered with HTML node labels inside a <foreignObject>, whose content the
    browser re-lays-out against whatever context the SVG ends up in. When that goes wrong the node
    boxes are too small for their labels (clipped mid-word) and the viewBox is much larger than what
@@ -382,6 +382,9 @@ var MMD_MIN_USER_SCALE = 0.05;
 // design space. Responsive layout width also shrinks under browser zoom, while intrinsic label
 // geometry does not, so this gate separates a broken render from a healthy zoomed diagram.
 var MMD_MAX_HTML_LABEL_SPAN = 1000;
+// Arrow markers leave a small gap; the observed broken layout stranded endpoints over 500 units
+// from normal-sized nodes. Measure attachment, not spacing, so deliberate sparse graphs stay valid.
+var MMD_EDGE_GAP_MAX = 64;
 // Re-measure a host only when its rendered scale has moved by more than this fraction. The fault is
 // scale-dependent (an HTML label re-flows against the SCALED context), so a diagram that was healthy
 // at load can break when the column - and with it the diagram's CSS scale - changes on a resize,
@@ -499,12 +502,65 @@ function mermaidContentFill(svg) {
     inner: { x: x, y: y, w: overlapW, h: overlapH },
   };
 }
-// The two invariants as one verdict; `bad` is what triggers a repair.
+function mermaidEdgeGaps(svg) {
+  const out = { worst: 0, endpoints: 0 };
+  if (!svg || svg.getAttribute("aria-roledescription") !== "flowchart-v2") return out;
+  // Compare in SVG user coordinates, not screen distances divided by an X-only scale.
+  let toRoot;
+  try {
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return out;
+    toRoot = matrix.inverse();
+  } catch (e) { return out; }
+  if (![toRoot.a, toRoot.b, toRoot.c, toRoot.d, toRoot.e, toRoot.f].every(isFinite)) return out;
+  const boxes = Array.from(svg.querySelectorAll("g.node, g.rough-node, g.cluster"), function (node) {
+    let box, screen;
+    try { box = node.getBBox(); screen = node.getScreenCTM(); } catch (e) { return null; }
+    if (!screen || !(box.width > 0) || !(box.height > 0)) return null;
+    const matrix = toRoot.multiply(screen);
+    const corners = [
+      [box.x, box.y], [box.x + box.width, box.y],
+      [box.x, box.y + box.height], [box.x + box.width, box.y + box.height],
+    ].map(function (point) { return new DOMPoint(point[0], point[1]).matrixTransform(matrix); });
+    if (!corners.every(function (point) { return isFinite(point.x) && isFinite(point.y); })) return null;
+    return {
+      left: Math.min.apply(null, corners.map(function (point) { return point.x; })),
+      right: Math.max.apply(null, corners.map(function (point) { return point.x; })),
+      top: Math.min.apply(null, corners.map(function (point) { return point.y; })),
+      bottom: Math.max.apply(null, corners.map(function (point) { return point.y; })),
+    };
+  }).filter(function (box) { return box !== null; });
+  if (!boxes.length) return out;
+  svg.querySelectorAll("path.flowchart-link").forEach(function (path) {
+    let matrix, length;
+    try {
+      const screen = path.getScreenCTM();
+      matrix = screen && toRoot.multiply(screen);
+      length = path.getTotalLength();
+    } catch (e) { return; }
+    if (!matrix || !(length > 0)) return;
+    [0, length].forEach(function (at) {
+      const point = path.getPointAtLength(at).matrixTransform(matrix);
+      if (!isFinite(point.x) || !isFinite(point.y)) return;
+      let nearest = Infinity;
+      boxes.forEach(function (box) {
+        const dx = Math.max(box.left - point.x, 0, point.x - box.right);
+        const dy = Math.max(box.top - point.y, 0, point.y - box.bottom);
+        nearest = Math.min(nearest, Math.hypot(dx, dy));
+      });
+      out.endpoints += 1;
+      out.worst = Math.max(out.worst, nearest);
+    });
+  });
+  return out;
+}
+// Collect the render-fidelity signals; `bad` is what triggers a repair.
 function mermaidRenderFaults(svg) {
   const labels = mermaidLabelOverflow(svg);
   const fill = mermaidContentFill(svg);
   const scale = mermaidLayoutScale(svg);
   const htmlLabelSpan = mermaidHtmlLabelSpan(svg);
+  const edges = mermaidEdgeGaps(svg);
   const underfilled = !!fill && fill.w < MMD_FILL_MIN && fill.h < MMD_FILL_MIN;
   const underscaled = labels.boxes > 0 && !!svg.querySelector("foreignObject") &&
     scale < MMD_MIN_USER_SCALE && htmlLabelSpan > MMD_MAX_HTML_LABEL_SPAN;
@@ -515,7 +571,9 @@ function mermaidRenderFaults(svg) {
     scale: scale,
     htmlLabelSpan: htmlLabelSpan,
     underscaled: underscaled,
-    bad: labels.worst > MMD_LABEL_SLACK || underfilled || underscaled,
+    edgeGap: edges.worst,
+    edgeEndpoints: edges.endpoints,
+    bad: labels.worst > MMD_LABEL_SLACK || underfilled || underscaled || edges.worst > MMD_EDGE_GAP_MAX,
   };
 }
 // The tighter of the two fill ratios. Unmeasurable bounds score 0, NOT 1: this value only ever
@@ -633,9 +691,12 @@ function auditMermaidRender(host) {
     const notWorse = host.querySelectorAll(MERMAID_RENDERED_SEL).length >= beforeNodes &&
       (!labelsComparable || after.overflow <= before.overflow + 0.5) &&
       afterFill >= beforeFill - 0.01 &&
+      after.edgeEndpoints >= before.edgeEndpoints &&
+      after.edgeGap <= MMD_EDGE_GAP_MAX &&
       legibilityRecovered;
     const strictlyBetter = (labelsComparable && after.overflow < before.overflow - 0.5) ||
       afterFill > beforeFill + 0.01 ||
+      (before.edgeGap > MMD_EDGE_GAP_MAX && after.edgeGap <= MMD_EDGE_GAP_MAX) ||
       (before.underscaled && legibilityRecovered);
     // Keep the replacement only when it is no worse AND it actually achieved something: a
     // re-render that comes back just as broken must not be presented (or counted) as a repair.
