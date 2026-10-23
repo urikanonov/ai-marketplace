@@ -105,7 +105,7 @@
   "80-shot-clip.spec.js": 8824,
   "81-shot-diff-image.spec.js": 508,
   "82-highlight-inference.spec.js": 2612,
-  "83-mermaid-render-check.spec.js": 36839,
+  "83-mermaid-render-check.spec.js": 36773,
   "84-toc-collapse.spec.js": 18417,
   "85-cold-tier.spec.js": 18469,
   "86-cold-tier-perf.spec.js": 6105,

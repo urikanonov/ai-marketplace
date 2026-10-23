@@ -494,6 +494,45 @@ test.describe("flowchart edge attachment (CMH-MMD-13)", () => {
     }
   });
 
+  test("CMH-MMD-13: mixed image and icon nodes stay healthy and survive real repairs", async ({ page }) => {
+    const image = "data:image/svg+xml;base64," + Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60">' +
+      '<rect width="60" height="60" fill="blue"/></svg>',
+    ).toString("base64");
+    const source = '%%{init: {"flowchart":{"rankSpacing":180}}}%%\nflowchart LR\n' +
+      ` A[Start] --> B\n B@{ img: "${image}", label: "Image", w: 60, h: 60 }\n` +
+      ' B --> C\n C@{ shape: icon, label: "Icon", h: 60 }\n C --> D[End]';
+    const { dir } = stageContent(`<section><pre class="mermaid cm-skip">${source}</pre></section>`);
+    const server = await startStaticServer(dir);
+    try {
+      await routeExampleLibsLocal(page);
+      await page.goto(server.url + "/test-doc.html");
+      await ready(page);
+      await awaitMermaidRendered(page);
+      await expect(page.locator(".mermaid g.node")).toHaveCount(2);
+      await expect(page.locator(".mermaid g.image-shape")).toHaveCount(1);
+      await expect(page.locator(".mermaid g.icon-shape")).toHaveCount(1);
+      await expect(page.locator(".mermaid path.flowchart-link")).toHaveCount(3);
+      expect(await page.locator(".mermaid").evaluate(host => !!host._cmhMmdRepairTried)).toBe(false);
+      expect(await page.evaluate(() => window.__cmhMermaidRepairs)).toBe(0);
+      const repaired = await page.locator(".mermaid").evaluate(async host => {
+        host.querySelector("svg").setAttribute("viewBox", "-10 -10 12000 6000");
+        return window.__cmhMermaidAudit(host);
+      });
+      expect(repaired).toBe(true);
+      expect(await page.evaluate(() => window.__cmhMermaidRepairs)).toBe(1);
+      await expect(page.locator(".mermaid g.node")).toHaveCount(2);
+      await expect(page.locator(".mermaid g.image-shape")).toHaveCount(1);
+      await expect(page.locator(".mermaid g.icon-shape")).toHaveCount(1);
+      await expect(page.locator(".mermaid path.flowchart-link")).toHaveCount(3);
+      await expect(page.locator(".mermaid foreignObject")).toHaveCount(0);
+      expect(page.__external).toEqual([]);
+    } finally {
+      await server.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("CMH-MMD-13: an offline export repairs the captured disconnected flowchart without network", async ({ page, browser }) => {
     test.setTimeout(90000);
     const { dir } = stageContent(`<section><pre class="mermaid cm-skip">${GENERIC_GRAPH}</pre></section>`);

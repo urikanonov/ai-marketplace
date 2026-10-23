@@ -6017,7 +6017,7 @@ if(!matrix)return out;
 toRoot=matrix.inverse();
 }catch(e){return out;}
 if(![toRoot.a,toRoot.b,toRoot.c,toRoot.d,toRoot.e,toRoot.f].every(isFinite))return out;
-const boxes=Array.from(svg.querySelectorAll("g.node, g.rough-node, g.cluster"),function(node){
+const boxes=Array.from(svg.querySelectorAll("g.node, g.rough-node, g.image-shape, g.icon-shape, g.cluster"),function(node){
 let box,screen;
 try{box=node.getBBox();screen=node.getScreenCTM();}catch(e){return null;}
 if(!screen||!(box.width>0)||!(box.height>0))return null;
