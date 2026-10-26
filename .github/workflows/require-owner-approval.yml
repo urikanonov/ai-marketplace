@@ -35,17 +35,20 @@ on:
 permissions:
   contents: read
   pull-requests: read
-  statuses: write
 
 concurrency:
-  # Every event sweeps all open PRs, including when a pending run is replaced.
-  group: require-owner-approval
+  # Coalesce only the same head, so another PR cannot displace its revocation.
+  group: require-owner-approval-${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
   discover:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
     outputs:
       prs: ${{ steps.prs.outputs.result }}
     steps:
@@ -62,12 +65,12 @@ jobs:
             });
             try {
               await status("pending", "Refreshing maintainer approval...");
-              // Fork runs can lack associated PRs. Sweep for EVERY trigger, so
-              // replacing a pending run cannot drop another PR's revocation.
+              // Fork runs can lack associated PRs. Resolve the triggering SHA
+              // against live heads; do not evaluate unrelated concurrency groups.
               const prs = await github.paginate(github.rest.pulls.list, {
                 ...repo, state: "open", per_page: 100
               });
-              return prs.map(pr => ({
+              return prs.filter(pr => pr.head.sha === sha).map(pr => ({
                 number: pr.number, author: pr.user.login, sha: pr.head.sha
               }));
             } catch (error) {
@@ -77,6 +80,10 @@ jobs:
   evaluate:
     needs: discover
     if: ${{ needs.discover.outputs.prs != '[]' }}
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
     strategy:
       fail-fast: false
       matrix:

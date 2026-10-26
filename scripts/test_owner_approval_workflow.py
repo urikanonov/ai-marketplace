@@ -29,8 +29,14 @@ class OwnerApprovalWorkflowTests(unittest.TestCase):
             (WORKFLOW.parent / "require-resolved-conversations.yml").read_text(encoding="utf-8"))
         self.assertIn("pull_request_review", upstream.get("on", upstream.get(True)))
         self.assertNotIn("statuses", upstream["permissions"])
-        self.assertEqual(doc["permissions"]["statuses"], "write")
-        self.assertNotIn("github.event.pull_request.number", doc["concurrency"]["group"])
+        self.assertNotIn("statuses", doc["permissions"])
+        for job in doc["jobs"].values():
+            self.assertEqual(job["permissions"], {
+                "contents": "read", "pull-requests": "read", "statuses": "write",
+            })
+        self.assertEqual(doc["concurrency"]["group"],
+                         "require-owner-approval-${{ github.event.pull_request.head.sha || "
+                         "github.event.workflow_run.head_sha }}")
         self.assertIs(doc["concurrency"]["cancel-in-progress"], False)
         self.assertNotIn("if", doc["jobs"]["discover"])
         self.assertEqual(doc["jobs"]["discover"]["steps"][0]["with"]["retries"], 3)
@@ -110,7 +116,6 @@ new AsyncFunction('github', 'context', script)(github, context)
         }, pulls)
         self.assertEqual(result["result"], [
             {"number": 1, "author": "external", "sha": "a" * 40},
-            {"number": 2, "author": "urikanonov", "sha": "b" * 40},
         ])
         self.assertEqual(result["calls"][0][0], "status")
         self.assertEqual(result["calls"][0][1]["state"], "pending")
@@ -119,25 +124,36 @@ new AsyncFunction('github', 'context', script)(github, context)
             "paginate", "list", {"owner": "owner", "repo": "repo", "state": "open", "per_page": 100},
         ])
 
-    def test_every_replacement_run_sweeps_all_prs_including_dismissed_approval(self):
+    def test_trigger_heads_are_isolated_and_stale_runs_do_not_evaluate_new_heads(self):
         pulls = [
             {"number": 3, "user": {"login": "external"}, "head": {"sha": "c" * 40}},
             {"number": 4, "user": {"login": "external"}, "head": {"sha": "d" * 40}},
         ]
-        expected = [
-            {"number": 3, "author": "external", "sha": "c" * 40},
-            {"number": 4, "author": "external", "sha": "d" * 40},
-        ]
         events = [
-            ("workflow_run", {"workflow_run": {"event": "pull_request_review", "head_sha": "c" * 40}}),
-            ("pull_request_target", {"pull_request": {"number": 4, "head": {"sha": "old"}}}),
-            ("workflow_run", {"workflow_run": {"event": "pull_request", "head_sha": "d" * 40}}),
+            ("workflow_run", {"workflow_run": {"event": "pull_request_review", "head_sha": "c" * 40}},
+             [{"number": 3, "author": "external", "sha": "c" * 40}]),
+            ("pull_request_target", {"pull_request": {"number": 4, "head": {"sha": "a" * 40}}}, []),
+            ("workflow_run", {"workflow_run": {"event": "pull_request", "head_sha": "d" * 40}},
+             [{"number": 4, "author": "external", "sha": "d" * 40}]),
         ]
-        for event, payload in events:
+        for event, payload, expected in events:
             with self.subTest(event=event, payload=payload):
                 result = self.discover(event, payload, pulls=pulls)
                 self.assertEqual(result["result"], expected)
                 self.assertEqual(result["calls"][1][0], "paginate")
+
+    def test_discovery_failure_cannot_displace_another_heads_revocation(self):
+        group = workflow()["concurrency"]["group"]
+        self.assertIn("github.event.pull_request.head.sha || github.event.workflow_run.head_sha", group)
+        self.assertNotEqual(group, "require-owner-approval")
+        for sha in ("a" * 40, "b" * 40):
+            with self.subTest(sha=sha):
+                result = self.discover("workflow_run", {
+                    "workflow_run": {"head_sha": sha, "pull_requests": []}
+                }, fail=True)
+                statuses = [call[1] for call in result["calls"] if call[0] == "status"]
+                self.assertEqual([(s["sha"], s["state"]) for s in statuses],
+                                 [(sha, "pending"), (sha, "failure")])
 
     def test_empty_sweep_produces_no_matrix_entries(self):
         self.assertEqual(self.discover("workflow_run", {
