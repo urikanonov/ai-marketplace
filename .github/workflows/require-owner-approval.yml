@@ -4,13 +4,10 @@ name: require-owner-approval
 # maintainer, on the CURRENT head commit, before it can merge. The maintainer's
 # own PRs and Dependabot PRs are exempt so the solo maintainer is never blocked.
 #
-# It runs from pull_request_target (plus pull_request_review), so the logic is
-# always read from the trusted base branch: a PR cannot neutralize the gate by
-# editing this file. It never checks out or runs PR code - it only reads the PR's
-# review list and publishes a commit status on the PR head SHA. Both triggers are
-# privileged (they run in the base-repo context with a write-capable token and
-# secrets, even for fork PRs), so statuses: write works on fork PRs too; that is
-# also why this workflow must never check out PR code.
+# Review events have a read-only token on forks. The existing read-only
+# conversation workflow supplies the wake-up; workflow_run evaluates here with
+# a base-repo token. Neither its conclusion nor its artifacts authorize approval:
+# this workflow reads live PRs/reviews through the API and never runs PR code.
 #
 # Make the commit-status context "require-owner-approval" a required status check
 # on main to block merges (NOT the "evaluate" Actions check-run: a
@@ -30,8 +27,10 @@ on:
   # invariant is enforced as code by scripts/check_workflow_policy.py RULE A.
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
-  pull_request_review:
-    types: [submitted, dismissed, edited]
+  # zizmor: ignore[dangerous-triggers] metadata-only: no checkout or artifact consumption
+  workflow_run:
+    workflows: ["Require Resolved Conversations"]
+    types: [completed]
 
 permissions:
   contents: read
@@ -39,13 +38,49 @@ permissions:
   statuses: write
 
 concurrency:
-  # Serialize (do not cancel) so every event posts a final status for its head SHA
-  # and a review event cannot cancel an in-flight run before it publishes.
-  group: require-owner-approval-${{ github.event.pull_request.number }}
+  # Every event sweeps all open PRs, including when a pending run is replaced.
+  group: require-owner-approval
   cancel-in-progress: false
 
 jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      prs: ${{ steps.prs.outputs.result }}
+    steps:
+      - id: prs
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          retries: 3
+          script: |
+            const repo = context.repo;
+            const sha = context.payload.pull_request?.head.sha
+              || context.payload.workflow_run.head_sha;
+            const status = (state, description) => github.rest.repos.createCommitStatus({
+              ...repo, sha, state, context: "require-owner-approval", description
+            });
+            try {
+              await status("pending", "Refreshing maintainer approval...");
+              // Fork runs can lack associated PRs. Sweep for EVERY trigger, so
+              // replacing a pending run cannot drop another PR's revocation.
+              const prs = await github.paginate(github.rest.pulls.list, {
+                ...repo, state: "open", per_page: 100
+              });
+              return prs.map(pr => ({
+                number: pr.number, author: pr.user.login, sha: pr.head.sha
+              }));
+            } catch (error) {
+              await status("failure", "Could not discover PRs; re-run this check.");
+              throw error;
+            }
   evaluate:
+    needs: discover
+    if: ${{ needs.discover.outputs.prs != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        pr: ${{ fromJSON(needs.discover.outputs.prs) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -53,9 +88,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ matrix.pr.number }}
+          PR_AUTHOR: ${{ matrix.pr.author }}
+          HEAD_SHA: ${{ matrix.pr.sha }}
           MAINTAINER: urikanonov
         shell: bash
         run: |
