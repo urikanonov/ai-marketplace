@@ -52,7 +52,8 @@ jobs:
         # to Chromium's VP8 unnoticed when that pass went away (#866).
         run: python scripts/check_clip_codec.py
       - name: Install ffmpeg for the clip scan
-        timeout-minutes: 5
+        # Slow mirror transfers need room; reserve five minutes of job budget for other steps.
+        timeout-minutes: 10
         # ubuntu-latest no longer ships ffmpeg, and Playwright's bundled one is VP8-only so it
         # cannot decode these VP9 clips. The scan fails closed without a decoder, which is how this
         # was caught rather than silently skipped.

@@ -95,7 +95,7 @@ sudo() {
 
 class PagesFfmpegWiringTests(unittest.TestCase):
     def test_install_is_bounded_and_the_decoder_scan_remains_mandatory(self):
-        self.assertEqual(install_step()["timeout-minutes"], 5)
+        self.assertEqual(install_step()["timeout-minutes"], 10)
         self.assertEqual(site_job()["timeout-minutes"], 15)
         steps = site_job()["steps"]
         scan = next(step for step in steps if "check_clip_chrome.py" in step.get("run", ""))
