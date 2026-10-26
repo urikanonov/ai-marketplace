@@ -52,10 +52,24 @@ jobs:
         # to Chromium's VP8 unnoticed when that pass went away (#866).
         run: python scripts/check_clip_codec.py
       - name: Install ffmpeg for the clip scan
+        timeout-minutes: 5
         # ubuntu-latest no longer ships ffmpeg, and Playwright's bundled one is VP8-only so it
         # cannot decode these VP9 clips. The scan fails closed without a decoder, which is how this
         # was caught rather than silently skipped.
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt_options=(-o Acquire::Retries=2 -o Acquire::http::Timeout=30
+                       -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=60)
+          # Hosted images already carry package indexes. Avoid refreshing unrelated repositories
+          # on the normal path; the unbounded apt step exhausted three main deployments.
+          if ! sudo apt-get "${apt_options[@]}" install -y --no-install-recommends ffmpeg; then
+            echo "::warning::ffmpeg install failed; refreshing Ubuntu package indexes before retrying."
+            sudo apt-get "${apt_options[@]}" \
+              -o Dir::Etc::sourcelist=sources.list.d/ubuntu.sources \
+              -o Dir::Etc::sourceparts=- -o APT::Update::Error-Mode=any update
+            sudo apt-get "${apt_options[@]}" install -y --no-install-recommends ffmpeg
+          fi
       - name: Check no published clip or poster shows its launch command
         # --require-ffmpeg makes the gate FAIL rather than skip if the decoder is missing: a green
         # gate that scanned nothing reads as proof the clips were checked. The posters are covered
