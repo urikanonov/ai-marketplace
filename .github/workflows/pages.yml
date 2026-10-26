@@ -62,7 +62,7 @@ jobs:
           apt_options=(-o Acquire::Retries=2 -o Acquire::http::Timeout=30
                        -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=60)
           # Hosted images already carry package indexes. Avoid refreshing unrelated repositories
-          # on the normal path; an unbounded global update exhausted three main deployments.
+          # on the normal path; the unbounded apt step exhausted three main deployments.
           if ! sudo apt-get "${apt_options[@]}" install -y --no-install-recommends ffmpeg; then
             echo "::warning::ffmpeg install failed; refreshing Ubuntu package indexes before retrying."
             sudo apt-get "${apt_options[@]}" \
