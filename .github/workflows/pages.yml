@@ -52,7 +52,7 @@ jobs:
         # to Chromium's VP8 unnoticed when that pass went away (#866).
         run: python scripts/check_clip_codec.py
       - name: Install ffmpeg for the clip scan
-        # Slow mirror transfers need room; reserve five minutes of job budget for other steps.
+        # Bound setup while reserving five minutes of job budget for other steps.
         timeout-minutes: 10
         # ubuntu-latest no longer ships ffmpeg, and Playwright's bundled one is VP8-only so it
         # cannot decode these VP9 clips. The scan fails closed without a decoder, which is how this
@@ -60,6 +60,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # The image prioritizes Azure HTTP even during slow transfers. Keep its already
+          # configured official Ubuntu HTTPS mirrors instead; package signatures stay enforced.
+          sudo sed -i '\|^http://azure\.archive\.ubuntu\.com/ubuntu/|d' /etc/apt/apt-mirrors.txt
           apt_options=(-o Acquire::Retries=2 -o Acquire::http::Timeout=30
                        -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=60)
           # Hosted images already carry package indexes. Avoid refreshing unrelated repositories

@@ -28,11 +28,25 @@ def install_step():
 
 @unittest.skipUnless(BASH, "Bash is required to exercise the Linux dependency step")
 class PagesFfmpegTests(unittest.TestCase):
-    def run_install(self, fail_install="", fail_update=""):
+    def run_install(self, fail_install="", fail_update="", fail_mirror=""):
         harness = """
 set -euo pipefail
+mirror_file=$(mktemp)
+trap 'sed "s/^/MIRROR /" "$mirror_file"; rm -f "$mirror_file"' EXIT
+printf '%s\\n' \
+  'http://azure.archive.ubuntu.com/ubuntu/ priority:1' \
+  'https://archive.ubuntu.com/ubuntu/ priority:2' \
+  'https://security.ubuntu.com/ubuntu/ priority:3' > "$mirror_file"
 install_calls=0
 sudo() {
+  if [ "$1" = sed ]; then
+    printf 'CONFIGURE_MIRRORS\\n'
+    if [ "$FAIL_MIRROR" = yes ]; then return 19; fi
+    if [ "$2" != -i ] || [ "$4" != /etc/apt/apt-mirrors.txt ]; then return 98; fi
+    filtered=$(command sed "$3" "$mirror_file") || return
+    printf '%s\\n' "$filtered" > "$mirror_file"
+    return
+  fi
   printf 'APT %s\\n' "$*"
   case " $* " in
     *" install "*)
@@ -49,11 +63,28 @@ sudo() {
 """
         result = subprocess.run(
             [BASH, "--noprofile", "--norc", "-c", harness + install_step()["run"]],
-            env={**os.environ, "FAIL_INSTALL": fail_install, "FAIL_UPDATE": fail_update},
+            env={**os.environ, "FAIL_INSTALL": fail_install, "FAIL_UPDATE": fail_update,
+                 "FAIL_MIRROR": fail_mirror},
             text=True, encoding="utf-8", capture_output=True, check=False, timeout=10,
         )
         calls = [line for line in result.stdout.splitlines() if line.startswith("APT ")]
         return result, calls
+
+    def test_slow_azure_mirror_is_removed_before_install_preserving_https_fallbacks(self):
+        result, calls = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        mirrors = [line for line in result.stdout.splitlines() if line.startswith("MIRROR ")]
+        self.assertEqual(mirrors, [
+            "MIRROR https://archive.ubuntu.com/ubuntu/ priority:2",
+            "MIRROR https://security.ubuntu.com/ubuntu/ priority:3",
+        ])
+        self.assertLess(result.stdout.index("CONFIGURE_MIRRORS"),
+                        result.stdout.index(calls[0]))
+
+    def test_failed_mirror_configuration_is_fatal_before_any_apt_operation(self):
+        result, calls = self.run_install(fail_mirror="yes")
+        self.assertEqual(result.returncode, 19)
+        self.assertEqual(calls, [])
 
     def test_cached_indexes_avoid_an_unnecessary_global_update(self):
         result, calls = self.run_install()
