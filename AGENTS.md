@@ -797,12 +797,17 @@ check out or run PR-supplied code.
   compute/runner abuse (a PR opened purely to run arbitrary code), which the read-only, no-secrets
   execution contains.
 - The privileged workflows run in the trusted base-repo context: `request-copilot-review.yml` and
-  `require-owner-approval.yml` (on `pull_request_target`, the latter also on `pull_request_review`), and
+  `require-owner-approval.yml` (on `pull_request_target`, the latter also on `workflow_run`), and
   `issue-status-sync.yml` (on `pull_request_target` and on the trusted `issues: closed` event). They DO
   have a write-capable token and secrets even for fork PRs - but they never check out or run PR code; they
   only read PR/issue metadata via the API (the PR number and its parsed closing-issue links, or the closed
   issue's number and labels) and then publish a commit status or add/remove an issue label. That is what
   keeps them safe.
+- A fork's `pull_request_review` token is read-only, even when the workflow requests
+  `statuses: write`. The read-only `Require Resolved Conversations` workflow supplies a review-event
+  wake-up to the owner gate's trusted `workflow_run` path. That path consumes no PR artifacts or code
+  and trusts neither the upstream conclusion nor its approval claims: it reads live open PRs and
+  maintainer reviews through the API, including when the fork run has no associated PR metadata.
 - Merge protection is independent of who runs CI: `main` stays protected and `require-owner-approval`
   still blocks external PRs until `@urikanonov` approves, so auto-running CI never lets anyone merge.
 
