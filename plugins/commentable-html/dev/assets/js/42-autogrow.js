@@ -123,8 +123,9 @@ function cmhClampIntoViewport(el) {
   // hold every detached one alive (the close paths also unregister explicitly).
   cmhClampedSurfaces.forEach(function (s) { if (!s.isConnected) cmhClampedSurfaces.delete(s); });
   const margin = 8;
-  const rect = el.getBoundingClientRect();
   const vp = cmhViewportBox();
+  el.style.setProperty("--cmh-viewport-height", vp.height + "px");
+  const rect = el.getBoundingClientRect();
   const topLimit = Math.max(vp.top + margin, vp.top + vp.height - el.offsetHeight - margin);
   const nextTop = Math.min(Math.max(vp.top + margin, rect.top), topLimit);
   if (Math.abs(nextTop - rect.top) >= 1) el.style.top = nextTop + "px";

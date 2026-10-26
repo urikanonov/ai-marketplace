@@ -265,6 +265,43 @@ test("CMH-PRINT-03: the deck prints one landscape 16:9 page per slide, none clip
   }
 });
 
+test("CMH-PRINT-03: the discussion showcase keeps complete headings inside its slide with a wide fallback font", async ({ page }) => {
+  await routeRichContentLocal(page);
+  await openForPrint(page, path.join(EXAMPLES, "deck-showcase.html"));
+  const slide = page.locator('[data-slide-id="slide-a1c0de61"]');
+  const headings = slide.locator(".show-card h3");
+  await expect(headings).toHaveCount(4);
+  await headings.evaluateAll((els) => els.forEach((el) =>
+    el.style.setProperty("font-family", '"Courier New", "Liberation Mono", monospace', "important")));
+  await page.evaluate(() => document.fonts.ready);
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+
+  const layout = await slide.evaluate((el) => {
+    const box = el.getBoundingClientRect();
+    const lines = [...el.querySelectorAll(".show-card h3")].flatMap((heading) => {
+      const card = heading.closest(".show-card").getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(heading);
+      return [...range.getClientRects()].map((line) => ({
+        left: line.left - Math.max(box.left, card.left),
+        right: Math.min(box.right, card.right) - line.right,
+        top: line.top - Math.max(box.top, card.top),
+        bottom: Math.min(box.bottom, card.bottom) - line.bottom,
+      }));
+    });
+    return { horizontal: el.scrollWidth / box.width, vertical: el.scrollHeight / box.height, lines };
+  });
+  expect(layout.horizontal, "wide fallback headings do not expand the slide's grid").toBeLessThan(1.05);
+  expect(layout.vertical, "wrapped headings keep the complete slide inside its page").toBeLessThan(1.05);
+  expect(layout.lines.length).toBeGreaterThanOrEqual(4);
+  for (const line of layout.lines) {
+    for (const clearance of Object.values(line)) {
+      expect(clearance, "each complete heading line stays inside its card and slide").toBeGreaterThanOrEqual(-1);
+    }
+  }
+});
+
 test("CMH-PRINT-04: reports print with no blank/stranded pages and dense widgets/galleries survive", async ({ page }) => {
   // report-triage carries the draggable kanban board; report-metrics carries a tall mermaid state
   // diagram plus multi-chart galleries - the two content shapes that used to strand a heading on a

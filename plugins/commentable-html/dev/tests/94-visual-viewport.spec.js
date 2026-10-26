@@ -220,6 +220,8 @@ test.describe("floating affordances measure the visual viewport (CMH-CORE-19)", 
     await openInline(page);
     const composer = await openComposerFor(page, "#commentRoot p");
     await expect(composer).toBeVisible();
+    await composer.getByLabel("Comment purpose").selectOption("discussion");
+    await composer.locator("textarea").fill("Explain how the queue retries this task.\n".repeat(12));
 
     const visible = { left: 120, top: 60, width: 520, height: 340 };
     await moveVisualViewport(page, visible, "resize");
@@ -248,6 +250,9 @@ test.describe("floating affordances measure the visual viewport (CMH-CORE-19)", 
     expect(cb.y).toBeGreaterThanOrEqual(visible.top - 1);
     expect(cb.x + cb.width).toBeLessThanOrEqual(visible.left + visible.width + 1);
     expect(cb.y + cb.height).toBeLessThanOrEqual(visible.top + visible.height + 1);
+    await composer.locator('[data-act="save"]').click();
+    await expect(composer).toHaveCount(0);
+    expect((await storedComments(page))[0].threadType).toBe("discussion");
   });
 
   test("opening and closing surfaces does not accumulate visualViewport listeners (CMH-CORE-19)", async ({ page }) => {

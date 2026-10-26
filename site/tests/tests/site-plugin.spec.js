@@ -200,14 +200,16 @@ test("the plugin page credits the vendored frontend-slides deck engine (SITE-PLU
 });
 
 
-test("the plugin page has a Private by design section emphasizing local-only data (SITE-PLUGIN-14)", async ({ page }) => {
+test("the plugin page explains local discussion state and explicit handoff (SITE-PLUGIN-14)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const privacy = page.locator("#privacy");
   await expect(privacy).toBeVisible();
   await expect(privacy).toContainText(/Private by design/i);
   await expect(privacy).toContainText(/localStorage/);
-  await expect(privacy).toContainText(/never (uploaded|transmitted|sent)/i);
-  await expect(privacy).toContainText(/no server|no account|no telemetry/i);
+  await expect(privacy).toContainText(/no hosted service, plugin account, or telemetry/i);
+  await expect(privacy).toContainText(/does not contact an AI automatically/i);
+  await expect(privacy).toContainText(/owner handoff/i);
+  await expect(privacy).not.toContainText(/never uploaded or transmitted|no residual copy lives anywhere else/i);
   await expect(privacy).toContainText(/Export Offline|zero network|air-gapped/i);
   // The nav offers a link to the privacy section.
   await expect(page.locator('.nav-links a[href="#privacy"]')).toHaveCount(1);
@@ -260,6 +262,7 @@ test("the privacy section qualifies comment persistence to same-origin hosting a
   await expect(privacy).toContainText("keyed to a stable id");
   await expect(privacy).toContainText("served from one web origin");
   await expect(privacy).toContainText("an exported file always carries every comment inside it");
+  await expect(privacy).toContainText("not erased by deleting one HTML");
 });
 
 
@@ -317,11 +320,25 @@ test("the What you get section highlights that comments survive a browser restar
 });
 
 
-test("the What you get Round-trip card explains Copy all returns every comment at once for one coordinated edit (SITE-PLUGIN-20)", async ({ page }) => {
+test("the What you get Round-trip card separates discussion answers from coordinated edits (SITE-PLUGIN-20)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
-  const features = page.locator("#features");
-  await expect(features).toContainText(/every comment at once/i);
-  await expect(features).toContainText(/coordinated/i);
+  const card = page.locator("#features .card.feature", { has: page.getByRole("heading", { name: "Round-trip to the agent", exact: true }) });
+  await expect(card).toContainText(/every comment at once/i);
+  await expect(card).toContainText(/coordinated/i);
+  await expect(card).toContainText(/answer discussion questions/i);
+  await expect(card).toContainText(/owner-approved edit requests/i);
+});
+
+
+test("the discussion card distinguishes unanswered questions from read receipts (SITE-PLUGIN-31)", async ({ page }) => {
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  const card = page.locator("#features .card.feature", { has: page.getByRole("heading", { name: "Discuss before requesting edits", exact: true }) });
+  await expect(card).toContainText(/questions receive AI answers without authorizing edits/i);
+  await expect(card).toContainText(/explicitly mark a reply as a Command/i);
+  await expect(card).toContainText(/whole history/i);
+  await expect(card).toContainText(/Needs owner handoff \/ AI reply means unanswered/i);
+  await expect(card).toContainText(/Copy and export are not read receipts/i);
+  await expect(card).toContainText(/No server or folder permissions are needed/i);
 });
 
 

@@ -35,6 +35,8 @@ subdirectories under `tools/` (for example `tools/validate/validate.py`, `tools/
 
 - `validate.py` - structural invariant checker for generated files. Use `--strict` before handoff.
 - `mark_handled.py` - appends handled comment ids from explicit ids or a copied bundle.
+- `review_threads.py` - imports versioned discussion bundles, lists pending questions and commands,
+  and persists AI answers and edit acknowledgements in the HTML's embedded review state.
 - `new_document.py` - builds a fresh commentable document from a content fragment (always Shareable, one self-contained file; `--template <dist>/NONSHAREABLE.html` builds a legacy one deliberately). Fails
   closed (writes nothing) when it cannot self-validate; `--allow-unvalidated-output` opts out.
 - `recommend_kind.py` - recommends `report`, `plan`, or `slides` from filename and content signals before choosing `--kind`.
@@ -67,6 +69,8 @@ subdirectories under `tools/` (for example `tools/validate/validate.py`, `tools/
 - `references/copy-payload.md` - `Copy all` Markdown and handled-id contract.
 - `references/design-decisions.md` - Intentional behaviors reviewers should not flag.
 - `references/document-layout.md` - Themes, TOC, sections, cards, and tables.
+- `references/discussions.md` - Anchored AI discussions, explicit edit commands,
+  owner replies, snapshot handoff, and optional scheduled answers.
 - `references/exports.md` - Shareable, Plain HTML, Markdown, and NonShareable export semantics.
 - `references/file-inventory.md` - This file.
 - `references/forward-compatible-layout.md` - Region layout and descriptor contract for current and future tools.

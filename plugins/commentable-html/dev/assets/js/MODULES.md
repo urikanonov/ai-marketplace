@@ -78,6 +78,7 @@ Conventions for these partials (they share ONE closure scope after concatenation
 | `42-autogrow.js` | CMH-GROW | Autogrowing authoring textareas: sizes the composer, side-pane inline reply/edit, and in-document dialog editors to their content (capped by each one's `--cmh-grow-max`, enforced here rather than as a CSS `max-height` so a manual drag stays free), re-measures on viewport changes, and yields to a manual resize drag. |
 | `43-identity.js` | CMH-AUTHOR | Reviewer identity: per-browser author name (localStorage, seedable via `data-cm-author`), the author pill, and the sidebar identity control (editable, future-comments only). |
 | `43-rich-text.js` | CMH-RICH | Rich-text note renderer (`renderRichNote` tokenizer) and the shared formatting toolbar/shortcut helpers (`applyNoteFormat`, `noteFormatBarHtml`, `wireNoteFormatBar`, `handleNoteFormatShortcut`). |
+| `44-discussions.js` | CMH-DISC | Question/command purpose, opaque request revisions, version-bound AI answers, pending status, and shared composer controls. |
 | `44-threads.js` | CMH-THREAD | Single-level comment threads: reply grouping (`threadRoots`/`repliesOf`), `threadIds`, and orphan-reply pruning. |
 | `45-composer.js` | CMH-A11Y, CMH-CORE, CMH-RICH | Per-instance comment composer (parallel-safe); hosts the formatting toolbar + shortcuts. |
 | `46-comment-selection.js` | CMH-PICK | Per-comment selection: the transient, self-pruning pick set of thread roots, the panel's selection bar, and the confirmed `Delete selected comments` action. |

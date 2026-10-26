@@ -111,8 +111,7 @@ test.describe("comment search / filter", () => {
     const row = page.locator(".head-search");
     const input = page.locator("#cmSearchInput");
     // The field is hidden by default; open it via the Search button before focusing the input.
-    await page.click("#btnSearchToggle");
-    await expect(row).toBeVisible();
+    await openSearch(page);
     await input.focus();
     await input.press("Escape");
     await expect(row).toBeHidden();

@@ -45,6 +45,7 @@ omitted here.
 | Review checklists (CHECK) | tutorial, help, deck |
 | Section review badges and the section menu / search / filter (REVIEW, TOC, SEARCH) | tutorial, help, deck |
 | Threads, inline replies, and author names (THREAD, AUTHOR) | tutorial, help, deck |
+| Standalone AI discussions and explicit edit commands (DISC) | tutorial, site, help, deck |
 | Counting note and checklist changes in the badge (NOTE-04, CHECK-06) | tutorial, help, deck |
 | Copy all and sending comments to an agent (COPY, HANDLED) | tutorial, help, deck |
 | Selecting comments to hand back or delete only part of a review (PICK) | help, deck |
@@ -63,6 +64,12 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 
 | Feature id | Doc surface | Deck |
 | --- | --- | --- |
+| CMH-DISC-01 | tutorial, help | deck |
+| CMH-DISC-02 | tutorial, help | deck |
+| CMH-DISC-03 | tutorial, help | deck |
+| CMH-DISC-04 | help | opt-out: draft-preservation robustness, not a separate slide |
+| CMH-DISC-05 | tutorial, site, help | deck |
+| CMH-DISC-06 | tutorial, help | deck |
 | CMH-VAL-23 | opt-out: an authoring-time parser correctness fix plus an explicit runtime light-DOM boundary, with no new reader-facing capability | opt-out: parser and walker boundaries have nothing to demonstrate on a slide |
 | CMH-VAL-25 | opt-out: an authoring-time security gate that closes an egress hole in the self-contained guarantee - it refuses markup an author should not have written, and adds no reader-facing capability | opt-out: a validator refusal has nothing for a viewer to see on a slide |
 | CMH-VAL-26 | opt-out: an authoring-time validator correctness fix - it raises the floor on what a required layer control has to be, and adds no reader-facing capability | opt-out: which namespace the validator counts an id in has nothing for a viewer to see on a slide |

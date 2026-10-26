@@ -14,11 +14,7 @@ async function addImageComment(page, note) {
 }
 
 async function addMediaComment(page, selector, note) {
-  await page.evaluate((sel) => {
-    const img = document.querySelector(sel);
-    img.scrollIntoView({ block: "center" });
-    img.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
-  }, selector);
+  await page.locator(selector).first().hover();
   await expect(page.locator("#imageAddBtn")).toBeVisible();
   await page.locator("#imageAddBtn").click();
   const composer = page.locator(".cm-composer").last();

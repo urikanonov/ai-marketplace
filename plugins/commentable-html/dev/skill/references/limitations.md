@@ -9,6 +9,10 @@
 - **Mermaid diagrams that change source between renders** invalidate node keys. If you edit the diagram so a node renamed from `AsmGate` to `AsmCheck`, the comment's `nodeKey="AsmGate"` no longer resolves and the highlight is dropped (the comment stays in the list and the agent still sees the original node label in the copy bundle). Treat diagram source as part of the anchor.
 - **Mermaid re-renders are not re-attached.** The layer attaches once per host, when mermaid first finishes rendering. If the host page later re-runs `mermaid.run()` on the same block (e.g., theme switch), highlights and hover handlers are lost until the next page reload. Theme switches in commentable HTML should require a reload.
 - **`localStorage` is origin-scoped.** `file://` works but each file has its own bucket. If the user moves the HTML to a server, comments do not follow.
+- **AI answers require an owner handoff.** The browser does not contact an AI service. The owner copies
+  discussions or reads an exported HTML with the shipped tools and persists answers in that file.
+  Optional scheduled question-answering requires explicit consent; it never automatically applies commands.
+- **Discussions are not live multi-person synchronization.** Copy and exported HTML carry snapshots.
+  Names and AI labels are self-asserted, not authentication. Use a single owner processing loop to
+  avoid concurrent snapshot writes. Reload the answered file; authored edits can invalidate old anchors.
 - **Clipboard API requires a user gesture.** `Copy all` falls back to a hidden `textarea` + `execCommand`, and finally a `prompt()` window if both fail. Per-block copy actions (code-block Copy buttons and the Kusto cluster-name chip) use `navigator.clipboard` then `execCommand`; if both fail they show a `Copy failed` toast and do NOT open a prompt (only `Copy all` has the prompt fallback).
-
-
