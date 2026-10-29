@@ -11,6 +11,7 @@ function _mdCollapse(s) { return String(s == null ? "" : s).replace(/\s+/g, " ")
 function _mdSkip(el) {
   if (!el || el.nodeType !== 1) return false;
   if (_MD_SKIP_TAGS[el.tagName]) return true;
+  if (el.classList && el.classList.contains("cmh-editable-table")) return false;
   // A mermaid host (pre.mermaid or div.mermaid) and a diff host carry content we export
   // from a stashed source, so they are never skipped even though they are cm-skip.
   if (el.classList && el.classList.contains("mermaid")) return false;
@@ -255,6 +256,15 @@ function _mdWidget(el) {
 }
 function _mdBlock(el) {
   const t = el.tagName;
+  if (el.classList && el.classList.contains("cmh-editable-table")) {
+    const table = editableTables.find(table => table.shell === el);
+    if (!table) return "";
+    const cell = value => _mdEscapePipes(_mdText(value)).replace(/\r?\n/g, "<br>");
+    const columns = table.model.columns;
+    return ["| " + columns.map(c => cell(c.label)).join(" | ") + " |",
+      "| " + columns.map(() => "---").join(" | ") + " |"]
+      .concat(table.model.rows.map(r => "| " + r.cells.map(cell).join(" | ") + " |")).join("\n");
+  }
   if (el.classList && el.classList.contains("mermaid")) return _mdFence("mermaid", el.getAttribute("data-cmh-md-src") || el.textContent || "");
   if (el.hasAttribute && el.hasAttribute("data-cm-widget")) return _mdWidget(el);
   if (/^H[1-6]$/.test(t)) return "#".repeat(+t[1]) + " " + _mdCollapse(_mdInlineText(el));

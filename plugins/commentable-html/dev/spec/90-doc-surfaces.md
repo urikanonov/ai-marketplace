@@ -85,6 +85,19 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-STORE-15 | tutorial, help | deck |
 | CMH-NOTE-04 | tutorial, help | deck |
 | CMH-NOTE-05 | tutorial | deck |
+| CMH-TABLE-01 | tutorial, help | deck |
+| CMH-TABLE-02 | tutorial, help | deck |
+| CMH-TABLE-03 | tutorial, help | deck |
+| CMH-TABLE-04 | tutorial, help | deck |
+| CMH-TABLE-05 | tutorial, help | deck |
+| CMH-TABLE-06 | tutorial, help | deck |
+| CMH-TABLE-07 | tutorial, help | deck |
+| CMH-TABLE-08 | tutorial | opt-out: recovery from stale local state is not a showcase slide interaction |
+| CMH-TABLE-09 | tutorial | deck |
+| CMH-TABLE-10 | tutorial, help | deck |
+| CMH-TABLE-11 | opt-out: internal tool integration and comment anchor robustness | opt-out: internal integration invariant |
+| CMH-TABLE-12 | tutorial | deck |
+| CMH-TABLE-13 | opt-out: agent-facing authoring and apply tooling contract | opt-out: agent-facing authoring tooling |
 | CMH-CHECK-06 | tutorial, help | deck |
 | CMH-THREAD-01 | tutorial, help | deck |
 | CMH-THREAD-06 | tutorial, help | deck |

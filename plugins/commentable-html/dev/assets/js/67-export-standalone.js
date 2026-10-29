@@ -350,6 +350,7 @@ async function saveStandalone() {
     baseHtml = _applyWidgetLayoutToHtml(baseHtml);
     baseHtml = _applyChecklistStateToHtml(baseHtml);
     baseHtml = _applyNoteStateToHtml(baseHtml);
+    baseHtml = _applyTableStateToHtml(baseHtml);
     review = _applyReviewStateToHtml(baseHtml);
     baseHtml = review.html;
   } catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_PREPARE); return; }

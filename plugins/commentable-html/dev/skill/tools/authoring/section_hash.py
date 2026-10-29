@@ -140,7 +140,7 @@ class _SectionParser(_browser_boundaries.BrowserBoundaries):
         # would diverge from this tag-parsing extractor.
         own_skip = (bool(_SKIP_CLASSES.intersection(classes))
                     or tag_l in ("script", "style", "template", "canvas", "noscript")
-                    or "data-cmh-note" in d)
+                    or "data-cmh-note" in d or "data-cmh-table" in d)
         is_root = not self._in_html_template() and (
             (d.get("id") == "commentRoot") if self.single_root
             else ((d.get("id") == "commentRoot") or ("data-cmh-content-root" in d))

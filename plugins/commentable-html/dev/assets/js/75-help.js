@@ -159,6 +159,7 @@ function showHelp(restoreEl) {
           '<li>The agent addresses the comments and marks them handled in this same file; handled comments are pruned on the next load and never reappear in the bundle.</li>' +
         '</ul>') +
       T('Formatting your comment',
+        '<p><strong>Editable tables:</strong> edit text and choice cells directly. Add row / Add column reshape the table; a column menu renames, inserts after, or removes it. Populated deletion asks first, and Undo / Redo restore committed edits in this session. Keep at least one column; zero rows is valid. Sorting changes only the view. Each table has one cumulative change card with View changes, jump and reset. Copy all includes it, Delete all resets it after confirmation, and HTML export carries the current editable table. Plain HTML, Markdown and print show the values. Editable cells use this change card rather than inline comments.</p>' +
         '<p>Comment notes support lightweight rich text (WhatsApp / Office style). Type the markers, or select text and use the toolbar or a shortcut - in the composer, in the side panel when you reply to or edit a comment, AND in the dialog you get by clicking a highlight:</p>' +
         '<ul>' +
           '<li><code>**bold**</code> or <kbd>Ctrl</kbd>+<kbd>B</kbd> for <strong>bold</strong>.</li>' +

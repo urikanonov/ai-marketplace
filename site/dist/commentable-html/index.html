@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.854.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.855.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -402,6 +402,7 @@
           <button class="demo-tab" type="button" role="tab" id="demo-tab-metrics" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-metrics.html" data-file="report-metrics.html" data-label="Visuals Matrix">Visuals Matrix</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-showcase" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/deck-showcase.html" data-file="deck-showcase.html" data-label="Showcase Deck">Showcase Deck</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-checklist" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-checklist.html" data-file="report-checklist.html" data-label="Checklist">Checklist</button>
+          <button class="demo-tab" type="button" role="tab" id="demo-tab-tables" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-editable-table.html" data-file="report-editable-table.html" data-label="Editable Tables">Editable Tables</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-notes" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-notes.html" data-file="report-notes.html" data-label="Notes">Notes</button>
         </div>
       </div>
@@ -488,6 +489,18 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.855.0] - 2026-10-29</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Editable tables with text and choice cells, row/column creation and removal, column renaming, session undo/redo, safe deletion, and presentation-only sorting.</li>
+              <li>One cumulative table-change card with Copy all handoff, browser persistence, stale-draft recovery, clean HTML export, and authoring scaffold/apply tools.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Deliberately raise the runtime byte ceiling from 677000 to 710000 and the asset bundle ceiling from 865000 to 900000 for the editable-table model, controls and styles.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.854.0] - 2026-10-12</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -508,6 +521,8 @@
               <li>Discussion imports reject duplicate incoming ids and ids colliding with unrelated comments or threads before writing document state.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.853.2] - 2026-10-23</h3></div>
             <div class="group-label">Fixed</div>
@@ -515,8 +530,6 @@
               <li>Recover flowcharts whose normal-sized nodes are stranded far from their edge endpoints, making the diagram appear tiny across an oversized canvas. The existing SVG-text rerender now detects this malformed geometry on load, reveal, and layout changes, including offline exports, without compacting intentionally sparse connected diagrams.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.853.1] - 2026-10-05</h3></div>
             <div class="group-label">Changed</div>
@@ -545,14 +558,7 @@
               <li>Every sidebar comment now has a <code>Copy</code> button beside <code>Select</code>, so one comment thread can be handed back immediately without changing the current selection or using <code>Copy selected</code>.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.850.2] - 2026-09-09</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Mermaid flowcharts no longer collapse into tiny, unreadable nodes when document-level HTML-label styles inflate both the drawing and its viewBox. The post-render audit now detects diagrams compressed below a legible layout scale and uses the existing bounded SVG-text repair without mistaking browser zoom or an ancestor transform for broken Mermaid geometry.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">418 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">419 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

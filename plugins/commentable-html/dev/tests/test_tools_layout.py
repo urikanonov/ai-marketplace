@@ -25,6 +25,7 @@ EXPECTED = {
     "kusto": ["kql_highlight", "kusto_link"],
     "checklist": ["checklist_apply", "checklist_scaffold"],
     "notes": ["notes_apply", "notes_scaffold"],
+    "tables": ["tables_common", "tables_apply", "tables_scaffold"],
     "blocks": ["chart_block", "diff_block", "highlight_code", "highlight_document"],
     "authoring": ["new_document", "generate_toc", "doc_stats", "inline_images", "finalize",
                   "fix_skip", "wrap_sections", "mark_handled", "mark_reviewed", "section_hash",

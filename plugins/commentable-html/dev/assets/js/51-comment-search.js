@@ -59,7 +59,7 @@ function applyCommentSearch() {
   const total = (typeof threadRoots === "function")
     ? threadRoots(comments).length
     : (Array.isArray(comments) ? comments.length : 0);
-  const noteCards = listEl ? listEl.querySelectorAll(".cm-card-note") : [];
+  const noteCards = listEl ? listEl.querySelectorAll(".cm-card-note, .cm-card-table") : [];
   if (row) {
     row.hidden = searchUserState !== true;
   }
