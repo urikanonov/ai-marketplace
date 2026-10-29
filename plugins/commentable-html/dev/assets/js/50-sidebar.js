@@ -219,7 +219,7 @@ function updateSortUi() {
   if (window.__cmhRefreshTip) window.__cmhRefreshTip(b);
 }
 function pendingPanelItemCount(roots, notePieces, checklistPieces) {
-  return roots.length + notePieces.length + checklistPieces.length;
+  return roots.length + notePieces.length + checklistPieces.length + tableChanges().length;
 }
 
 function renderComments() {
@@ -289,6 +289,7 @@ function renderComments() {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clPieces = (typeof checklistCardPieces === "function") ? checklistCardPieces() : [];
   const notePieces = (typeof notesCardPieces === "function") ? notesCardPieces() : [];
+  const tablePieces = tablesCardPieces();
   // The count badge reflects the pending note and checklist changes shown in the panel, not just
   // comment threads: a changed note and a changed checklist each render their own card and are now
   // counted too. Otherwise a reviewer who only edited a note or ticked a checklist saw the count
@@ -304,7 +305,7 @@ function renderComments() {
   updateSideInfo();
   updateSortUi();
   const stateHtml = stateChanges.length ? _renderWidgetStateCard(stateChanges) : "";
-  if (!roots.length && !stateChanges.length && !clPieces.length && !notePieces.length) {
+  if (!roots.length && !stateChanges.length && !clPieces.length && !notePieces.length && !tablePieces.length) {
     const deckHint = IS_DECK
       ? "<p><strong>On this deck:</strong> in comment mode, select text on the current slide and choose <em>Add Comment</em>, or right-click empty slide space for a whole-slide comment. Move between slides with Prev / Next or the arrow keys.</p>"
       : "";
@@ -456,7 +457,7 @@ function renderComments() {
   // Insert each checklist and note change card by document position while preserving the
   // comments' current (position or time) sort order, so a time sort is not overridden and no
   // card is dropped.
-  const cls = clPieces.concat(notePieces).sort((a, b) => a.pos - b.pos);
+  const cls = clPieces.concat(notePieces, tablePieces).sort((a, b) => a.pos - b.pos);
   const parts = [];
   let ci = 0;
   commentPieces.forEach((cp) => {
@@ -894,9 +895,9 @@ function _focusListEl(el) {
 // (synchronously from the click, a frame later through the board's mutation observer, or twice over
 // when two renders are queued) rather than depending on each handler to remember.
 const _LIST_FOCUSABLE = "button, a[href], input, select, textarea, [tabindex]";
-// The identity a rebuilt card is found by, most specific first: a reply entry, then the four card
-// kinds (comment, checklist, note, board).
-const _LIST_ID_ATTRS = ["data-reply-cid", "data-cid", "data-cmh-checklist-name", "data-cmh-note-name", "data-cm-widget-name"];
+// The identity a rebuilt card is found by, most specific first: a reply entry, then the five card
+// kinds (comment, checklist, note, table, board).
+const _LIST_ID_ATTRS = ["data-reply-cid", "data-cid", "data-cmh-checklist-name", "data-cmh-note-name", "data-cmh-table-name", "data-cm-widget-name"];
 function _captureListFocus() {
   const a = document.activeElement;
   // Only focus INSIDE the list is this function's business: a render triggered from a note the
@@ -1166,6 +1167,14 @@ listEl.addEventListener("click", (e) => {
     const cid = e.target.getAttribute("data-cmh-checklist-name") || clCard.getAttribute("data-cmh-checklist-name");
     if (e.target.dataset.act === "cl-reset") { if (typeof resetChecklist === "function") resetChecklist(cid); }
     else if (typeof jumpToChecklist === "function") jumpToChecklist(cid);
+    return;
+  }
+  const tableCard = e.target.closest(".cm-card-table");
+  if (tableCard) {
+    if (e.target.closest("details")) return;
+    const id = tableCard.getAttribute("data-cmh-table-name");
+    if (e.target.dataset.act === "table-reset") resetTable(id);
+    else jumpToTable(id);
     return;
   }
   // Note change cards are not comments: jump focuses the note field, reset reverts it to the

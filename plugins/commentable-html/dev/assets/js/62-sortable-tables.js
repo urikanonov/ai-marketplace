@@ -576,6 +576,7 @@ function performClearAll() {
   if (typeof resetAllChecklists === "function") resetAllChecklists();
   if (typeof resetAllWidgetMoves === "function") resetAllWidgetMoves();
   if (typeof resetAllNotes === "function") resetAllNotes();
+  resetAllTables();
   renderComments();
 }
 // Delete all comments has TWO entry points - the sidebar More menu and the toolbar overflow menu
@@ -589,7 +590,7 @@ function _clearAllPending() {
   const stateChanges = (typeof widgetStateChanges === "function") ? widgetStateChanges() : [];
   const clChanges = (typeof checklistChanges === "function") ? checklistChanges() : [];
   const noteChanges = (typeof notesChanges === "function") ? notesChanges() : [];
-  return comments.length + stateChanges.length + clChanges.length + noteChanges.length;
+  return comments.length + stateChanges.length + clChanges.length + noteChanges.length + tableChanges().length;
 }
 function _setClearAllTip(btn, text) {
   // Mirror the copy-all tip handling: once the tooltip layer has adopted a control (title moved to
@@ -603,7 +604,7 @@ function _setClearAllTip(btn, text) {
 function updateClearAllState(state) {
   const s = state || (typeof _copyAllState === "function" ? _copyAllState() : null);
   const disabled = s
-    ? !(comments.length || s.changes.length || s.clCh.length || s.noteCh.length)
+    ? !(comments.length || s.changes.length || s.clCh.length || s.noteCh.length || (s.tableCh && s.tableCh.length))
     : _clearAllPending() === 0;
   ["btnClearAll", "btnClearAllTop"].forEach(function (id) {
     const btn = cmhEl(id);
@@ -627,10 +628,11 @@ async function _confirmClearAll(restoreId) {
   }
   _clearAllBusy = true;
   try {
+    const tableNotice = tableChanges().length ? " Table changes will also be reset." : "";
     const ok = await showConfirm({
       message: comments.length
-        ? `Delete all ${(typeof threadRoots === "function" ? threadRoots(comments).length : comments.length)} comment(s) and reset any tracked widget, checklist, and note changes? This cannot be undone.`
-        : `Reset any tracked widget, checklist, and note changes? This cannot be undone.`,
+        ? `Delete all ${(typeof threadRoots === "function" ? threadRoots(comments).length : comments.length)} comment(s) and reset any tracked widget, checklist, and note changes? This cannot be undone.${tableNotice}`
+        : `Reset any tracked widget, checklist, and note changes? This cannot be undone.${tableNotice}`,
       confirmLabel: "OK",
       cancelLabel: "Cancel",
       danger: true,

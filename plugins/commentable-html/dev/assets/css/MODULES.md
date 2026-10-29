@@ -26,6 +26,7 @@ order the directory listing gives.
 | `84-comment-selection.css` | CMH-PICK, CMH-RESP | The per-comment pick control, the picked-card accent ring, and the panel's selection bar (count + Clear selection), with their phone touch targets. |
 | `85-checklist.css` | CMH-CHECK | Layered checklist controls, hierarchy indentation, and the per-list change card. |
 | `86-notes.css` | CMH-NOTE | Editable notes fields: the textarea, label chip, single/multi-line toggle, and the per-note change card. |
+| `87-editable-tables.css` | CMH-TABLE | Responsive editable-table fields, schema dialogs, recovery notices, and print values. |
 | `87-validation-banner.css` | CMH-STAMP | Unvalidated-document fallback banner (amber, dismissible, light + dark). |
 | `88-discussions.css` | CMH-DISC | Question/command purpose selectors, discussion status, handoff indicators, and message labels. |
 | `88-rich-text.css` | CMH-RICH | Rich-text note inline elements (bold/italic/underline/strike/code/list/link) and the composer formatting toolbar. |

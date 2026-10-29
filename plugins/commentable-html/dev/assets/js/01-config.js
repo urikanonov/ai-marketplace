@@ -213,7 +213,7 @@ const CMH_MAX_STORE_CHARS = 8000000;
 // this single list to compute a document's owned keys and reclaim its space; a new per-document
 // subkey MUST be added here (test_storage.py asserts every COMMENT_KEY + "::" writer suffix is listed).
 const CMH_SUBKEY_SUFFIXES = [
-  "::z", "::deleted", "::diffLayout", "::diffSyntax", "::cl", "::note",
+  "::z", "::deleted", "::diffLayout", "::diffSyntax", "::cl", "::note", "::tables",
   "::commentSort", "::tableSort", "::reviews", "::reviews::deleted", "::deckMode",
   "::autoOpenPanel", "::tocFold",
 ];
@@ -229,7 +229,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.854.0";
+const CMH_VERSION = "1.855.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.
