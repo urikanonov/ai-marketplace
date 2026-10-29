@@ -108,6 +108,31 @@ test("column menus close on keyboard departure without discarding a composer dra
   await expect(composer.locator("textarea")).toHaveValue("Keep this draft");
 });
 
+test("column menus leave authored caption disclosures untouched (CMH-TABLE-04)", async ({ page }) => {
+  const captionHtml = '<caption><details id="caption-details" open><summary>Authored context</summary><p>Keep this explanation visible.</p></details></caption>';
+  await open(page, DOC.replace("<thead>", captionHtml + "<thead>"));
+  const caption = page.locator("#caption-details"), authored = caption.locator("summary");
+  await expect(caption).toHaveAttribute("open", "");
+  await page.locator("#after").click();
+  await expect(caption).toHaveAttribute("open", "");
+  await authored.focus();
+  await page.keyboard.press("Escape");
+  await expect(caption).toHaveAttribute("open", "");
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await expect(caption).toHaveAttribute("open", "");
+  const header = table(page).locator('[data-cmh-column="owner"]');
+  await header.locator("summary").click();
+  await expect(header.locator(".cmh-table-column-menu")).toBeVisible();
+  await expect(caption).toHaveAttribute("open", "");
+  await authored.click();
+  await expect(header.locator("details")).not.toHaveAttribute("open", "");
+  await expect(caption).not.toHaveAttribute("open", "");
+  await authored.click();
+  await expect(caption).toHaveAttribute("open", "");
+  await page.emulateMedia({ media: "print" });
+  await expect(caption.getByText("Keep this explanation visible.")).toBeVisible();
+});
+
 test("column titles inherit authored contrasting header colors (CMH-TABLE-09)", async ({ page }) => {
   await open(page, '<style>#commentRoot [data-cmh-table] thead th{background:#17233b;color:#f8fafc}</style>' + DOC);
   const header = table(page).locator('[data-cmh-column="owner"]');

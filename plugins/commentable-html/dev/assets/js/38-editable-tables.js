@@ -7,9 +7,9 @@ let _etHadChanges = false;
 let _etUnreadable = null;
 let _etUnmatched = [];
 const _etMenuPopup = {
-  isOpen: () => !!root.querySelector(".cmh-editable-table details[open]"),
+  isOpen: () => !!root.querySelector(".cmh-table-column-actions[open]"),
   close: () => {
-    const menu = root.querySelector(".cmh-editable-table details[open]");
+    const menu = root.querySelector(".cmh-table-column-actions[open]");
     if (menu) { menu.open = false; menu.querySelector("summary").focus(); }
   },
 };
@@ -321,7 +321,7 @@ function _etRender(t) {
     label.className = "cmh-table-title"; label.title = "Comment on this column title";
     label.setAttribute("aria-label", "Comment on " + c.label + ", column " + (ci + 1));
     th.append(label); _etSortButton(t, th, c.id, "Sort by " + c.label + ", column " + (ci + 1));
-    const menu = doc.createElement("details");
+    const menu = doc.createElement("details"); menu.className = "cmh-table-column-actions";
     const summary = doc.createElement("summary");
     summary.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>';
     summary.setAttribute("aria-label", "Actions for " + c.label + ", column " + (ci + 1));
@@ -338,7 +338,7 @@ function _etRender(t) {
     panel.append(remove); menu.append(summary, panel);
     menu.addEventListener("toggle", () => {
       if (!menu.open) { panel.hidePopover(); return; }
-      root.querySelectorAll(".cmh-editable-table details[open]").forEach(other => { if (other !== menu) other.open = false; });
+      root.querySelectorAll(".cmh-table-column-actions[open]").forEach(other => { if (other !== menu) other.open = false; });
       panel.showPopover();
       window.__cmhPrioritizeEscapePopup(_etMenuPopup);
       const rect = summary.getBoundingClientRect();
@@ -512,9 +512,9 @@ function _applyTableStateToHtml(html) {
 }
 function setupEditableTables() {
   window.__cmhRegisterEscapePopup(_etMenuPopup);
-  const closeMenus = () => root.querySelectorAll(".cmh-editable-table details[open]").forEach(menu => { menu.open = false; });
+  const closeMenus = () => root.querySelectorAll(".cmh-table-column-actions[open]").forEach(menu => { menu.open = false; });
   document.addEventListener("pointerdown", e => {
-    if (!e.target.closest(".cmh-table-column-menu, .cmh-editable-table summary")) closeMenus();
+    if (!e.target.closest(".cmh-table-column-menu, .cmh-table-column-actions > summary")) closeMenus();
   });
   document.addEventListener("scroll", e => {
     if (!(e.target.closest && e.target.closest(".cmh-table-column-menu"))) closeMenus();

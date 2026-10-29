@@ -10,7 +10,7 @@
 .cmh-editable-table th, .cmh-editable-table td { border: 1px solid var(--cp-border, #ccc); padding: 8px; vertical-align: top; }
 .cmh-editable-table tbody tr:nth-child(even) { background: var(--cp-surface-soft, #f5f5f5); }
 #commentRoot .cmh-editable-table :is(.cmh-table-number, .cmh-table-remove-cell) { width: 1%; padding: 4px; white-space: nowrap; text-align: center; }
-.cmh-editable-table .cmh-table-remove, .cmh-editable-table summary {
+.cmh-editable-table .cmh-table-remove, .cmh-table-column-actions > summary {
   display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box;
   width: 32px; height: 32px; padding: 0; border: 1px solid transparent; border-radius: 7px;
   background: transparent; color: var(--cp-text-muted); cursor: pointer; vertical-align: middle;
@@ -32,14 +32,14 @@
 .cmh-editable-table :is(textarea, select):is(:hover, :focus) {
   border-color: var(--cp-border-strong); background: var(--cp-surface-soft);
 }
-.cmh-editable-table :is(button, textarea, select, summary):focus-visible,
+.cmh-editable-table :is(button, textarea, select):focus-visible, .cmh-table-column-actions > summary:focus-visible,
 .cmh-table-dialog :is(button, input, textarea, select):focus-visible {
   outline: 2px solid var(--cp-link, #0078d4); outline-offset: 2px;
 }
-.cmh-editable-table details { display: inline-block; }
-.cmh-editable-table summary { list-style: none; }
-.cmh-editable-table summary::-webkit-details-marker { display: none; }
-.cmh-editable-table summary:hover { background: var(--cp-surface-soft); }
+.cmh-table-column-actions { display: inline-block; }
+.cmh-table-column-actions > summary { list-style: none; }
+.cmh-table-column-actions > summary::-webkit-details-marker { display: none; }
+.cmh-table-column-actions > summary:hover { background: var(--cp-surface-soft); }
 .cmh-table-column-menu {
   position: fixed; inset: auto; margin: 0; z-index: 210; padding: 4px; border: 1px solid var(--cp-border); border-radius: 8px;
   background: var(--cp-surface); box-shadow: 0 6px 20px #0003; max-height: calc(100dvh - 16px); overflow: auto;
@@ -64,7 +64,7 @@
 .cmh-table-print-value { display: none; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media print {
   .cmh-editable-table .cmh-table-actions, .cmh-editable-table .cmh-table-save-status,
-  .cmh-editable-table .cmh-table-recovery, .cmh-editable-table thead button:not(.cmh-table-title), .cmh-editable-table details,
+  .cmh-editable-table .cmh-table-recovery, .cmh-editable-table thead button:not(.cmh-table-title), .cmh-table-column-actions,
   .cmh-editable-table textarea, .cmh-editable-table select,
   .cmh-editable-table tr > :first-child, .cmh-editable-table tr > :last-child { display: none !important; }
   .cmh-table-print-value { display: block !important; }
