@@ -9582,11 +9582,27 @@ let _etUnmatched=[];
 function _etClone(value){return JSON.parse(JSON.stringify(value));}
 function _etEqual(a,b){return JSON.stringify(a)===JSON.stringify(b);}
 function _etText(value){return String(value).replace(/\r\n?/g,"\n");}
+function _etKeys(value,keys){
+return value&&typeof value=== "object"&&!Array.isArray(value)
+&&Object.keys(value).length===keys.length&&keys.every(key=>Object.prototype.hasOwnProperty.call(value,key));
+}
+function _etNormalizeModel(m){
+const text=value=>typeof value=== "string"?_etText(value):value;
+if(m&&Array.isArray(m.columns))m.columns.forEach(c=>{
+if(!c||typeof c!== "object")return;
+c.label=text(c.label);c.default=text(c.default);
+if(Array.isArray(c.options))c.options=c.options.map(text);
+});
+if(m&&Array.isArray(m.rows))m.rows.forEach(r=>{
+if(r&&Array.isArray(r.cells))r.cells=r.cells.map(text);
+});
+return m;
+}
 function _etValidModel(m){
-if(!m||!Array.isArray(m.columns)||!m.columns.length||!Array.isArray(m.rows))return false;
+if(!_etKeys(m,["columns","rows"])||!Array.isArray(m.columns)||!m.columns.length||!Array.isArray(m.rows))return false;
 const cols=new Set(),rows=new Set();
 for(const c of m.columns){
-if(!c||typeof c.id!== "string"||!_ET_ID.test(c.id)||cols.has(c.id)
+if(!_etKeys(c,["id","label","type","options","default"])||typeof c.id!== "string"||!_ET_ID.test(c.id)||cols.has(c.id)
 ||typeof c.label!== "string"||!c.label.trim()||!["text","choice"].includes(c.type)
 ||!Array.isArray(c.options)||typeof c.default!== "string")return false;
 cols.add(c.id);
@@ -9596,7 +9612,7 @@ if(c.options.length||c.default!== "")return false;
 ||new Set(c.options).size!==c.options.length||(c.default!== ""&&!c.options.includes(c.default)))return false;
 }
 for(const r of m.rows){
-if(!r||typeof r.id!== "string"||!_ET_ID.test(r.id)||rows.has(r.id)
+if(!_etKeys(r,["id","cells"])||typeof r.id!== "string"||!_ET_ID.test(r.id)||rows.has(r.id)
 ||!Array.isArray(r.cells)||r.cells.length!==m.columns.length)return false;
 rows.add(r.id);
 if(r.cells.some((v,i)=>typeof v!== "string"
@@ -9628,6 +9644,7 @@ if([...row.cells].some(el=>el.tagName!== "TD"||nonText(el)))throw new Error("Cel
 return{id:row.getAttribute("data-cmh-row")||"",cells:[...row.cells].map(el=>_etText(el.textContent))};
 }),
 };
+_etNormalizeModel(model);
 return _etValidModel(model)?model:null;
 }
 function tableChanges(){
@@ -9697,9 +9714,10 @@ b.addEventListener("click",fn);
 return b;
 }
 function _etId(t,kind){
-const taken=new Set(t.model[kind].map(v=>v.id));
+const taken=t.identities[kind];
 let id;
 do{id= "new-"+(++t.seq);}while(taken.has(id));
+taken.add(id);
 return id;
 }
 function _etAddRow(t){
@@ -9814,10 +9832,11 @@ el.style.height= "auto";
 el.style.height=Math.min(280,Math.max(40,el.scrollHeight))+"px";
 }
 function _etRender(t){
+if(t.sort&&!t.model.columns.some(c=>c.id===t.sort.id))t.sort=null;
 const doc=document;
 const head=doc.createElement("thead"),hr=doc.createElement("tr");
 const number=doc.createElement("th");number.textContent= "#";number.scope= "col";hr.append(number);
-t.model.columns.forEach(c=>{
+t.model.columns.forEach((c,ci)=>{
 const th=doc.createElement("th");th.scope= "col";th.setAttribute("data-cmh-column",c.id);
 const label=doc.createElement("span");label.textContent=c.label;th.append(label);
 const sort=_etBtn("Sort",()=>{
@@ -9826,12 +9845,12 @@ t.sort=dir?{id:c.id,dir}:null;
 _etRender(t);
 t.table.querySelector('[data-cmh-column="'+_cssEsc(c.id)+'"] button').focus();
 });
-sort.setAttribute("aria-label","Sort by "+c.label);
+sort.setAttribute("aria-label","Sort by "+c.label+", column "+(ci+1));
 th.setAttribute("aria-sort",t.sort&&t.sort.id===c.id?(t.sort.dir=== "asc"?"ascending":"descending"):"none");
 sort.textContent=t.sort&&t.sort.id===c.id?(t.sort.dir=== "asc"?"Sort ascending":"Sort descending"):"Sort";
 const menu=doc.createElement("details");
 const summary=doc.createElement("summary");summary.textContent= "Column";
-summary.setAttribute("aria-label","Actions for "+c.label);
+summary.setAttribute("aria-label","Actions for "+c.label+", column "+(ci+1));
 cmhMarkLayerChrome(summary);
 menu.append(summary,_etBtn("Rename column",()=>{menu.open=false;_etColumnDialog(t,c.id);}),
 _etBtn("Insert column after",()=>{menu.open=false;_etColumnDialog(t,null,c.id);}));
@@ -9987,8 +10006,13 @@ const raw=localStorage.getItem(CMH_TABLES_KEY);
 if(raw){
 try{
 const value=JSON.parse(raw);
-if(!value||value.version!==1||!Array.isArray(value.tables)
-||value.tables.some(v=>!v||typeof v.id!== "string"||!_ET_ID.test(v.id)
+if(!_etKeys(value,["version","tables"])||value.version!==1||!Array.isArray(value.tables))throw new Error("Invalid saved table state");
+value.tables.forEach(v=>{
+if(!v||typeof v!== "object")return;
+if(typeof v.label=== "string")v.label=_etText(v.label);
+_etNormalizeModel(v.from);_etNormalizeModel(v.to);
+});
+if(value.tables.some(v=>!_etKeys(v,["id","label","from","to"])||typeof v.id!== "string"||!_ET_ID.test(v.id)
 ||typeof v.label!== "string"||!v.label.trim()||!_etValidModel(v.from)||!_etValidModel(v.to))
 ||new Set(value.tables.map(v=>v.id)).size!==value.tables.length)throw new Error("Invalid saved table state");
 saved=value.tables;
@@ -10000,7 +10024,7 @@ const counts=new Map();
 candidates.forEach(el=>{const id=el.getAttribute("data-cmh-table");counts.set(id,(counts.get(id)||0)+1);});
 candidates.forEach(table=>{
 const id=table.getAttribute("data-cmh-table");
-const label=table.getAttribute("data-cmh-table-label");
+const label=_etText(table.getAttribute("data-cmh-table-label")||"");
 let baseline;
 try{baseline=_etRead(table);}catch(e){baseline=null;}
 if(!_ET_ID.test(id||"")||!label||!label.trim()||counts.get(id)!==1||!baseline){
@@ -10035,6 +10059,10 @@ if(entry&&!_etEqual(entry.to,baseline)){
 if(_etEqual(entry.from,baseline))t.model=_etClone(entry.to);
 else t.stale=entry;
 }
+t.identities={
+columns:new Set([...baseline.columns,...t.model.columns].map(c=>c.id)),
+rows:new Set([...baseline.rows,...t.model.rows].map(r=>r.id)),
+};
 editableTables.push(t);
 _etRender(t);
 if(t.stale||_etUnreadable!==null){

@@ -131,7 +131,7 @@ test("column rename insertion removal and the last column guard preserve identit
     await header.getByRole("button", { name: "Remove column" }).click();
     await page.locator(".cm-modal").getByRole("button", { name: "Remove" }).click();
     const neighbor = id === "status" ? "Owner" : "Topic";
-    await expect(table(page).getByRole("button", { name: "Sort by " + neighbor, exact: true })).toBeFocused();
+    await expect(table(page).getByRole("button", { name: "Sort by " + neighbor + ", column " + (id === "status" ? 2 : 1), exact: true })).toBeFocused();
   }
   await firstHeader.locator("summary").click();
   await expect(firstHeader.getByRole("button", { name: "Remove column" })).toBeDisabled();
@@ -139,7 +139,7 @@ test("column rename insertion removal and the last column guard preserve identit
 
 test("sorting is a pure view and edited row identity survives additions (CMH-TABLE-05)", async ({ page }) => {
   await open(page);
-  const sort = table(page).getByRole("button", { name: "Sort by Discussion item", exact: true });
+  const sort = table(page).getByRole("button", { name: "Sort by Discussion item, column 1", exact: true });
   await sort.click();
   await sort.click();
   await expect(table(page).locator("tbody tr").first()).toHaveAttribute("data-cmh-row", "second");
@@ -149,6 +149,73 @@ test("sorting is a pure view and edited row identity survives additions (CMH-TAB
   const { payload } = await bundle(page);
   expect(payload.tables[0].to.rows[0]).toMatchObject({ id: "first", cells: ["Decide launch", "Morgan", "Open"] });
   expect(payload.tables[0].to.rows).toHaveLength(3);
+});
+
+test("undoing a sorted column keeps editors and persistence connected (CMH-TABLE-03)", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
+  const staged = await open(page);
+  await addColumn(page, "Temporary");
+  await table(page).getByRole("button", { name: "Sort by Temporary, column 4", exact: true }).click();
+  await action(page, "Undo").click();
+  await expect(table(page).locator("thead th[data-cmh-column]")).toHaveCount(3);
+  await cell(page).fill("Saved after undo");
+  expect((await bundle(page)).payload.tables[0].to.rows[0].cells[0]).toBe("Saved after undo");
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+  await expect(cell(page)).toHaveValue("Saved after undo");
+  expect(errors).toEqual([]);
+});
+
+test("new rows and columns never reuse deleted baseline identities (CMH-TABLE-04)", async ({ page }) => {
+  await open(page, DOC.replace('data-cmh-row="first"', 'data-cmh-row="new-1"')
+    .replace('data-cmh-column="owner"', 'data-cmh-column="new-2"'));
+  await table(page).getByRole("button", { name: "Remove row 1", exact: true }).click();
+  await page.locator(".cm-modal").getByRole("button", { name: "Remove", exact: true }).click();
+  const header = table(page).locator('th[data-cmh-column="new-2"]');
+  await header.locator("summary").click();
+  await header.getByRole("button", { name: "Remove column", exact: true }).click();
+  await action(page, "Add row").click();
+  await addColumn(page, "Replacement");
+  const { text, payload } = await bundle(page);
+  expect.soft(payload.tables[0].to.rows.map(row => row.id)).not.toContain("new-1");
+  expect.soft(payload.tables[0].to.columns.map(column => column.id)).not.toContain("new-2");
+  expect(text).toContain("Removed row new-1");
+  expect(text).toContain('Removed column "Owner"');
+});
+
+test("choice metadata normalizes newlines through export and saved replay (CMH-TABLE-06)", async ({ page }) => {
+  const content = `<h1>Choice normalization</h1>
+    <table data-cmh-table="agenda" data-cmh-table-label="Choices"><thead><tr>
+    <th data-cmh-column="status" data-cmh-column-type="choice"
+      data-cmh-options='["A\\rB"]' data-cmh-default="A&#13;B">Status</th>
+    </tr></thead><tbody></tbody></table>`;
+  const { dir } = await open(page, content);
+  await action(page, "Add row").click();
+  const { payload } = await bundle(page);
+  expect(payload.tables[0].to.columns[0].options).toEqual(["A\nB"]);
+  expect(payload.tables[0].to.columns[0].default).toBe("A\nB");
+  expect(payload.tables[0].to.rows[0].cells[0]).toBe("A\nB");
+  await page.evaluate(() => {
+    const data = JSON.parse(localStorage.getItem("cmh-table-test::tables"));
+    for (const model of [data.tables[0].from, data.tables[0].to]) {
+      model.columns[0].options = ["A\rB"];
+      model.columns[0].default = "A\rB";
+      model.rows.forEach(row => { row.cells[0] = "A\rB"; });
+    }
+    localStorage.setItem("cmh-table-test::tables", JSON.stringify(data));
+  });
+  await page.reload();
+  await ready(page);
+  await expect(cell(page, "new-1", "status")).toBeEnabled();
+  await expect(cell(page, "new-1", "status")).toHaveValue("A\nB");
+  const [download] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
+  const out = path.join(dir, "normalized-choice.html");
+  fs.writeFileSync(out, await readDownload(download), "utf8");
+  await page.goto(fileUrl(out));
+  await ready(page);
+  await expect(cell(page, "new-1", "status")).toHaveValue("A\nB");
+  await expect(page.locator(".cm-card-table")).toHaveCount(0);
 });
 
 test("export bakes live data safely and reopens without pending changes (CMH-TABLE-06)", async ({ page }) => {
@@ -343,6 +410,38 @@ test("malformed saved metadata pauses editing without replaying the draft (CMH-T
   await expect(cell(page)).toHaveValue("Decide launch");
   await page.getByRole("button", { name: "Copy saved draft", exact: true }).click();
   expect(await copiedBundle(page)).toContain("Do not replay invalid state");
+});
+
+test("extra saved schema keys pause editing at every payload level (CMH-TABLE-08)", async ({ page }) => {
+  for (const level of ["root", "entry", "model", "column", "row"]) {
+    await test.step(level, async () => {
+      const key = "table-extra-" + level;
+      await open(page, DOC, key);
+      await cell(page).fill("Protect malformed draft");
+      await page.evaluate(({ key, level }) => {
+        const data = JSON.parse(localStorage.getItem(key + "::tables"));
+        const entry = data.tables[0];
+        const target = { root: data, entry, model: entry.to, column: entry.to.columns[0], row: entry.to.rows[0] }[level];
+        target.unexpected = "Do not silently discard";
+        localStorage.setItem(key + "::tables", JSON.stringify(data));
+      }, { key, level });
+      await page.reload();
+      await ready(page);
+      await expect(cell(page)).toBeDisabled();
+      await expect(cell(page)).toHaveValue("Decide launch");
+      await page.getByRole("button", { name: "Copy saved draft", exact: true }).click();
+      expect(await copiedBundle(page)).toContain("Do not silently discard");
+    });
+  }
+});
+
+test("duplicate column names have distinct accessible header controls (CMH-TABLE-09)", async ({ page }) => {
+  await open(page);
+  await addColumn(page, "Status");
+  await expect(table(page).getByRole("button", { name: "Sort by Status, column 3", exact: true })).toHaveCount(1);
+  await expect(table(page).getByRole("button", { name: "Sort by Status, column 4", exact: true })).toHaveCount(1);
+  await expect(table(page).locator('summary[aria-label="Actions for Status, column 3"]')).toHaveCount(1);
+  await expect(table(page).locator('summary[aria-label="Actions for Status, column 4"]')).toHaveCount(1);
 });
 
 test("global reset refreshes every table storage status (CMH-TABLE-07)", async ({ page }) => {
