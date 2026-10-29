@@ -23,7 +23,7 @@ def main(argv):
                         help="canonical model JSON file, or - for stdin")
     parser.add_argument("--out", metavar="FILE", help="output HTML fragment (default: stdout)")
     args = parser.parse_args(argv[1:])
-    if args.out and _atomic_io.refuse_aliased_output(
+    if _atomic_io.refuse_aliased_output(
             "tables_scaffold", args.out, [_atomic_io.not_stdin(args.input)]):
         return 1
     try:
