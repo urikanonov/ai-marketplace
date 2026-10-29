@@ -270,7 +270,7 @@ function _mdBlock(el) {
   if (/^H[1-6]$/.test(t)) return "#".repeat(+t[1]) + " " + _mdCollapse(_mdInlineText(el));
   if (t === "P") return _mdEscapeLeading(_mdCollapse(_mdInlineText(el)));
   if (t === "UL" || t === "OL") return _mdList(el, "");
-  if (t === "TABLE") return _mdTableRows(el);
+  if (t === "TABLE") return el.querySelector(".cmh-editable-table") ? _mdChildren(el) : _mdTableRows(el);
   if (t === "FIGURE") return _mdFigure(el);
   if (t === "IMG") return "![" + _mdLinkLabel(el.getAttribute("alt") || "") + "](" + _mdUrl(el.getAttribute("src") || "") + ")";
   if (el.classList && el.classList.contains("cmh-diff-host")) return _mdDiff(el);

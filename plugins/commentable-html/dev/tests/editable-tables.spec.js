@@ -389,6 +389,22 @@ test("plain Markdown and print show current values without editor chrome (CMH-TA
   expect(content).not.toMatch(/<(textarea|select|button)\b/);
 });
 
+test("Markdown unwraps layout tables without duplicating editable descendants (CMH-TABLE-10)", async ({ page }) => {
+  await open(page, `<table><thead><tr><th>Layout heading</th><th>Notes</th></tr></thead>
+    <tbody><tr><td><p>Layout before</p>${DOC}<p>Layout after</p></td><td>Other notes</td></tr></tbody></table>`);
+  await cell(page).fill("Edited | wrapped\nnext line");
+  await cell(page, "first", "status").selectOption("Done");
+  const md = await page.evaluate(() => window.__cmhToMarkdown());
+  expect(md).toContain("Edited \\| wrapped<br>next line");
+  expect(md).toContain("Layout heading");
+  expect(md).toContain("Layout before");
+  expect(md).toContain("Layout after");
+  expect(md).toContain("Other notes");
+  expect(md.match(/Review evidence/g)).toHaveLength(1);
+  expect(md.match(/\| Done \|/g)).toHaveLength(2);
+  expect(md).not.toMatch(/Add row|Remove row|Sort by|\(empty\)|Open/);
+});
+
 test("table tools apply a real browser bundle atomically and preserve nearby anchors (CMH-TABLE-11)", async ({ page }) => {
   const { html, dir } = await open(page);
   await addTextComment(page, "#after", "Preserve prose");
@@ -412,6 +428,8 @@ test("layout wrappers and implied bodies preserve the browser to tool handoff (C
   for (const [label, content] of [
     ["layout", `<table><tbody><tr><td>${DOC}</td></tr></tbody></table>`],
     ["implied-body", DOC.replace("<tbody>", "").replace("</tbody>", "")],
+    ["inert-template", `<template>${DOC}</template>${DOC}`],
+    ["inert-caption", DOC.replace("<thead>", '<caption>Live caption<template><table data-cmh-table="agenda"><tr><td data-cmh-note="inert">Hidden</td></tr></table></template></caption><thead>')],
   ]) {
     await test.step(label, async () => {
       const { html, dir } = await open(page, content, "table-handoff-" + label);
@@ -461,6 +479,10 @@ test("column dialog cancellation restores menu focus and isolates Escape (CMH-TA
     await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
     await expect.soft(header.locator("summary")).toBeFocused();
   }
+  await header.locator("summary").click();
+  await header.getByRole("button", { name: "Remove column", exact: true }).click();
+  await page.locator(".cm-modal").getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect.soft(header.locator("summary")).toBeFocused();
   const composer = await openComposerFor(page, "#after");
   await composer.locator("textarea").fill("Keep this composer draft");
   await action(page, "Add column").click();
@@ -503,6 +525,7 @@ test("invalid metadata and diff ownership remain outside the editable-table runt
     ["missing label", html => html.replace(' data-cmh-table-label="Discussion items"', "")],
     ["blank label", html => html.replace('data-cmh-table-label="Discussion items"', 'data-cmh-table-label="   "')],
     ["diff ownership", html => html.replace('<table data-cmh-table=', '<table class="cmh-diff" data-cmh-table=')],
+    ["duplicate header", html => html.replace("</thead>", '</thead><thead><tr><th data-cmh-column="extra">Extra header</th></tr></thead>')],
   ]) {
     await test.step(label, async () => {
       await open(page, transform(DOC));

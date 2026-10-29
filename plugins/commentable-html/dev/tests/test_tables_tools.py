@@ -269,6 +269,51 @@ class TablesToolsTests(unittest.TestCase):
             self.apply.apply_tables(self.path, payload(MODEL, after))
         self.assertEqual(self.path.read_bytes(), source.encode("utf-8"))
 
+    def test_inert_template_copies_do_not_duplicate_live_table_ids(self):
+        inert = ('<template id="copy"><!-- inert intact -->' + self.markup()
+                 + '<template id="nested">' + self.markup() + "</template></template>")
+        self.assertEqual(self.common.scan_tables(inert), [])
+        source = inert + "\r\n" + self.markup() + "<!-- live suffix -->"
+        self.assertEqual(self.check(source), ([], []))
+        tables = self.common.scan_tables(source)
+        self.assertEqual([(table["id"], table["model"]) for table in tables], [("tasks", MODEL)])
+        after = copy.deepcopy(MODEL)
+        after["rows"] = []
+        self.path.write_bytes(source.encode("utf-8"))
+        self.assertEqual(self.apply.apply_tables(self.path, payload(MODEL, after)), 1)
+        result = self.path.read_bytes().decode("utf-8")
+        self.assertTrue(result.startswith(inert + "\r\n"))
+        self.assertTrue(result.endswith("<!-- live suffix -->"))
+        self.assertEqual(self.common.scan_tables(result)[0]["model"], after)
+        with self.assertRaises(ValueError):
+            self.common.scan_tables(source + self.markup())
+
+    def test_caption_template_contents_are_inert_but_template_node_is_active(self):
+        inert = ('<template id="caption-copy"><div data-cmh-note="n">'
+                 '<template><div data-cmh-checklist="c" data-cm-widget="w" class="cmh-diff">'
+                 '<table><tbody><tr><td colspan="2">Inert</td></tr></tbody></table>'
+                 + self.markup() + "</div></template></div></template>")
+        caption = "<caption>Caption<!-- keep -->" + inert + "</caption>"
+        source = self.markup().replace("<thead>", caption + "\n<thead>")
+        self.assertEqual(self.check(source), ([], []))
+        self.assertEqual(self.common.scan_tables(source)[0]["model"], MODEL)
+        after = copy.deepcopy(MODEL)
+        after["rows"] = []
+        self.path.write_bytes(source.encode("utf-8"))
+        self.assertEqual(self.apply.apply_tables(self.path, payload(MODEL, after)), 1)
+        self.assertIn(caption.encode("utf-8"), self.path.read_bytes())
+        self.assertEqual(self.common.scan_tables(
+            self.path.read_bytes().decode("utf-8"))[0]["model"], after)
+        for marker in ['data-cmh-note="active"', 'data-cmh-checklist="active"',
+                       'data-cm-widget="active"', 'class="cmh-diff"', 'rowspan="2"']:
+            active = source.replace('<template id="caption-copy">',
+                                    '<template id="caption-copy" %s>' % marker)
+            with self.subTest(marker=marker), self.assertRaises(ValueError):
+                self.common.scan_tables(active)
+        cell_template = self.markup().replace("<td>", "<td><template>Inert text</template>", 1)
+        with self.assertRaises(ValueError):
+            self.common.scan_tables(cell_template)
+
     def test_choice_empty_cells_and_stable_label_renames(self):
         before = copy.deepcopy(MODEL)
         before["rows"][0]["cells"][1] = ""

@@ -156,7 +156,7 @@ class _Parser(_browser_attrs.BrowserTagNames):
                 "in_owner": any(_owner(n["attrs"]) for n in self.stack),
                 "in_editable_table": any("data-cmh-table" in n["attrs"] for n in self.stack)}
         self.stack[-1]["children"].append(node)
-        if "data-cmh-table" in attrs:
+        if "data-cmh-table" in attrs and not any(n["tag"] == "template" for n in self.stack):
             self.tables.append(node)
         if tag not in VOID:
             self.stack.append(node)
@@ -236,7 +236,8 @@ def _model(node):
         if (child["tag"] == "table" or _owner(child["attrs"]) or "data-cmh-table" in child["attrs"]
                 or "rowspan" in child["attrs"] or "colspan" in child["attrs"]):
             raise ValueError("table cannot contain spans, nested tables or note/checklist/widget ownership")
-        pending.extend(child["children"])
+        if child["tag"] != "template":
+            pending.extend(child["children"])
     heads = [child for child in node["children"] if child["tag"] == "thead"]
     bodies = [child for child in node["children"] if child["tag"] == "tbody"]
     if (node["malformed"] or node["end"] is None or len(heads) != 1 or len(bodies) != 1

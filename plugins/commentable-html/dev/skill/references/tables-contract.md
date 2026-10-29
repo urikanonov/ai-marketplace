@@ -42,8 +42,13 @@ the runtime adds its own `cm-skip` editing controls.
 - Do not overlap editable tables with notes, checklists, widgets or diff ownership,
   either on the table itself, inside it or around it.
 - An ordinary layout-table ancestor is allowed; an editable-table ancestor is not.
-  No descendant native table is allowed anywhere in an editable table, including
+  No active descendant native table is allowed anywhere in an editable table, including
   inside its caption.
+- Inert `template` contents are excluded from table discovery and descendant
+  ownership/structure checks, matching browser DOM traversal. Copies inside nested
+  templates do not duplicate live table ids. A template in a caption is preserved
+  verbatim by apply. The template element itself remains an active child: ownership
+  markers on it are still rejected, as is a template inside a plain-text cell.
 - `data-cmh-column-type` defaults to `text`. Text columns have no options and an
   empty default; choice-only attributes on a text header are ignored.
 - A `choice` column requires a JSON array of unique nonblank string options.

@@ -49,7 +49,8 @@ function _etValidModel(m) {
   return true;
 }
 function _etRead(table) {
-  if (table.tagName !== "TABLE" || !table.tHead || table.tHead.rows.length !== 1
+  if (table.tagName !== "TABLE" || [...table.children].filter(el => el.tagName === "THEAD").length !== 1
+    || !table.tHead || table.tHead.rows.length !== 1
     || table.tBodies.length !== 1 || table.tFoot || table.querySelector("table, [colspan], [rowspan]")
     || table.matches("[data-cmh-note], [data-cmh-checklist], [data-cm-widget], .cmh-diff")
     || [...table.children].some(el => !["CAPTION", "THEAD", "TBODY"].includes(el.tagName))
@@ -284,7 +285,7 @@ function _etRender(t) {
     cmhMarkLayerChrome(summary);
     menu.append(summary, _etBtn("Rename column", () => { menu.open = false; summary.focus(); _etColumnDialog(t, c.id); }),
       _etBtn("Insert column after", () => { menu.open = false; summary.focus(); _etColumnDialog(t, null, c.id); }));
-    const remove = _etBtn("Remove column", () => { menu.open = false; _etRemoveColumn(t, c.id); });
+    const remove = _etBtn("Remove column", () => { menu.open = false; summary.focus(); _etRemoveColumn(t, c.id); });
     remove.disabled = t.model.columns.length === 1;
     if (remove.disabled) remove.title = "Keep at least one data column.";
     menu.append(remove);

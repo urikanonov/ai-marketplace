@@ -9689,7 +9689,8 @@ if(r.cells.some((v,i)=>typeof v!== "string"
 return true;
 }
 function _etRead(table){
-if(table.tagName!== "TABLE"||!table.tHead||table.tHead.rows.length!==1
+if(table.tagName!== "TABLE"||[...table.children].filter(el=>el.tagName=== "THEAD").length!==1
+||!table.tHead||table.tHead.rows.length!==1
 ||table.tBodies.length!==1||table.tFoot||table.querySelector("table, [colspan], [rowspan]")
 ||table.matches("[data-cmh-note], [data-cmh-checklist], [data-cm-widget], .cmh-diff")
 ||[...table.children].some(el=>!["CAPTION","THEAD","TBODY"].includes(el.tagName))
@@ -9923,7 +9924,7 @@ summary.setAttribute("aria-label","Actions for "+c.label+", column "+(ci+1));
 cmhMarkLayerChrome(summary);
 menu.append(summary,_etBtn("Rename column",()=>{menu.open=false;summary.focus();_etColumnDialog(t,c.id);}),
 _etBtn("Insert column after",()=>{menu.open=false;summary.focus();_etColumnDialog(t,null,c.id);}));
-const remove=_etBtn("Remove column",()=>{menu.open=false;_etRemoveColumn(t,c.id);});
+const remove=_etBtn("Remove column",()=>{menu.open=false;summary.focus();_etRemoveColumn(t,c.id);});
 remove.disabled=t.model.columns.length===1;
 if(remove.disabled)remove.title= "Keep at least one data column.";
 menu.append(remove);
@@ -15467,7 +15468,7 @@ if(el.hasAttribute&&el.hasAttribute("data-cm-widget"))return _mdWidget(el);
 if(/^H[1-6]$/.test(t))return"#".repeat(+t[1])+" "+_mdCollapse(_mdInlineText(el));
 if(t=== "P")return _mdEscapeLeading(_mdCollapse(_mdInlineText(el)));
 if(t=== "UL"||t=== "OL")return _mdList(el,"");
-if(t=== "TABLE")return _mdTableRows(el);
+if(t=== "TABLE")return el.querySelector(".cmh-editable-table")?_mdChildren(el):_mdTableRows(el);
 if(t=== "FIGURE")return _mdFigure(el);
 if(t=== "IMG")return"!["+_mdLinkLabel(el.getAttribute("alt")||"")+"]("+_mdUrl(el.getAttribute("src")||"")+")";
 if(el.classList&&el.classList.contains("cmh-diff-host"))return _mdDiff(el);
