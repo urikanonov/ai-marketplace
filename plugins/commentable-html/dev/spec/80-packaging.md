@@ -2,6 +2,12 @@
 
 The plugin ships a compact `skills/commentable-html/` (only `SKILL.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, and a single `skill-resources.zip`) so the CLI installer writes very few files. This matters on Windows, where Defender briefly locks each file as it is written and the installer aborts the whole install on the first transient lock (the `Access is denied. (os error 5)` failure) - a large file count almost never gets through. The bulky runtime (`tools/`, `references/`, `dist/`, `vendor/`) is assembled by `build.py` into `skill-resources.zip`, and a SessionStart hook unpacks it on first run per version, retrying the same transient lock the installer does not. The large tutorial (`docs/`) and worked examples (`examples/`) are NOT shipped; they live at the plugin top level and online. The editable + built skill STAGE tree lives at `dev/skill/`.
 
+The seven-document measurements in CMH-SIZE-04 record the original decision's
+baseline. The current pinned corpus also includes `report-editable-table.html`:
+class attributes occupy about 0.31 percent of it, and deleting them saves less
+than 1 KB gzipped. All eight documents run through the same unchanged class-budget
+and load-bearing-hazard tripwires.
+
 | Feature id | Behavior | Covering tests |
 | --- | --- | --- |
 | CMH-PKG-01 | The extractor unpacks every member of `skill-resources.zip` into the skill dir and writes a version-stamped `.skill-resources-<version>.ok` marker only after all members succeed; the marker's own final rename retries a transient lock so a fully-successful extraction is never wasted, and a zip carrying no installable runtime directory (truncated/empty/wrong) raises and writes no marker so the next session self-heals. | `tests/test_extract_resources.py` - `test_first_extraction_unpacks_all_members_and_writes_marker`, `test_write_marker_retries_transient_lock_on_final_rename`, `test_zip_without_installable_directories_writes_no_marker` |

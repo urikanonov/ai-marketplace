@@ -10890,7 +10890,7 @@ table.append(head,body);
 }
 function _applyTableStateToHtml(html){
 if(!tableChanges().length)return html;
-const doc=new DOMParser().parseFromString(html,"text/html");
+const doc=new DOMParser().parseFromString(String(html),"text/html");
 editableTables.forEach(t=>{
 const tables=[...doc.querySelectorAll("table[data-cmh-table]")].filter(el=>el.getAttribute("data-cmh-table")===t.id);
 if(tables.length!==1)throw new Error("Cannot resolve editable table "+t.id);
