@@ -9539,6 +9539,7 @@ let _etUnreadable=null;
 let _etUnmatched=[];
 function _etClone(value){return JSON.parse(JSON.stringify(value));}
 function _etEqual(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+function _etPendingEdit(t){return!!(t.editBase&&!_etEqual(t.editBase,t.model));}
 function _etText(value){return String(value).replace(/\r\n?/g,"\n");}
 function _etKeys(value,keys){
 return value&&typeof value=== "object"&&!Array.isArray(value)
@@ -9625,7 +9626,7 @@ function _etChanged(t,deferred){
 const ok=_etSave();
 t.status.textContent=ok?"Saved in this browser. Export HTML to carry these edits."
 :"Not saved in this browser. Copy all or export HTML before closing.";
-t.undo.disabled=!t.history.length;
+t.undo.disabled=!(t.history.length||_etPendingEdit(t));
 t.redo.disabled=!t.future.length;
 const has=tableChanges().length>0;
 if(has!==_etHadChanges){
@@ -9715,6 +9716,7 @@ function _etColumnDialog(t,renameId,afterId){
 const existing=renameId&&t.model.columns.find(c=>c.id===renameId);
 const dialog=document.createElement("dialog");
 dialog.className= "cmh-table-dialog cm-skip";
+dialog.addEventListener("keydown",e=>{if(e.key=== "Escape")e.stopPropagation();});
 dialog.setAttribute("aria-label",existing?"Rename column":"Add column");
 const form=document.createElement("form");
 const heading=document.createElement("h2");
@@ -9810,8 +9812,8 @@ const menu=doc.createElement("details");
 const summary=doc.createElement("summary");summary.textContent= "Column";
 summary.setAttribute("aria-label","Actions for "+c.label+", column "+(ci+1));
 cmhMarkLayerChrome(summary);
-menu.append(summary,_etBtn("Rename column",()=>{menu.open=false;_etColumnDialog(t,c.id);}),
-_etBtn("Insert column after",()=>{menu.open=false;_etColumnDialog(t,null,c.id);}));
+menu.append(summary,_etBtn("Rename column",()=>{menu.open=false;summary.focus();_etColumnDialog(t,c.id);}),
+_etBtn("Insert column after",()=>{menu.open=false;summary.focus();_etColumnDialog(t,null,c.id);}));
 const remove=_etBtn("Remove column",()=>{menu.open=false;_etRemoveColumn(t,c.id);});
 remove.disabled=t.model.columns.length===1;
 if(remove.disabled)remove.title= "Keep at least one data column.";
@@ -9834,9 +9836,12 @@ t.model.columns.forEach((c,ci)=>{
 const td=doc.createElement("td");
 const input=doc.createElement(c.type=== "choice"?"select":"textarea");
 if(c.type=== "choice"){
+const labels=new Set(c.options.map(value=>value.replace(/\s+/g," ").trim()));
+let emptyLabel= "(empty)";
+while(labels.has(emptyLabel))emptyLabel+= " (no value)";
 ["",...c.options].forEach(value=>{
 const option=doc.createElement("option");option.value=value;
-option.textContent=value=== ""?"(empty)":value;input.append(option);
+option.textContent=value=== ""?emptyLabel:value;input.append(option);
 });
 }else input.rows=1;
 input.value=row.cells[ci];
@@ -9848,6 +9853,7 @@ input.addEventListener("focus",()=>{if(!t.editBase)t.editBase=_etClone(t.model);
 const onInput=()=>{
 if(!t.editBase)t.editBase=_etClone(t.model);
 row.cells[ci]=_etText(input.value);
+if(_etPendingEdit(t))t.future.length=0;
 print.textContent=row.cells[ci];
 if(input.tagName=== "TEXTAREA")_etGrow(input);
 _etChanged(t,true);
@@ -9894,7 +9900,7 @@ return tableChanges().map(ch=>{
 const t=editableTables.find(t=>t.id===ch.id),lines=_etDiff(ch);
 let pos=1e15;
 try{pos=offsetWithin(t.shell,0);}catch(e){}
-return{pos,html:'<article class="cm-card cm-card-table"><div class="section">table: <strong>'
+return{pos,html:'<article class="cm-card cm-card-table" data-cmh-table-name="'+escapeHtml(ch.id)+'"><div class="section">table: <strong>'
 +escapeHtml(ch.label)+'</strong></div><div class="note">'+lines.length+' cumulative change(s)</div>'
 +'<details><summary>View changes</summary><ul>'+lines.map(line=>"<li>"+escapeHtml(line)+"</li>").join("")+"</ul></details>"
 +'<div class="cmh-note-search" hidden>'+escapeHtml(ch.label+" "+lines.join(" "))+'</div>'
@@ -10058,6 +10064,7 @@ _etUnmatched=[];_etUnreadable=null;recovery.remove();_etSave();
 }));
 root.prepend(recovery);
 }
+if(_etUnreadable===null&&saved.length)_etSave();
 _etHadChanges=tableChanges().length>0;
 }
 function _cmhMetaContent(name){
@@ -12585,7 +12592,7 @@ function _focusListEl(el){
 if(el){try{el.focus({preventScroll:true});}catch(e){try{el.focus();}catch(e2){}}}
 }
 const _LIST_FOCUSABLE= "button, a[href], input, select, textarea, [tabindex]";
-const _LIST_ID_ATTRS=["data-reply-cid","data-cid","data-cmh-checklist-name","data-cmh-note-name","data-cm-widget-name"];
+const _LIST_ID_ATTRS=["data-reply-cid","data-cid","data-cmh-checklist-name","data-cmh-note-name","data-cmh-table-name","data-cm-widget-name"];
 function _captureListFocus(){
 const a=document.activeElement;
 if(!a||a===listEl||!listEl.contains(a))return null;
@@ -12803,8 +12810,10 @@ if(e.target.dataset.act=== "cl-reset"){if(typeof resetChecklist=== "function")re
 else if(typeof jumpToChecklist=== "function")jumpToChecklist(cid);
 return;
 }
-if(e.target.dataset.act=== "table-jump"||e.target.dataset.act=== "table-reset"){
-const id=e.target.getAttribute("data-cmh-table-name");
+const tableCard=e.target.closest(".cm-card-table");
+if(tableCard){
+if(e.target.closest("details"))return;
+const id=tableCard.getAttribute("data-cmh-table-name");
 if(e.target.dataset.act=== "table-reset")resetTable(id);
 else jumpToTable(id);
 return;

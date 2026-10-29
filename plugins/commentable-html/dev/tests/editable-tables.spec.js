@@ -4,7 +4,7 @@ import path from "path";
 import { spawnSync } from "child_process";
 import {
   fileUrl, ready, installClipboardCapture, stageContent, copiedBundle, readDownload,
-  clickSidebarExport, clickClearAll, addTextComment, openSearch, routeExampleLibsLocal, SKILL, PYTHON,
+  clickSidebarExport, clickClearAll, addTextComment, openComposerFor, openSearch, routeExampleLibsLocal, SKILL, PYTHON,
 } from "./helpers.js";
 
 const DOC = `<h1>Editable table</h1><p id="before">Leading reviewable prose.</p>
@@ -77,6 +77,19 @@ test("rows and columns support choice values, empty state and cancelling additio
   expect(payload.tables[0].to.rows[0].cells[3]).toBe("High");
 });
 
+test("the blank choice stays distinguishable from authored option labels (CMH-TABLE-02)", async ({ page }) => {
+  await open(page, DOC.replace('["Open","Done"]', '["Open","(empty)","(empty) (no value)"]')
+    .replace("<td>Done</td>", "<td>Open</td>"));
+  const select = cell(page, "first", "status");
+  await expect(select.getByRole("option", { name: "(empty)", exact: true })).toHaveCount(1);
+  const blankLabel = await select.locator('option[value=""]').textContent();
+  expect(["Open", "(empty)", "(empty) (no value)"]).not.toContain(blankLabel);
+  await select.selectOption({ label: "(empty)" });
+  expect((await bundle(page)).payload.tables[0].to.rows[0].cells[2]).toBe("(empty)");
+  await select.selectOption("");
+  expect((await bundle(page)).payload.tables[0].to.rows[0].cells[2]).toBe("");
+});
+
 test("deletion confirms safely and undo redo restore structure and data (CMH-TABLE-03)", async ({ page }) => {
   await open(page);
   await table(page).getByRole("button", { name: "Remove row 1", exact: true }).click();
@@ -103,6 +116,23 @@ test("deletion confirms safely and undo redo restore structure and data (CMH-TAB
   await cell(page, "first", "status").selectOption("Open");
   await action(page, "Undo").click();
   await expect(cell(page, "first", "status")).toHaveValue("Done");
+});
+
+test("focused edits enable Undo immediately and invalidate branching Redo (CMH-TABLE-03)", async ({ page }) => {
+  await open(page);
+  await cell(page).fill("First edit");
+  await expect(cell(page)).toBeFocused();
+  await expect(action(page, "Undo")).toBeEnabled();
+  await action(page, "Undo").click();
+  await expect(cell(page)).toHaveValue("Decide launch");
+  await expect(action(page, "Redo")).toBeEnabled();
+  await cell(page).fill("Branch edit");
+  await expect(action(page, "Undo")).toBeEnabled();
+  await expect(action(page, "Redo")).toBeDisabled();
+  await action(page, "Undo").click();
+  await expect(cell(page)).toHaveValue("Decide launch");
+  await action(page, "Redo").click();
+  await expect(cell(page)).toHaveValue("Branch edit");
 });
 
 test("column rename insertion removal and the last column guard preserve identities (CMH-TABLE-04)", async ({ page }) => {
@@ -249,6 +279,25 @@ test("clear and search include table-only changes without affecting normal comme
   await expect(page.locator("#sidebarCount")).toHaveText("0");
 });
 
+test("table cards retain identity focus across rebuilds and jump from their body (CMH-TABLE-07)", async ({ page }) => {
+  const leading = DOC.match(/<table[\s\S]*?<\/table>/)[0].replace('data-cmh-table="agenda"', 'data-cmh-table="leading"');
+  await open(page, leading + DOC);
+  await cell(page).fill("Agenda edit");
+  const jump = page.locator('.cm-card-table [data-act="table-jump"][data-cmh-table-name="agenda"]');
+  await expect(jump).toBeVisible();
+  await jump.focus();
+  await page.evaluate(() => {
+    const field = document.querySelector('[data-cmh-table="leading"] textarea');
+    field.value = "Background leading edit";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator(".cm-card-table")).toHaveCount(2);
+  await expect(jump).toBeFocused();
+  await page.locator("#before").click();
+  await page.locator('.cm-card-table[data-cmh-table-name="agenda"] .section').click();
+  await expect(cell(page)).toBeFocused();
+});
+
 test("stale drafts are recoverable and malformed tables stay unmodified (CMH-TABLE-08)", async ({ page }) => {
   await open(page);
   await cell(page).fill("Recover this draft");
@@ -359,6 +408,27 @@ test("table tools apply a real browser bundle atomically and preserve nearby anc
   await expect(page.locator(".cm-card[data-cid]")).toContainText("Preserve prose");
 });
 
+test("layout wrappers and implied bodies preserve the browser to tool handoff (CMH-TABLE-11)", async ({ page }) => {
+  for (const [label, content] of [
+    ["layout", `<table><tbody><tr><td>${DOC}</td></tr></tbody></table>`],
+    ["implied-body", DOC.replace("<tbody>", "").replace("</tbody>", "")],
+  ]) {
+    await test.step(label, async () => {
+      const { html, dir } = await open(page, content, "table-handoff-" + label);
+      await cell(page).fill("Cement " + label);
+      const { text } = await bundle(page);
+      const input = path.join(dir, "table-bundle.txt");
+      fs.writeFileSync(input, text, "utf8");
+      const result = spawnSync(PYTHON, [path.join(SKILL, "tools", "tables", "tables_apply.py"), html, "--from-bundle", input], { encoding: "utf8" });
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      await page.reload();
+      await ready(page);
+      await expect(cell(page)).toHaveValue("Cement " + label);
+      await expect(page.locator(".cm-card-table")).toHaveCount(0);
+    });
+  }
+});
+
 test("the shipped playground supports the complete editable-table review loop (CMH-TABLE-12)", async ({ page }) => {
   await installClipboardCapture(page);
   await routeExampleLibsLocal(page);
@@ -380,6 +450,52 @@ test("adding a column focuses its first editor (CMH-TABLE-09)", async ({ page })
   await addColumn(page, "Next action");
   const id = await table(page).locator("thead th[data-cmh-column]").last().getAttribute("data-cmh-column");
   await expect(cell(page, "first", id)).toBeFocused();
+});
+
+test("column dialog cancellation restores menu focus and isolates Escape (CMH-TABLE-09)", async ({ page }) => {
+  await open(page);
+  const header = table(page).locator('th[data-cmh-column="question"]');
+  for (const name of ["Rename column", "Insert column after"]) {
+    await header.locator("summary").click();
+    await header.getByRole("button", { name, exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect.soft(header.locator("summary")).toBeFocused();
+  }
+  const composer = await openComposerFor(page, "#after");
+  await composer.locator("textarea").fill("Keep this composer draft");
+  await action(page, "Add column").click();
+  await expect(composer).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(composer).toBeVisible();
+  await expect(composer.locator("textarea")).toHaveValue("Keep this composer draft");
+});
+
+test("cemented drafts are pruned while unmatched recovery stays intact (CMH-TABLE-08)", async ({ page }) => {
+  const { html, dir } = await open(page);
+  await cell(page).fill("Cemented value");
+  const { text } = await bundle(page);
+  await page.evaluate(() => {
+    const data = JSON.parse(localStorage.getItem("cmh-table-test::tables"));
+    data.tables.push({ ...data.tables[0], id: "missing" });
+    localStorage.setItem("cmh-table-test::tables", JSON.stringify(data));
+  });
+  const input = path.join(dir, "table-bundle.txt");
+  fs.writeFileSync(input, text, "utf8");
+  const result = spawnSync(PYTHON, [path.join(SKILL, "tools", "tables", "tables_apply.py"), html, "--from-bundle", input], { encoding: "utf8" });
+  expect(result.status, result.stdout + result.stderr).toBe(0);
+  await page.reload();
+  await ready(page);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("cmh-table-test::tables")).tables.map(entry => entry.id))).toEqual(["missing"]);
+  const content = fs.readFileSync(html, "utf8");
+  expect(content).toContain("<td>Cemented value</td>");
+  fs.writeFileSync(html, content.replace("<td>Cemented value</td>", "<td>Author revision</td>"), "utf8");
+  await page.reload();
+  await ready(page);
+  await expect(cell(page)).toHaveValue("Author revision");
+  await expect(cell(page)).toBeEnabled();
+  await expect(page.locator(".cmh-editable-table .cmh-table-recovery")).toHaveCount(0);
+  await expect(page.locator(".cmh-table-recovery")).toHaveCount(1);
 });
 
 test("invalid metadata and diff ownership remain outside the editable-table runtime (CMH-TABLE-08)", async ({ page }) => {

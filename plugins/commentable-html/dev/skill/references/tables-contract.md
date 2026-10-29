@@ -30,12 +30,20 @@ the runtime adds its own `cm-skip` editing controls.
   is allowed and preserved by apply; other direct children, including `colgroup`
   and `tfoot`, are rejected. Use explicit closing tags. At least one data column
   is required; zero body rows are valid.
+- A contiguous group of direct body `tr` siblings after `thead` may omit its
+  `tbody` wrapper, matching the browser's implied body. Apply emits an explicit
+  `tbody` when that table changes, preserving bytes outside the replaced
+  header/body sections. Do not mix direct rows with explicit body sections or
+  split them with another section; a zero-row table still needs an explicit `tbody`.
 - Every row has exactly one cell per column. Header labels and cells contain text
   only, including entities and newlines; no comments, rich content, nested tables, spans or
   `tfoot`. Header labels and the table label must not be blank. Duplicate labels
   are allowed.
 - Do not overlap editable tables with notes, checklists, widgets or diff ownership,
   either on the table itself, inside it or around it.
+- An ordinary layout-table ancestor is allowed; an editable-table ancestor is not.
+  No descendant native table is allowed anywhere in an editable table, including
+  inside its caption.
 - `data-cmh-column-type` defaults to `text`. Text columns have no options and an
   empty default; choice-only attributes on a text header are ignored.
 - A `choice` column requires a JSON array of unique nonblank string options.

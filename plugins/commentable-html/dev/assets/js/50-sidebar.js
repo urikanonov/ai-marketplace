@@ -895,9 +895,9 @@ function _focusListEl(el) {
 // (synchronously from the click, a frame later through the board's mutation observer, or twice over
 // when two renders are queued) rather than depending on each handler to remember.
 const _LIST_FOCUSABLE = "button, a[href], input, select, textarea, [tabindex]";
-// The identity a rebuilt card is found by, most specific first: a reply entry, then the four card
-// kinds (comment, checklist, note, board).
-const _LIST_ID_ATTRS = ["data-reply-cid", "data-cid", "data-cmh-checklist-name", "data-cmh-note-name", "data-cm-widget-name"];
+// The identity a rebuilt card is found by, most specific first: a reply entry, then the five card
+// kinds (comment, checklist, note, table, board).
+const _LIST_ID_ATTRS = ["data-reply-cid", "data-cid", "data-cmh-checklist-name", "data-cmh-note-name", "data-cmh-table-name", "data-cm-widget-name"];
 function _captureListFocus() {
   const a = document.activeElement;
   // Only focus INSIDE the list is this function's business: a render triggered from a note the
@@ -1169,8 +1169,10 @@ listEl.addEventListener("click", (e) => {
     else if (typeof jumpToChecklist === "function") jumpToChecklist(cid);
     return;
   }
-  if (e.target.dataset.act === "table-jump" || e.target.dataset.act === "table-reset") {
-    const id = e.target.getAttribute("data-cmh-table-name");
+  const tableCard = e.target.closest(".cm-card-table");
+  if (tableCard) {
+    if (e.target.closest("details")) return;
+    const id = tableCard.getAttribute("data-cmh-table-name");
     if (e.target.dataset.act === "table-reset") resetTable(id);
     else jumpToTable(id);
     return;

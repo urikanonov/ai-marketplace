@@ -201,6 +201,74 @@ class TablesToolsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.common.scan_tables(html)
 
+    def test_ordinary_layout_table_ancestor_allowed_but_editable_ownership_rejected(self):
+        prefix = '<table class="layout"><tbody><tr><td><!-- layout intact -->'
+        suffix = '</td></tr></tbody></table><p>After &amp; unchanged</p>'
+        source = prefix + self.markup() + suffix
+        self.assertEqual(self.check(source), ([], []))
+        after = copy.deepcopy(MODEL)
+        after["rows"] = []
+        self.path.write_bytes(source.encode("utf-8"))
+        self.assertEqual(self.apply.apply_tables(self.path, payload(MODEL, after)), 1)
+        result = self.path.read_text(encoding="utf-8")
+        self.assertTrue(result.startswith(prefix))
+        self.assertTrue(result.endswith(suffix))
+        self.assertEqual(self.common.scan_tables(result)[0]["model"], after)
+        for owner in ['data-cmh-table="outer"', 'data-cmh-note="n"',
+                      'data-cmh-checklist="c"', 'data-cm-widget="w"', 'class="cmh-diff"']:
+            with self.subTest(owner=owner):
+                with self.assertRaises(ValueError):
+                    self.common.scan_tables("<div %s>%s</div>" % (owner, self.markup()))
+
+    def test_implied_tbody_rows_apply_canonical_body_and_preserve_other_bytes(self):
+        source = self.markup().replace("<tbody>", "").replace("</tbody>", "")
+        source = source.replace(
+            "<thead>", '<caption>Keep &amp; caption<!-- exact --></caption>\n<thead>')
+        prefix, suffix = '<p>Before &amp; intact</p>\r\n', '\r\n<!-- after intact -->'
+        original = prefix + source + suffix
+        self.assertEqual(self.check(original), ([], []))
+        self.assertEqual(self.common.scan_tables(original)[0]["model"], MODEL)
+        after = copy.deepcopy(MODEL)
+        after["rows"].append({"id": "r2", "cells": ["  New & <value>  ", ""]})
+        self.path.write_bytes(original.encode("utf-8"))
+        self.assertEqual(self.apply.apply_tables(self.path, payload(MODEL, after)), 1)
+        result = self.path.read_bytes().decode("utf-8")
+        self.assertTrue(result.startswith(prefix))
+        self.assertTrue(result.endswith(suffix))
+        self.assertIn('<caption>Keep &amp; caption<!-- exact --></caption>', result)
+        self.assertIn("<tbody>", result)
+        self.assertEqual(self.common.scan_tables(result)[0]["model"], after)
+        self.assertEqual(self.apply.apply_tables(self.path, payload(MODEL, after)), 0)
+        row = '<tr data-cmh-row="extra"><td>Extra</td><td>Open</td></tr>'
+        two_rows = source.replace("</tr>\n</table>", "</tr>" + row + "\n</table>")
+        expected = copy.deepcopy(MODEL)
+        expected["rows"].append({"id": "extra", "cells": ["Extra", "Open"]})
+        self.assertEqual(self.common.scan_tables(two_rows)[0]["model"], expected)
+        malformed = [
+            source.replace("</thead>", "</thead><tbody></tbody>"),
+            source.replace("</thead>", "</thead>" + row + "<caption>Split</caption>"),
+            source.replace("</thead>", "</thead>" + row.replace("<td>Extra</td>", "")),
+            source.replace("</tr>\n</table>", "\n</table>"),
+            source.replace("</thead>", "</thead><tbody></tbody><tbody></tbody>"),
+        ]
+        for html in malformed:
+            with self.subTest(html=html), self.assertRaises(ValueError):
+                self.common.scan_tables(html)
+
+    def test_caption_rejects_all_descendant_native_tables(self):
+        nested = "<table><tbody><tr><td>Nested</td></tr></tbody></table>"
+        source = self.markup().replace("<thead>", "<caption>%s</caption><thead>" % nested)
+        errors, warnings = self.check(source)
+        self.assertTrue(errors or warnings)
+        with self.assertRaises(ValueError):
+            self.common.scan_tables(source)
+        self.path.write_bytes(source.encode("utf-8"))
+        after = copy.deepcopy(MODEL)
+        after["rows"] = []
+        with self.assertRaises(ValueError):
+            self.apply.apply_tables(self.path, payload(MODEL, after))
+        self.assertEqual(self.path.read_bytes(), source.encode("utf-8"))
+
     def test_choice_empty_cells_and_stable_label_renames(self):
         before = copy.deepcopy(MODEL)
         before["rows"][0]["cells"][1] = ""

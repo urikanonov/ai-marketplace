@@ -154,7 +154,7 @@ class _Parser(_browser_attrs.BrowserTagNames):
                 "start": self._index(), "inner": self._index() + len(self.get_starttag_text()),
                 "end": None, "close": None, "malformed": False,
                 "in_owner": any(_owner(n["attrs"]) for n in self.stack),
-                "in_table": any(n["tag"] == "table" for n in self.stack)}
+                "in_editable_table": any("data-cmh-table" in n["attrs"] for n in self.stack)}
         self.stack[-1]["children"].append(node)
         if "data-cmh-table" in attrs:
             self.tables.append(node)
@@ -208,16 +208,32 @@ def _plain(node):
     return text("".join(node["text"]))
 
 
+def _imply_tbody(node):
+    children = node["children"]
+    positions = [i for i, child in enumerate(children) if child["tag"] == "tr"]
+    if not positions:
+        return node
+    first, last = positions[0], positions[-1]
+    if (positions != list(range(first, last + 1))
+            or any(child["tag"] == "tbody" for child in children)
+            or not any(child["tag"] == "thead" for child in children[:first])):
+        raise ValueError("table implied tbody must be one contiguous body after thead")
+    rows = children[first:last + 1]
+    body = {"tag": "tbody", "attrs": {}, "children": rows, "text": [],
+            "malformed": False, "start": rows[0]["start"], "end": rows[-1]["end"]}
+    return dict(node, children=children[:first] + [body] + children[last + 1:])
+
+
 def _model(node):
     attrs = node["attrs"]
     identifier(attrs.get("data-cmh-table"))
     label(attrs.get("data-cmh-table-label"))
-    if node["tag"] != "table" or node["in_table"] or node["in_owner"] or _owner(attrs):
+    if node["tag"] != "table" or node["in_editable_table"] or node["in_owner"] or _owner(attrs):
         raise ValueError("editable table must be a standalone native table, without overlapping ownership")
     pending = list(node["children"])
     while pending:
         child = pending.pop()
-        if (_owner(child["attrs"]) or "data-cmh-table" in child["attrs"]
+        if (child["tag"] == "table" or _owner(child["attrs"]) or "data-cmh-table" in child["attrs"]
                 or "rowspan" in child["attrs"] or "colspan" in child["attrs"]):
             raise ValueError("table cannot contain spans, nested tables or note/checklist/widget ownership")
         pending.extend(child["children"])
@@ -259,6 +275,7 @@ def scan_tables(source):
     parser.close()
     result, ids = [], set()
     for node in parser.tables:
+        node = _imply_tbody(node)
         tid = node["attrs"].get("data-cmh-table")
         model = _model(node)
         if tid in ids:
