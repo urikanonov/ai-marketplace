@@ -116,14 +116,22 @@ Notes are editable free-text fields authors embed for context, verdicts, or revi
 
 Open [the editable-table playground](../examples/report-editable-table.html). Unlike ordinary
 commentable table cells, these cells are editable fields: type discussion text, assign an owner,
-or choose a status. Use **Add row** and **Add column**; the column menu renames, inserts after, or
-removes a column. New columns can be text or single-choice, with one choice per line and an optional
+or choose a status. Hover or focus a cell to reveal its editable surface. Use **Add row** and
+**Add column**; each vertical three-dot menu renames, inserts before/after, or removes its column.
+The compact trash button removes its row. New columns can be text or single-choice, with one choice per line and an optional
 default. Existing column types remain fixed. Empty values and duplicate display labels are valid.
 
 Populated deletion asks first with **Cancel** focused. **Undo** and **Redo** restore committed
 edits and structural changes in this session; native text undo still works inside an editor.
 You can remove every row, but not the final data column. **Add row** focuses the new row and clears
-the current sort. Sorting changes only the view, not the table data or the cumulative review.
+the current sort. The ordinary sort chevrons cycle ascending, descending and authored order.
+The **#** column sorts the original row numbers, which travel with their rows.
+Sorting changes only the view, not the table data or the cumulative review.
+
+**Click a column title to comment on it**, or Tab to it and press Enter/Space. This is a regular
+review thread, separate from the cumulative table edits. It follows the column's stable identity
+through renaming, insertion, sorting, reload and HTML export. Removing the column keeps its
+discussion in the panel with an unavailable anchor; **Undo** restores the title highlight.
 
 Every changed table has **one cumulative change card**, searchable in the panel. Edit a value back
 to its baseline and that change disappears; add then remove an untouched row and it disappears too.

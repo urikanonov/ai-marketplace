@@ -335,6 +335,7 @@ function renderComments() {
     const isImage = c.anchorType === "image";
     const isLink = c.anchorType === "link";
     const isWidget = c.anchorType === "widget";
+    const isTableColumn = c.anchorType === "table-column";
     const isDocument = c.anchorType === "document";
     const isSlide = c.anchorType === "slide";
     const path = (c.headingPath && c.headingPath.length)
@@ -351,6 +352,8 @@ function renderComments() {
       quoteHtml = `<div class="quote"><span class="ctx">link: </span><span class="quoted">${escapeHtml(c.linkText || c.quote || c.linkHref || "")}</span></div>`;
     } else if (isWidget) {
       quoteHtml = `<div class="quote"><span class="ctx">${escapeHtml(c.widget || "widget")}: </span><span class="quoted">"${escapeHtml(c.partLabel || c.part || "")}"</span></div>`;
+    } else if (isTableColumn) {
+      quoteHtml = `<div class="quote"><span class="ctx">column title: </span><span class="quoted">"${escapeHtml(c.quote || c.columnId)}"</span></div>`;
     } else if (isDocument) {
       quoteHtml = `<div class="quote"><span class="quoted">(document-wide comment)</span></div>`;
     } else if (isSlide) {
@@ -383,6 +386,9 @@ function renderComments() {
     } else if (isWidget) {
       pinBits.push(`widget "${escapeHtml(c.widget || "")}"`);
       pinBits.push(`part "${escapeHtml(c.partLabel || c.part || "")}"`);
+    } else if (isTableColumn) {
+      pinBits.push(`table "${escapeHtml(c.tableId)}"`);
+      pinBits.push(`column "${escapeHtml(c.columnId)}"${findTableColumn(c) ? "" : " (removed or unavailable)"}`);
     } else if (isDocument) {
       pinBits.push("document-wide");
     } else if (isSlide) {
@@ -396,7 +402,7 @@ function renderComments() {
       // on the sidebar card, which only surfaces reader-facing anchor info.
     }
     const pinHtml = pinBits.length ? `<div class="pin">${pinBits.join(" - ")}</div>` : "";
-    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isLink ? "link" : isWidget ? "element" : isSlide ? "slide" : "text";
+    const jumpTarget = isMermaid ? "node" : isDiff ? "diff line" : isImage ? (c.imageKind === "chart" ? "chart" : "image") : isLink ? "link" : isWidget ? "element" : isTableColumn ? "column title" : isSlide ? "slide" : "text";
     const cardClass = isDocument ? "cm-card cm-card-doc" : isSlide ? "cm-card cm-card-doc cm-card-slide" : "cm-card";
     // Slide comments have no text highlight but DO navigate to their owning slide, so they keep a
     // jump button (unlike deck-wide/document comments, which have nowhere specific to jump).
@@ -635,6 +641,9 @@ function _anchorSortKey(c) {
     ? (3.5e12 + (Number.isFinite(Number(c.linkIndex)) ? Number(c.linkIndex) : 0))
     : (c.anchorType === "widget")
     ? (4e12 + _widgetOrderKey(c))
+    : (c.anchorType === "table-column")
+    ? (4.5e12 + Math.max(0, editableTables.findIndex(t => t.id === c.tableId)) * 1e6
+      + Math.max(0, (editableTables.find(t => t.id === c.tableId) || { model: { columns: [] } }).model.columns.findIndex(col => col.id === c.columnId)))
     : (c.anchorType === "slide")
     ? (5e12 + (typeof c.slideIndex === "number" && c.slideIndex >= 0 ? c.slideIndex : 0))
     : (typeof c.start === "number" ? c.start : 0);
@@ -703,6 +712,10 @@ function scrollToAnchor(c) {
   else if (c.anchorType === "image") el = resolveImageEl(c);
   else if (c.anchorType === "link") { el = resolveLinkEl(c); if (el) flashLink(c.id); }
   else if (c.anchorType === "widget") el = findWidgetPart(c.widget, c.part);
+  else if (c.anchorType === "table-column") {
+    el = findTableColumn(c);
+    if (!el) { showToast("This column was removed or is unavailable. Its comment is still saved."); flashActive(c.id); return; }
+  }
   else if (c.anchorType === "document") {
     // On a fixed-stage deck, window.scrollTo is a no-op; jump to the first slide (the natural
     // document start) so a document-wide comment card does not strand the presenter.
@@ -1278,6 +1291,9 @@ function flashActive(id) {
   flashDiff(id);
   flashImage(id);
   flashWidget(id);
+  const column = comments.find(c => c.id === id && c.anchorType === "table-column");
+  const title = column && findTableColumn(column);
+  if (title) { title.classList.add("cm-active"); setTimeout(() => title.classList.remove("cm-active"), 2200); }
   const card = listEl.querySelector(`.cm-card[data-cid="${id}"]`);
   if (card) card.classList.add("active");
   setTimeout(() => {

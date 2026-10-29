@@ -8,6 +8,7 @@ the runtime adds its own `cm-skip` editing controls.
 
 - [Authoring rules](#authoring-rules)
 - [Canonical model and transaction](#canonical-model-and-transaction)
+- [Reviewer controls and title comments](#reviewer-controls-and-title-comments)
 - [Scaffold and cement tools](#scaffold-and-cement-tools)
 
 ```html
@@ -90,6 +91,27 @@ The empty column arrays above are schema placeholders, not valid models: replace
 with a complete canonical baseline/edited model. Only changed tables appear in
 `tables`; an empty `tables` array is valid. `label` identifies the authored table and
 must still match. Each transaction has unique table ids.
+
+## Reviewer controls and title comments
+
+Rows have compact trash buttons. The row-number and remove-action columns use only
+their content width. A vertical three-dot header menu offers Rename, Insert before,
+Insert after and Remove; Escape or clicking outside closes it. Populated deletion
+requires confirmation. Undo/Redo restore edits and structure within the session.
+
+Sort chevrons match ordinary tables. Data columns use numeric comparison when all
+nonblank values are numeric, otherwise case-insensitive natural comparison. The `#`
+column sorts canonical model row numbers; those numbers move with their rows.
+Sorting is view-only and cycles ascending, descending, then model order.
+
+Click a column title, or focus it and press Enter/Space, to leave a normal review
+comment. Its `anchorType` is `table-column`, with `tableId`, `columnId` and the
+original title in `quote`. It has no prose offsets and does not claim widget ids.
+Threads remain anchored through rename, insert, sort, reload and HTML export.
+Removing a column preserves its thread as an unavailable anchor; Undo reattaches it.
+Do not reuse a removed column id for a different meaning when authoring revisions.
+Copy all, Markdown and print identify both the table and column.
+Cell edits still use the one cumulative table-change card, not inline text comments.
 
 ## Scaffold and cement tools
 

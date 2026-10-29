@@ -6,6 +6,13 @@ let _etTimer = 0;
 let _etHadChanges = false;
 let _etUnreadable = null;
 let _etUnmatched = [];
+const _etMenuPopup = {
+  isOpen: () => !!root.querySelector(".cmh-editable-table details[open]"),
+  close: () => {
+    const menu = root.querySelector(".cmh-editable-table details[open]");
+    if (menu) { menu.open = false; menu.querySelector("summary").focus(); }
+  },
+};
 function _etClone(value) { return JSON.parse(JSON.stringify(value)); }
 function _etEqual(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 function _etPendingEdit(t) { return !!(t.editBase && !_etEqual(t.editBase, t.model)); }
@@ -164,7 +171,8 @@ async function _etRemoveRow(t, row, number) {
   const i = t.model.rows.indexOf(row);
   if (i < 0) return;
   const displayed = [...t.table.tBodies[0].rows].map(el => el.getAttribute("data-cmh-row"));
-  const nextId = displayed[number] || displayed[number - 2];
+  const position = displayed.indexOf(row.id);
+  const nextId = displayed[position + 1] || displayed[position - 1];
   const focus = nextId ? '[data-cmh-row="' + _cssEsc(nextId) + '"] textarea, [data-cmh-row="' + _cssEsc(nextId) + '"] select' : null;
   _etMutate(t, () => t.model.rows.splice(i, 1), focus);
 }
@@ -181,9 +189,9 @@ async function _etRemoveColumn(t, id) {
     t.model.columns.splice(index, 1);
     t.model.rows.forEach(r => r.cells.splice(index, 1));
     if (t.sort && t.sort.id === id) t.sort = null;
-  }, '[data-cmh-column="' + _cssEsc(nextId) + '"] button');
+  }, '[data-cmh-column="' + _cssEsc(nextId) + '"] .cmh-sort-ctrl');
 }
-function _etColumnDialog(t, renameId, afterId) {
+function _etColumnDialog(t, renameId, besideId, before = false) {
   const existing = renameId && t.model.columns.find(c => c.id === renameId);
   const dialog = document.createElement("dialog");
   dialog.className = "cmh-table-dialog cm-skip";
@@ -248,12 +256,12 @@ function _etColumnDialog(t, renameId, afterId) {
     _etMutate(t, () => {
       if (existing) t.model.columns.find(c => c.id === existing.id).label = label;
       else {
-        const index = afterId ? t.model.columns.findIndex(c => c.id === afterId) + 1 : t.model.columns.length;
+        const index = besideId ? t.model.columns.findIndex(c => c.id === besideId) + (before ? 0 : 1) : t.model.columns.length;
         t.model.columns.splice(index, 0, column);
         t.model.rows.forEach(r => r.cells.splice(index, 0, column.default));
       }
     }, existing || !t.model.rows.length
-      ? '[data-cmh-column="' + _cssEsc(column.id) + '"] button'
+      ? '[data-cmh-column="' + _cssEsc(column.id) + '"] .cmh-sort-ctrl'
       : '[data-cmh-edit-column="' + _cssEsc(column.id) + '"]');
   });
   document.body.append(dialog); dialog.showModal(); name.focus();
@@ -262,47 +270,111 @@ function _etGrow(el) {
   el.style.height = "auto";
   el.style.height = Math.min(280, Math.max(40, el.scrollHeight)) + "px";
 }
+function findTableColumn(info) {
+  const t = editableTables.find(t => t.id === info.tableId);
+  return t && typeof info.columnId === "string"
+    ? t.table.querySelector('[data-cmh-column="' + _cssEsc(info.columnId) + '"] .cmh-table-title') : null;
+}
+function _etTitleHighlights() {
+  editableTables.forEach(t => t.table.querySelectorAll(".cmh-table-title").forEach(el => {
+    const columnId = el.closest("th").getAttribute("data-cmh-column");
+    const ids = comments.filter(c => !c.parentId && c.anchorType === "table-column"
+      && c.tableId === t.id && c.columnId === columnId).map(c => c.id);
+    if (ids.length) { el.setAttribute("data-cids", ids.join(" ")); el.setAttribute("data-cid", ids[0]); }
+    else { el.removeAttribute("data-cids"); el.removeAttribute("data-cid"); }
+  }));
+}
+function clearTableColumnHighlight(comment) {
+  const title = findTableColumn(comment);
+  if (!title) return;
+  const ids = (title.getAttribute("data-cids") || "").split(/\s+/).filter(id => id && id !== comment.id);
+  if (ids.length) { title.setAttribute("data-cids", ids.join(" ")); title.setAttribute("data-cid", ids[0]); }
+  else { title.removeAttribute("data-cids"); title.removeAttribute("data-cid"); title.classList.remove("cm-active"); }
+}
+function _etSortButton(t, th, id, label) {
+  const sort = _etBtn("", () => {
+    const dir = t.sort && t.sort.id === id ? (t.sort.dir === "asc" ? "desc" : null) : "asc";
+    t.sort = dir ? { id, dir } : null;
+    _etRender(t);
+    const header = id === null ? t.table.tHead.rows[0].cells[0]
+      : t.table.querySelector('[data-cmh-column="' + _cssEsc(id) + '"]');
+    header.querySelector(".cmh-sort-ctrl").focus();
+  });
+  sort.className = "cmh-sort-ctrl cm-skip";
+  sort.title = "Sort by this column"; sort.setAttribute("aria-label", label);
+  sort.innerHTML = '<span class="cmh-sort-up" aria-hidden="true"></span><span class="cmh-sort-dn" aria-hidden="true"></span>';
+  th.append(sort);
+  _reflectSortIco(sort, t.sort && t.sort.id === id ? t.sort.dir : null);
+}
 function _etRender(t) {
-  if (t.sort && !t.model.columns.some(c => c.id === t.sort.id)) t.sort = null;
+  if (t.sort && t.sort.id !== null && !t.model.columns.some(c => c.id === t.sort.id)) t.sort = null;
   const doc = document;
   const head = doc.createElement("thead"), hr = doc.createElement("tr");
-  const number = doc.createElement("th"); number.textContent = "#"; number.scope = "col"; hr.append(number);
+  const number = doc.createElement("th"); number.textContent = "#"; number.scope = "col";
+  number.className = "cmh-table-number"; _etSortButton(t, number, null, "Sort by row number"); hr.append(number);
   t.model.columns.forEach((c, ci) => {
     const th = doc.createElement("th"); th.scope = "col"; th.setAttribute("data-cmh-column", c.id);
-    const label = doc.createElement("span"); label.textContent = c.label; th.append(label);
-    const sort = _etBtn("Sort", () => {
-      const dir = t.sort && t.sort.id === c.id ? (t.sort.dir === "asc" ? "desc" : null) : "asc";
-      t.sort = dir ? { id: c.id, dir } : null;
-      _etRender(t);
-      t.table.querySelector('[data-cmh-column="' + _cssEsc(c.id) + '"] button').focus();
+    const label = _etBtn(c.label, () => {
+      label.focus();
+      createComposerElement({ mode: "new-table-column", tableColumn: { tableId: t.id, columnId: c.id, quote: c.label } });
     });
-    sort.setAttribute("aria-label", "Sort by " + c.label + ", column " + (ci + 1));
-    th.setAttribute("aria-sort", t.sort && t.sort.id === c.id ? (t.sort.dir === "asc" ? "ascending" : "descending") : "none");
-    sort.textContent = t.sort && t.sort.id === c.id ? (t.sort.dir === "asc" ? "Sort ascending" : "Sort descending") : "Sort";
+    label.className = "cmh-table-title"; label.title = "Comment on this column title";
+    label.setAttribute("aria-label", "Comment on " + c.label + ", column " + (ci + 1));
+    th.append(label); _etSortButton(t, th, c.id, "Sort by " + c.label + ", column " + (ci + 1));
     const menu = doc.createElement("details");
-    const summary = doc.createElement("summary"); summary.textContent = "Column";
+    const summary = doc.createElement("summary");
+    summary.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>';
     summary.setAttribute("aria-label", "Actions for " + c.label + ", column " + (ci + 1));
+    summary.title = "Column actions";
     cmhMarkLayerChrome(summary);
-    menu.append(summary, _etBtn("Rename column", () => { menu.open = false; summary.focus(); _etColumnDialog(t, c.id); }),
+    const panel = doc.createElement("div"); panel.className = "cmh-table-column-menu";
+    panel.setAttribute("popover", "manual");
+    panel.append(_etBtn("Rename column", () => { menu.open = false; summary.focus(); _etColumnDialog(t, c.id); }),
+      _etBtn("Insert column before", () => { menu.open = false; summary.focus(); _etColumnDialog(t, null, c.id, true); }),
       _etBtn("Insert column after", () => { menu.open = false; summary.focus(); _etColumnDialog(t, null, c.id); }));
     const remove = _etBtn("Remove column", () => { menu.open = false; summary.focus(); _etRemoveColumn(t, c.id); });
     remove.disabled = t.model.columns.length === 1;
     if (remove.disabled) remove.title = "Keep at least one data column.";
-    menu.append(remove);
+    panel.append(remove); menu.append(summary, panel);
+    menu.addEventListener("toggle", () => {
+      if (!menu.open) { panel.hidePopover(); return; }
+      root.querySelectorAll(".cmh-editable-table details[open]").forEach(other => { if (other !== menu) other.open = false; });
+      panel.showPopover();
+      window.__cmhPrioritizeEscapePopup(_etMenuPopup);
+      const rect = summary.getBoundingClientRect();
+      panel.style.left = Math.max(8, Math.min(rect.right - panel.offsetWidth, innerWidth - panel.offsetWidth - 8)) + "px";
+      panel.style.top = Math.max(8, Math.min(rect.bottom + 4, innerHeight - panel.offsetHeight - 8)) + "px";
+    });
+    menu.addEventListener("focusout", e => {
+      if (e.relatedTarget && !menu.contains(e.relatedTarget)) menu.open = false;
+    });
     menu.addEventListener("keydown", e => { if (e.key === "Escape") { menu.open = false; summary.focus(); e.stopPropagation(); } });
-    th.append(sort, menu); hr.append(th);
+    th.append(menu); hr.append(th);
   });
-  const actions = doc.createElement("th"); actions.textContent = "Actions"; actions.scope = "col"; hr.append(actions);
+  const actions = doc.createElement("th"); actions.setAttribute("aria-label", "Row actions");
+  actions.className = "cmh-table-remove-cell"; actions.scope = "col"; hr.append(actions);
   head.append(hr);
   const body = doc.createElement("tbody");
   const displayed = t.model.rows.slice();
-  if (t.sort) {
+  if (t.sort && t.sort.id === null) {
+    if (t.sort.dir === "desc") displayed.reverse();
+  } else if (t.sort) {
     const ci = t.model.columns.findIndex(c => c.id === t.sort.id);
-    displayed.sort((a, b) => a.cells[ci].localeCompare(b.cells[ci], undefined, { numeric: true }) * (t.sort.dir === "asc" ? 1 : -1));
+    const values = new Map(displayed.map(r => [r.id, r.cells[ci].replace(/\s+/g, " ").trim()]));
+    const numeric = [...values.values()].every(value => value === "" || _parseNum(value) !== null)
+      && [...values.values()].some(value => value !== "");
+    displayed.sort((a, b) => {
+      const av = values.get(a.id), bv = values.get(b.id);
+      const compared = numeric ? (av === "" ? -1 : bv === "" ? 1 : _parseNum(av) - _parseNum(bv))
+        : av.localeCompare(bv, undefined, { numeric: true, sensitivity: "base" });
+      return (av === bv ? 0 : compared) * (t.sort.dir === "asc" ? 1 : -1);
+    });
   }
-  displayed.forEach((row, ri) => {
+  displayed.forEach(row => {
+    const rowNumber = t.model.rows.indexOf(row) + 1;
     const tr = doc.createElement("tr"); tr.setAttribute("data-cmh-row", row.id);
-    const rn = doc.createElement("th"); rn.scope = "row"; rn.textContent = String(ri + 1); tr.append(rn);
+    const rn = doc.createElement("th"); rn.scope = "row"; rn.className = "cmh-table-number";
+    rn.textContent = String(rowNumber); tr.append(rn);
     t.model.columns.forEach((c, ci) => {
       const td = doc.createElement("td");
       const input = doc.createElement(c.type === "choice" ? "select" : "textarea");
@@ -318,7 +390,7 @@ function _etRender(t) {
       input.value = row.cells[ci];
       const print = doc.createElement("span"); print.className = "cmh-table-print-value"; print.textContent = row.cells[ci];
       input.setAttribute("data-cmh-edit-column", c.id);
-      input.setAttribute("aria-label", c.label + ", column " + (ci + 1) + ", row " + (ri + 1));
+      input.setAttribute("aria-label", c.label + ", column " + (ci + 1) + ", row " + rowNumber);
       cmhMarkLayerChrome(input);
       input.addEventListener("focus", () => { if (!t.editBase) t.editBase = _etClone(t.model); });
       const onInput = () => {
@@ -334,12 +406,16 @@ function _etRender(t) {
       input.addEventListener("blur", () => _etCommitEditor(t));
       td.append(input, print); tr.append(td);
     });
-    const td = doc.createElement("td"), remove = _etBtn("Remove", () => _etRemoveRow(t, row, ri + 1));
-    remove.setAttribute("aria-label", "Remove row " + (ri + 1)); td.append(remove); tr.append(td); body.append(tr);
+    const td = doc.createElement("td"), remove = _etBtn("", () => _etRemoveRow(t, row, rowNumber));
+    td.className = "cmh-table-remove-cell"; remove.className = "cmh-table-remove";
+    remove.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg>';
+    remove.title = "Remove row " + rowNumber;
+    remove.setAttribute("aria-label", remove.title); td.append(remove); tr.append(td); body.append(tr);
   });
   if (t.table.tHead) t.table.tHead.remove();
   [...t.table.tBodies].forEach(b => b.remove());
   t.table.append(head, body);
+  _etTitleHighlights();
   t.empty.hidden = !!t.model.rows.length;
   t.undo.disabled = !t.history.length; t.redo.disabled = !t.future.length;
   t.table.querySelectorAll("textarea").forEach(_etGrow);
@@ -435,6 +511,15 @@ function _applyTableStateToHtml(html) {
   return (/^\s*<!doctype/i.test(html) ? "<!DOCTYPE html>\n" : "") + cmhSerializeElement(doc.documentElement);
 }
 function setupEditableTables() {
+  window.__cmhRegisterEscapePopup(_etMenuPopup);
+  const closeMenus = () => root.querySelectorAll(".cmh-editable-table details[open]").forEach(menu => { menu.open = false; });
+  document.addEventListener("pointerdown", e => {
+    if (!e.target.closest(".cmh-table-column-menu, .cmh-editable-table summary")) closeMenus();
+  });
+  document.addEventListener("scroll", e => {
+    if (!(e.target.closest && e.target.closest(".cmh-table-column-menu"))) closeMenus();
+  }, { capture: true, passive: true });
+  window.addEventListener("resize", closeMenus);
   let saved = [];
   try {
     const raw = localStorage.getItem(CMH_TABLES_KEY);
@@ -495,7 +580,8 @@ function setupEditableTables() {
       else t.stale = entry;
     }
     t.identities = {
-      columns: new Set([...baseline.columns, ...t.model.columns].map(c => c.id)),
+      columns: new Set([...baseline.columns, ...t.model.columns].map(c => c.id).concat(
+        comments.filter(c => c.anchorType === "table-column" && c.tableId === id && typeof c.columnId === "string").map(c => c.columnId))),
       rows: new Set([...baseline.rows, ...t.model.rows].map(r => r.id)),
     };
     editableTables.push(t);

@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.858.0] - 2026-10-29
+
+### Added
+
+- Column-title comments anchored by stable table and column ids. Threads survive renaming,
+  sorting, reload and HTML export; removing a column keeps its discussion, and Undo reattaches it.
+
+### Changed
+
+- Compact trash-icon row removal and intrinsically sized row-number/action columns.
+- Vertical three-dot column menus with insertion before or after a column.
+- Standard sort chevrons, numeric/currency-aware comparison and sortable canonical row numbers.
+- Theme-aware cell hover and focus feedback.
+- Deliberately raise the CSS byte ceiling from 146000 to 148000 for compact controls,
+  vertical menus, title-comment highlighting and cell interaction feedback.
+
 ## [1.857.1] - 2026-10-30
 
 ### Changed

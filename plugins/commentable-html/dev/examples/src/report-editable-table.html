@@ -97,7 +97,7 @@ html.cmh-awaiting-style body { visibility: hidden; }
 <p class="cmh-lede">Shape a discussion table as you work. Edit cells, choose a status, add a row or column, and send one cumulative set of changes back through CMH.</p>
 <section>
 <h2 id="discussion">Discussion items</h2>
-<p>Text fields grow as you type. Status is a choice column. Use a column's menu to rename it, insert a column beside it, or remove it.</p>
+<p>Text fields grow as you type, with hover and focus highlighting. Status is a choice column. Use a column's vertical three-dot menu to rename it, insert before or after it, or remove it. Click a column title to leave a review comment.</p>
 <table data-cmh-table="discussion" data-cmh-table-label="Discussion items">
 <thead><tr><th data-cmh-column="topic">Discussion item</th><th data-cmh-column="owner">Owner</th><th data-cmh-column="status" data-cmh-column-type="choice" data-cmh-options='["Open","Decision needed","Assigned","Resolved"]' data-cmh-default="Open">Status</th></tr></thead>
 <tbody>
@@ -111,7 +111,8 @@ html.cmh-awaiting-style body { visibility: hidden; }
 <ol>
 <li>Edit an owner twice: the panel still shows one table card, comparing the original to the final value.</li>
 <li>Add a text or choice column. Rename it using its column menu. Use Undo and Redo to explore safely.</li>
-<li>Sort a column: sorting is only a view and creates no review change.</li>
+<li>Use the sort chevrons on a data column or #. Original row numbers travel with their rows; sorting creates no review change.</li>
+<li>Comment on Owner by clicking its title (or Tab then Enter). Rename or sort it: the thread stays attached. Remove the column and Undo to restore its title highlight.</li>
 <li>Remove a populated row: Cancel is the safe default. Confirm removal and then Undo it.</li>
 <li>Use Copy all to return cumulative changes, or Export as Shareable to save the edited table in another standalone HTML.</li>
 </ol>

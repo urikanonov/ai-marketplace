@@ -170,6 +170,7 @@ function buildCopyText(pickedIds, partialScope) {
     const isImage = c.anchorType === "image";
     const isLink = c.anchorType === "link";
     const isWidget = c.anchorType === "widget";
+    const isTableColumn = c.anchorType === "table-column";
     const isDocument = c.anchorType === "document";
     const isSlide = c.anchorType === "slide";
     lines.push(`## ${c.threadType === "discussion" ? "Discussion" : "Comment"} ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isLink ? " (link)" : isWidget ? " (widget)" : isDocument ? " (document)" : isSlide ? " (slide)" : ""}`);
@@ -237,6 +238,11 @@ function buildCopyText(pickedIds, partialScope) {
       emitCommentBody(c);
     } else if (isWidget) {
       lines.push(`Anchor: widget "${oneLine(c.widget)}", part "${oneLine(c.partLabel || c.part)}"${c.slot ? " (in " + oneLine(c.slot) + ")" : ""}`);
+      lines.push("");
+      emitCommentBody(c);
+    } else if (isTableColumn) {
+      lines.push(`Anchor: table "${oneLine(c.tableId)}", column "${oneLine(c.columnId)}"`);
+      lines.push(`Column title: ${oneLine(c.quote)}`);
       lines.push("");
       emitCommentBody(c);
     } else if (isDocument) {

@@ -102,6 +102,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-TABLE-11 | opt-out: internal tool integration and comment anchor robustness | opt-out: internal integration invariant |
 | CMH-TABLE-12 | tutorial | deck |
 | CMH-TABLE-13 | opt-out: agent-facing authoring and apply tooling contract | opt-out: agent-facing authoring tooling |
+| CMH-TABLE-14 | tutorial, help | deck |
 | CMH-CHECK-06 | tutorial, help | deck |
 | CMH-THREAD-01 | tutorial, help | deck |
 | CMH-THREAD-06 | tutorial, help | deck |

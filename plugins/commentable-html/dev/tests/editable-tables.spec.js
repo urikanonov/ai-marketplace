@@ -41,6 +41,264 @@ async function addColumn(page, label, type = "text", options = "") {
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
 }
 
+test("utility columns fit compact controls and multi-digit row numbers (CMH-TABLE-09)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const rows = Array.from({ length: 12 }, (_, i) =>
+    `<tr data-cmh-row="r${i}"><td>Item ${i}</td><td>Owner</td><td>Open</td></tr>`).join("");
+  await open(page, DOC.replace(/<tbody>[\s\S]*?<\/tbody>/, `<tbody>${rows}</tbody>`));
+  const row = table(page).locator("tbody tr").last();
+  const remove = row.getByRole("button", { name: "Remove row 12", exact: true });
+  await expect(remove.locator("svg")).toBeVisible();
+  const button = await remove.boundingBox(), actionCell = await remove.locator("..").boundingBox();
+  const number = await row.locator("th").boundingBox();
+  expect(button.width).toBeLessThanOrEqual(36);
+  expect(actionCell.width).toBeLessThanOrEqual(button.width + 18);
+  expect(number.width).toBeLessThanOrEqual(64);
+  await expect(row.locator("th")).toHaveText("12");
+});
+
+test("column actions use a vertical ellipsis menu with insertion on either side (CMH-TABLE-04)", async ({ page }) => {
+  await open(page);
+  const header = table(page).locator('[data-cmh-column="owner"]');
+  const trigger = header.locator("summary");
+  await expect(trigger.locator("svg")).toBeVisible();
+  await expect(trigger).not.toContainText("Column");
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(header.getByRole("button", { name: "Insert column before", exact: true })).toBeVisible();
+  const rename = await header.getByRole("button", { name: "Rename column", exact: true }).boundingBox();
+  const before = await header.getByRole("button", { name: "Insert column before", exact: true }).boundingBox();
+  expect(before.y).toBeGreaterThanOrEqual(rename.y + rename.height - 1);
+  await header.getByRole("button", { name: "Insert column before", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Add column" });
+  await dialog.getByLabel("Column name", { exact: true }).fill("Before owner");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(table(page).locator("thead th[data-cmh-column]")).toHaveText([
+    /Discussion item/, /Before owner/, /Owner/, /Status/,
+  ]);
+});
+
+test("column menus stay attached to their trigger inside scaled containers (CMH-TABLE-04)", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await open(page, `<div style="transform:translate(80px,120px) scale(.7);transform-origin:top left">${DOC}</div>`);
+  const header = table(page).locator('[data-cmh-column="owner"]');
+  await header.locator("summary").click();
+  const panel = header.locator(".cmh-table-column-menu");
+  await expect(panel).toBeVisible();
+  await expect.poll(async () => {
+    const trigger = await header.locator("summary").boundingBox(), menu = await panel.boundingBox();
+    return Math.abs(menu.y - trigger.y - trigger.height - 4);
+  }).toBeLessThan(2);
+  const trigger = await header.locator("summary").boundingBox(), menu = await panel.boundingBox();
+  expect(Math.abs(menu.x + menu.width - trigger.x - trigger.width)).toBeLessThan(2);
+  await header.getByRole("button", { name: "Insert column before", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Add column" })).toBeVisible();
+});
+
+test("column menus close on keyboard departure without discarding a composer draft (CMH-TABLE-04)", async ({ page }) => {
+  await open(page);
+  const composer = await openComposerFor(page, "#after");
+  await composer.locator("textarea").fill("Keep this draft");
+  const header = table(page).locator('[data-cmh-column="owner"]'), details = header.locator("details");
+  await header.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await header.getByRole("button", { name: "Remove column", exact: true }).focus();
+  await page.keyboard.press("Tab");
+  await expect(details).not.toHaveAttribute("open", "");
+  await expect(composer.locator("textarea")).toHaveValue("Keep this draft");
+});
+
+test("column titles inherit authored contrasting header colors (CMH-TABLE-09)", async ({ page }) => {
+  await open(page, '<style>#commentRoot [data-cmh-table] thead th{background:#17233b;color:#f8fafc}</style>' + DOC);
+  const header = table(page).locator('[data-cmh-column="owner"]');
+  await expect(header.locator(".cmh-table-title")).toHaveCSS("color", await header.evaluate(el => getComputedStyle(el).color));
+});
+
+test("column comments retain section context when their column disappears before save (CMH-TABLE-14)", async ({ page }) => {
+  await open(page, DOC.replace("<h1>", '<h1 id="table-section">'));
+  const header = table(page).locator('[data-cmh-column="owner"]');
+  await header.locator(".cmh-table-title").click();
+  const composer = page.locator(".cm-composer").last();
+  await composer.locator("textarea").fill("Discuss this removed column");
+  await header.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await header.getByRole("button", { name: "Remove column", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await composer.locator('[data-act="save"]').click();
+  await expect(page.locator("#table-section .cmh-review-badge")).toHaveAttribute("data-cmh-label", "Commented");
+  await page.locator("#btnCopyAll").click();
+  expect(await copiedBundle(page)).toContain('Where: H1 "Editable table"');
+});
+
+test("row numbers and data columns use ordinary numeric sort chevrons without changing the model (CMH-TABLE-05)", async ({ page }) => {
+  await open(page, DOC.replace("Decide launch", "$1,000").replace("Review evidence", "$20")
+    + '<table id="ordinary"><thead><tr><th>Native number</th></tr></thead><tbody><tr><td>10</td></tr><tr><td>2</td></tr></tbody></table>');
+  const sort = table(page).getByRole("button", { name: "Sort by Discussion item, column 1", exact: true });
+  const nativeStyle = await page.locator("#ordinary .cmh-sort-ctrl").evaluate(el => {
+    const style = getComputedStyle(el);
+    return { font: style.fontSize, line: style.lineHeight, color: style.color };
+  });
+  await expect(sort).toHaveCSS("font-size", nativeStyle.font);
+  await expect(sort).toHaveCSS("line-height", nativeStyle.line);
+  await expect(sort).toHaveCSS("color", nativeStyle.color);
+  await expect(sort.locator(".cmh-sort-up")).toHaveCount(1);
+  await expect(sort.locator(".cmh-sort-dn")).toHaveCount(1);
+  await sort.click();
+  expect(await table(page).locator("tbody tr").evaluateAll(rows => rows.map(row => row.dataset.cmhRow))).toEqual(["second", "first"]);
+  await expect(table(page).locator("tbody th")).toHaveText(["2", "1"]);
+  const numbers = table(page).getByRole("button", { name: "Sort by row number", exact: true });
+  await numbers.click();
+  await expect(table(page).locator("tbody th")).toHaveText(["1", "2"]);
+  await numbers.click();
+  await expect(table(page).locator("tbody th")).toHaveText(["2", "1"]);
+  await numbers.click();
+  await expect(table(page).locator("tbody th")).toHaveText(["1", "2"]);
+  await expect(page.locator(".cm-card-table")).toHaveCount(0);
+});
+
+test("editable cells reveal hover and keyboard-focus feedback in both themes (CMH-TABLE-09)", async ({ page }) => {
+  await open(page);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate(value => document.documentElement.dataset.theme = value, theme);
+    await page.mouse.move(0, 0);
+    const editor = cell(page);
+    const colors = () => editor.evaluate(el => {
+      const style = getComputedStyle(el);
+      return [style.backgroundColor, style.borderTopColor];
+    });
+    const idle = await colors();
+    await editor.hover();
+    expect(await colors()).not.toEqual(idle);
+    await editor.focus();
+    await page.mouse.move(0, 0);
+    expect(await colors()).not.toEqual(idle);
+    await editor.blur();
+  }
+});
+
+test("column-title comments retain identity through rename sort reload and export (CMH-TABLE-14)", async ({ page }) => {
+  const staged = await open(page);
+  await addTextComment(page, "#after", "Keep this prose anchor.");
+  const title = table(page).getByRole("button", { name: "Comment on Owner, column 2", exact: true });
+  await title.click();
+  const composer = page.locator(".cm-composer").last();
+  await composer.locator("textarea").fill("Who owns this decision?");
+  await composer.locator('[data-act="save"]').click();
+  const header = table(page).locator('[data-cmh-column="owner"]');
+  await expect(header.locator(".cmh-table-title")).toHaveAttribute("data-cids", /c/);
+  await header.locator("summary").click();
+  await header.getByRole("button", { name: "Rename column", exact: true }).click();
+  await page.getByRole("dialog").getByLabel("Column name", { exact: true }).fill("Accountable owner");
+  await page.getByRole("dialog").getByRole("button", { name: "Save", exact: true }).click();
+  await header.locator("summary").click();
+  await header.getByRole("button", { name: "Insert column before", exact: true }).click();
+  await page.getByRole("dialog").getByLabel("Column name", { exact: true }).fill("Reviewer");
+  await page.getByRole("dialog").getByRole("button", { name: "Save", exact: true }).click();
+  await table(page).getByRole("button", { name: "Sort by Discussion item, column 1", exact: true }).click();
+  await page.goto(fileUrl(staged.html));
+  await ready(page);
+  await expect(header.locator(".cmh-table-title")).toHaveAttribute("data-cids", /c/);
+  await expect(page.locator("#after mark.cm-hl")).toHaveText("railing reviewable prose.");
+  const { text } = await bundle(page);
+  expect(text).toContain('Anchor: table "agenda", column "owner"');
+  expect(text).toContain("Who owns this decision?");
+  const download = page.waitForEvent("download");
+  await clickSidebarExport(page, "#btnSaveHtml");
+  const html = await readDownload(await download);
+  const output = path.join(path.dirname(staged.html), "title-export.html");
+  fs.writeFileSync(output, html);
+  const validation = spawnSync(PYTHON, [path.join(SKILL, "tools/validate/validate.py"), "--strict", "--no-stamp", output], { encoding: "utf8" });
+  expect(validation.stdout + validation.stderr).toContain("OK");
+  expect(validation.status).toBe(0);
+  await page.goto(fileUrl(output));
+  await ready(page);
+  await expect(header.locator(".cmh-table-title")).toHaveAttribute("data-cids", /c/);
+  await expect(header.locator(".cmh-table-title")).toHaveText("Accountable owner");
+  await expect(page.locator(".cm-card-table")).toHaveCount(0);
+});
+
+test("removing a commented column preserves its thread and Undo restores its title anchor (CMH-TABLE-14)", async ({ page }) => {
+  await open(page);
+  const title = table(page).getByRole("button", { name: "Comment on Owner, column 2", exact: true });
+  await title.focus();
+  await page.keyboard.press("Enter");
+  const composer = page.locator(".cm-composer").last();
+  await composer.locator("textarea").fill("Keep this column discussion.");
+  await composer.locator('[data-act="save"]').click();
+  const header = table(page).locator('[data-cmh-column="owner"]');
+  await header.locator("summary").click();
+  await header.getByRole("button", { name: "Remove column", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(page.locator(".cm-card").filter({ hasText: "Keep this column discussion." })).toBeVisible();
+  await expect(table(page).locator(".cmh-table-title[data-cids]")).toHaveCount(0);
+  await addColumn(page, "Owner");
+  await expect(table(page).locator(".cmh-table-title[data-cids]")).toHaveCount(0);
+  await action(page, "Undo").click();
+  await action(page, "Undo").click();
+  await expect(header.locator(".cmh-table-title")).toHaveAttribute("data-cids", /c/);
+  await expect(page.locator(".cm-card").filter({ hasText: "Keep this column discussion." })).toHaveCount(1);
+});
+
+test("exported orphan column comments never attach to newly allocated column ids (CMH-TABLE-14)", async ({ page }) => {
+  const { dir } = await open(page);
+  await addColumn(page, "Temporary");
+  const header = table(page).locator("thead th[data-cmh-column]").last();
+  const id = await header.getAttribute("data-cmh-column");
+  await header.getByRole("button", { name: "Comment on Temporary, column 4", exact: true }).click();
+  const composer = page.locator(".cm-composer").last();
+  await composer.locator("textarea").fill("Retain this removed-column discussion.");
+  await composer.locator('[data-act="save"]').click();
+  await header.locator("summary").click();
+  await header.getByRole("button", { name: "Remove column", exact: true }).click();
+  const [download] = await Promise.all([page.waitForEvent("download"), clickSidebarExport(page, "#btnSaveHtml")]);
+  const output = path.join(dir, "orphan-export.html");
+  fs.writeFileSync(output, await readDownload(download));
+  await page.goto(fileUrl(output));
+  await ready(page);
+  await addColumn(page, "Replacement");
+  await expect(table(page).locator("thead th[data-cmh-column]").last()).not.toHaveAttribute("data-cmh-column", id);
+  await expect(table(page).locator(".cmh-table-title[data-cids]")).toHaveCount(0);
+  await expect(page.locator(".cm-card").filter({ hasText: "Retain this removed-column discussion." })).toContainText("removed or unavailable");
+});
+
+test("column-title threads support replies individual deletion copy and print (CMH-TABLE-14)", async ({ page }) => {
+  await open(page);
+  const title = table(page).getByRole("button", { name: "Comment on Owner, column 2", exact: true });
+  for (const note of ["First title discussion.", "Second title discussion."]) {
+    await title.click();
+    const composer = page.locator(".cm-composer").last();
+    await composer.locator("textarea").fill(note);
+    await composer.locator('[data-act="save"]').click();
+  }
+  const ids = await title.getAttribute("data-cids");
+  expect(ids.split(" ")).toHaveLength(2);
+  const second = page.locator(".cm-card").filter({ hasText: "Second title discussion." });
+  await second.locator(".cm-reply-btn").click();
+  await second.locator(".cm-reply-compose textarea").fill("A reply about the accountable owner.");
+  await second.locator(".cm-reply-save").click();
+  await expect(second).toContainText("A reply about the accountable owner.");
+  await page.locator("#btnCopyAll").click();
+  const copied = await copiedBundle(page);
+  expect(copied).toContain('Anchor: table "agenda", column "owner"');
+  expect(copied).toContain("A reply about the accountable owner.");
+  const md = await page.evaluate(() => window.__cmhToMarkdown());
+  expect(md).toContain('table "agenda" / column "owner"');
+  await page.emulateMedia({ media: "print" });
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  await expect(page.locator("#cmhPrintComments")).toContainText("Table agenda - column owner");
+  await page.emulateMedia({ media: "screen" });
+  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+  page.once("dialog", dialog => dialog.accept());
+  await page.locator(".cm-card").filter({ hasText: "First title discussion." }).getByRole("button", { name: "delete", exact: true }).click();
+  await expect(title).toHaveAttribute("data-cids", ids.split(" ")[1]);
+  await page.reload();
+  await ready(page);
+  await expect(title).toHaveAttribute("data-cids", ids.split(" ")[1]);
+  await expect(page.locator(".cm-card").filter({ hasText: "First title discussion." })).toHaveCount(0);
+  await expect(second).toContainText("A reply about the accountable owner.");
+});
+
 test("editing tracks one cumulative card and exact net changes (CMH-TABLE-01)", async ({ page }) => {
   const staged = await open(page);
   await expect(cell(page)).toHaveValue("Decide launch");
@@ -378,6 +636,8 @@ test("plain Markdown and print show current values without editor chrome (CMH-TA
   expect(md).toContain("Updated \\| value<br>next line");
   expect(md).not.toContain("Add row");
   await page.emulateMedia({ media: "print" });
+  await expect(table(page).locator(".cmh-table-title").first()).toBeVisible();
+  await expect(table(page).locator(".cmh-table-title").first()).toHaveText("Discussion item");
   await expect(cell(page)).toBeHidden();
   await expect(table(page).locator(".cmh-table-print-value").first()).toHaveText("Updated | value\nnext line");
   await expect(table(page).locator(".cmh-table-print-value").first()).toBeVisible();
@@ -485,7 +745,8 @@ test("column dialog cancellation restores menu focus and isolates Escape (CMH-TA
   await expect.soft(header.locator("summary")).toBeFocused();
   const composer = await openComposerFor(page, "#after");
   await composer.locator("textarea").fill("Keep this composer draft");
-  await action(page, "Add column").click();
+  await action(page, "Add column").focus();
+  await page.keyboard.press("Enter");
   await expect(composer).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
