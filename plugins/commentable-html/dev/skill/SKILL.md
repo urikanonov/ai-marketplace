@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.857.0`
+**Version:** `1.857.1`
 
 Review exact prose, code, diagrams, charts, images, widgets, or table cells; copy/export edit requests or AI discussions. Discussions work in the standalone HTML without a server or folder permissions.
 
