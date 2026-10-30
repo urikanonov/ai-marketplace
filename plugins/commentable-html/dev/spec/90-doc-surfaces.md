@@ -64,6 +64,10 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 
 | Feature id | Doc surface | Deck |
 | --- | --- | --- |
+| CMH-WIDTH-01 | help | opt-out: flow-document layout, not a fixed-stage deck feature |
+| CMH-WIDTH-02 | help | opt-out: flow-document reading control absent from decks |
+| CMH-WIDTH-03 | help | opt-out: browser-local flow-document preference, not deck state |
+| CMH-WIDTH-04 | help | opt-out: responsive flow-document layout and deck exclusion |
 | CMH-DISC-01 | tutorial, help | deck |
 | CMH-DISC-02 | tutorial, help | deck |
 | CMH-DISC-03 | tutorial, help | deck |

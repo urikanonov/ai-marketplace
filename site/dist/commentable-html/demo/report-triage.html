@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.855.1" />
+<meta name="commentable-html-version" content="1.857.0" />
 <meta name="commentable-html-kind" content="board" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.855.1","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.857.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Incident Triage Board</title>
 
@@ -79,7 +79,7 @@ html.cmh-awaiting-style body { visibility: hidden; }
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-cmh-content-root id="commentRoot" data-comment-key="incident-triage-board-report" data-doc-label="Incident Triage Board" data-doc-source="report-triage.html" data-generated="2026-10-30">
+<main data-cmh-content-root id="commentRoot" data-comment-key="incident-triage-board-report" data-doc-label="Incident Triage Board" data-doc-source="report-triage.html" data-generated="2026-10-29">
 <nav class="cm-toc" aria-label="Table of contents">
   <div class="cm-toc-title">Contents</div>
   <ol>
@@ -498,7 +498,7 @@ body.cm-sidebar-resizing .cm-sidebar { transition: none; }
 body.sidebar-open .cm-toolbar { display: none; }
 
 @media (max-width: 700px) {
-body #commentRoot:not([data-cmh-mode="deck"]) > :first-child { margin-top: 3.2rem; }
+body #commentRoot:not([data-cmh-mode="deck"]) > :first-child { margin-top: max(3.2rem, calc(var(--cm-toolbar-height, 0px) + 1rem)); }
 }
 @media (max-width: 640px) {
 .cm-sidebar { width: 100%; min-width: 100%; max-width: 100%; }
@@ -509,15 +509,28 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 @media (min-width: 1100px) {
 body.sidebar-open .app {
 max-width: none; margin: 0;
-padding-left: 2rem;
-padding-right: calc(var(--cm-sidebar-w, 400px) + 2rem);
+padding-left: max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - (var(--cm-doc-max-width, 1800px) - 3rem)) / 2));
+padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - (var(--cm-doc-max-width, 1800px) - 3rem)) / 2)));
 }
 }
-@media (min-width: 1700px) {
-body.sidebar-open .app {
-padding-left: max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - 1600px) / 2));
-padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - 1600px) / 2)));
+.cm-document-width {
+display: inline-flex; align-items: center; gap: 0.15rem; flex: none;
+color: var(--cp-text-soft); font-size: var(--cp-chrome-small-font);
 }
+.cm-document-width output { min-width: 3.5rem; text-align: center; font-variant-numeric: tabular-nums; }
+.cm-toolbar .cm-document-width button,
+.cm-sidebar .cm-document-width button {
+display: inline-flex; align-items: center; justify-content: center;
+width: 1.8rem; height: 1.8rem; padding: 0; border: 0; border-radius: 0.4rem;
+background: transparent; color: var(--cp-text); font: inherit; font-size: 1rem; cursor: pointer;
+}
+.cm-document-width button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.cm-document-width button:disabled { opacity: 0.4; cursor: default; }
+.cm-sidebar .cm-document-width { align-self: flex-end; }
+@media (max-width: 640px) {
+.cm-toolbar { max-width: calc(100vw - 2rem); box-sizing: border-box; flex-wrap: wrap; justify-content: flex-end; }
+.cm-toolbar .cm-document-width button,
+.cm-sidebar .cm-document-width button { min-width: 44px; min-height: 44px; }
 }
 .cm-sidebar header {
 padding: var(--cp-chrome-header-y) var(--cp-chrome-header-x); border-bottom: 1px solid var(--cp-border);
@@ -803,7 +816,7 @@ padding-bottom: var(--cp-chrome-button-y);
 }
 
 .cm-footer {
-margin: var(--cp-chrome-shell-x) auto 1.25rem; width: calc(100% - 3rem); max-width: calc(1480px - 3rem); box-sizing: border-box; padding: var(--cp-chrome-action-x) 1rem;
+margin: var(--cp-chrome-shell-x) auto 1.25rem; width: calc(100% - 3rem); max-width: calc(var(--cm-doc-max-width, 1800px) - 3rem); box-sizing: border-box; padding: var(--cp-chrome-action-x) 1rem;
 display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--cp-chrome-gap);
 font-size: var(--cp-chrome-small-font); color: var(--cp-text-soft);
 border: 1px solid var(--cp-border); border-radius: 0.6rem; background: var(--cp-surface);
@@ -829,14 +842,8 @@ background: transparent; color: var(--cp-accent); cursor: pointer; line-height: 
 body.sidebar-open .cm-footer {
 max-width: none;
 width: auto;
-margin-left: 2rem;
-margin-right: calc(var(--cm-sidebar-w, 400px) + 2rem);
-}
-}
-@media (min-width: 1700px) {
-body.sidebar-open .cm-footer {
-margin-left: max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - 1600px) / 2));
-margin-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - 1600px) / 2)));
+margin-left: max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - (var(--cm-doc-max-width, 1800px) - 3rem)) / 2));
+margin-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - (var(--cm-doc-max-width, 1800px) - 3rem)) / 2)));
 }
 }
 
@@ -4727,6 +4734,7 @@ document.body.removeAttribute("data-cm-density");
 const SIDEBAR_WIDTH_KEY= "commentable-html::sidebarWidth";
 const AUTO_OPEN_PANEL_KEY= "commentable-html::autoOpenPanelDefault";
 const AUTO_OPEN_PANEL_DOC_KEY=COMMENT_KEY+"::autoOpenPanel";
+const DOCUMENT_WIDTH_KEY=COMMENT_KEY+"::documentWidth";
 const UTC_TIMES_KEY= "commentable-html::utcTimes";
 const CMH_STORE_KEY=COMMENT_KEY+"::z";
 const CMH_STORE_FRAME= "\u0001z";
@@ -4734,11 +4742,11 @@ const CMH_MAX_STORE_CHARS=8000000;
 const CMH_SUBKEY_SUFFIXES=[
 "::z","::deleted","::diffLayout","::diffSyntax","::cl","::note","::tables",
 "::commentSort","::tableSort","::reviews","::reviews::deleted","::deckMode",
-"::autoOpenPanel","::tocFold",
+"::autoOpenPanel","::tocFold","::documentWidth",
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.855.1";
+const CMH_VERSION= "1.857.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -12548,7 +12556,12 @@ onSave(val);
 cancel.addEventListener("click",function(){onCancel();});
 save.addEventListener("click",doSave);
 ta.addEventListener("input",function(){ta.removeAttribute("aria-invalid");ta.classList.remove("cm-invalid");});
-cmhAutogrow(ta);
+cmhAutogrow(ta,function(){
+const list=wrap.closest(".list");
+if(!list||document.activeElement!==ta||ta.scrollHeight<=ta.clientHeight+1)return;
+const overflow=actions.getBoundingClientRect().bottom-list.getBoundingClientRect().bottom;
+if(overflow>0)list.scrollTop+=Math.ceil(overflow);
+});
 wrap.addEventListener("keydown",function(e){
 if(e.isComposing||isNoteComposing(ta))return;
 if(handleNoteFormatShortcut(e,ta))return;
@@ -19257,6 +19270,7 @@ T('Navigation',
 '</ul>')+
 T('Reading aids',
 '<ul>'+
+(!isDeck?'<li><strong>Document width:</strong> new flow documents default to a responsive 1800px maximum. Use <strong>Width - / +</strong> in the top toolbar (or the comments panel) to adjust the maximum by 100px, from 800px to 3000px. Smaller screens still fit automatically. This browser remembers the choice for this document only; it does not change exports, print, or decks. Custom authored widths stay intact until you adjust them. If storage is blocked, the change lasts only for this session.</li>':'')+
 '<li><strong>Sortable tables:</strong> click a column header to sort (numeric-aware), cycling ascending, descending, original.</li>'+
 '<li><strong>Code, KQL and charts</strong> are framed for readability; every code block has an always-visible <em>Copy</em> button, and a KQL caption title copies the cluster name.</li>'+
 '<li><strong>Syntax highlighting</strong> covers 50+ language labels, including <code>json</code> and <code>jsonc</code> - a JSON property name is tinted apart from its value, and <code>//</code> or <code>/* */</code> comments read as comments.</li>'+
@@ -19376,6 +19390,115 @@ try{localStorage.setItem(COMMENT_KEY+"::commentSort",commentSort);}catch(e){}
 renderComments();
 });
 })();
+function setupDocumentWidth(){
+if(IS_DECK)return;
+const shell=root.closest(".app")||root;
+shell.classList.add("cm-document-width-shell");
+function authoredWidth(){
+const sidebarOpen=document.body.classList.contains("sidebar-open");
+const sheet=style.sheet;
+sheet.disabled=true;
+if(sidebarOpen)document.body.classList.remove("sidebar-open");
+try{
+const raw=getComputedStyle(shell).maxWidth;
+return/^\d+(?:\.\d+)?px$/.test(raw)?parseFloat(raw):(shell.getBoundingClientRect().width||1800);
+}finally{
+if(sidebarOpen)document.body.classList.add("sidebar-open");
+sheet.disabled=false;
+}
+}
+const minimum=800,maximum=3000,step=100;
+const style=document.createElement("style");
+style.className= "cm-document-width-style";
+document.body.appendChild(style);
+const groups=[];
+let width=authoredWidth();
+let pinned=false;
+let toolbarHeight=0;
+function savedWidth(){
+const raw=cmhReadPref(DOCUMENT_WIDTH_KEY);
+if(!raw||!/^\d+$/.test(raw))return null;
+const value=Number(raw);
+return value>=minimum&&value<=maximum&&value%step===0?value:null;
+}
+function apply(value){
+pinned=value!==null;
+if(pinned)width=value;
+else width=authoredWidth();
+const selector= ".cm-document-width-shell";
+const override=value===null?"":selector+" { max-width: "+width+"px !important; }"
++(shell===root?"":"@media (min-width: 1100px) { body.sidebar-open "+selector+" { max-width: none !important; } }");
+style.textContent= "@media screen { :root { --cm-doc-max-width: "+width+"px; --cm-toolbar-height: "+toolbarHeight+"px; } "
++override+" }";
+groups.forEach(function(group){
+group.output.textContent=Math.round(width)+"px";
+group.minus.disabled=width<=minimum;
+group.plus.disabled=width>=maximum;
+});
+hideChartTooltip();
+root.querySelectorAll(CMH_CHART_DATA_SEL).forEach(function(canvas){
+if(canvas._cmhChart)renderInteractiveChart(canvas,-1);
+});
+}
+function change(direction){
+const snapped=direction>0?Math.floor(width/step)+1:Math.ceil(width/step)-1;
+const next=Math.max(minimum,Math.min(maximum,snapped*step));
+apply(next);
+if(!cmhWritePref(DOCUMENT_WIDTH_KEY,String(next))){
+showToast("Could not save document width - this browser's storage is full or blocked.",{alert:true});
+}
+}
+function addControls(host){
+if(!host)return;
+const group=document.createElement("div");
+group.className= "cm-document-width cm-skip";
+group.setAttribute("role","group");
+group.setAttribute("aria-label","Document maximum width");
+const label=document.createElement("span");
+label.textContent= "Width";
+function button(text,name,direction){
+const el=document.createElement("button");
+el.type= "button";
+el.textContent=text;
+el.setAttribute("aria-label",name);
+el.title=name+" by 100px (800-3000px)";
+el.addEventListener("click",function(){change(direction);});
+cmhMarkLayerChrome(el);
+return el;
+}
+const minus=button("-","Decrease document width",-1);
+const output=document.createElement("output");
+output.setAttribute("role","status");
+output.setAttribute("aria-label","Document maximum width");
+const plus=button("+","Increase document width",1);
+group.append(label,minus,output,plus);
+host.appendChild(group);
+groups.push({output,minus,plus});
+}
+const toolbarToggle=cmhEl("btnToggleSidebar");
+const toolbar=toolbarToggle&&toolbarToggle.closest(".cm-toolbar");
+addControls(toolbar);
+if(toolbar)toolbarHeight=toolbar.getBoundingClientRect().height;
+const sidebar=cmhLayerBlock(document,"sidebar");
+const header=sidebar&&sidebar.querySelector("header");
+addControls(header&&header.querySelector(".head-aux"));
+apply(savedWidth());
+function refreshLayout(){
+const height=toolbar&&toolbar.getBoundingClientRect().height;
+const toolbarChanged=height>0&&height!==toolbarHeight;
+if(toolbarChanged)toolbarHeight=height;
+if(toolbarChanged||(!pinned&&authoredWidth()!==width))apply(pinned?width:null);
+}
+window.addEventListener("resize",refreshLayout);
+if(typeof ResizeObserver=== "function"){
+const observer=new ResizeObserver(refreshLayout);
+observer.observe(shell);
+if(toolbar)observer.observe(toolbar);
+}
+window.addEventListener("storage",function(event){
+if(event.key===null||event.key===DOCUMENT_WIDTH_KEY)apply(savedWidth());
+});
+}
 function _cmSlugify(text){
 const s=String(text).toLowerCase().trim()
 .replace(/[^\w\s-]/g,"").replace(/[\s_]+/g,"-").replace(/-+/g,"-").replace(/^-+|-+$/g,"");
@@ -21968,6 +22091,7 @@ focusStage();
 if(IS_DECK){
 setupDeck();
 }else{
+setupDocumentWidth();
 setupHeadingAnchors();
 setupCollapsibleSections();
 setupTocCollapse();

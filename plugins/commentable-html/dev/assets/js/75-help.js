@@ -182,6 +182,7 @@ function showHelp(restoreEl) {
         '</ul>') +
       T('Reading aids',
         '<ul>' +
+          (!isDeck ? '<li><strong>Document width:</strong> new flow documents default to a responsive 1800px maximum. Use <strong>Width - / +</strong> in the top toolbar (or the comments panel) to adjust the maximum by 100px, from 800px to 3000px. Smaller screens still fit automatically. This browser remembers the choice for this document only; it does not change exports, print, or decks. Custom authored widths stay intact until you adjust them. If storage is blocked, the change lasts only for this session.</li>' : '') +
           '<li><strong>Sortable tables:</strong> click a column header to sort (numeric-aware), cycling ascending, descending, original.</li>' +
           '<li><strong>Code, KQL and charts</strong> are framed for readability; every code block has an always-visible <em>Copy</em> button, and a KQL caption title copies the cluster name.</li>' +
           '<li><strong>Syntax highlighting</strong> covers 50+ language labels, including <code>json</code> and <code>jsonc</code> - a JSON property name is tinted apart from its value, and <code>//</code> or <code>/* */</code> comments read as comments.</li>' +

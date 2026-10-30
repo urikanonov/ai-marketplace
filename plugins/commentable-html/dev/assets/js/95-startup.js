@@ -1201,6 +1201,7 @@ function setupDeck() {
 if (IS_DECK) {
   setupDeck();
 } else {
+  setupDocumentWidth();
   setupHeadingAnchors();
   setupCollapsibleSections();
   setupTocCollapse();

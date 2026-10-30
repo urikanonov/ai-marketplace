@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.857.0] - 2026-10-29
+
+### Added
+
+- Per-document Width - / + reading controls in the flow-document toolbar and comments panel:
+  100px steps from 800px to 3000px, remembered in this browser for each document separately.
+
+### Changed
+
+- New flow documents default to a responsive 1800px maximum body width. The footer and
+  sidebar-open gutters follow the selected width without changing print, exports, or decks.
+- Wrapped mobile toolbars reserve their measured height, and capped inline reply editors
+  keep their action row reachable with the extra panel controls.
+- Width changes refresh chart bitmaps and hover coordinates. Relative authored widths
+  remain current with the panel open and when another tab removes the saved preference.
+- Deliberately raise the CSS byte ceiling from 146000 to 148000 for the reading-width
+  controls, responsive touch targets, and matching sidebar/footer layout.
+
 ## [1.855.1] - 2026-10-30
 
 ### Fixed

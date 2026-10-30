@@ -164,10 +164,17 @@ For a before/after of code, prefer a [code review diff block](code-review-diffs.
 
 The sidebar is `position: fixed` and resizable. The runtime stores the chosen width in localStorage, exposes it as `--cm-sidebar-w`, and clamps it to the viewport. When `body.sidebar-open` is set, the page should reserve room for the current width on wide screens and let the panel overlay on narrow screens.
 
+New flow documents default to a responsive 1800px body maximum. The toolbar's **Width - / +**
+controls (mirrored in the comments panel) adjust that maximum by 100px within 800-3000px and remember
+the choice in localStorage for this document's `data-comment-key` only. Existing custom authored
+widths remain intact until explicitly adjusted. The preference is screen-only: it does not change
+print, exported author styling, or fixed-stage decks. The runtime exposes the active cap as
+`--cm-doc-max-width` for its matching sidebar gutters and footer.
+
 ### Recipe A: centered max-width layout (most pages)
 
 ```css
-.app { max-width: 1480px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+.app { max-width: 1800px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
 
 body.sidebar-open .app { padding-right: 1.5rem; }
 
@@ -175,15 +182,8 @@ body.sidebar-open .app { padding-right: 1.5rem; }
  body.sidebar-open .app {
  max-width: none;
  margin: 0;
- padding-left: 2rem;
- padding-right: calc(var(--cm-sidebar-w, 400px) + 2rem);
- }
-}
-
-@media (min-width: 1900px) {
- body.sidebar-open .app {
- padding-left: max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1480px) / 2));
- padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-sidebar-w, 400px) - 1480px) / 2)));
+ padding-left: max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - (var(--cm-doc-max-width, 1800px) - 3rem)) / 2));
+ padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - (var(--cm-doc-max-width, 1800px) - 3rem)) / 2)));
  }
 }
 ```
