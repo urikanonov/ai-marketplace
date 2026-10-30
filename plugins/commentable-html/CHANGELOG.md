@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.857.1] - 2026-10-30
+
+### Changed
+
+- Update Mermaid to 12.2.0 and refresh its vendored offline bundle, license, CDN pins,
+  and generated artifacts alongside the KaTeX and lodash-es dependency remediation.
+- The upstream Mermaid bundle still embeds DOMPurify 3.4.12; updating the separate
+  lockfile dependency does not change those prebuilt bytes.
+
 ## [1.857.0] - 2026-10-29
 
 ### Added

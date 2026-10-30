@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.857.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.857.1<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -489,6 +489,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.857.1] - 2026-10-30</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Update Mermaid to 12.2.0 and refresh its vendored offline bundle, license, CDN pins, and generated artifacts alongside the KaTeX and lodash-es dependency remediation.</li>
+              <li>The upstream Mermaid bundle still embeds DOMPurify 3.4.12; updating the separate lockfile dependency does not change those prebuilt bytes.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.857.0] - 2026-10-29</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -502,6 +510,8 @@
               <li>Deliberately raise the CSS byte ceiling from 146000 to 148000 for the reading-width controls, responsive touch targets, and matching sidebar/footer layout.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.855.1] - 2026-10-30</h3></div>
             <div class="group-label">Fixed</div>
@@ -509,8 +519,6 @@
               <li>Copy all now counts checklist, note, and editable-table change cards in its success confirmation, matching the sidebar instead of reporting zero when no comments were written. Selected-only copying still counts only the selected comment threads.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.855.0] - 2026-10-29</h3></div>
             <div class="group-label">Added</div>
@@ -558,14 +566,7 @@
               <li>Moved each comment card&#x27;s Copy button immediately after edit in the action row, with the same bordered styling and mobile touch target. Select stays in the metadata row.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.853.0] - 2026-09-27</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Updated Mermaid to 12.0.0 while preserving complete gallery diagrams, deterministic render readiness, authored multi-line labels, and rollback of degraded repair renders.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">421 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">422 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
