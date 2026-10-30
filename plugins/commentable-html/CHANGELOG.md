@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.855.1] - 2026-10-30
+
+### Fixed
+
+- Copy all now counts checklist, note, and editable-table change cards in its success
+  confirmation, matching the sidebar instead of reporting zero when no comments were written.
+  Selected-only copying still counts only the selected comment threads.
+
 ## [1.855.0] - 2026-10-29
 
 ### Added

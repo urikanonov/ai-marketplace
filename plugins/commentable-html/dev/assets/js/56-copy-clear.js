@@ -472,7 +472,8 @@ async function copyAll() {
     : state.copyAllLive;
   const changes = picked.length ? [] : state.changes;
   const roots = (typeof threadRoots === "function") ? threadRoots(live) : live;
-  const n = roots.length;
+  const n = roots.length + (picked.length ? 0
+    : state.noteCh.length + new Set(state.clCh.map(function (ch) { return ch.checklist; })).size + state.tableCh.length);
   const replyCount = live.length - roots.length;
   const text = buildCopyText(picked);
   const copied = await _copyBundleToClipboard(text);

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.855.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.855.1<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -489,6 +489,13 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.855.1] - 2026-10-30</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Copy all now counts checklist, note, and editable-table change cards in its success confirmation, matching the sidebar instead of reporting zero when no comments were written. Selected-only copying still counts only the selected comment threads.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.855.0] - 2026-10-29</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -500,6 +507,8 @@
               <li>Deliberately raise the runtime byte ceiling from 677000 to 710000 and the asset bundle ceiling from 865000 to 900000 for the editable-table model, controls and styles.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.854.0] - 2026-10-12</h3></div>
             <div class="group-label">Added</div>
@@ -521,8 +530,6 @@
               <li>Discussion imports reject duplicate incoming ids and ids colliding with unrelated comments or threads before writing document state.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.853.2] - 2026-10-23</h3></div>
             <div class="group-label">Fixed</div>
@@ -551,14 +558,7 @@
               <li>The collapsed toolbar&#x27;s three-dots menu now exposes the same auto-open, per-document override, and UTC timestamp preferences as the sidebar More menu, with both surfaces kept in sync.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.851.0] - 2026-09-26</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Every sidebar comment now has a <code>Copy</code> button beside <code>Select</code>, so one comment thread can be handed back immediately without changing the current selection or using <code>Copy selected</code>.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">419 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">420 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
