@@ -725,7 +725,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.855.0";
+const CMH_VERSION= "1.855.1";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -10339,7 +10339,8 @@ const live=picked.length
 :state.copyAllLive;
 const changes=picked.length?[]:state.changes;
 const roots=(typeof threadRoots=== "function")?threadRoots(live):live;
-const n=roots.length;
+const n=roots.length+(picked.length?0
+:state.noteCh.length+new Set(state.clCh.map(function(ch){return ch.checklist;})).size+state.tableCh.length);
 const replyCount=live.length-roots.length;
 const text=buildCopyText(picked);
 const copied=await _copyBundleToClipboard(text);
