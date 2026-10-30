@@ -8,6 +8,58 @@ import {
 } from "./helpers.js";
 
 test.describe("Copy all + handled-id pruning", () => {
+  test("Copy all confirmation counts checklist and note cards like the sidebar (CMH-COPY-01)", async ({ page }) => {
+    const { html, dir } = stageContent(`
+      <section><p id="prose">A paragraph to review.</p>
+        <div class="cmh-checklist" data-cmh-checklist="songs">
+          <ul><li data-cmh-item="first">First song</li><li data-cmh-item="second">Second song</li></ul>
+        </div>
+        <div class="cmh-note" data-cmh-note="summary">Original summary</div>
+        <table data-cmh-table="agenda" data-cmh-table-label="Agenda">
+          <thead><tr><th data-cmh-column="topic">Topic</th></tr></thead>
+          <tbody><tr data-cmh-row="first"><td>Original topic</td></tr></tbody>
+        </table>
+      </section>`);
+    try {
+      await installClipboardCapture(page);
+      await page.goto(fileUrl(html));
+      await ready(page);
+      await page.locator('[data-cmh-item="first"] .cmh-check').click();
+      await page.locator('[data-cmh-item="second"] .cmh-check').click();
+      await expect(page.locator(".cm-card-checklist")).toHaveCount(1);
+      await expect(page.locator("#sidebarCount")).toHaveText("1");
+      await page.locator("#btnCopyAll").click();
+      expect(await lastCopied(page)).toContain('CHECKLIST_STATE_JSON: {"songs":{"first":"check","second":"check"}}');
+      await expect(page.locator("#toast")).toContainText("Copied 1 comment.");
+
+      await page.locator(".cmh-note-input").fill("Updated summary");
+      await expect(page.locator("#sidebarCount")).toHaveText("2");
+      await page.locator("#btnCopyAll").click();
+      await expect(page.locator("#toast")).toContainText("Copied 2 comments.");
+      expect(await lastCopied(page)).toContain('NOTES_STATE_JSON: {"summary":"Updated summary"}');
+
+      await addTextComment(page, "#prose", "Please clarify");
+      await expect(page.locator("#sidebarCount")).toHaveText("3");
+      await page.locator("#btnCopyAll").click();
+      await expect(page.locator("#toast")).toContainText("Copied 3 comments.");
+      expect(await lastCopied(page)).toContain("Please clarify");
+
+      await page.locator('[data-cmh-edit-column="topic"]').fill("Updated topic");
+      await expect(page.locator("#sidebarCount")).toHaveText("4");
+      await page.locator("#btnCopyAll").click();
+      await expect(page.locator("#toast")).toContainText("Copied 4 comments.");
+      expect(await lastCopied(page)).toContain("Updated topic");
+
+      await page.locator("input.cm-pick-box").check();
+      await page.locator("#btnCopyAll").click();
+      await expect(page.locator("#toast")).toContainText("Copied 1 selected comment.");
+      expect(await lastCopied(page)).not.toContain("Updated summary");
+      expect(await lastCopied(page)).not.toContain("Updated topic");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("Copy all emits the markdown bundle with an exact HANDLED_IDS_JSON line", async ({ page }) => {
     await openInline(page);
     await addTextComment(page, "#commentRoot section p", "reviewer note here");
