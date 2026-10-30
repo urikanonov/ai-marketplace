@@ -10,15 +10,26 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 - Column-title comments anchored by stable table and column ids. Threads survive renaming,
   sorting, reload and HTML export; removing a column keeps its discussion, and Undo reattaches it.
+- Drag data-column grips with mouse or touch, or use arrow keys and the column menu to reorder.
+  Values, title discussions and the active row sort stay attached to their stable identities;
+  column order participates in cumulative changes, Undo/Redo, saved drafts and exports.
+- Insert rows at a boundary or with bottom New, with the new editor focused and active sorting cleared.
+- Resize data-column borders or choose Autofit width; widths are tracked, undoable and exported.
+- Numeric columns accept blank, signed decimal and scientific-notation values with numeric sorting.
+- Cell-level review comments use stable table/row/column anchors and survive edits, moves and exports.
 
 ### Changed
 
 - Compact trash-icon row removal and intrinsically sized row-number/action columns.
 - Vertical three-dot column menus with insertion before or after a column.
 - Standard sort chevrons, numeric/currency-aware comparison and sortable canonical row numbers.
-- Theme-aware cell hover and focus feedback.
-- Deliberately raise the CSS byte ceiling from 146000 to 148000 for compact controls,
-  vertical menus, title-comment highlighting and cell interaction feedback.
+- Immediate whole-cell hover feedback without moving editing focus until click or Tab.
+- Compact branded column dialogs with an accent-colored Save action.
+- Soft-accent table action buttons with icons, hover feedback and operation-specific Undo/Redo tooltips.
+- Right-aligned header sort/menu controls and table-scoped Add Comment-style accent tooltips.
+- Deliberately raise the JS ceiling from 710000 to 730000, CSS from 146000 to 155000,
+  asset bundle from 900000 to 925000 and shareable template from 921000 to 945000 bytes
+  for column reorder/resize, numeric editors, cell-comment lifecycle and compact themed controls.
 
 ## [1.857.1] - 2026-10-30
 

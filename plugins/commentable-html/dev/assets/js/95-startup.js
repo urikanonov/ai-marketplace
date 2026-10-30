@@ -40,7 +40,7 @@ function restoreHighlights() {
   // treating an offsetless entry as trivially sane. This keeps the per-comment restore
   // work bounded to comments that can actually resolve to a range.
   const textComments = comments.filter(c => c.anchorType !== "mermaid" && c.anchorType !== "diff"
-    && c.anchorType !== "image" && c.anchorType !== "link" && c.anchorType !== "widget" && c.anchorType !== "table-column"
+    && c.anchorType !== "image" && c.anchorType !== "link" && c.anchorType !== "widget" && !_etIsAnchor(c)
     && c.anchorType !== "document" && c.anchorType !== "slide"
     && Number.isFinite(c.start) && Number.isFinite(c.end));
   const sorted = [...textComments].sort((a, b) => a.start - b.start);
@@ -272,6 +272,7 @@ function _cmTipShow(el) {
     document.body.appendChild(_cmTipEl);
   }
   _cmTipFor = el;
+  _cmTipEl.classList.toggle("cmh-table-tooltip", !!el.closest(".cmh-editable-table, .cmh-table-dialog"));
   _cmTipEl.textContent = text;
   _cmTipEl.classList.remove("below");
   _cmTipEl.style.visibility = "hidden";

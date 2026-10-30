@@ -380,7 +380,7 @@ function _mdCommentsAppendix() {
     if (c.anchorType === "document") where = "document-wide";
     else if (c.anchorType === "slide") where = 'slide "' + esc(c.slideTitle || c.slideId || "") + '"';
     else if (c.anchorType === "widget") where = 'widget "' + esc(c.widget) + '" / ' + esc(c.partLabel || c.part);
-    else if (c.anchorType === "table-column") where = 'table "' + esc(c.tableId) + '" / column "' + esc(c.columnId) + '" / ' + esc(c.quote);
+    else if (_etIsAnchor(c)) where = 'table "' + esc(c.tableId) + '" / ' + (c.rowId === undefined ? "" : 'row "' + esc(c.rowId) + '" / ') + 'column "' + esc(c.columnId) + '" / ' + esc(c.quote);
     else if (c.anchorType === "mermaid") where = "mermaid " + esc(c.nodeLabel || c.nodeKey);
     else if (c.anchorType === "diff") where = "diff line";
     else if (c.anchorType === "image") where = (c.imageKind === "chart" ? "chart" : "image") + " " + ((c.imageIndex || 0) + 1);

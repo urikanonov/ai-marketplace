@@ -97,7 +97,7 @@ html.cmh-awaiting-style body { visibility: hidden; }
 <p class="cmh-lede">Shape a discussion table as you work. Edit cells, choose a status, add a row or column, and send one cumulative set of changes back through CMH.</p>
 <section>
 <h2 id="discussion">Discussion items</h2>
-<p>Text fields grow as you type, with hover and focus highlighting. Status is a choice column. Use a column's vertical three-dot menu to rename it, insert before or after it, or remove it. Click a column title to leave a review comment.</p>
+<p>Cells highlight immediately on hover; click or Tab to edit. Status is a choice column. Drag a dotted grip to reorder or a header border to resize; # stays fixed. The three-dot menu includes Autofit width. Click a title or a cell's comment icon to discuss it. Use a boundary + to insert a row or bottom New to append. Hover Undo/Redo for an accent tooltip previewing the next operation.</p>
 <table data-cmh-table="discussion" data-cmh-table-label="Discussion items">
 <thead><tr><th data-cmh-column="topic">Discussion item</th><th data-cmh-column="owner">Owner</th><th data-cmh-column="status" data-cmh-column-type="choice" data-cmh-options='["Open","Decision needed","Assigned","Resolved"]' data-cmh-default="Open">Status</th></tr></thead>
 <tbody>
@@ -110,9 +110,10 @@ html.cmh-awaiting-style body { visibility: hidden; }
 <h2 id="try">Things to try</h2>
 <ol>
 <li>Edit an owner twice: the panel still shows one table card, comparing the original to the final value.</li>
-<li>Add a text or choice column. Rename it using its column menu. Use Undo and Redo to explore safely.</li>
+<li>Add a text, Number or choice column. Try numeric values -2.5 and 1e2, then sort. Rename using the column menu; resize by border dragging or Autofit width.</li>
+<li>Insert a row in the middle with its boundary + or append with bottom New. Insertions clear sorting and focus the new row.</li>
 <li>Use the sort chevrons on a data column or #. Original row numbers travel with their rows; sorting creates no review change.</li>
-<li>Comment on Owner by clicking its title (or Tab then Enter). Rename or sort it: the thread stays attached. Remove the column and Undo to restore its title highlight.</li>
+<li>Comment on Owner by clicking its title (or Tab then Enter), or use a cell's comment icon. Rename, move or sort: threads stay attached. Remove the target and Undo to restore its highlight.</li>
 <li>Remove a populated row: Cancel is the safe default. Confirm removal and then Undo it.</li>
 <li>Use Copy all to return cumulative changes, or Export as Shareable to save the edited table in another standalone HTML.</li>
 </ol>
@@ -120,7 +121,7 @@ html.cmh-awaiting-style body { visibility: hidden; }
 </section>
 <section>
 <h2 id="normal-review">Normal review still works</h2>
-<p>Select this paragraph to leave a normal review comment. Editable cells use the table's cumulative change card instead of inline comments, so adding or removing rows cannot strand a text highlight.</p>
+<p>Select this paragraph to leave a normal review comment. Table edits use a cumulative change card; explicit cell comments use stable row and column ids rather than text offsets.</p>
 </section>
 
 <!-- END: commentable-html - CONTENT -->

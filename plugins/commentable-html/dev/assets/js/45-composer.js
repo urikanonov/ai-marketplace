@@ -82,7 +82,7 @@ function composerAnchorRect({ mode, range, comment, mermaid, diff, image, widget
     anchorEl = resolveLinkEl(anchorSrc);
   } else if (anchorSrc.anchorType === "widget") {
     anchorEl = findWidgetPart(anchorSrc.widget, anchorSrc.part);
-  } else if (anchorSrc.anchorType === "table-column") {
+  } else if (_etIsAnchor(anchorSrc)) {
     anchorEl = findTableColumn(anchorSrc);
   } else {
     anchorEl = root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
@@ -383,7 +383,7 @@ function openComposerForEdit(comment) {
       else if (anchorSrc.anchorType === "image") anchorEl = resolveImageEl(anchorSrc);
       else if (anchorSrc.anchorType === "link") anchorEl = resolveLinkEl(anchorSrc);
       else if (anchorSrc.anchorType === "widget") anchorEl = findWidgetPart(anchorSrc.widget, anchorSrc.part);
-      else if (anchorSrc.anchorType === "table-column") anchorEl = findTableColumn(anchorSrc);
+      else if (_etIsAnchor(anchorSrc)) anchorEl = findTableColumn(anchorSrc);
       else anchorEl = root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
       if (anchorEl) positionComposerNear(existing, anchorEl.getBoundingClientRect());
     }
@@ -602,7 +602,8 @@ function saveComposerElementInner(el) {
     const ctx = host ? captureMermaidContext(host) : { section: null, headingPath: [] };
     comments.push(stampAuthor({
       id: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      anchorType: "table-column", tableId: info.tableId, columnId: info.columnId,
+      anchorType: info.rowId === undefined ? "table-column" : "table-cell", tableId: info.tableId, columnId: info.columnId,
+      ...(info.rowId === undefined ? {} : { rowId: info.rowId }),
       quote: info.quote, note, createdAt: new Date().toISOString(), ...ctx,
     }));
     _etTitleHighlights();

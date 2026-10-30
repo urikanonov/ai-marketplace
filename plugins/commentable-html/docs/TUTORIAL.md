@@ -118,8 +118,29 @@ Open [the editable-table playground](../examples/report-editable-table.html). Un
 commentable table cells, these cells are editable fields: type discussion text, assign an owner,
 or choose a status. Hover or focus a cell to reveal its editable surface. Use **Add row** and
 **Add column**; each vertical three-dot menu renames, inserts before/after, or removes its column.
-The compact trash button removes its row. New columns can be text or single-choice, with one choice per line and an optional
-default. Existing column types remain fixed. Empty values and duplicate display labels are valid.
+The compact trash button removes its row. New columns can be text, number or single-choice, with one
+choice per line and an optional default. Existing column types remain fixed. Empty values and duplicate display labels are valid.
+
+**Drag a column's dotted grip to change its position**, using mouse or touch. The **#** and row-action
+columns stay fixed. Tab to a grip and use Left/Right, or use the menu's **Move column left/right** actions.
+Values, title discussions and the active row sort follow their columns. Moving back to the original
+order removes that cumulative change. Hover highlights the whole cell immediately; editing still starts
+with click or Tab, never by stealing focus on hover.
+
+Table actions have soft-accent colors and icons, and column-menu items keep icons beside their labels.
+Hover or focus **Undo/Redo** to preview the next operation. Compact column dialogs show the CMH mark
+at top right and give **Save** a stronger accent color, with a neutral **Cancel**.
+Table tooltips use the same accent pill treatment as Add Comment.
+
+Hover a row boundary to reveal **+**, or use **+ New** at the bottom, to insert in the middle or
+append. Insertion clears the view sort and focuses the new row. Drag a data-header border to
+**resize**, or choose **Autofit width** in its three-dot menu (double-clicking the border also fits).
+Left/Right on the focused border resizes by keyboard; Escape cancels a drag. Widths are tracked,
+undoable and carried by export. Header sort/menu controls stay at the right edge.
+
+Choose **Number** when adding a column for numeric sorting, including signed decimals and
+scientific notation such as `-2.5` and `1e2`. Empty is valid; currency, grouping and nonfinite
+values are not. Invalid input is not saved and restores the previous value when you leave it.
 
 Populated deletion asks first with **Cancel** focused. **Undo** and **Redo** restore committed
 edits and structural changes in this session; native text undo still works inside an editor.
@@ -132,6 +153,9 @@ Sorting changes only the view, not the table data or the cumulative review.
 review thread, separate from the cumulative table edits. It follows the column's stable identity
 through renaming, insertion, sorting, reload and HTML export. Removing the column keeps its
 discussion in the panel with an unavailable anchor; **Undo** restores the title highlight.
+For a **cell comment**, hover or focus the cell and click its comment icon. This normal thread
+keeps the original quoted value and stable row/column identities through edits, sorting, moving
+columns, reload and export. Removing a row or column keeps the thread; Undo reattaches it.
 
 Every changed table has **one cumulative change card**, searchable in the panel. Edit a value back
 to its baseline and that change disappears; add then remove an untouched row and it disappears too.
@@ -147,8 +171,8 @@ copy or export before closing. A saved draft from another baseline is not silent
 **Copy saved draft** preserves it, and confirmed **Discard saved draft** unlocks editing.
 
 For authors, opt in with the [editable-table contract](https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/dev/skill/references/tables-contract.md)
-and scaffold/apply tools. Editable cells do not accept inline text comments; their edits use the
-table card, while nearby prose remains commentable. Merged/nested tables, rich HTML cells,
+and scaffold/apply tools. Cell threads anchor the whole cell rather than character offsets; edits use
+the table card, while nearby prose remains commentable. Merged/nested tables, rich HTML cells,
 formulas and live multi-user sync are intentionally outside this building block.
 
 ## 12. Format your comment

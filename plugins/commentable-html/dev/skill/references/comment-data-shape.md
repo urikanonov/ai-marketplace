@@ -8,6 +8,7 @@
   - [Mermaid-node comments (`anchorType: "mermaid"`)](#mermaid-node-comments-anchortype-mermaid)
   - [Diff-line comments (`anchorType: "diff"`)](#diff-line-comments-anchortype-diff)
   - [Widget/part comments (`anchorType: "widget"`)](#widgetpart-comments-anchortype-widget)
+  - [Editable-table comments](#editable-table-comments)
   - [Document-wide comments (`anchorType: "document"`)](#document-wide-comments-anchortype-document)
 - [Discussion and reply metadata](#discussion-and-reply-metadata)
 
@@ -96,6 +97,18 @@ When the user hovers a line inside a rendered diff block and clicks the floating
 - **`diffLabel`** - the file name from the block's `data-diff-label`, surfaced in the sidebar pinpoint and Copy bundle (e.g. `Anchor: diff src/reducer.py, added line 2`).
 - **`quote`** - the diff line including its `+`/`-`/space sign; emitted as a fenced ```` ```diff ```` block in Copy all. `isCode` is always `true`.
 - No `start/end` - like mermaid comments, diff comments are skipped by `backfillContext()` and restored by `setupDiffLayer()`.
+
+### Editable-table comments
+
+Editable tables use stable identities rather than prose offsets. Column-title threads carry
+`anchorType: "table-column"`, `tableId`, `columnId` and the original title `quote`. Cell threads carry
+`anchorType: "table-cell"` and additionally `rowId`, with the exact original cell value as `quote`
+(including an empty string). Both have the normal `id`, `note`, timestamps and section/heading context,
+but no `start`/`end`. Replies inherit the root anchor.
+
+Edits, sorting and column moves do not retarget these threads. Removed targets remain unavailable;
+Undo restores their highlights. Copy all, Markdown and print include stable table/row/column locators.
+See the [editable-table contract](tables-contract.md) for authoring and apply rules.
 
 ### Widget/part comments (`anchorType: "widget"`)
 

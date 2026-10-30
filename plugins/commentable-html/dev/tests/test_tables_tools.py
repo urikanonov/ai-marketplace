@@ -55,6 +55,37 @@ class TablesToolsTests(unittest.TestCase):
         empty["rows"] = []
         self.assertEqual(self.common.scan_tables(self.markup(empty))[0]["model"], empty)
 
+    def test_numeric_columns_and_widths_roundtrip_and_apply(self):
+        model = copy.deepcopy(MODEL)
+        model["columns"][0].update(type="number", width=236)
+        model["rows"][0]["cells"][0] = "-1.25e2"
+        self.assertEqual(self.common.scan_tables(self.markup(model))[0]["model"], model)
+        self.assertEqual(self.check(self.markup(model)), ([], []))
+        after = copy.deepcopy(model)
+        after["columns"][0]["width"] = 310
+        after["rows"][0]["cells"][0] = ".75"
+        self.path.write_text(self.markup(model), encoding="utf-8")
+        self.assertEqual(self.apply.apply_tables(self.path, payload(model, after)), 1)
+        self.assertEqual(self.common.scan_tables(self.path.read_text())[0]["model"], after)
+        self.assertEqual(self.apply.apply_tables(self.path, payload(model, after)), 0)
+        for value in ["\ufeff12", "\u00a0-.25e2\u2029", "\ufeff"]:
+            with self.subTest(value=value):
+                model["rows"][0]["cells"][0] = value
+                self.assertEqual(self.common.scan_tables(self.markup(model))[0]["model"], model)
+
+    def test_numeric_and_width_validation_rejects_invalid_values(self):
+        for value in ["money", "$12", "1,000", "NaN", "Infinity", "1e999", "0x12", "\x1c12", "\x8512"]:
+            model = copy.deepcopy(MODEL)
+            model["columns"][0]["type"] = "number"
+            model["rows"][0]["cells"][0] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.markup(model)
+        for width in [True, "200", 95, 4097, 200.5, None]:
+            model = copy.deepcopy(MODEL)
+            model["columns"][0]["width"] = width
+            with self.subTest(width=width), self.assertRaises(ValueError):
+                self.markup(model)
+
     def test_schema_rejects_malformed_models(self):
         variants = []
         for field, value in [("columns", []), ("rows", {}), ("extra", True)]:

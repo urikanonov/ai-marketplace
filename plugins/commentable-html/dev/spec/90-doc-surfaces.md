@@ -103,6 +103,15 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-TABLE-12 | tutorial | deck |
 | CMH-TABLE-13 | opt-out: agent-facing authoring and apply tooling contract | opt-out: agent-facing authoring tooling |
 | CMH-TABLE-14 | tutorial, help | deck |
+| CMH-TABLE-15 | tutorial, help | deck |
+| CMH-TABLE-16 | tutorial | opt-out: dialog appearance does not need a separate slide |
+| CMH-TABLE-17 | tutorial, help | opt-out: control styling and operation tooltips do not need a separate slide |
+| CMH-TABLE-18 | tutorial, help | deck |
+| CMH-TABLE-19 | tutorial | opt-out: header alignment does not need a separate slide |
+| CMH-TABLE-20 | tutorial, help | deck |
+| CMH-TABLE-21 | tutorial, help | deck |
+| CMH-TABLE-22 | tutorial, help | deck |
+| CMH-TABLE-23 | tutorial | opt-out: tooltip appearance does not need a separate slide |
 | CMH-CHECK-06 | tutorial, help | deck |
 | CMH-THREAD-01 | tutorial, help | deck |
 | CMH-THREAD-06 | tutorial, help | deck |

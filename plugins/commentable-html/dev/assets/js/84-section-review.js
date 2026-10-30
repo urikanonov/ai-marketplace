@@ -161,7 +161,7 @@ function _cmhAnchorElFor(c) {
   if (c.anchorType === "image" && typeof resolveImageEl === "function") return resolveImageEl(c);
   if (c.anchorType === "link" && typeof resolveLinkEl === "function") return resolveLinkEl(c);
   if (c.anchorType === "widget" && typeof findWidgetPart === "function") return findWidgetPart(c.widget, c.part);
-  if (c.anchorType === "table-column") return findTableColumn(c) || (editableTables.find(t => t.id === c.tableId) || {}).table || null;
+  if (_etIsAnchor(c)) return findTableColumn(c) || (editableTables.find(t => t.id === c.tableId) || {}).table || null;
   return null; // document-wide comments belong to no section
 }
 function _elBefore(a, b) {

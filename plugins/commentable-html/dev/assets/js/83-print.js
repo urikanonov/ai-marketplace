@@ -38,7 +38,7 @@ function _printAnchorLabel(c) {
   if (c.anchorType === "image") return (c.imageKind === "chart" ? "Chart" : "Image") + " " + ((Number(c.imageIndex) || 0) + 1);
   if (c.anchorType === "link") return "Link" + (c.linkText ? ' - "' + c.linkText + '"' : "");
   if (c.anchorType === "widget") return "Widget " + (c.widget || "widget") + (c.partLabel || c.part ? " - " + (c.partLabel || c.part) : "");
-  if (c.anchorType === "table-column") return "Table " + (c.tableId || "") + " - column " + (c.columnId || "");
+  if (_etIsAnchor(c)) return "Table " + (c.tableId || "") + (c.rowId === undefined ? "" : " - row " + c.rowId) + " - column " + (c.columnId || "");
   if (c.isCode) return c.codeLanguage ? "Code block (" + c.codeLanguage + ")" : "Code block";
   return "Text selection";
 }

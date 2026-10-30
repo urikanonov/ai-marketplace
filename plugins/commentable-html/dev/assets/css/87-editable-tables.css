@@ -5,9 +5,17 @@
   border: 1px solid var(--cp-border, #ccc); border-radius: 6px; padding: 6px 10px; cursor: pointer;
 }
 .cmh-editable-table button:disabled { opacity: .5; cursor: default; }
+.cmh-editable-table > .cmh-table-actions > button {
+  display: inline-flex; align-items: center; gap: 6px; border-color: transparent; border-radius: 999px;
+  background: var(--cp-accent-soft); color: var(--cp-accent); font-weight: 500;
+}
+.cmh-editable-table > .cmh-table-actions > button:not(:disabled):hover {
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+}
+.cmh-table-actions > button > svg { flex-shrink: 0; }
 .cmh-editable-table-scroll { overflow-x: auto; max-width: 100%; }
 .cmh-editable-table table { width: 100%; table-layout: auto; border-collapse: collapse; }
-.cmh-editable-table th, .cmh-editable-table td { border: 1px solid var(--cp-border, #ccc); padding: 8px; vertical-align: top; }
+.cmh-editable-table th, .cmh-editable-table td { position: relative; border: 1px solid var(--cp-border, #ccc); padding: 8px; vertical-align: top; }
 .cmh-editable-table tbody tr:nth-child(even) { background: var(--cp-surface-soft, #f5f5f5); }
 #commentRoot .cmh-editable-table :is(.cmh-table-number, .cmh-table-remove-cell) { width: 1%; padding: 4px; white-space: nowrap; text-align: center; }
 .cmh-editable-table .cmh-table-remove, .cmh-table-column-actions > summary {
@@ -23,16 +31,64 @@
 }
 .cmh-table-title[data-cids] { box-shadow: inset 0 -3px var(--cp-warning); }
 .cmh-table-title.cm-active { outline: 2px solid var(--cp-warning); }
-.cmh-editable-table textarea, .cmh-editable-table select {
+.cmh-editable-table textarea, .cmh-editable-table select, .cmh-editable-table input {
   box-sizing: border-box; width: 100%; min-width: 140px; min-height: 40px; padding: 8px;
   color: var(--cp-text, #242424); background: transparent;
   border: 1px solid transparent; border-radius: 4px; font: inherit;
 }
 .cmh-editable-table textarea { resize: vertical; white-space: pre-wrap; overflow-y: auto; }
-.cmh-editable-table :is(textarea, select):is(:hover, :focus) {
-  border-color: var(--cp-border-strong); background: var(--cp-surface-soft);
+:is(#commentRoot, body) .cmh-editable-table .cmh-table-data-cell:is(:hover, :focus-within) {
+  background: var(--cp-accent-soft); box-shadow: inset 0 0 0 2px var(--cp-accent);
 }
-.cmh-editable-table :is(button, textarea, select):focus-visible, .cmh-table-column-actions > summary:focus-visible,
+:is(#commentRoot, body) .cmh-editable-table .cmh-table-data-cell, .cmh-editable-table :is(textarea, select, input) { transition: none; }
+.cmh-editable-table :is(textarea, select, input):is(:hover, :focus) {
+  border-color: var(--cp-accent); background: var(--cp-accent-soft);
+}
+.cmh-editable-table .cmh-table-drag {
+  display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 32px;
+  padding: 0; border: 0; background: transparent; color: var(--cp-text-muted);
+  vertical-align: middle; cursor: grab; touch-action: none; user-select: none;
+}
+.cmh-editable-table .cmh-table-drag:is(:hover, .cmh-table-drag-active) { color: var(--cp-accent); background: var(--cp-accent-soft); }
+.cmh-editable-table .cmh-table-drag-active { cursor: grabbing; }
+.cmh-editable-table .cmh-table-drop-before { box-shadow: inset 3px 0 var(--cp-accent); }
+.cmh-editable-table .cmh-table-drop-after { box-shadow: inset -3px 0 var(--cp-accent); }
+.cmh-editable-table .cmh-table-drop-before:dir(rtl) { box-shadow: inset -3px 0 var(--cp-accent); }
+.cmh-editable-table .cmh-table-drop-after:dir(rtl) { box-shadow: inset 3px 0 var(--cp-accent); }
+.cmh-table-header { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.cmh-table-header .cmh-table-title { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: start; }
+.cmh-table-header .cmh-table-drag { flex-shrink: 0; }
+.cmh-table-header-actions { display: inline-flex; align-items: center; gap: 4px; margin-inline-start: auto; flex-shrink: 0; }
+.cmh-table-sized :is(textarea, select, input) { min-width: 0; }
+.cmh-table-resize { position: absolute; inset-block: 0; inset-inline-end: -4px; width: 8px; z-index: 1; cursor: col-resize; touch-action: none; }
+.cmh-table-resize:is(:hover, :focus-visible) { background: var(--cp-accent-soft); outline: 2px solid var(--cp-accent); }
+.cmh-table-resize[aria-disabled="true"] { pointer-events: none; }
+.cmh-editable-table .cmh-table-row-insert {
+  position: absolute; top: 0; left: 50%; transform: translate(-50%, -50%); z-index: 2;
+  display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0;
+  border: 1px solid var(--cp-accent); border-radius: 50%; background: var(--cp-surface); color: var(--cp-accent); opacity: 0;
+}
+.cmh-editable-table tr:hover .cmh-table-row-insert, .cmh-editable-table .cmh-table-row-insert:focus-visible { opacity: 1; }
+.cmh-editable-table tr:has(.cmh-table-row-insert:is(:hover, :focus-visible)) > :is(th, td) { box-shadow: inset 0 2px var(--cp-accent); }
+.cmh-editable-table .cmh-table-add-bottom { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; border-color: transparent; background: transparent; color: var(--cp-accent); }
+.cmh-editable-table .cmh-table-add-bottom:hover { background: var(--cp-accent-soft); }
+.cmh-editable-table input[aria-invalid="true"] { border-color: var(--cp-danger); }
+.cmh-editable-table .cmh-table-cell-comment {
+  position: absolute; top: 3px; inset-inline-end: 3px; display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0; border-color: transparent; background: var(--cp-accent-soft); color: var(--cp-accent); opacity: 0;
+}
+.cmh-table-data-cell:is(:hover, :focus-within, [data-cids]) .cmh-table-cell-comment { opacity: 1; }
+.cmh-table-data-cell[data-cids] { box-shadow: inset 0 -3px var(--cp-warning); }
+.cmh-table-data-cell.cm-active { outline: 2px solid var(--cp-warning); }
+.cmh-table-data-cell :is(textarea, select, input) { padding-inline-end: 24px; }
+.cm-tooltip.cmh-table-tooltip {
+  background: var(--cp-accent); color: var(--cp-accent-fg); border: 2px solid var(--cp-surface);
+  border-radius: 999px; outline: 2px solid var(--cp-accent); font-weight: 600; padding: 8px 14px;
+}
+.cm-tooltip.cmh-table-tooltip::after { border-top-color: var(--cp-accent); }
+.cm-tooltip.cmh-table-tooltip.below::after { border-top-color: transparent; border-bottom-color: var(--cp-accent); }
+@media (hover: none) { .cmh-editable-table .cmh-table-row-insert { opacity: 1; } }
+.cmh-editable-table :is(button, textarea, select, input):focus-visible, .cmh-table-column-actions > summary:focus-visible,
 .cmh-table-dialog :is(button, input, textarea, select):focus-visible {
   outline: 2px solid var(--cp-link, #0078d4); outline-offset: 2px;
 }
@@ -44,28 +100,36 @@
   position: fixed; inset: auto; margin: 0; z-index: 210; padding: 4px; border: 1px solid var(--cp-border); border-radius: 8px;
   background: var(--cp-surface); box-shadow: 0 6px 20px #0003; max-height: calc(100dvh - 16px); overflow: auto;
 }
-.cmh-editable-table .cmh-table-column-menu button { display: block; width: 100%; border: 0; text-align: left; }
+.cmh-editable-table .cmh-table-column-menu button { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; text-align: left; }
+.cmh-table-column-menu button svg { flex-shrink: 0; }
 .cmh-table-column-menu button:hover { background: var(--cp-surface-soft); }
 .cmh-table-save-status, .cmh-table-empty { font-size: .85em; color: var(--cp-text-muted, #555); }
 .cmh-table-recovery { border: 1px solid var(--cp-warning, #b47700); padding: 12px; }
 .cmh-table-dialog {
-  max-width: min(460px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto;
-  border: 1px solid var(--cp-border, #ccc); border-radius: 12px; padding: 24px;
+  box-sizing: border-box; width: 360px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow: auto;
+  border: 1px solid var(--cp-border, #ccc); border-radius: 12px; padding: 14px;
   background: var(--cp-surface, #fff); color: var(--cp-text, #242424); font: inherit;
 }
 .cmh-table-dialog::backdrop { background: rgba(0, 0, 0, .35); }
-.cmh-table-dialog label { display: block; margin: 12px 0; }
+.cmh-table-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.cmh-table-dialog-head h2 { margin: 0; font-size: 1.05em; line-height: 1.3; }
+.cmh-table-dialog-head svg { width: 20px; height: 20px; flex-shrink: 0; }
+.cmh-table-dialog label { display: block; margin: 8px 0; }
 .cmh-table-dialog label[hidden] { display: none; }
 .cmh-table-dialog label > span { display: block; margin-bottom: 4px; }
 .cmh-table-dialog input, .cmh-table-dialog select, .cmh-table-dialog textarea {
-  box-sizing: border-box; width: 100%; padding: 8px; font: inherit;
+  box-sizing: border-box; width: 100%; padding: 6px; font: inherit; border-radius: 4px;
   background: var(--cp-surface, #fff); color: var(--cp-text, #242424); border: 1px solid var(--cp-border, #ccc);
 }
+.cmh-table-dialog [role="alert"]:empty { display: none; }
+.cmh-table-dialog .cmh-table-actions { justify-content: flex-end; margin: 12px 0 0; }
+.cmh-table-dialog .cmh-table-save { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: transparent; font-weight: 600; }
+.cmh-table-dialog .cmh-table-save:hover { background: var(--cp-accent-hover); }
 .cmh-table-print-value { display: none; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media print {
   .cmh-editable-table .cmh-table-actions, .cmh-editable-table .cmh-table-save-status,
   .cmh-editable-table .cmh-table-recovery, .cmh-editable-table thead button:not(.cmh-table-title), .cmh-table-column-actions,
-  .cmh-editable-table textarea, .cmh-editable-table select,
+  .cmh-editable-table textarea, .cmh-editable-table select, .cmh-editable-table input, .cmh-table-resize, .cmh-table-add-bottom, .cmh-table-cell-comment,
   .cmh-editable-table tr > :first-child, .cmh-editable-table tr > :last-child { display: none !important; }
   .cmh-table-print-value { display: block !important; }
   .cmh-editable-table .cmh-table-title { text-decoration: none; box-shadow: none; outline: 0; }

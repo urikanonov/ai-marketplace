@@ -170,7 +170,7 @@ function buildCopyText(pickedIds, partialScope) {
     const isImage = c.anchorType === "image";
     const isLink = c.anchorType === "link";
     const isWidget = c.anchorType === "widget";
-    const isTableColumn = c.anchorType === "table-column";
+    const isTableColumn = _etIsAnchor(c);
     const isDocument = c.anchorType === "document";
     const isSlide = c.anchorType === "slide";
     lines.push(`## ${c.threadType === "discussion" ? "Discussion" : "Comment"} ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isLink ? " (link)" : isWidget ? " (widget)" : isDocument ? " (document)" : isSlide ? " (slide)" : ""}`);
@@ -241,8 +241,8 @@ function buildCopyText(pickedIds, partialScope) {
       lines.push("");
       emitCommentBody(c);
     } else if (isTableColumn) {
-      lines.push(`Anchor: table "${oneLine(c.tableId)}", column "${oneLine(c.columnId)}"`);
-      lines.push(`Column title: ${oneLine(c.quote)}`);
+      lines.push(`Anchor: table "${oneLine(c.tableId)}", ${c.rowId === undefined ? "" : 'row "' + oneLine(c.rowId) + '", '}column "${oneLine(c.columnId)}"`);
+      lines.push(`${c.rowId === undefined ? "Column title" : "Cell value"}: ${oneLine(c.quote)}`);
       lines.push("");
       emitCommentBody(c);
     } else if (isDocument) {

@@ -9,10 +9,10 @@
     "step change does not."
   ],
   "components": {
-    "dist/commentable-html.js": 710000,
-    "dist/commentable-html.css": 148000,
-    "dist/commentable-html.assets.js": 900000,
-    "dist/SHAREABLE.html": 921000,
+    "dist/commentable-html.js": 730000,
+    "dist/commentable-html.css": 155000,
+    "dist/commentable-html.assets.js": 925000,
+    "dist/SHAREABLE.html": 945000,
     "dist/NONSHAREABLE.html": 62000
   }
 }
