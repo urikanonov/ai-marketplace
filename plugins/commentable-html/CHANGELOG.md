@@ -28,9 +28,10 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 - Compact branded column dialogs with an accent-colored Save action.
 - Soft-accent table action buttons with icons, hover feedback and operation-specific Undo/Redo tooltips.
 - Right-aligned header sort/menu controls and table-scoped Add Comment-style accent tooltips.
-- Deliberately raise the JS ceiling from 710000 to 730000, CSS from 146000 to 155000,
-  asset bundle from 900000 to 925000 and shareable template from 921000 to 945000 bytes
-  for column reorder/resize, numeric editors, cell-comment lifecycle and compact themed controls.
+- Deliberately raise the JS ceiling from 710000 to 735000, CSS from 148000 to 155000,
+  asset bundle from 900000 to 930000 and shareable template from 921000 to 950000 bytes
+  for column reorder/resize, numeric editors, cell-comment lifecycle and compact themed controls,
+  including integration with the released per-document reading-width controls.
 
 ## [1.857.1] - 2026-10-30
 

@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.857.1<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.858.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -489,6 +489,29 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.858.0] - 2026-10-29</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Column-title comments anchored by stable table and column ids. Threads survive renaming, sorting, reload and HTML export; removing a column keeps its discussion, and Undo reattaches it.</li>
+              <li>Drag data-column grips with mouse or touch, or use arrow keys and the column menu to reorder. Values, title discussions and the active row sort stay attached to their stable identities; column order participates in cumulative changes, Undo/Redo, saved drafts and exports.</li>
+              <li>Insert rows at a boundary or with bottom New, with the new editor focused and active sorting cleared.</li>
+              <li>Resize data-column borders or choose Autofit width; widths are tracked, undoable and exported.</li>
+              <li>Numeric columns accept blank, signed decimal and scientific-notation values with numeric sorting.</li>
+              <li>Cell-level review comments use stable table/row/column anchors and survive edits, moves and exports.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Compact trash-icon row removal and intrinsically sized row-number/action columns.</li>
+              <li>Vertical three-dot column menus with insertion before or after a column.</li>
+              <li>Standard sort chevrons, numeric/currency-aware comparison and sortable canonical row numbers.</li>
+              <li>Immediate, subtle neutral whole-cell hover preserves cell colors and reveals a comment icon, without a red overlay or moving editing focus until click or Tab.</li>
+              <li>Compact branded column dialogs with an accent-colored Save action.</li>
+              <li>Soft-accent table action buttons with icons, hover feedback and operation-specific Undo/Redo tooltips.</li>
+              <li>Right-aligned header sort/menu controls and table-scoped Add Comment-style accent tooltips.</li>
+              <li>Deliberately raise the JS ceiling from 710000 to 735000, CSS from 148000 to 155000, asset bundle from 900000 to 930000 and shareable template from 921000 to 950000 bytes for column reorder/resize, numeric editors, cell-comment lifecycle and compact themed controls, including integration with the released per-document reading-width controls.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.857.1] - 2026-10-30</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -496,6 +519,8 @@
               <li>The upstream Mermaid bundle still embeds DOMPurify 3.4.12; updating the separate lockfile dependency does not change those prebuilt bytes.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.857.0] - 2026-10-29</h3></div>
             <div class="group-label">Added</div>
@@ -510,8 +535,6 @@
               <li>Deliberately raise the CSS byte ceiling from 146000 to 148000 for the reading-width controls, responsive touch targets, and matching sidebar/footer layout.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.855.1] - 2026-10-30</h3></div>
             <div class="group-label">Fixed</div>
@@ -559,14 +582,7 @@
               <li>Recover flowcharts whose normal-sized nodes are stranded far from their edge endpoints, making the diagram appear tiny across an oversized canvas. The existing SVG-text rerender now detects this malformed geometry on load, reveal, and layout changes, including offline exports, without compacting intentionally sparse connected diagrams.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.853.1] - 2026-10-05</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Moved each comment card&#x27;s Copy button immediately after edit in the action row, with the same bordered styling and mobile touch target. Select stays in the metadata row.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">422 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">423 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
