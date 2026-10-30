@@ -278,7 +278,7 @@ body.sidebar-open .cm-toolbar { display: none; }
    - Open the comments panel as a full-width sheet (no unreadable document sliver
      behind it) and drop the resize handle, which is meaningless at full width. */
 @media (max-width: 700px) {
-  body #commentRoot:not([data-cmh-mode="deck"]) > :first-child { margin-top: 3.2rem; }
+  body #commentRoot:not([data-cmh-mode="deck"]) > :first-child { margin-top: max(3.2rem, calc(var(--cm-toolbar-height, 0px) + 1rem)); }
 }
 @media (max-width: 640px) {
   .cm-sidebar { width: 100%; min-width: 100%; max-width: 100%; }

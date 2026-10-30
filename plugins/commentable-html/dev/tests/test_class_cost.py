@@ -38,6 +38,7 @@ CORPUS_NAMES = (
     "deck-showcase.html",
     "report-checklist.html",
     "report-community-garden.html",
+    "report-editable-table.html",
     "report-metrics.html",
     "report-notes.html",
     "report-taxi.html",

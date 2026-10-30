@@ -126,6 +126,7 @@ function currentDocState() {
   if (typeof checklistChanges === "function" && checklistChanges().length > 0) {
     reasons.push("a checklist's state was changed in this session and is not saved into the file");
   }
+  if (tableChanges().length) reasons.push("an editable table has changes not saved into the file");
   if (typeof notesChanges === "function" && notesChanges().length > 0) {
     reasons.push("a notes field was edited in this session and is not saved into the file");
   }

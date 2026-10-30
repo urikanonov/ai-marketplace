@@ -369,6 +369,7 @@ const prunedCount = pruneHandled();
 // keeps text-comment offsets consistent between save time and reload.
 setupDiffLayer();
 setupNotesLayer();
+setupEditableTables();
 setupTableScroll();
 applyPersistedTableSorts();
 backfillContext();
@@ -1200,6 +1201,7 @@ function setupDeck() {
 if (IS_DECK) {
   setupDeck();
 } else {
+  setupDocumentWidth();
   setupHeadingAnchors();
   setupCollapsibleSections();
   setupTocCollapse();
@@ -1236,7 +1238,8 @@ if (prunedCount > 0) {
 if (!IS_DECK) {
   const _cmhHasPending = comments.length
     || (typeof checklistChanges === "function" && checklistChanges().length)
-    || (typeof notesChanges === "function" && notesChanges().length);
+    || (typeof notesChanges === "function" && notesChanges().length)
+    || tableChanges().length;
   if (_cmhHasPending && cmhShouldAutoOpenPanel()) openSidebar();
   else closeSidebar();
 }

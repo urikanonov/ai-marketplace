@@ -3,15 +3,29 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 @media (min-width: 1100px) {
   body.sidebar-open .app {
     max-width: none; margin: 0;
-    padding-left: 2rem;
-    padding-right: calc(var(--cm-sidebar-w, 400px) + 2rem);
+    padding-left: max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - (var(--cm-doc-max-width, 1800px) - 3rem)) / 2));
+    padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - (var(--cm-doc-max-width, 1800px) - 3rem)) / 2)));
   }
 }
-@media (min-width: 1700px) {
-  body.sidebar-open .app {
-    padding-left: max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - 1600px) / 2));
-    padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--cm-toc-inset, 0px) - var(--cm-sidebar-w, 400px) - 1600px) / 2)));
-  }
+
+.cm-document-width {
+  display: inline-flex; align-items: center; gap: 0.15rem; flex: none;
+  color: var(--cp-text-soft); font-size: var(--cp-chrome-small-font);
+}
+.cm-document-width output { min-width: 3.5rem; text-align: center; font-variant-numeric: tabular-nums; }
+.cm-toolbar .cm-document-width button,
+.cm-sidebar .cm-document-width button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.8rem; height: 1.8rem; padding: 0; border: 0; border-radius: 0.4rem;
+  background: transparent; color: var(--cp-text); font: inherit; font-size: 1rem; cursor: pointer;
+}
+.cm-document-width button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.cm-document-width button:disabled { opacity: 0.4; cursor: default; }
+.cm-sidebar .cm-document-width { align-self: flex-end; }
+@media (max-width: 640px) {
+  .cm-toolbar { max-width: calc(100vw - 2rem); box-sizing: border-box; flex-wrap: wrap; justify-content: flex-end; }
+  .cm-toolbar .cm-document-width button,
+  .cm-sidebar .cm-document-width button { min-width: 44px; min-height: 44px; }
 }
 
 .cm-sidebar header {

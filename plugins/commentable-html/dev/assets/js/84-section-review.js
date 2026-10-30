@@ -39,7 +39,7 @@ function cmhSectionHash(text) {
 // roots are deliberately outside section review: the walker and heading query stay in the light
 // DOM because a closed shadow root cannot be inspected, and review/comment anchors do not cross
 // either kind of shadow boundary.
-const CMH_SCAN_SKIP_SEL = ".cm-skip, script, style, template, noscript, .cmh-diff, .cmh-kql, .mermaid, canvas, [data-cmh-note]";
+const CMH_SCAN_SKIP_SEL = ".cm-skip, script, style, template, noscript, .cmh-diff, .cmh-kql, .mermaid, canvas, [data-cmh-note], [data-cmh-table]";
 
 // Layer chrome the runtime INJECTED into the content root is excluded by IDENTITY, not by a class.
 // One pass genuinely appends prose there: the print appendix (83-print.js) materializes every open

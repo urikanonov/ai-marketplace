@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.854.0`
+**Version:** `1.857.0`
 
 Review exact prose, code, diagrams, charts, images, widgets, or table cells; copy/export edit requests or AI discussions. Discussions work in the standalone HTML without a server or folder permissions.
 
@@ -29,6 +29,7 @@ USE THE NAMED TOOL/contract and reference below; do not hand-author fragile mark
 | Layout, structure, and prose conventions | `tools/authoring/generate_toc.py --in-place`, `tools/authoring/wrap_sections.py`, `tools/authoring/doc_stats.py`, `tools/authoring/normalize_typography.py`, sortable tables, callouts, ADO links, cross-references, `--cp-*` tokens, `data-cm-density`, private class prefixes, and reserved `cmh-*` names. | [Document layout](references/document-layout.md), [Content conventions](references/content-conventions.md), [Validation](references/validation.md) |
 | Layered checklist | `tools/checklist/checklist_scaffold.py`; apply returned reviewer state with `tools/checklist/checklist_apply.py`. | [Layered checklist contract](references/checklist-contract.md) |
 | Editable notes fields | `tools/notes/notes_scaffold.py`; apply returned reviewer state with `tools/notes/notes_apply.py`. | [Editable notes-field contract](references/notes-contract.md) |
+| Editable tables | `tools/tables/tables_scaffold.py`, `tools/tables/tables_apply.py`. | [Contract](references/tables-contract.md) |
 | Real animated slide deck, presentation, pitch deck, slide deck, or convert this ppt | `tools/deck/deck_scaffold.py` is the only real fixed-stage deck creator; flat `--kind slides` is not a deck. It supports session stamps (`--session-id` / `--agent`, `--no-session-id`) and `--brand`. Use `tools/deck/deck_theme.py list` / `apply`, `tools/deck/deck_fix_fonts.py`, `tools/deck/pptx_to_fragment.py`, then `tools/deck/deck_validate.py --strict`. | [Deck design playbook](references/deck-design.md), [Deck runtime interface contract](references/deck-contract.md) |
 | Output modes and export routing | Shareable is the only mode generated (a self-contained review file); Offline for zero-network handoff after Mermaid/charts render; Plain HTML / Markdown export when stripping the layer is intended. | [Exports](references/exports.md#what-is-bundled-in-the-file-vs-fetched-from-where) |
 

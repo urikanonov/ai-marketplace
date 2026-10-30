@@ -112,6 +112,37 @@ Notes are editable free-text fields authors embed for context, verdicts, or revi
 
 ![An editable note field labeled Verdict with a single/multi-line toggle](assets/note-01-note.png)
 
+### Edit an entire table
+
+Open [the editable-table playground](../examples/report-editable-table.html). Unlike ordinary
+commentable table cells, these cells are editable fields: type discussion text, assign an owner,
+or choose a status. Use **Add row** and **Add column**; the column menu renames, inserts after, or
+removes a column. New columns can be text or single-choice, with one choice per line and an optional
+default. Existing column types remain fixed. Empty values and duplicate display labels are valid.
+
+Populated deletion asks first with **Cancel** focused. **Undo** and **Redo** restore committed
+edits and structural changes in this session; native text undo still works inside an editor.
+You can remove every row, but not the final data column. **Add row** focuses the new row and clears
+the current sort. Sorting changes only the view, not the table data or the cumulative review.
+
+Every changed table has **one cumulative change card**, searchable in the panel. Edit a value back
+to its baseline and that change disappears; add then remove an untouched row and it disappears too.
+Expand **View changes**, **jump** to the table, or **reset** it after confirmation.
+**Copy all** includes the table changes; **Copy selected** only returns selected comment threads.
+The panel count and Not shareable badge include table edits, and **Delete all comments** explicitly
+warns when it will reset table changes too.
+
+Edits save in this browser, not in the original file. **Export as Shareable** or **Export Offline**
+carries the current editable table to another copy; Plain HTML, Markdown and print show its values
+without editing controls. The exported table becomes that copy's baseline. If local saving fails,
+copy or export before closing. A saved draft from another baseline is not silently reapplied:
+**Copy saved draft** preserves it, and confirmed **Discard saved draft** unlocks editing.
+
+For authors, opt in with the [editable-table contract](https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/dev/skill/references/tables-contract.md)
+and scaffold/apply tools. Editable cells do not accept inline text comments; their edits use the
+table card, while nearby prose remains commentable. Merged/nested tables, rich HTML cells,
+formulas and live multi-user sync are intentionally outside this building block.
+
 ## 12. Format your comment
 
 Comment notes support lightweight rich text (WhatsApp / Office style), so you can emphasize a point or drop in a link. Type the markers directly, or select text in the composer and use the formatting toolbar (or a keyboard shortcut).

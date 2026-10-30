@@ -649,7 +649,7 @@ function openStorageManager(opts) {
     btn.type = "button";
     btn.setAttribute("aria-label", "Delete all comments for this document");
     btn.addEventListener("click", function () {
-      inlineConfirm(btn, "Delete all comments and reset tracked widget, checklist, and note changes for this document?", function () {
+      inlineConfirm(btn, "Delete all comments and reset tracked widget, checklist, and note changes for this document?" + (tableChanges().length ? " Table changes will also be reset." : ""), function () {
         if (typeof performClearAll === "function") performClearAll();
         // Do NOT drop this document's index entry: it is the CURRENT document (still open and
         // re-registered on every load), and clearing its comments leaves residual keys (dismissed
