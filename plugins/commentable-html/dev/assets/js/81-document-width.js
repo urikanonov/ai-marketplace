@@ -4,8 +4,18 @@ function setupDocumentWidth() {
   const shell = root.closest(".app") || root;
   shell.classList.add("cm-document-width-shell");
   function authoredWidth() {
-    const raw = getComputedStyle(shell).maxWidth;
-    return /^\d+(?:\.\d+)?px$/.test(raw) ? parseFloat(raw) : (shell.getBoundingClientRect().width || 1800);
+    // Measure authored layout without the reader preference or desktop sidebar gutter override.
+    const sidebarOpen = document.body.classList.contains("sidebar-open");
+    const sheet = style.sheet;
+    sheet.disabled = true;
+    if (sidebarOpen) document.body.classList.remove("sidebar-open");
+    try {
+      const raw = getComputedStyle(shell).maxWidth;
+      return /^\d+(?:\.\d+)?px$/.test(raw) ? parseFloat(raw) : (shell.getBoundingClientRect().width || 1800);
+    } finally {
+      if (sidebarOpen) document.body.classList.add("sidebar-open");
+      sheet.disabled = false;
+    }
   }
   const minimum = 800, maximum = 3000, step = 100;
   const style = document.createElement("style");
@@ -25,7 +35,7 @@ function setupDocumentWidth() {
   function apply(value) {
     pinned = value !== null;
     if (pinned) width = value;
-    else if (!document.body.classList.contains("sidebar-open")) width = authoredWidth();
+    else width = authoredWidth();
     // Keep this screen-only and runtime-injected: print and the authored export snapshot
     // must not inherit a browser-local reading preference.
     const selector = ".cm-document-width-shell";
@@ -37,6 +47,10 @@ function setupDocumentWidth() {
       group.output.textContent = Math.round(width) + "px";
       group.minus.disabled = width <= minimum;
       group.plus.disabled = width >= maximum;
+    });
+    hideChartTooltip();
+    root.querySelectorAll(CMH_CHART_DATA_SEL).forEach(function (canvas) {
+      if (canvas._cmhChart) renderInteractiveChart(canvas, -1);
     });
   }
   function change(direction) {
@@ -86,7 +100,7 @@ function setupDocumentWidth() {
     const height = toolbar && toolbar.getBoundingClientRect().height;
     const toolbarChanged = height > 0 && height !== toolbarHeight;
     if (toolbarChanged) toolbarHeight = height;
-    if (toolbarChanged || (!pinned && !document.body.classList.contains("sidebar-open") && authoredWidth() !== width)) apply(pinned ? width : null);
+    if (toolbarChanged || (!pinned && authoredWidth() !== width)) apply(pinned ? width : null);
   }
   window.addEventListener("resize", refreshLayout);
   if (typeof ResizeObserver === "function") {

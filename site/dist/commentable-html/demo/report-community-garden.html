@@ -19660,8 +19660,17 @@ if(IS_DECK)return;
 const shell=root.closest(".app")||root;
 shell.classList.add("cm-document-width-shell");
 function authoredWidth(){
+const sidebarOpen=document.body.classList.contains("sidebar-open");
+const sheet=style.sheet;
+sheet.disabled=true;
+if(sidebarOpen)document.body.classList.remove("sidebar-open");
+try{
 const raw=getComputedStyle(shell).maxWidth;
 return/^\d+(?:\.\d+)?px$/.test(raw)?parseFloat(raw):(shell.getBoundingClientRect().width||1800);
+}finally{
+if(sidebarOpen)document.body.classList.add("sidebar-open");
+sheet.disabled=false;
+}
 }
 const minimum=800,maximum=3000,step=100;
 const style=document.createElement("style");
@@ -19680,7 +19689,7 @@ return value>=minimum&&value<=maximum&&value%step===0?value:null;
 function apply(value){
 pinned=value!==null;
 if(pinned)width=value;
-else if(!document.body.classList.contains("sidebar-open"))width=authoredWidth();
+else width=authoredWidth();
 const selector= ".cm-document-width-shell";
 const override=value===null?"":selector+" { max-width: "+width+"px !important; }"
 +(shell===root?"":"@media (min-width: 1100px) { body.sidebar-open "+selector+" { max-width: none !important; } }");
@@ -19690,6 +19699,10 @@ groups.forEach(function(group){
 group.output.textContent=Math.round(width)+"px";
 group.minus.disabled=width<=minimum;
 group.plus.disabled=width>=maximum;
+});
+hideChartTooltip();
+root.querySelectorAll(CMH_CHART_DATA_SEL).forEach(function(canvas){
+if(canvas._cmhChart)renderInteractiveChart(canvas,-1);
 });
 }
 function change(direction){
@@ -19739,7 +19752,7 @@ function refreshLayout(){
 const height=toolbar&&toolbar.getBoundingClientRect().height;
 const toolbarChanged=height>0&&height!==toolbarHeight;
 if(toolbarChanged)toolbarHeight=height;
-if(toolbarChanged||(!pinned&&!document.body.classList.contains("sidebar-open")&&authoredWidth()!==width))apply(pinned?width:null);
+if(toolbarChanged||(!pinned&&authoredWidth()!==width))apply(pinned?width:null);
 }
 window.addEventListener("resize",refreshLayout);
 if(typeof ResizeObserver=== "function"){

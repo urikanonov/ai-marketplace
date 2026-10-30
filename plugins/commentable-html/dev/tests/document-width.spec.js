@@ -173,6 +173,42 @@ test("width controls leave nested authored app containers unchanged (CMH-WIDTH-0
   await expect(page.locator("#nested-width")).toHaveCSS("max-width", "320px");
 });
 
+test("width changes remeasure charts and dismiss stale hover tooltips (CMH-WIDTH-04)", async ({ page }) => {
+  await openDoc(page, { custom: '<figure class="chart"><div class="chart-wrap" style="height:240px"><canvas id="width-chart" class="cmh-chart" width="760" height="240" data-cmh-chart-points=\'[{"label":"A","value":10},{"label":"B","value":24}]\'></canvas></div></figure>' });
+  const chart = page.locator("#width-chart");
+  await expect.poll(() => chart.evaluate((el) => !!el._cmhChart)).toBe(true);
+  const point = await chart.evaluate((el) => el._cmhChart.points[0]);
+  await chart.hover({ position: { x: point.x, y: (point.top + point.bottom) / 2 } });
+  await expect(page.locator(".cmh-chart-tooltip")).toBeVisible();
+  await minus(page).evaluate((el) => el.click());
+  await expect(page.locator(".cmh-chart-tooltip")).not.toHaveClass(/is-visible/);
+  await expect.poll(() => chart.evaluate((el) => Math.abs(el.width / devicePixelRatio - el.clientWidth))).toBeLessThanOrEqual(1);
+  const moved = await chart.evaluate((el) => el._cmhChart.points[0]);
+  await chart.hover({ position: { x: moved.x, y: (moved.top + moved.bottom) / 2 } });
+  await expect(page.locator(".cmh-chart-tooltip")).toContainText("A: 10");
+});
+
+test("panel-open relative widths refresh on resize and preference removal (CMH-WIDTH-04)", async ({ page }) => {
+  await openDoc(page, { custom: "<style>body .app { max-width: 90%; }</style>" });
+  await page.locator("#btnToggleSidebar").click();
+  const panelReadout = page.locator("#sidebar .cm-document-width").getByRole("status");
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await expect(panelReadout).toHaveText("900px");
+  await page.locator("#sidebar .cm-document-width").getByRole("button", { name: "Decrease document width" }).click();
+  await page.evaluate((key) => {
+    localStorage.removeItem(key);
+    window.dispatchEvent(new StorageEvent("storage", { key }));
+  }, WIDTH_KEY);
+  await expect(panelReadout).toHaveText("900px");
+  await expect.poll(() => page.evaluate(() => {
+    const root = document.getElementById("commentRoot").getBoundingClientRect();
+    const footer = document.querySelector(".cm-footer").getBoundingClientRect();
+    return Math.abs(root.left - footer.left) + Math.abs(root.right - footer.right);
+  })).toBeLessThan(1);
+  await page.setViewportSize({ width: 2000, height: 900 });
+  await expect(panelReadout).toHaveText("1800px");
+});
+
 test("width preference stays out of exports and print and never affects decks (CMH-WIDTH-04)", async ({ page }) => {
   await openDoc(page);
   await minus(page).click();

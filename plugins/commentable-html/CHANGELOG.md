@@ -17,6 +17,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   sidebar-open gutters follow the selected width without changing print, exports, or decks.
 - Wrapped mobile toolbars reserve their measured height, and capped inline reply editors
   keep their action row reachable with the extra panel controls.
+- Width changes refresh chart bitmaps and hover coordinates. Relative authored widths
+  remain current with the panel open and when another tab removes the saved preference.
 - Deliberately raise the CSS byte ceiling from 146000 to 148000 for the reading-width
   controls, responsive touch targets, and matching sidebar/footer layout.
 
