@@ -159,6 +159,7 @@ function showHelp(restoreEl) {
           '<li>The agent addresses the comments and marks them handled in this same file; handled comments are pruned on the next load and never reappear in the bundle.</li>' +
         '</ul>') +
       T('Formatting your comment',
+        '<p><strong>Editable tables:</strong> edit text and choice cells directly. Add row / Add column reshape the table; a column menu renames, inserts after, or removes it. Populated deletion asks first, and Undo / Redo restore committed edits in this session. Keep at least one column; zero rows is valid. Sorting changes only the view. Each table has one cumulative change card with View changes, jump and reset. Copy all includes it, Delete all resets it after confirmation, and HTML export carries the current editable table. Plain HTML, Markdown and print show the values. Editable cells use this change card rather than inline comments.</p>' +
         '<p>Comment notes support lightweight rich text (WhatsApp / Office style). Type the markers, or select text and use the toolbar or a shortcut - in the composer, in the side panel when you reply to or edit a comment, AND in the dialog you get by clicking a highlight:</p>' +
         '<ul>' +
           '<li><code>**bold**</code> or <kbd>Ctrl</kbd>+<kbd>B</kbd> for <strong>bold</strong>.</li>' +
@@ -181,6 +182,7 @@ function showHelp(restoreEl) {
         '</ul>') +
       T('Reading aids',
         '<ul>' +
+          (!isDeck ? '<li><strong>Document width:</strong> new flow documents default to a responsive 1800px maximum. Use <strong>Width - / +</strong> in the top toolbar (or the comments panel) to adjust the maximum by 100px, from 800px to 3000px. Smaller screens still fit automatically. This browser remembers the choice for this document only; it does not change exports, print, or decks. Custom authored widths stay intact until you adjust them. If storage is blocked, the change lasts only for this session.</li>' : '') +
           '<li><strong>Sortable tables:</strong> click a column header to sort (numeric-aware), cycling ascending, descending, original.</li>' +
           '<li><strong>Code, KQL and charts</strong> are framed for readability; every code block has an always-visible <em>Copy</em> button, and a KQL caption title copies the cluster name.</li>' +
           '<li><strong>Syntax highlighting</strong> covers 50+ language labels, including <code>json</code> and <code>jsonc</code> - a JSON property name is tinted apart from its value, and <code>//</code> or <code>/* */</code> comments read as comments.</li>' +

@@ -14,7 +14,7 @@ This inventory lists the files that ship with the skill. Development sources, th
 | `dist/commentable-html.js` | Runtime companion. |
 | `dist/commentable-html.assets.js` | Asset registry used by Export as Shareable. |
 | `dist/manifest.json` | Version and SHA-256 metadata for companions. |
-| `tools/` | Runtime Python helpers that ship with the skill, grouped into per-topic buckets (`tools/deck`, `tools/kusto`, `tools/checklist`, `tools/notes`, `tools/blocks`, `tools/authoring`, `tools/validate`). |
+| `tools/` | Runtime Python helpers that ship with the skill, grouped into per-topic buckets (`tools/deck`, `tools/kusto`, `tools/checklist`, `tools/notes`, `tools/tables`, `tools/blocks`, `tools/authoring`, `tools/validate`). |
 | `references/` | Detailed generated-report references. |
 | `docs/TUTORIAL.md` | Tutorial using `examples/report-community-garden.html`. |
 | `docs/assets/` | Tutorial screenshots and the review-loop diagram (the diagram is embedded in the plugin README). |
@@ -34,6 +34,8 @@ Run any tool with `python tools/<topic>/<name>.py --help` from the skill root (t
 subdirectories under `tools/` (for example `tools/validate/validate.py`, `tools/authoring/new_document.py`).
 
 - `validate.py` - structural invariant checker for generated files. Use `--strict` before handoff.
+- `tables_scaffold.py` / `tables_apply.py` - emit editable native tables and atomically cement
+  table transactions; see [tables-contract.md](tables-contract.md).
 - `mark_handled.py` - appends handled comment ids from explicit ids or a copied bundle.
 - `review_threads.py` - imports versioned discussion bundles, lists pending questions and commands,
   and persists AI answers and edit acknowledgements in the HTML's embedded review state.

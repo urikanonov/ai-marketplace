@@ -214,6 +214,7 @@ from checks.notes import (  # noqa: F401,E402
     _NotesParser,
     check_notes,
 )
+from checks.tables import check_tables  # noqa: F401,E402
 from checks.highlighting import (  # noqa: F401,E402
     HIGHLIGHT_ADVISORY_PREFIX,
     _code_block_language,
@@ -388,6 +389,9 @@ def validate(path, layer=True, charts=True, base_dir=_BASE_DIR_UNSET, html=None)
             errors += e
             warnings += w
             e, w = check_notes(html)
+            errors += e
+            warnings += w
+            e, w = check_tables(html)
             errors += e
             warnings += w
             e, w = check_code_highlighting(html)

@@ -464,16 +464,16 @@ test("plugin page renders version, features, changelog, and demo", async ({ page
 });
 
 
-test("demo has one safe full-screen button and a seven-option slider (SITE-DEMO-01)", async ({ page }) => {
+test("demo has one safe full-screen button and an eight-option slider (SITE-DEMO-01)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const fs = page.locator("#demo-fullscreen");
   await expect(fs).toHaveCount(1);
   await expect(fs).toHaveAttribute("target", "_blank");
   expect((await fs.getAttribute("rel")) || "").toContain("noopener");
   await expect(fs).toHaveAccessibleName(/full screen.*new tab/i);
-  await expect(page.locator(".demo-tab")).toHaveCount(7);
+  await expect(page.locator(".demo-tab")).toHaveCount(8);
   await expect(page.locator(".demo-tab.active")).toHaveText(/Taxi/i);
-  for (const id of ["#demo-tab-taxi", "#demo-tab-showcase", "#demo-tab-garden", "#demo-tab-triage", "#demo-tab-metrics", "#demo-tab-checklist", "#demo-tab-notes"]) {
+  for (const id of ["#demo-tab-taxi", "#demo-tab-showcase", "#demo-tab-garden", "#demo-tab-triage", "#demo-tab-metrics", "#demo-tab-checklist", "#demo-tab-tables", "#demo-tab-notes"]) {
     await expect(page.locator(id)).toBeVisible();
   }
 });
@@ -557,6 +557,18 @@ test("demo slider exposes and loads the Notes report (SITE-DEMO-11)", async ({ p
   await expect(page.locator("#demo-panel")).toHaveAttribute("aria-labelledby", "demo-tab-notes");
 });
 
+
+test("editable tables load and edit in the demo slider (SITE-DEMO-12)", async ({ page }) => {
+  test.slow();
+  await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
+  await page.locator("#demo-tab-tables").click();
+  await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /report-editable-table\.html/);
+  const frame = await demoFrameReady(page, "#demo-iframe", "report-editable-table.html");
+  await frame.locator('[data-cmh-table="discussion"] textarea').first().fill("Updated in the site demo");
+  await frame.getByRole("button", { name: "Add row", exact: true }).click();
+  await expect(frame.locator('[data-cmh-table="discussion"] tbody tr')).toHaveCount(4);
+  await expect(frame.locator(".cm-card-table")).toHaveCount(1);
+});
 
 test("every example is present on the site as a live demo tab (SITE-DEMO-12)", async ({ page, request }) => {
   test.slow();

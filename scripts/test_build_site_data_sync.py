@@ -783,6 +783,17 @@ class SyncOrphanTests(unittest.TestCase):
         self.assertEqual(drift, ["a.html (orphaned)", "b.html (orphaned)", "c.html (orphaned)"])
 
 class SyncDemosDriftTests(unittest.TestCase):
+    def test_editable_table_playground_is_published_for_tutorial_links(self):
+        import os as _os
+        root, src, dst = self._make_root()
+        name = "report-editable-table.html"
+        content = b'<table data-cmh-table="discussion"></table>\n'
+        with open(_os.path.join(src, name), "wb") as fh:
+            fh.write(content)
+        bsd.sync_demos(root, check=False)
+        with open(_os.path.join(dst, name), "rb") as fh:
+            self.assertEqual(fh.read(), content)
+
     def _make_root(self):
         import os as _os
         import tempfile

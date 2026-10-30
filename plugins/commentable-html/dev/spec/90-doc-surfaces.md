@@ -64,6 +64,10 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 
 | Feature id | Doc surface | Deck |
 | --- | --- | --- |
+| CMH-WIDTH-01 | help | opt-out: flow-document layout, not a fixed-stage deck feature |
+| CMH-WIDTH-02 | help | opt-out: flow-document reading control absent from decks |
+| CMH-WIDTH-03 | help | opt-out: browser-local flow-document preference, not deck state |
+| CMH-WIDTH-04 | help | opt-out: responsive flow-document layout and deck exclusion |
 | CMH-DISC-01 | tutorial, help | deck |
 | CMH-DISC-02 | tutorial, help | deck |
 | CMH-DISC-03 | tutorial, help | deck |
@@ -85,6 +89,19 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-STORE-15 | tutorial, help | deck |
 | CMH-NOTE-04 | tutorial, help | deck |
 | CMH-NOTE-05 | tutorial | deck |
+| CMH-TABLE-01 | tutorial, help | deck |
+| CMH-TABLE-02 | tutorial, help | deck |
+| CMH-TABLE-03 | tutorial, help | deck |
+| CMH-TABLE-04 | tutorial, help | deck |
+| CMH-TABLE-05 | tutorial, help | deck |
+| CMH-TABLE-06 | tutorial, help | deck |
+| CMH-TABLE-07 | tutorial, help | deck |
+| CMH-TABLE-08 | tutorial | opt-out: recovery from stale local state is not a showcase slide interaction |
+| CMH-TABLE-09 | tutorial | deck |
+| CMH-TABLE-10 | tutorial, help | deck |
+| CMH-TABLE-11 | opt-out: internal tool integration and comment anchor robustness | opt-out: internal integration invariant |
+| CMH-TABLE-12 | tutorial | deck |
+| CMH-TABLE-13 | opt-out: agent-facing authoring and apply tooling contract | opt-out: agent-facing authoring tooling |
 | CMH-CHECK-06 | tutorial, help | deck |
 | CMH-THREAD-01 | tutorial, help | deck |
 | CMH-THREAD-06 | tutorial, help | deck |

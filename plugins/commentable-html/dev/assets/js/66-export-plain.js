@@ -245,6 +245,7 @@ async function saveAsPlain() {
   try {
     baseHtml = _applyChecklistStateToHtml(baseHtml);
     baseHtml = _applyNoteStateToHtml(baseHtml);
+    baseHtml = _applyTableStateToHtml(baseHtml);
   } catch (e) { _reportExportFailure(e, _EXPORT_FAILURE_PREPARE); return; }
   let text;
   try { text = _buildPlainHtml(baseHtml); }
