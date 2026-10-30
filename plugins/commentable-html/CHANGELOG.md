@@ -23,7 +23,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 - Compact trash-icon row removal and intrinsically sized row-number/action columns.
 - Vertical three-dot column menus with insertion before or after a column.
 - Standard sort chevrons, numeric/currency-aware comparison and sortable canonical row numbers.
-- Immediate whole-cell hover feedback without moving editing focus until click or Tab.
+- Immediate, subtle neutral whole-cell hover preserves cell colors and reveals a comment icon,
+  without a red overlay or moving editing focus until click or Tab.
 - Compact branded column dialogs with an accent-colored Save action.
 - Soft-accent table action buttons with icons, hover feedback and operation-specific Undo/Redo tooltips.
 - Right-aligned header sort/menu controls and table-scoped Add Comment-style accent tooltips.

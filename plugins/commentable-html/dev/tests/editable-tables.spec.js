@@ -179,14 +179,22 @@ test("whole-cell hover feedback is immediate without stealing click-based editin
     await page.evaluate(value => document.documentElement.dataset.theme = value, theme);
     await page.mouse.move(0, 0);
     const other = cell(page, "second", "owner"), td = other.locator("..");
+    await td.evaluate((el, theme) => { el.style.backgroundColor = theme === "light" ? "#d8f2df" : "#233d51"; }, theme);
     await cell(page).focus();
     const before = await td.evaluate(el => getComputedStyle(el).backgroundColor);
+    const editorBefore = await other.evaluate(el => getComputedStyle(el).backgroundColor);
     const bounds = await td.boundingBox();
     await page.mouse.move(bounds.x + 3, bounds.y + 3);
-    expect(await td.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(before);
+    expect(await td.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(before);
+    expect(await other.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(editorBefore);
+    expect(await td.evaluate(el => getComputedStyle(el).boxShadow)).toContain("rgba(128, 128, 128, 0.08)");
+    expect(await td.locator(".cmh-table-cell-comment").evaluate(el => getComputedStyle(el).opacity)).toBe("1");
+    await expect(td.locator(".cmh-table-cell-comment svg")).toHaveCount(1);
     await expect(td).toHaveCSS("transition-duration", "0s");
     await expect(cell(page)).toBeFocused();
     await expect(other).not.toBeFocused();
+    await other.hover();
+    expect(await other.evaluate(el => getComputedStyle(el).backgroundColor)).toBe(editorBefore);
     await other.click();
     await expect(other).toBeFocused();
   }
@@ -341,10 +349,10 @@ test("hovered Undo tooltip refreshes while editing continues (CMH-TABLE-17)", as
 test("whole-cell highlighting also works with the body fallback root (CMH-TABLE-09)", async ({ page }) => {
   await open(page, '<script>document.getElementById("commentRoot").removeAttribute("id");</script>' + DOC);
   await page.mouse.move(0, 0);
-  const td = cell(page).locator(".."), before = await td.evaluate(el => getComputedStyle(el).backgroundColor);
+  const td = cell(page).locator(".."), before = await td.evaluate(el => getComputedStyle(el).boxShadow);
   const bounds = await td.boundingBox();
   await page.mouse.move(bounds.x + 3, bounds.y + 3);
-  expect(await td.evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe(before);
+  expect(await td.evaluate(el => getComputedStyle(el).boxShadow)).not.toBe(before);
 });
 
 test("numeric columns sort signed decimals and exponents and reject invalid edits (CMH-TABLE-21)", async ({ page }) => {
@@ -424,6 +432,11 @@ test("cell threads retain row context through replies copy search Markdown print
   const composer = page.locator(".cm-composer").last();
   await composer.locator("textarea").fill("Cell discussion with precise context.");
   await composer.locator('[data-act="save"]').click();
+  await page.mouse.move(0, 0);
+  const marker = await td.evaluate(el => getComputedStyle(el).boxShadow);
+  expect(marker).not.toBe("none");
+  await td.hover();
+  expect(await td.evaluate(el => getComputedStyle(el).boxShadow)).toContain(marker);
   const card = page.locator(".cm-card").filter({ hasText: "Cell discussion with precise context." });
   await card.locator(".cm-reply-btn").click();
   await card.locator(".cm-reply-compose textarea").fill("Confirm the allocation.");
@@ -755,7 +768,7 @@ test("editable cells reveal hover and keyboard-focus feedback in both themes (CM
     const editor = cell(page);
     const colors = () => editor.evaluate(el => {
       const style = getComputedStyle(el);
-      return [style.backgroundColor, style.borderTopColor];
+      return [getComputedStyle(el.parentElement).boxShadow, style.borderTopColor];
     });
     const idle = await colors();
     await editor.hover();
