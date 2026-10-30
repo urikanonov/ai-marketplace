@@ -12,8 +12,8 @@ order the directory listing gives.
 | Module | SPEC areas | Purpose |
 | --- | --- | --- |
 | `00-base.css` | CMH-THEME, CMH-CORE, CMH-DENSITY | Theme tokens (`--cp-*`) and base element styling. |
-| `10-layout.css` | CMH-CORE, CMH-RESP, CMH-DENSITY, CMH-MENU-ICON | Layout recipe, toolbar, and core chrome. |
-| `20-chrome.css` | CMH-SIDE, CMH-HELP, CMH-FOOT, CMH-DENSITY, CMH-RICH, CMH-GROW, CMH-MENU-PREF, CMH-CORE, CMH-RESP | Attribution footer, sidebar meta, help dialog, TOC chrome, the More menu's Preferences checkbox rows, the in-document comment dialog (including its compact formatting toolbar and its phone touch targets), the floating composer's actions row and its phone touch targets, and the composer / dialog textarea sizing bounds the autogrow layer grows within. |
+| `10-layout.css` | CMH-CORE, CMH-RESP, CMH-DENSITY, CMH-MENU-ICON, CMH-WIDTH | Layout recipe, toolbar, reading-width controls, and core chrome. |
+| `20-chrome.css` | CMH-SIDE, CMH-HELP, CMH-FOOT, CMH-DENSITY, CMH-RICH, CMH-GROW, CMH-MENU-PREF, CMH-CORE, CMH-RESP, CMH-WIDTH | Attribution footer, sidebar meta, help dialog, TOC chrome, the More menu's Preferences checkbox rows, the in-document comment dialog (including its compact formatting toolbar and its phone touch targets), the floating composer's actions row and its phone touch targets, and the composer / dialog textarea sizing bounds the autogrow layer grows within. |
 | `22-section-review.css` | CMH-REVIEW | Section-review badges (four states), TOC state dots, and the segmented review filter. |
 | `30-mermaid.css` | CMH-MMD, CMH-DENSITY, CMH-MENU-PREF | Mermaid commenting layer + NonShareable controls and the collapsed toolbar menu shell. |
 | `40-diff.css` | CMH-DIFF | Diff / code-review layer. |
