@@ -714,6 +714,7 @@ document.body.removeAttribute("data-cm-density");
 const SIDEBAR_WIDTH_KEY= "commentable-html::sidebarWidth";
 const AUTO_OPEN_PANEL_KEY= "commentable-html::autoOpenPanelDefault";
 const AUTO_OPEN_PANEL_DOC_KEY=COMMENT_KEY+"::autoOpenPanel";
+const DOCUMENT_WIDTH_KEY=COMMENT_KEY+"::documentWidth";
 const UTC_TIMES_KEY= "commentable-html::utcTimes";
 const CMH_STORE_KEY=COMMENT_KEY+"::z";
 const CMH_STORE_FRAME= "\u0001z";
@@ -721,11 +722,11 @@ const CMH_MAX_STORE_CHARS=8000000;
 const CMH_SUBKEY_SUFFIXES=[
 "::z","::deleted","::diffLayout","::diffSyntax","::cl","::note","::tables",
 "::commentSort","::tableSort","::reviews","::reviews::deleted","::deckMode",
-"::autoOpenPanel","::tocFold",
+"::autoOpenPanel","::tocFold","::documentWidth",
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.855.1";
+const CMH_VERSION= "1.857.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -8535,7 +8536,12 @@ onSave(val);
 cancel.addEventListener("click",function(){onCancel();});
 save.addEventListener("click",doSave);
 ta.addEventListener("input",function(){ta.removeAttribute("aria-invalid");ta.classList.remove("cm-invalid");});
-cmhAutogrow(ta);
+cmhAutogrow(ta,function(){
+const list=wrap.closest(".list");
+if(!list||document.activeElement!==ta||ta.scrollHeight<=ta.clientHeight+1)return;
+const overflow=actions.getBoundingClientRect().bottom-list.getBoundingClientRect().bottom;
+if(overflow>0)list.scrollTop+=Math.ceil(overflow);
+});
 wrap.addEventListener("keydown",function(e){
 if(e.isComposing||isNoteComposing(ta))return;
 if(handleNoteFormatShortcut(e,ta))return;
@@ -15244,6 +15250,7 @@ T('Navigation',
 '</ul>')+
 T('Reading aids',
 '<ul>'+
+(!isDeck?'<li><strong>Document width:</strong> new flow documents default to a responsive 1800px maximum. Use <strong>Width - / +</strong> in the top toolbar (or the comments panel) to adjust the maximum by 100px, from 800px to 3000px. Smaller screens still fit automatically. This browser remembers the choice for this document only; it does not change exports, print, or decks. Custom authored widths stay intact until you adjust them. If storage is blocked, the change lasts only for this session.</li>':'')+
 '<li><strong>Sortable tables:</strong> click a column header to sort (numeric-aware), cycling ascending, descending, original.</li>'+
 '<li><strong>Code, KQL and charts</strong> are framed for readability; every code block has an always-visible <em>Copy</em> button, and a KQL caption title copies the cluster name.</li>'+
 '<li><strong>Syntax highlighting</strong> covers 50+ language labels, including <code>json</code> and <code>jsonc</code> - a JSON property name is tinted apart from its value, and <code>//</code> or <code>/* */</code> comments read as comments.</li>'+
@@ -15363,6 +15370,102 @@ try{localStorage.setItem(COMMENT_KEY+"::commentSort",commentSort);}catch(e){}
 renderComments();
 });
 })();
+function setupDocumentWidth(){
+if(IS_DECK)return;
+const shell=root.closest(".app")||root;
+shell.classList.add("cm-document-width-shell");
+function authoredWidth(){
+const raw=getComputedStyle(shell).maxWidth;
+return/^\d+(?:\.\d+)?px$/.test(raw)?parseFloat(raw):(shell.getBoundingClientRect().width||1800);
+}
+const minimum=800,maximum=3000,step=100;
+const style=document.createElement("style");
+style.className= "cm-document-width-style";
+document.body.appendChild(style);
+const groups=[];
+let width=authoredWidth();
+let pinned=false;
+let toolbarHeight=0;
+function savedWidth(){
+const raw=cmhReadPref(DOCUMENT_WIDTH_KEY);
+if(!raw||!/^\d+$/.test(raw))return null;
+const value=Number(raw);
+return value>=minimum&&value<=maximum&&value%step===0?value:null;
+}
+function apply(value){
+pinned=value!==null;
+if(pinned)width=value;
+else if(!document.body.classList.contains("sidebar-open"))width=authoredWidth();
+const selector= ".cm-document-width-shell";
+const override=value===null?"":selector+" { max-width: "+width+"px !important; }"
++(shell===root?"":"@media (min-width: 1100px) { body.sidebar-open "+selector+" { max-width: none !important; } }");
+style.textContent= "@media screen { :root { --cm-doc-max-width: "+width+"px; --cm-toolbar-height: "+toolbarHeight+"px; } "
++override+" }";
+groups.forEach(function(group){
+group.output.textContent=Math.round(width)+"px";
+group.minus.disabled=width<=minimum;
+group.plus.disabled=width>=maximum;
+});
+}
+function change(direction){
+const snapped=direction>0?Math.floor(width/step)+1:Math.ceil(width/step)-1;
+const next=Math.max(minimum,Math.min(maximum,snapped*step));
+apply(next);
+if(!cmhWritePref(DOCUMENT_WIDTH_KEY,String(next))){
+showToast("Could not save document width - this browser's storage is full or blocked.",{alert:true});
+}
+}
+function addControls(host){
+if(!host)return;
+const group=document.createElement("div");
+group.className= "cm-document-width cm-skip";
+group.setAttribute("role","group");
+group.setAttribute("aria-label","Document maximum width");
+const label=document.createElement("span");
+label.textContent= "Width";
+function button(text,name,direction){
+const el=document.createElement("button");
+el.type= "button";
+el.textContent=text;
+el.setAttribute("aria-label",name);
+el.title=name+" by 100px (800-3000px)";
+el.addEventListener("click",function(){change(direction);});
+cmhMarkLayerChrome(el);
+return el;
+}
+const minus=button("-","Decrease document width",-1);
+const output=document.createElement("output");
+output.setAttribute("role","status");
+output.setAttribute("aria-label","Document maximum width");
+const plus=button("+","Increase document width",1);
+group.append(label,minus,output,plus);
+host.appendChild(group);
+groups.push({output,minus,plus});
+}
+const toolbarToggle=cmhEl("btnToggleSidebar");
+const toolbar=toolbarToggle&&toolbarToggle.closest(".cm-toolbar");
+addControls(toolbar);
+if(toolbar)toolbarHeight=toolbar.getBoundingClientRect().height;
+const sidebar=cmhLayerBlock(document,"sidebar");
+const header=sidebar&&sidebar.querySelector("header");
+addControls(header&&header.querySelector(".head-aux"));
+apply(savedWidth());
+function refreshLayout(){
+const height=toolbar&&toolbar.getBoundingClientRect().height;
+const toolbarChanged=height>0&&height!==toolbarHeight;
+if(toolbarChanged)toolbarHeight=height;
+if(toolbarChanged||(!pinned&&!document.body.classList.contains("sidebar-open")&&authoredWidth()!==width))apply(pinned?width:null);
+}
+window.addEventListener("resize",refreshLayout);
+if(typeof ResizeObserver=== "function"){
+const observer=new ResizeObserver(refreshLayout);
+observer.observe(shell);
+if(toolbar)observer.observe(toolbar);
+}
+window.addEventListener("storage",function(event){
+if(event.key===null||event.key===DOCUMENT_WIDTH_KEY)apply(savedWidth());
+});
+}
 function _cmSlugify(text){
 const s=String(text).toLowerCase().trim()
 .replace(/[^\w\s-]/g,"").replace(/[\s_]+/g,"-").replace(/-+/g,"-").replace(/^-+|-+$/g,"");
@@ -17955,6 +18058,7 @@ focusStage();
 if(IS_DECK){
 setupDeck();
 }else{
+setupDocumentWidth();
 setupHeadingAnchors();
 setupCollapsibleSections();
 setupTocCollapse();

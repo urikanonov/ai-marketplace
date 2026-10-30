@@ -193,6 +193,7 @@ const SIDEBAR_WIDTH_KEY = "commentable-html::sidebarWidth";
 // "commentable-html" would otherwise own the cross-document key and reset every other document.
 const AUTO_OPEN_PANEL_KEY = "commentable-html::autoOpenPanelDefault";
 const AUTO_OPEN_PANEL_DOC_KEY = COMMENT_KEY + "::autoOpenPanel";
+const DOCUMENT_WIDTH_KEY = COMMENT_KEY + "::documentWidth";
 // "Show times in UTC": the display zone for every rendered timestamp. CROSS-DOCUMENT only (like the
 // default above, and deliberately NOT a per-document key): the zone a reviewer reads in is a
 // property of the reader, not of the document. Unset/"0" renders local time with the local zone
@@ -215,7 +216,7 @@ const CMH_MAX_STORE_CHARS = 8000000;
 const CMH_SUBKEY_SUFFIXES = [
   "::z", "::deleted", "::diffLayout", "::diffSyntax", "::cl", "::note", "::tables",
   "::commentSort", "::tableSort", "::reviews", "::reviews::deleted", "::deckMode",
-  "::autoOpenPanel", "::tocFold",
+  "::autoOpenPanel", "::tocFold", "::documentWidth",
 ];
 // Shared registry index of every commentable-html document seen in this browser (best-effort
 // presentation metadata only - the storage manager's delete authority is the owned-key shape, never
@@ -229,7 +230,7 @@ const SAFE_ID_RE = /^c[a-z0-9]{6,63}$/;
 
 // Version of this runtime, stamped from dev/VERSION by build.py. Do not hand-edit;
 // bump dev/VERSION and rebuild.
-const CMH_VERSION = "1.855.1";
+const CMH_VERSION = "1.857.0";
 const CMH_REGION_NAMES = ["CSS", "HANDLED IDS", "EMBEDDED COMMENTS", "COMMENT UI", "JS"];
 // Inline brand icon (a comment bubble) used in the sidebar meta row, the footer, and the
 // Help About section. Uses the accent color so it matches the theme.

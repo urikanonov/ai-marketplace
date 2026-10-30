@@ -788,7 +788,12 @@ function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts)
   // Clear the blank-note invalid state as soon as the reviewer types or formats, matching the
   // floating composer (a toolbar action dispatches its own `input` event).
   ta.addEventListener("input", function () { ta.removeAttribute("aria-invalid"); ta.classList.remove("cm-invalid"); });
-  cmhAutogrow(ta);
+  cmhAutogrow(ta, function () {
+    const list = wrap.closest(".list");
+    if (!list || document.activeElement !== ta || ta.scrollHeight <= ta.clientHeight + 1) return;
+    const overflow = actions.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
+    if (overflow > 0) list.scrollTop += Math.ceil(overflow);
+  });
   // The editor now holds seven toolbar buttons plus Cancel/Save, so bind the keys on the WRAPPER,
   // not the textarea: Escape from a focused button must cancel THIS editor rather than bubbling to
   // the document handler, which would discard an unrelated floating composer's draft.

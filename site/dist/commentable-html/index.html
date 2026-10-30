@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.855.1<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.857.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -489,12 +489,27 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.857.0] - 2026-10-29</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Per-document Width - / + reading controls in the flow-document toolbar and comments panel: 100px steps from 800px to 3000px, remembered in this browser for each document separately.</li>
+            </ul>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>New flow documents default to a responsive 1800px maximum body width. The footer and sidebar-open gutters follow the selected width without changing print, exports, or decks.</li>
+              <li>Wrapped mobile toolbars reserve their measured height, and capped inline reply editors keep their action row reachable with the extra panel controls.</li>
+              <li>Deliberately raise the CSS byte ceiling from 146000 to 148000 for the reading-width controls, responsive touch targets, and matching sidebar/footer layout.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.855.1] - 2026-10-30</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Copy all now counts checklist, note, and editable-table change cards in its success confirmation, matching the sidebar instead of reporting zero when no comments were written. Selected-only copying still counts only the selected comment threads.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.855.0] - 2026-10-29</h3></div>
             <div class="group-label">Added</div>
@@ -507,8 +522,6 @@
               <li>Deliberately raise the runtime byte ceiling from 677000 to 710000 and the asset bundle ceiling from 865000 to 900000 for the editable-table model, controls and styles.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.854.0] - 2026-10-12</h3></div>
             <div class="group-label">Added</div>
@@ -551,14 +564,7 @@
               <li>Updated Mermaid to 12.0.0 while preserving complete gallery diagrams, deterministic render readiness, authored multi-line labels, and rollback of degraded repair renders.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.852.0] - 2026-09-27</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>The collapsed toolbar&#x27;s three-dots menu now exposes the same auto-open, per-document override, and UTC timestamp preferences as the sidebar More menu, with both surfaces kept in sync.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">420 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">421 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
