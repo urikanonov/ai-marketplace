@@ -5916,39 +5916,47 @@ t.model.columns.splice(destination,0,t.model.columns.splice(source,1)[0]);
 t.model.rows.forEach(row=>row.cells.splice(destination,0,row.cells.splice(source,1)[0]));
 },'[data-cmh-column="'+_cssEsc(id)+'"] .cmh-table-drag');
 }
-function _etColumnGrip(t,column,index){
+function _etColumnGrip(t,column,index,th){
 const grip=_etBtn("",()=>{});
 grip.className= "cmh-table-drag";
 grip.setAttribute("aria-label","Reorder "+column.label+", column "+(index+1));
-grip.title= "Drag to reorder. Use Left/Right arrow keys, or Move column in the column menu.";
+grip.title= "Drag with the mouse to reorder this column.";
 grip.innerHTML= '<svg width="14" height="16" viewBox="0 0 14 16" fill="currentColor" aria-hidden="true"><path d="M3 2h2v2H3zm6 0h2v2H9zM3 7h2v2H3zm6 0h2v2H9zM3 12h2v2H3zm6 0h2v2H9z"/></svg>';
 const rtl=()=>getComputedStyle(t.table).direction=== "rtl";
-grip.addEventListener("keydown",e=>{
-if(grip.disabled||!["ArrowLeft","ArrowRight"].includes(e.key)||e.altKey||e.ctrlKey||e.metaKey||e.shiftKey)return;
-e.preventDefault();
-const delta=(e.key=== "ArrowRight"?1:-1)*(rtl()?-1:1);
-_etMoveColumn(t,column.id,t.model.columns.findIndex(c=>c.id===column.id)+delta);
-});
-grip.addEventListener("pointerdown",start=>{
-if(grip.disabled||start.button!==0||!start.isPrimary)return;
+function hover(on){
+[...t.table.rows].forEach(row=>row.cells[th.cellIndex]?.classList.toggle("cmh-table-column-hover",on));
+}
+th.addEventListener("pointerenter",e=>{if(e.pointerType=== "mouse")hover(true);});
+th.addEventListener("pointerleave",()=>hover(false));
+th.addEventListener("pointerdown",start=>{
+const control=start.target.closest("button, summary, .cmh-table-resize, .cmh-table-column-menu");
+if(grip.disabled||start.pointerType!== "mouse"||start.button!==0||!start.isPrimary
+||(control&&control!==grip))return;
 if(t.cancelDrag)t.cancelDrag();
-start.preventDefault();
+start.preventDefault();grip.focus({preventScroll:true});
 const scroll=t.table.closest(".cmh-table-scroll, .cmh-editable-table-scroll");
-let active=false,x=start.clientX,y=start.clientY,destination=null,frame;
+let active=false,x=start.clientX,y=start.clientY,destination=null,frame,markedHeader,markedBefore;
+let markerCells=[];
 function clearMarker(){
-t.table.querySelectorAll(".cmh-table-drop-before, .cmh-table-drop-after").forEach(el=>el.classList.remove("cmh-table-drop-before","cmh-table-drop-after"));
+markerCells.forEach(el=>el.classList.remove("cmh-table-drop-before","cmh-table-drop-after"));
+markerCells=[];markedHeader=null;
 }
 function locate(){
-clearMarker();destination=null;
 const bounds=scroll.getBoundingClientRect();
-if(x<bounds.left||x>bounds.right||y<bounds.top||y>bounds.bottom)return;
+if(x<bounds.left||x>bounds.right||y<bounds.top||y>bounds.bottom){
+clearMarker();destination=null;return;
+}
 const header=document.elementFromPoint(x,y)?.closest("th[data-cmh-column]");
-if(!header||!t.table.tHead.contains(header))return;
+if(!header||!t.table.tHead.contains(header)){clearMarker();destination=null;return;}
 const rect=header.getBoundingClientRect(),before=(x<(rect.left+rect.right)/2)!==rtl();
 const source=t.model.columns.findIndex(c=>c.id===column.id);
 const boundary=t.model.columns.findIndex(c=>c.id===header.getAttribute("data-cmh-column"))+(before?0:1);
 destination=boundary-(source<boundary?1:0);
-if(destination!==source)header.classList.add(before?"cmh-table-drop-before":"cmh-table-drop-after");
+if(destination===source){clearMarker();return;}
+if(markedHeader===header&&markedBefore===before)return;
+clearMarker();markedHeader=header;markedBefore=before;
+markerCells=[...t.table.rows].map(row=>row.cells[header.cellIndex]).filter(Boolean);
+markerCells.forEach(el=>el.classList.add(before?"cmh-table-drop-before":"cmh-table-drop-after"));
 }
 function tick(){
 if(active){
@@ -5986,7 +5994,7 @@ if(active)locate();
 const target=active?destination:null;
 cleanup();
 if(target!==null)_etMoveColumn(t,column.id,target);
-else grip.focus();
+else grip.focus({preventScroll:true});
 }
 function cancel(e){if(e.pointerId===start.pointerId)cleanup();}
 function escape(e){
@@ -6098,15 +6106,18 @@ const number=doc.createElement("th");number.textContent= "#";number.scope= "col"
 number.className= "cmh-table-number";_etSortButton(t,number,null,"Sort by row number");hr.append(number);
 t.model.columns.forEach((c,ci)=>{
 const th=doc.createElement("th");th.scope= "col";th.setAttribute("data-cmh-column",c.id);
-const label=_etBtn(c.label,()=>{
+const label=doc.createElement("span");label.textContent=c.label;
+label.className= "cmh-table-title";label.tabIndex=-1;
+const comment=_etBtn("",()=>{
 label.focus();
 createComposerElement({mode:"new-table-column",tableColumn:{tableId:t.id,columnId:c.id,quote:c.label}});
 });
-label.className= "cmh-table-title";label.title= "Comment on this column title";
-label.setAttribute("aria-label","Comment on "+c.label+", column "+(ci+1));
+comment.className= "cmh-table-column-comment";comment.title= "Comment on this column title";
+comment.setAttribute("aria-label","Comment on "+c.label+", column "+(ci+1));
+comment.innerHTML= '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>';
 const header=doc.createElement("div");header.className= "cmh-table-header";
 const tools=doc.createElement("span");tools.className= "cmh-table-header-actions";
-header.append(_etColumnGrip(t,c,ci),label,tools);
+header.append(_etColumnGrip(t,c,ci,th),label,tools);
 th.append(header,_etResizeHandle(t,c,ci));
 _etSortButton(t,tools,c.id,"Sort by "+c.label+", column "+(ci+1));
 const menu=doc.createElement("details");menu.className= "cmh-table-column-actions";
@@ -6120,14 +6131,6 @@ panel.setAttribute("popover","manual");
 panel.append(_etBtn("Rename column",()=>{menu.open=false;summary.focus();_etColumnDialog(t,c.id);}),
 _etBtn("Insert column before",()=>{menu.open=false;summary.focus();_etColumnDialog(t,null,c.id,true);}),
 _etBtn("Insert column after",()=>{menu.open=false;summary.focus();_etColumnDialog(t,null,c.id);}));
-[["left",-1],["right",1]].forEach(([direction,delta])=>{
-const move=_etBtn("Move column "+direction,()=>{
-menu.open=false;summary.focus();_etMoveColumn(t,c.id,ci+delta*(getComputedStyle(t.table).direction=== "rtl"?-1:1));
-});
-const target=ci+delta*(getComputedStyle(t.table).direction=== "rtl"?-1:1);
-move.disabled=target<0||target>=t.model.columns.length;
-panel.append(move);
-});
 const remove=_etBtn("Remove column",()=>{menu.open=false;summary.focus();_etRemoveColumn(t,c.id);});
 remove.disabled=t.model.columns.length===1;
 if(remove.disabled)remove.title= "Keep at least one data column.";
@@ -6145,7 +6148,7 @@ menu.addEventListener("focusout",e=>{
 if(e.relatedTarget&&!menu.contains(e.relatedTarget))menu.open=false;
 });
 menu.addEventListener("keydown",e=>{if(e.key=== "Escape"){menu.open=false;summary.focus();e.stopPropagation();}});
-tools.append(menu);hr.append(th);
+tools.append(comment,menu);hr.append(th);
 });
 const actions=doc.createElement("th");actions.setAttribute("aria-label","Row actions");
 actions.className= "cmh-table-remove-cell";actions.scope= "col";hr.append(actions);
@@ -15676,8 +15679,8 @@ T('Sending comments to an agent',
 '<li>The agent addresses the comments and marks them handled in this same file; handled comments are pruned on the next load and never reappear in the bundle.</li>'+
 '</ul>')+
 T('Formatting your comment',
-'<p><strong>Editable tables:</strong> edit text, numeric and choice cells directly; immediate hover highlights the whole cell without taking focus. Add row / Add column reshape the table; boundary + inserts in the middle and bottom New appends, clearing sorting. Drag a column grip, use Left/Right or choose Move column; # and row actions stay fixed. Drag a header border to resize, use its Left/Right keys, or choose Autofit width; widths are tracked and undoable. The vertical three-dot menu also renames, inserts before/after, or removes a column; the trash icon removes a row. Populated deletion asks first, and Undo / Redo restore committed edits in this session with next-operation tooltips. Number columns accept blank, signed decimals and finite scientific notation, not currency/grouping. Keep at least one column; zero rows is valid. Sort chevrons, including #, change only the view. Click a title or a cell comment icon to leave a regular thread following stable column/row ids through edits, moves, sort, reload and export. Removing its target keeps the thread; Undo reattaches it. Cell edits use one cumulative change card with View changes, jump and reset. Copy all includes it, Delete all resets it after confirmation, and HTML export carries the current editable table. Plain HTML, Markdown and print show the values.</p>'+
-'<p>Drag a table column grip with mouse/touch, use Left/Right on its focused grip or choose Move column left/right. The # and row-action columns stay fixed; values, title comments and active row sort follow column identity. Order changes join the cumulative review, Undo/Redo and exports. Cells highlight immediately on hover, but editing focus stays click/Tab only. Icon-labelled actions use soft accent colors. Hover or focus Undo/Redo to preview the next operation.</p>'+
+'<p><strong>Editable tables:</strong> edit text, numeric and choice cells directly; immediate hover highlights the whole cell without taking focus. Add row / Add column reshape the table; boundary + appears near a border in # to insert in the middle, and bottom New appends, clearing sorting. Drag a column title, empty header area or six-dot grip with the mouse; # and row actions stay fixed. A bold landing boundary spans the destination column. Drag a header border to resize, use its Left/Right keys, or choose Autofit width; widths are tracked and undoable. The vertical three-dot menu also renames, inserts before/after, or removes a column; the trash icon removes a row. Populated deletion asks first, and Undo / Redo restore committed edits in this session with next-operation tooltips. Number columns accept blank, signed decimals and finite scientific notation, not currency/grouping. Keep at least one column; zero rows is valid. Sort chevrons, including #, change only the view. Only header/cell comment icons open regular threads following stable column/row ids through edits, moves, sort, reload and export. Clicking a title does not comment. Removing its target keeps the thread; Undo reattaches it. Cell edits use one cumulative change card with View changes, jump and reset. Copy all includes it, Delete all resets it after confirmation, and HTML export carries the current editable table. Plain HTML, Markdown and print show the values.</p>'+
+'<p>Column movement is mouse-only, without left/right menu buttons or keyboard/touch reordering. Header hover subtly highlights its column without persistent click selection. The # and row-action columns stay fixed; values, title comments and active row sort follow column identity. Order changes join the cumulative review, Undo/Redo and exports. Cells highlight immediately on hover, but editing focus stays click/Tab only. Icon-labelled actions use soft accent colors. Hover or focus Undo/Redo to preview the next operation.</p>'+
 '<p>Comment notes support lightweight rich text (WhatsApp / Office style). Type the markers, or select text and use the toolbar or a shortcut - in the composer, in the side panel when you reply to or edit a comment, AND in the dialog you get by clicking a highlight:</p>'+
 '<ul>'+
 '<li><code>**bold**</code> or <kbd>Ctrl</kbd>+<kbd>B</kbd> for <strong>bold</strong>.</li>'+

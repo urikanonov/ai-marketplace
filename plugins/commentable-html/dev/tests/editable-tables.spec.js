@@ -56,7 +56,7 @@ async function dragColumn(page, from, to, after = true) {
 
 test("dragging columns moves schema and values together with stable comments and history (CMH-TABLE-15)", async ({ page }) => {
   await open(page);
-  await table(page).locator('[data-cmh-column="owner"] .cmh-table-title').click();
+  await table(page).locator('[data-cmh-column="owner"] .cmh-table-column-comment').click();
   const composer = page.locator(".cm-composer").last();
   await composer.locator("textarea").fill("Keep this ownership discussion.");
   await composer.locator('[data-act="save"]').click();
@@ -83,23 +83,23 @@ test("dragging columns moves schema and values together with stable comments and
   await expect(table(page).locator(".cmh-table-number .cmh-table-drag, .cmh-table-remove-cell .cmh-table-drag")).toHaveCount(0);
 });
 
-test("keyboard and menu column moves persist through reload and export (CMH-TABLE-15)", async ({ page }) => {
+test("mouse-only column moves persist through reload and export (CMH-TABLE-15)", async ({ page }) => {
   const staged = await open(page);
   await expect(grip(page, "question")).toBeVisible();
   await grip(page, "question").focus();
-  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowRight");
   await expect(page.locator(".cm-card-table")).toHaveCount(0);
-  await grip(page, "status").focus();
-  await page.keyboard.press("ArrowLeft");
+  await dragColumn(page, "status", "owner", false);
   expect(await columnIds(page)).toEqual(["question", "status", "owner"]);
   await expect(grip(page, "status")).toBeFocused();
   const header = table(page).locator('[data-cmh-column="owner"]');
   await header.locator("summary").click();
-  await header.getByRole("button", { name: "Move column left", exact: true }).click();
+  await expect(header.getByRole("button", { name: /Move column/ })).toHaveCount(0);
+  await header.locator("summary").click();
+  await dragColumn(page, "owner", "status", false);
   expect(await columnIds(page)).toEqual(["question", "owner", "status"]);
   await expect(page.locator(".cm-card-table")).toHaveCount(0);
-  await grip(page, "status").focus();
-  await page.keyboard.press("ArrowLeft");
+  await dragColumn(page, "status", "owner", false);
   await page.goto(fileUrl(staged.html));
   await ready(page);
   expect(await columnIds(page)).toEqual(["question", "status", "owner"]);
@@ -131,7 +131,7 @@ test("cancelled and invalid column drops are no-ops (CMH-TABLE-15)", async ({ pa
   }
 });
 
-test("touch gestures reorder data columns without moving the number column (CMH-TABLE-15)", async ({ page }) => {
+test("touch gestures leave mouse-only column order unchanged (CMH-TABLE-15)", async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 900 });
   await open(page);
   await expect(grip(page, "owner")).toBeVisible();
@@ -141,7 +141,8 @@ test("touch gestures reorder data columns without moving the number column (CMH-
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: start.x + start.width / 2, y: start.y + start.height / 2 }] });
   await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: end.x + 8, y: end.y + end.height / 2 }] });
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-  expect(await columnIds(page)).toEqual(["owner", "question", "status"]);
+  expect(await columnIds(page)).toEqual(["question", "owner", "status"]);
+  await expect(page.locator(".cm-card-table")).toHaveCount(0);
   await expect(table(page).locator("thead th").first()).toHaveClass("cmh-table-number");
   await cdp.detach();
 });
@@ -233,7 +234,7 @@ test("column menu icons preserve readable labels and working actions (CMH-TABLE-
   await open(page);
   const header = table(page).locator('[data-cmh-column="owner"]');
   await header.locator("summary").click();
-  for (const name of ["Rename column", "Insert column before", "Insert column after", "Move column left", "Move column right", "Remove column"]) {
+  for (const name of ["Rename column", "Insert column before", "Insert column after", "Remove column"]) {
     const button = header.getByRole("button", { name, exact: true });
     await expect(button).toBeVisible();
     await expect(button.locator('svg[aria-hidden="true"]')).toBeVisible();
@@ -244,6 +245,91 @@ test("column menu icons preserve readable labels and working actions (CMH-TABLE-
   await dialog.getByLabel("Column name", { exact: true }).fill("Responsible person");
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(header.locator(".cmh-table-title")).toHaveText("Responsible person");
+});
+
+test("row-boundary plus appears only near number-column borders (CMH-TABLE-18)", async ({ page }) => {
+  await open(page);
+  const row = table(page).locator('[data-cmh-row="second"]');
+  const insert = row.getByRole("button", { name: "Insert row before row 2", exact: true });
+  const number = await row.locator(".cmh-table-number").boundingBox();
+  for (const target of [row.locator(".cmh-table-number"), row.locator("td").first(), row.locator("td").last()]) {
+    const rect = await target.boundingBox();
+    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    await expect(insert).toHaveCSS("opacity", "0");
+  }
+  const data = await row.locator("td").first().boundingBox();
+  await page.mouse.move(data.x + data.width / 2, data.y + 1);
+  await expect(insert).toHaveCSS("opacity", "0");
+  await page.mouse.move(number.x + number.width / 2, number.y + 1);
+  await expect(insert).toHaveCSS("opacity", "1");
+  await page.mouse.move(data.x + data.width / 2, data.y + 1);
+  await expect(insert).toHaveCSS("opacity", "0");
+  await insert.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(insert).toBeFocused();
+  await expect(insert).toHaveCSS("opacity", "1");
+  await page.keyboard.press("Enter");
+  await expect(table(page).locator("tbody tr")).toHaveCount(3);
+});
+
+test("column headers highlight on hover and comment only through their icon (CMH-TABLE-14)", async ({ page }) => {
+  await open(page);
+  const header = table(page).locator('[data-cmh-column="owner"]');
+  await header.locator(".cmh-table-title").click();
+  await expect(page.locator(".cm-composer")).toHaveCount(0);
+  const cells = table(page).locator('[data-cmh-cell-column="owner"]');
+  await expect(cells.first()).not.toHaveCSS("box-shadow", "none");
+  await page.locator("#after").hover();
+  await expect(cells.first()).toHaveCSS("box-shadow", "none");
+  await header.getByRole("button", { name: "Comment on Owner, column 2", exact: true }).click();
+  const composer = page.locator(".cm-composer").last();
+  await composer.locator("textarea").fill("An explicit column discussion");
+  await composer.locator('[data-act="save"]').click();
+  await header.locator(".cmh-table-title").click();
+  await expect(page.locator(".cm-composer")).toHaveCount(0);
+  await expect(header.locator(".cmh-table-title")).toHaveAttribute("data-cids", /c/);
+});
+
+test("header dragging shows the landing boundary throughout the target column (CMH-TABLE-15)", async ({ page }) => {
+  await open(page);
+  const source = table(page).locator('[data-cmh-column="question"]');
+  const target = table(page).locator('[data-cmh-column="owner"]');
+  const start = await source.locator(".cmh-table-title").boundingBox();
+  const end = await target.boundingBox();
+  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(end.x + end.width * .8, end.y + end.height / 2, { steps: 8 });
+  await expect(target).toHaveClass(/cmh-table-drop-after/);
+  const landing = table(page).locator('[data-cmh-cell-column="owner"]');
+  await expect(landing).toHaveCount(2);
+  for (const td of await landing.all()) await expect(td).toHaveCSS("box-shadow", /6px/);
+  await page.mouse.up();
+  expect(await columnIds(page)).toEqual(["owner", "question", "status"]);
+  await expect(table(page).locator(".cmh-table-drop-before, .cmh-table-drop-after")).toHaveCount(0);
+  await expect(page.locator(".cm-composer")).toHaveCount(0);
+  await expect(grip(page, "question")).toBeVisible();
+  await table(page).getByRole("button", { name: "Sort by Discussion item, column 2", exact: true }).click();
+  expect(await columnIds(page)).toEqual(["owner", "question", "status"]);
+});
+
+test("title dragging keeps a clipped grip from scrolling the table (CMH-TABLE-15)", async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 900 });
+  await open(page, DOC.replace('data-cmh-column="question"', 'data-cmh-column="question" data-cmh-width="700"'));
+  const scroll = table(page).locator("..");
+  await scroll.evaluate(el => { el.scrollLeft = 200; });
+  const viewport = await scroll.boundingBox();
+  const handle = await grip(page, "question").boundingBox();
+  const title = await table(page).locator('[data-cmh-column="question"] .cmh-table-title').boundingBox();
+  expect(handle.x + handle.width).toBeLessThan(viewport.x);
+  const before = await scroll.evaluate(el => el.scrollLeft);
+  await page.mouse.move(viewport.x + 80, title.y + title.height / 2);
+  await page.mouse.down();
+  expect(await scroll.evaluate(el => el.scrollLeft)).toBe(before);
+  await page.mouse.up();
+  expect(await scroll.evaluate(el => el.scrollLeft)).toBe(before);
+  expect(await columnIds(page)).toEqual(["question", "owner", "status"]);
+  await expect(page.locator(".cm-composer, .cm-card-table")).toHaveCount(0);
 });
 
 test("boundary insertion clears sorting and inserts beside the stable target row (CMH-TABLE-18)", async ({ page }) => {
@@ -287,7 +373,7 @@ test("sort and column menu stay grouped at the header end (CMH-TABLE-19)", async
   const sort = await header.locator(".cmh-sort-ctrl").boundingBox();
   expect(th.x + th.width - menu.x - menu.width).toBeLessThanOrEqual(12);
   expect(sort.x + sort.width).toBeLessThanOrEqual(menu.x + 1);
-  await header.locator(".cmh-table-title").click();
+  await header.locator(".cmh-table-column-comment").click();
   await expect(page.locator(".cm-composer").last()).toBeVisible();
 });
 
@@ -394,7 +480,9 @@ test("cell comments follow stable row and column identities and survive removal 
   await composer.locator("textarea").fill("Cell decision: confirm this owner.");
   await composer.locator('[data-act="save"]').click();
   await cell(page, "first", "owner").fill("Casey");
-  await grip(page, "owner").focus(); await page.keyboard.press("ArrowRight");
+  await dragColumn(page, "owner", "status");
+  await expect(cell(page, "first", "owner")).toHaveValue("Casey");
+  await expect(cell(page, "first", "status")).toHaveValue("Open");
   await expect(cell(page, "first", "owner").locator("..")).toHaveAttribute("data-cids", /c/);
   const { text } = await bundle(page);
   expect(text).toContain("Cell decision: confirm this owner.");
@@ -416,7 +504,7 @@ test("cell comments follow stable row and column identities and survive removal 
 
 test("table tooltips match the Add Comment accent and pill treatment (CMH-TABLE-23)", async ({ page }) => {
   await open(page);
-  await table(page).locator(".cmh-table-title").first().hover();
+  await table(page).locator(".cmh-table-column-comment").first().hover();
   const tooltip = page.getByRole("tooltip");
   await expect(tooltip).toBeVisible();
   const accent = await page.locator("#btnCopyAllTop").evaluate(el => getComputedStyle(el).backgroundColor);
@@ -720,7 +808,7 @@ test("column titles inherit authored contrasting header colors (CMH-TABLE-09)", 
 test("column comments retain section context when their column disappears before save (CMH-TABLE-14)", async ({ page }) => {
   await open(page, DOC.replace("<h1>", '<h1 id="table-section">'));
   const header = table(page).locator('[data-cmh-column="owner"]');
-  await header.locator(".cmh-table-title").click();
+  await header.locator(".cmh-table-column-comment").click();
   const composer = page.locator(".cm-composer").last();
   await composer.locator("textarea").fill("Discuss this removed column");
   await header.locator("summary").focus();
@@ -867,9 +955,10 @@ test("exported orphan column comments never attach to newly allocated column ids
 
 test("column-title threads support replies individual deletion copy and print (CMH-TABLE-14)", async ({ page }) => {
   await open(page);
-  const title = table(page).getByRole("button", { name: "Comment on Owner, column 2", exact: true });
+  const comment = table(page).getByRole("button", { name: "Comment on Owner, column 2", exact: true });
+  const title = table(page).locator('[data-cmh-column="owner"] .cmh-table-title');
   for (const note of ["First title discussion.", "Second title discussion."]) {
-    await title.click();
+    await comment.click();
     const composer = page.locator(".cm-composer").last();
     await composer.locator("textarea").fill(note);
     await composer.locator('[data-act="save"]').click();

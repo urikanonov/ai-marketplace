@@ -121,8 +121,9 @@ or choose a status. Hover or focus a cell to reveal its editable surface. Use **
 The compact trash button removes its row. New columns can be text, number or single-choice, with one
 choice per line and an optional default. Existing column types remain fixed. Empty values and duplicate display labels are valid.
 
-**Drag a column's dotted grip to change its position**, using mouse or touch. The **#** and row-action
-columns stay fixed. Tab to a grip and use Left/Right, or use the menu's **Move column left/right** actions.
+**Drag a column title, empty header area or its six-dot grip with the mouse to change its position**.
+The **#** and row-action columns stay fixed. Reordering is mouse-only, without left/right menu buttons.
+Header hover subtly highlights the column, and a bold landing line extends through the destination column.
 Values, title discussions and the active row sort follow their columns. Moving back to the original
 order removes that cumulative change. Hover highlights the whole cell immediately; editing still starts
 with click or Tab, never by stealing focus on hover.
@@ -132,7 +133,7 @@ Hover or focus **Undo/Redo** to preview the next operation. Compact column dialo
 at top right and give **Save** a stronger accent color, with a neutral **Cancel**.
 Table tooltips use the same accent pill treatment as Add Comment.
 
-Hover a row boundary to reveal **+**, or use **+ New** at the bottom, to insert in the middle or
+Hover near a row boundary in the **#** column to reveal **+**, or use **+ New** at the bottom, to insert in the middle or
 append. Insertion clears the view sort and focuses the new row. Drag a data-header border to
 **resize**, or choose **Autofit width** in its three-dot menu (double-clicking the border also fits).
 Left/Right on the focused border resizes by keyboard; Escape cancels a drag. Widths are tracked,
@@ -149,7 +150,8 @@ the current sort. The ordinary sort chevrons cycle ascending, descending and aut
 The **#** column sorts the original row numbers, which travel with their rows.
 Sorting changes only the view, not the table data or the cumulative review.
 
-**Click a column title to comment on it**, or Tab to it and press Enter/Space. This is a regular
+**Click the column's comment icon to comment on its title**, or Tab to that button and press Enter/Space.
+Clicking the title itself does not comment. This is a regular
 review thread, separate from the cumulative table edits. It follows the column's stable identity
 through renaming, insertion, sorting, reload and HTML export. Removing the column keeps its
 discussion in the panel with an unavailable anchor; **Undo** restores the title highlight.

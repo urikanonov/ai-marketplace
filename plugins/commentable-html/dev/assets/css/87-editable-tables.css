@@ -27,7 +27,7 @@
 .cmh-editable-table .cmh-sort-ctrl { padding: 0; border: 0; background: transparent; font-size: .62rem; line-height: .7; color: var(--cp-text-soft); }
 .cmh-editable-table .cmh-table-title {
   padding: 2px 0; border: 0; background: transparent; color: inherit; font-weight: inherit; text-align: left;
-  text-decoration: underline dotted var(--cp-border-strong); text-underline-offset: 4px;
+  cursor: grab;
 }
 .cmh-table-title[data-cids] { box-shadow: inset 0 -3px var(--cp-warning); }
 .cmh-table-title.cm-active { outline: 2px solid var(--cp-warning); }
@@ -50,15 +50,25 @@
 .cmh-editable-table .cmh-table-drag {
   display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 32px;
   padding: 0; border: 0; background: transparent; color: var(--cp-text-muted);
-  vertical-align: middle; cursor: grab; touch-action: none; user-select: none;
+  vertical-align: middle; cursor: grab; user-select: none;
 }
 .cmh-editable-table .cmh-table-drag:is(:hover, .cmh-table-drag-active) { color: var(--cp-accent); background: var(--cp-accent-soft); }
 .cmh-editable-table .cmh-table-drag-active { cursor: grabbing; }
-.cmh-editable-table .cmh-table-drop-before { box-shadow: inset 3px 0 var(--cp-accent); }
-.cmh-editable-table .cmh-table-drop-after { box-shadow: inset -3px 0 var(--cp-accent); }
-.cmh-editable-table .cmh-table-drop-before:dir(rtl) { box-shadow: inset -3px 0 var(--cp-accent); }
-.cmh-editable-table .cmh-table-drop-after:dir(rtl) { box-shadow: inset 3px 0 var(--cp-accent); }
-.cmh-table-header { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.cmh-editable-table .cmh-table-column-hover { box-shadow: inset 0 0 0 9999px rgba(128, 128, 128, .08); }
+.cmh-editable-table .cmh-table-column-hover[data-cids] { box-shadow: inset 0 -3px var(--cp-warning), inset 0 0 0 9999px rgba(128, 128, 128, .08); }
+.cmh-table-drop-before { --cmh-table-drop-edge: 6px; }
+.cmh-table-drop-after { --cmh-table-drop-edge: -6px; }
+.cmh-table-drop-before:dir(rtl) { --cmh-table-drop-edge: -6px; }
+.cmh-table-drop-after:dir(rtl) { --cmh-table-drop-edge: 6px; }
+:is(#commentRoot, body) .cmh-editable-table :is(.cmh-table-drop-before, .cmh-table-drop-after) {
+  box-shadow: inset var(--cmh-table-drop-edge) 0 var(--cp-accent), inset 0 0 0 9999px var(--cp-accent-soft);
+}
+:is(#commentRoot, body) .cmh-editable-table :is(.cmh-table-drop-before, .cmh-table-drop-after)[data-cids] {
+  box-shadow: inset var(--cmh-table-drop-edge) 0 var(--cp-accent), inset 0 -3px var(--cp-warning), inset 0 0 0 9999px var(--cp-accent-soft);
+}
+.cmh-table-header { display: flex; align-items: center; gap: 4px; min-width: 0; cursor: grab; }
+.cmh-editable-table .cmh-table-column-comment { display: inline-flex; padding: 4px; border-color: transparent; background: transparent; color: inherit; }
+.cmh-editable-table .cmh-table-column-comment:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
 .cmh-table-header .cmh-table-title { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: start; }
 .cmh-table-header .cmh-table-drag { flex-shrink: 0; }
 .cmh-table-header-actions { display: inline-flex; align-items: center; gap: 4px; margin-inline-start: auto; flex-shrink: 0; }
@@ -71,7 +81,7 @@
   display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0;
   border: 1px solid var(--cp-accent); border-radius: 50%; background: var(--cp-surface); color: var(--cp-accent); opacity: 0;
 }
-.cmh-editable-table tr:hover .cmh-table-row-insert, .cmh-editable-table .cmh-table-row-insert:focus-visible { opacity: 1; }
+.cmh-editable-table .cmh-table-row-insert:is(:hover, :focus-visible) { opacity: 1; }
 .cmh-editable-table tr:has(.cmh-table-row-insert:is(:hover, :focus-visible)) > :is(th, td) { box-shadow: inset 0 2px var(--cp-accent); }
 .cmh-editable-table .cmh-table-add-bottom { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; border-color: transparent; background: transparent; color: var(--cp-accent); }
 .cmh-editable-table .cmh-table-add-bottom:hover { background: var(--cp-accent-soft); }

@@ -106,13 +106,18 @@ Insert after and Remove; Escape or clicking outside closes it. Populated deletio
 requires confirmation. Undo/Redo restore edits and structure within the session;
 their hover/focus tooltips describe the next operation, including a pending cell edit.
 Toolbar and menu actions have decorative icons without changing accessible names.
-Boundary + inserts before the target model row; bottom New appends. Both clear view sorting and
+On hover-capable devices, boundary + appears only near a border in the # column, not while
+hovering data cells or the middle of a row number. Keyboard focus also reveals it; touch
+controls remain visible. Boundary + inserts before the target model row; bottom New appends. Both clear view sorting and
 focus the new row. Drag a header border or use its Left/Right keys to resize; Escape cancels a
 drag. Choose Autofit width or double-click the border to fit current values/header within the
 viewport. Widths are cumulative changes and participate in Undo/Redo, persistence and export.
 
-Drag a data-column grip with mouse/touch, use Left/Right while its grip is focused,
-or choose Move column left/right. Number and row-action columns stay fixed.
+Drag a data-column title/empty header area or its six-dot grip with the mouse.
+Column movement is mouse-only; keyboard arrows, touch dragging and Move left/right menu
+buttons do not reorder columns. A bold landing boundary extends through the destination
+column, with a shaded target. Header hover subtly highlights the column without selecting it.
+Sort, comment, menu and resize controls keep their own actions. Number and row-action columns stay fixed.
 Reordering moves column metadata and each row's matching cell together, preserves
 stable title anchors and the active row sort, and is tracked in the cumulative
 model. Undo/Redo, persistence and exports carry the order. Escape, cancelled,
@@ -123,8 +128,8 @@ nonblank values are numeric, otherwise case-insensitive natural comparison. The 
 column sorts canonical model row numbers; those numbers move with their rows.
 Sorting is view-only and cycles ascending, descending, then model order.
 
-Click a column title, or focus it and press Enter/Space, to leave a normal review
-comment. Its `anchorType` is `table-column`, with `tableId`, `columnId` and the
+Click the column's comment icon, or focus that button and press Enter/Space, to leave a normal
+review comment. Clicking the title does not comment. Its `anchorType` is `table-column`, with `tableId`, `columnId` and the
 original title in `quote`. It has no prose offsets and does not claim widget ids.
 Threads remain anchored through rename, insert, sort, reload and HTML export.
 Removing a column preserves its thread as an unavailable anchor; Undo reattaches it.
