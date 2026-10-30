@@ -855,6 +855,10 @@ test("CMH-DECK-SHOWCASE-08: the showcase deck includes supported syntax labels, 
     await showSlideWith(page, ".show-note-live");
     const slide = page.locator(".slide.active");
     await expect(slide.locator("[data-cmh-checklist].cmh-checklist-ready")).toHaveCount(1);
+    await expect(slide.getByRole("link", { name: "Editable tables", exact: true })).toHaveAttribute("href", /report-editable-table\.html$/);
+    for (const feature of ["text/number/choice", "Autofit width", "Undo/Redo"]) {
+      await expect(slide.locator(".show-note-demo")).toContainText(feature);
+    }
     expect(await slide.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(4);
     // The notes demo is the REAL notes feature, not a static mock: two [data-cmh-note] elements the
     // runtime has upgraded into editable textareas.
