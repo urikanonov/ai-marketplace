@@ -10,6 +10,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 
 - Expand the existing release-readiness example into the Dynamic Controls demo with independent
   checklists, editable notes and a text/numeric/choice follow-up table, retaining its URL and key.
+- Start the follow-up table at readable authored column widths without a permanent table-width
+  floor, so resizing, Autofit and column removal can shrink it through export/reopen.
 - Align the website demo tab, tutorial, companion prompt and authoring references with the
   combined Copy all and export flow; keep the dedicated notes and table playgrounds.
 - Add the AI discussion walkthrough and align website, Help, README, showcase and author

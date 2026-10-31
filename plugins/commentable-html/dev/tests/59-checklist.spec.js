@@ -74,6 +74,32 @@ for (const [layout, width] of [["desktop", 1280], ["mobile", 390]]) {
       await expect(table.locator("tbody tr")).toHaveCount(4);
       await expect(ctrl(page, "rollback")).toHaveAttribute("data-cmh-check-state", "check");
       await expect(page.locator(".cm-card-table, .cm-card-note, .cm-card-checklist")).toHaveCount(0);
+      if (layout === "mobile") {
+        expect(page.__external).toEqual([]);
+        return;
+      }
+      for (const id of ["action", "effort", "status"]) {
+        const header = table.locator(`[data-cmh-column="${id}"]`);
+        await header.locator("summary").scrollIntoViewIfNeeded();
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        await header.locator("summary").click();
+        await header.getByRole("button", { name: "Remove column", exact: true }).click({ timeout: 5000 });
+        await page.getByRole("dialog").getByRole("button", { name: "Remove", exact: true }).click();
+      }
+      const owner = table.locator('[data-cmh-column="owner"]');
+      await owner.locator("summary").click();
+      await owner.getByRole("button", { name: "Autofit width", exact: true }).click();
+      const requestedWidth = await table.evaluate(el => parseFloat(el.style.width));
+      expect((await table.boundingBox()).width).toBeLessThanOrEqual(requestedWidth + 1);
+      expect((await table.boundingBox()).width).toBeLessThan(960);
+      const resizedDownload = page.waitForEvent("download");
+      await clickSidebarExport(page, "#btnSaveHtml");
+      const resized = path.join(dir, "resized-export.html");
+      fs.writeFileSync(resized, await readDownload(await resizedDownload), "utf8");
+      await page.goto(fileUrl(resized));
+      await ready(page);
+      expect((await table.boundingBox()).width).toBeLessThan(960);
+      await expect(table.locator("thead th[data-cmh-column]")).toHaveCount(1);
       expect(page.__external).toEqual([]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });

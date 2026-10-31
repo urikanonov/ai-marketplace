@@ -210,7 +210,7 @@ class SiteTutorialMarkdownTests(unittest.TestCase):
 
     def test_tutorial_documents_the_storage_pie_and_badge_counting(self):
         # Issue #655: the tutorial must surface the storage manager's pie-chart breakdown
-        # and that the toolbar count badge counts note/checklist changes, so these shipped
+        # and that the toolbar count badge counts note/checklist/table changes, so these shipped
         # features are documented on at least one surface.
         tutorial = os.path.join(os.path.dirname(__file__), "..", "plugins",
                                 "commentable-html", "docs", "TUTORIAL.md")
@@ -219,7 +219,7 @@ class SiteTutorialMarkdownTests(unittest.TestCase):
         self.assertIn("Manage storage", out)
         self.assertIn("pie-chart breakdown", out)
         self.assertIn("Other commentable-html documents", out)
-        self.assertIn("count badge counts these checklist changes", out)
+        self.assertIn("count badge counts checklist changes, review-note edits and table edits", out)
 
 class DemoFullscreenTests(unittest.TestCase):
     def test_link_accessible_name_announces_new_tab(self):
