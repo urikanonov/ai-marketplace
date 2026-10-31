@@ -105,11 +105,11 @@ function showHelp(restoreEl) {
           '<li><strong>Threads travel together:</strong> <strong>Copy all</strong>, the Markdown export, and the print appendix emit each thread as an initial comment followed by its labelled replies, so the agent reads the refinements in context.</li>' +
         '</ul>') +
       T('AI discussions: questions and explicit edit commands',
-        '<p>Select text, open <strong>Add Comment</strong>, and choose <strong>Discussion: ask AI</strong> '
+        '<p>Select text, open <strong>Add Comment</strong>, and choose <strong>Ask AI</strong> '
           + 'under <strong>Comment purpose</strong>. A question asks for an answer, not a document edit. '
           + 'Ordinary comments remain edit requests by default.</p>'
-        + '<p><strong>Reply</strong> continues the discussion as a question. Choose '
-          + '<strong>Command: edit the document using this discussion</strong> only when you want an edit. '
+        + '<p><strong>Reply</strong> remembers the latest human purpose. Check <strong>Reply purpose</strong>: '
+          + 'choose <strong>Ask AI</strong> for another question or <strong>Request edit</strong> only when you want an edit. '
           + 'The AI uses the whole conversation as context and that command as the instruction.</p>'
         + '<p><strong>Copy all</strong> or per-thread Copy hands back pending questions/commands and the '
           + 'complete transcript. AI answers are labelled and kept as history; they are not new edit requests. '

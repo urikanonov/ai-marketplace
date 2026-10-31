@@ -38,6 +38,17 @@ test.describe("Help About links the author to their GitHub profile", () => {
 });
 
 test.describe("Help terminology matches the current button labels", () => {
+  test("AI discussion help uses Ask AI and Request edit and explains remembered reply purpose (CMH-HELP-TERMS-01)", async ({ page }) => {
+    await openHelp(page);
+    await page.locator(".cm-help-search-input").fill("AI discussions");
+    const topic = page.locator(".cm-help-topic:visible", { hasText: "AI discussions: questions" });
+    await expect(topic).toContainText("Ask AI");
+    await expect(topic).toContainText("Request edit");
+    await expect(topic).toContainText(/remembers the latest human purpose/i);
+    await expect(topic).not.toContainText("Discussion: ask AI");
+    await expect(topic).not.toContainText("Command: edit the document");
+  });
+
   test("the help panel names the board Reset moves and board-moves Reset changes buttons (CMH-HELP-TERMS-01)", async ({ page }) => {
     await openHelp(page);
     const search = page.locator(".cm-help-search-input");

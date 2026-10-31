@@ -9,10 +9,11 @@
 
 ## Questions first; edits only when explicitly requested
 
-Select text (or any supported anchor), open Add Comment, and choose **Discussion: ask AI**
+Select text (or any supported anchor), open Add Comment, and choose **Ask AI**
 under **Comment purpose**. The initial message is a question, not an instruction to edit.
-Replies default to **Question / clarification**. Choose **Command: edit the document using
-this discussion** only when you want the AI to change the HTML. The command message is the
+Reply remembers the latest human purpose: choose **Ask AI** for a question or **Request edit**
+only when you want the AI to change the HTML. Check **Reply purpose** before saving.
+Request edit is an explicit command. The command message is the
 instruction; all earlier messages are context, not additional pending commands.
 
 Ordinary comments remain edit requests by default. Discussion cards show **Awaiting answer**,

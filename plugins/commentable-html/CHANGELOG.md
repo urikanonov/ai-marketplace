@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.858.1] - 2026-10-31
+
+### Changed
+
+- Expand the existing release-readiness example into the Dynamic Controls demo with independent
+  checklists, editable notes and a text/numeric/choice follow-up table, retaining its URL and key.
+- Align the website demo tab, tutorial, companion prompt and authoring references with the
+  combined Copy all and export flow; keep the dedicated notes and table playgrounds.
+- Add the AI discussion walkthrough and align website, Help, README, showcase and author
+  reference with the Ask AI / Request edit labels and remembered reply purpose.
+
 ## [1.858.0] - 2026-10-29
 
 ### Added

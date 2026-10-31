@@ -4,6 +4,8 @@
 // section with CHECKLIST_STATE_JSON, and an export bake into data-cmh-state.
 import { test, expect } from "@playwright/test";
 import path from "path";
+import fs from "fs";
+import os from "os";
 import {
   fileUrl, ready, installClipboardCapture, stageContent, copiedBundle, readDownload,
   addTextComment, SKILL,
@@ -13,6 +15,60 @@ import {
 } from "./helpers.js";
 
 const CHECKLIST_DEMO = path.join(SKILL, "..", "..", "examples", "report-checklist.html");
+
+for (const [layout, width] of [["desktop", 1280], ["mobile", 390]]) {
+  test(`combined dynamic controls round-trip on ${layout} (CMH-DEMO-04)`, async ({ page }) => {
+    test.slow();
+    await page.setViewportSize({ width, height: 900 });
+    await installClipboardCapture(page);
+    await routeExampleLibsLocal(page);
+    await page.goto(fileUrl(CHECKLIST_DEMO));
+    await ready(page);
+    const table = page.locator('[data-cmh-table="followups"]');
+    const note = page.locator('[data-cmh-note="verdict"] textarea');
+    await expect(table).toHaveCount(1);
+    await expect(page.locator(".cmh-checklist.cmh-checklist-ready")).toHaveCount(2);
+    await note.fill("Hold until follow-ups are resolved.");
+    if (layout === "mobile") await page.locator("#btnCloseSidebar").click();
+    await ctrl(page, "rollback").click();
+    if (layout === "mobile") await page.locator("#btnCloseSidebar").click();
+    await table.locator('[data-cmh-row="loadtest"] [data-cmh-edit-column="owner"]').fill("Taylor");
+    if (layout === "mobile") await page.locator("#btnCloseSidebar").click();
+    await page.locator(".cmh-editable-table").getByRole("button", { name: "Add row", exact: true }).click();
+    await expect(table.locator("tbody tr")).toHaveCount(4);
+    await expect(page.locator(".cm-card-table")).toHaveCount(1);
+    await expect(page.locator(".cm-card-note")).toHaveCount(1);
+    await expect(page.locator(".cm-card-checklist")).toHaveCount(1);
+    if (layout === "mobile") await page.locator("#btnToggleSidebar").click();
+    await expect(page.locator("#btnCopyAll")).toBeInViewport();
+    await page.locator("#btnCopyAll").click();
+    const bundle = await copiedBundle(page);
+    for (const marker of ["CHECKLIST_STATE_JSON:", "NOTES_STATE_JSON:", "TABLES_STATE_JSON:"]) {
+      expect(bundle).toContain(marker);
+    }
+    expect(bundle).toContain("Taylor");
+    expect(bundle).toContain("Hold until follow-ups are resolved.");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    const waiting = page.waitForEvent("download");
+    await clickSidebarExport(page, "#btnSaveHtml");
+    const download = await waiting;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cmh-controls-"));
+    try {
+      const out = path.join(dir, "controls-export.html");
+      fs.writeFileSync(out, await readDownload(download), "utf8");
+      await page.goto(fileUrl(out));
+      await ready(page);
+      await expect(note).toHaveValue("Hold until follow-ups are resolved.");
+      await expect(table.locator('[data-cmh-row="loadtest"] [data-cmh-edit-column="owner"]')).toHaveValue("Taylor");
+      await expect(table.locator("tbody tr")).toHaveCount(4);
+      await expect(ctrl(page, "rollback")).toHaveAttribute("data-cmh-check-state", "check");
+      await expect(page.locator(".cm-card-table, .cm-card-note, .cm-card-checklist")).toHaveCount(0);
+      expect(page.__external).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
 
 const LIST = `
   <h1>Checklist demo</h1>
