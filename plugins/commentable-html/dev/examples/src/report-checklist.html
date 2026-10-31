@@ -82,11 +82,14 @@
 
 <section>
   <h2 id="about-example">About this example</h2>
-  <p>A worked example of commentable-html <strong>layered checklists</strong>. Click any state box to cycle it
+  <p>The <strong>Dynamic Controls demo</strong> combines layered checklists, editable review notes and an
+     editable follow-up table in one release-readiness review. Click any state box to cycle it
      <em>blank &rarr; check &rarr; cross &rarr; question</em>. A parent row aggregates its children automatically,
      and clicking a parent pushes its state down to every child. Changes are saved in this browser and collected
      into the <em>Copy all</em> bundle so an agent can cement them back into the source with
-     <code>tools/checklist_apply.py</code>.</p>
+     <code>tools/checklist/checklist_apply.py</code>, <code>tools/notes/notes_apply.py</code> and
+     <code>tools/tables/tables_apply.py</code> for their respective control types. Edit the notes and table below to collect decisions
+     alongside the checklist; each control keeps its own cumulative change card.</p>
 </section>
 
 <section>
@@ -134,16 +137,61 @@
 </section>
 
 <section>
+  <h2 id="review-notes">Review notes</h2>
+  <p>Click a note to edit the release verdict or record context. Each note has a single/multi-line
+     toggle and its own change card. Notes and checklist states stay independent of the table.</p>
+  <div class="cmh-note" data-cmh-note="verdict" data-cmh-note-label="Release verdict">Pending sign-off.</div>
+  <div class="cmh-note" data-cmh-note="reviewer-notes" data-cmh-note-label="Reviewer notes"
+       data-cmh-note-multiline="true">Record release decisions and supporting evidence here.</div>
+</section>
+
+<section>
+  <h2 id="release-followups">Editable follow-up table</h2>
+  <p>Click or Tab into a cell to edit. Effort is numeric; Status is single-choice. Use Add row / Add
+     column or hover near a row border in # for +; bottom New appends. Sorting changes only the view.
+     Mouse-drag a column title or its six-dot grip to reorder, or a header border to resize. The
+     three-dot menu renames, inserts, removes and offers Autofit width. # and row actions stay fixed.
+     On a phone, scroll inside the table horizontally to reach the other columns.</p>
+  <table data-cmh-table="followups" data-cmh-table-label="Release follow-ups">
+    <thead><tr>
+      <th data-cmh-column="action" data-cmh-width="280">Follow-up</th>
+      <th data-cmh-column="owner" data-cmh-width="196">Owner</th>
+      <th data-cmh-column="effort" data-cmh-width="230" data-cmh-column-type="number">Effort (hours)</th>
+      <th data-cmh-column="status" data-cmh-width="230" data-cmh-column-type="choice"
+          data-cmh-options='["Open","Assigned","Resolved"]' data-cmh-default="Open">Status</th>
+    </tr></thead>
+    <tbody>
+      <tr data-cmh-row="loadtest"><td>Meet the p99 latency target</td><td>Ravi</td><td>12</td><td>Assigned</td></tr>
+      <tr data-cmh-row="flags"><td>Verify safe feature-flag defaults</td><td>Dana</td><td>2.5</td><td>Open</td></tr>
+      <tr data-cmh-row="rollback"><td>Rehearse the rollback plan</td><td></td><td>100</td><td>Open</td></tr>
+    </tbody>
+  </table>
+  <p>Try sorting Effort to see 2.5, 12 and 100 in numeric order. Use a header or cell's comment icon
+     to discuss it; clicking a title only prepares dragging. Threads follow stable column/row ids,
+     separate from table edits. Undo/Redo tooltips preview the next operation; populated deletion
+     asks first. You may remove every row, but must retain one data column.</p>
+</section>
+
+<section>
   <h2 id="how">How to use this</h2>
   <ul>
     <li>Click a state box (or focus it and press Enter or Space) to cycle its state.</li>
     <li>Click a parent box to set every child to the same state at once.</li>
+    <li>Edit the release verdict and a follow-up owner, then open Comments: notes, checklists and
+        the table have separate change cards. All table edits share one cumulative table card.</li>
     <li>Open the comments panel: each checklist with changes shows a card with <em>jump</em> and <em>Reset</em>
         buttons, placed in document order alongside any comments.</li>
     <li>Click <strong>Copy all</strong> to hand the state changes to an agent, or <strong>Export as Shareable</strong>
         to share a copy with the states baked into the HTML.</li>
   </ul>
   <p>You can still comment on any item's label text - only the icon control itself is excluded from selection.</p>
+  <p>Edits save in this browser, not directly into this file. Export as Shareable or Export Offline
+     saves all three control types as the new copy's baseline. Plain HTML, Markdown and print show
+     the current values without editing controls. Copy all returns <code>CHECKLIST_STATE_JSON</code>,
+     <code>NOTES_STATE_JSON</code> and <code>TABLES_STATE_JSON</code> for their respective
+     <code>tools/checklist/checklist_apply.py</code>, <code>tools/notes/notes_apply.py</code> and
+     <code>tools/tables/tables_apply.py</code> tools. Copy selected returns only selected comment threads,
+     not these control edits. Undo history for the table lasts only this session.</p>
 </section>
 
 <!-- END: commentable-html - CONTENT -->

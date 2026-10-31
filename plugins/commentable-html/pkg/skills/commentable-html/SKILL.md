@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.858.0`
+**Version:** `1.858.1`
 
 Review exact prose, code, diagrams, charts, images, widgets, or table cells; copy/export edit requests or AI discussions. Discussions work in the standalone HTML without a server or folder permissions.
 
@@ -50,7 +50,7 @@ Creation tools validate and surface warnings, but that never replaces the final 
 
 - **Self review:** generate the artifact, open it, comment inline, click **Copy all**, paste the bundle to the agent, let the agent update the HTML and mark handled ids, then reload.
 - **Peer review:** self-review first, click **Export as Shareable**, share the downloaded HTML, receive the peer's Shareable HTML with embedded comments, then feed those comments back to the agent.
-- **AI discussion:** choose Discussion, hand Copy or exported HTML to the agent, then reload its answered file. Continue with questions or an explicit Command. Schedule question-only answers only with owner consent; never enable a schedule automatically.
+- **AI discussion:** choose **Ask AI**, hand Copy or exported HTML to the agent, then reload the answered file. Check remembered reply purpose: Ask AI for questions, **Request edit** for commands. Schedule question-only answers only with owner consent; never schedule automatically.
 - **Reviewer loop:** render Markdown to HTML and pass it to `tools/authoring/new_document.py --content`, or retrofit existing HTML with `tools/authoring/retrofit.py`, then return a Shareable file with embedded comments.
 
 ## Steps

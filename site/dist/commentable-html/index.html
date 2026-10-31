@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.858.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.858.1<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -342,7 +342,7 @@
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><rect x="5" y="10" width="3" height="8" rx="0.5"/><rect x="10.5" y="5" width="3" height="13" rx="0.5"/><rect x="16" y="13" width="3" height="5" rx="0.5"/></svg></span><h3>Rich content, not just prose</h3><p>Author Chart.js charts, Mermaid diagrams, drag-and-drop triage boards, rendered code diffs (inline or side-by-side), and syntax-highlighted code and KQL snippets - all first-class, and every one of them individually commentable.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4 7v10l8 4 8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg></span><h3>Self-contained when you share</h3><p>By default the layer loads from small companion files for cheap iteration. One click inlines the CSS, review UI, and every comment into a single HTML file you can email, archive, or reopen anywhere - no server and no build step.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.6-5.6L20 8"/><path d="M20 3v5h-5"/><path d="M20 12a8 8 0 0 1-13.6 5.6L4 16"/><path d="M4 21v-5h5"/></svg></span><h3>Round-trip to the agent</h3><p>One Copy all hands the agent every comment at once, with the full discussion context. The agent can answer discussion questions without edits or make coordinated changes for owner-approved edit requests, then retain answers and mark only ordinary edit comments handled.</p></div>
-          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v10H9l-5 5z"/><path d="M8 9h8M8 12h5"/></svg></span><h3>Discuss before requesting edits</h3><p>Anchored discussion questions receive AI answers without authorizing edits. Continue the conversation, then explicitly mark a reply as a Command to edit using the whole history. Needs owner handoff / AI reply means unanswered, not proof that the AI has never read it; Copy and export are not read receipts. No server or folder permissions are needed.</p></div>
+          <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v10H9l-5 5z"/><path d="M8 9h8M8 12h5"/></svg></span><h3>Discuss before requesting edits</h3><p>Anchored discussion questions receive AI answers without authorizing edits. Choose Ask AI, hand back Copy or exported HTML, and reload the owner's answer. Choose Request edit for an explicit command using the whole history; check the remembered reply purpose. Needs owner handoff / AI reply means unanswered; Copy and export are not read receipts. No server or folder permissions are needed. <a href="tutorial/">AI discussion walkthrough</a>.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"/></svg></span><h3>Export as Shareable or Offline</h3><p>Export as Shareable inlines the review layer and comments so a review travels in one file. Export Offline goes further: it snapshots the mermaid diagrams and charts and strips every remote loader, so the file opens with no network at all.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg></span><h3>Handled comments stay gone</h3><p>Ordinary edit comments marked handled are pruned on reload. Discussion history remains visible, with answers bound to the exact question version so editing or asking again reopens it.</p></div>
           <div class="card feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg></span><h3>Comments survive a restart</h3><p>While you iterate, every comment is saved to your browser's localStorage, so closing the tab, restarting the browser, or rebooting your machine never loses your work - reopen the file and your comments are still there.</p></div>
@@ -401,7 +401,7 @@
           <button class="demo-tab" type="button" role="tab" id="demo-tab-triage" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-triage.html" data-file="report-triage.html" data-label="Triage Board">Triage Board</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-metrics" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-metrics.html" data-file="report-metrics.html" data-label="Visuals Matrix">Visuals Matrix</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-showcase" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/deck-showcase.html" data-file="deck-showcase.html" data-label="Showcase Deck">Showcase Deck</button>
-          <button class="demo-tab" type="button" role="tab" id="demo-tab-checklist" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-checklist.html" data-file="report-checklist.html" data-label="Checklist">Checklist</button>
+          <button class="demo-tab" type="button" role="tab" id="demo-tab-checklist" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-checklist.html" data-file="report-checklist.html" data-label="Dynamic Controls">Dynamic Controls</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-tables" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-editable-table.html" data-file="report-editable-table.html" data-label="Editable Tables">Editable Tables</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-notes" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-notes.html" data-file="report-notes.html" data-label="Notes">Notes</button>
         </div>
@@ -489,6 +489,17 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.858.1] - 2026-10-31</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Expand the existing release-readiness example into the Dynamic Controls demo with independent checklists, editable notes and a text/numeric/choice follow-up table, retaining its URL and key.</li>
+              <li>Start the follow-up table at readable authored column widths without a permanent table-width floor, so resizing, Autofit and column removal can shrink it through export/reopen.</li>
+              <li>Align the website demo tab, tutorial, companion prompt and authoring references with the combined Copy all and export flow; keep the dedicated notes and table playgrounds.</li>
+              <li>Add the AI discussion walkthrough and align website, Help, README, showcase and author reference with the Ask AI / Request edit labels and remembered reply purpose.</li>
+              <li>Correct the checklist apply-tool path in Copy all and include table edits in Help&#x27;s pending-count and partial-copy descriptions.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.858.0] - 2026-10-29</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -513,6 +524,8 @@
               <li>Deliberately raise the JS ceiling from 710000 to 735000, CSS from 148000 to 155000, asset bundle from 900000 to 930000 and shareable template from 921000 to 950000 bytes for column reorder/resize, numeric editors, cell-comment lifecycle and compact themed controls, including integration with the released per-document reading-width controls.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.857.1] - 2026-10-30</h3></div>
             <div class="group-label">Changed</div>
@@ -521,8 +534,6 @@
               <li>The upstream Mermaid bundle still embeds DOMPurify 3.4.12; updating the separate lockfile dependency does not change those prebuilt bytes.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.857.0] - 2026-10-29</h3></div>
             <div class="group-label">Added</div>
@@ -577,14 +588,7 @@
               <li>Discussion imports reject duplicate incoming ids and ids colliding with unrelated comments or threads before writing document state.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.853.2] - 2026-10-23</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Recover flowcharts whose normal-sized nodes are stranded far from their edge endpoints, making the diagram appear tiny across an oversized canvas. The existing SVG-text rerender now detects this malformed geometry on load, reveal, and layout changes, including offline exports, without compacting intentionally sparse connected diagrams.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">423 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">424 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

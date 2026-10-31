@@ -4,6 +4,11 @@ Opt in a native table with `data-cmh-table="stable-id"` and a nonblank
 `data-cmh-table-label="Label"`. Ordinary tables are unaffected. Author the marker only;
 the runtime adds its own `cm-skip` editing controls.
 
+The [Dynamic Controls demo](https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-checklist.html)
+combines an editable follow-up table with separate checklist and note elements. Keep the controls
+in separate subtrees, not inside each other. Each has its own state payload in Copy all; table
+edits share one cumulative card, while explicit title/cell comments remain ordinary threads.
+
 ## Contents
 
 - [Authoring rules](#authoring-rules)

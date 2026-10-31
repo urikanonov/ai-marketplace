@@ -327,7 +327,7 @@ function buildCopyText(pickedIds, partialScope) {
     byCl.forEach((info, cid) => {
       const label = (info.label && info.label !== cid) ? ` (${oneLine(info.label)})` : "";
       lines.push(`## Checklist "${oneLine(cid)}"${label}`);
-      lines.push("Apply with tools/checklist_apply.py, or set data-cmh-state on each item.");
+      lines.push("Apply with tools/checklist/checklist_apply.py, or set data-cmh-state on each item.");
       lines.push("");
       info.items.forEach((ch) => {
         lines.push(`- [${oneLine(ch.key)}] "${oneLine(ch.label || ch.key)}": ${oneLine(ch.from)} -> ${oneLine(ch.to)}`);

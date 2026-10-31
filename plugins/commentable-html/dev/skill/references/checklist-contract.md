@@ -4,6 +4,11 @@ A layered checklist turns a nested list (or a table) into interactive, four-stat
 parent state aggregates from its children, whose state persists in `localStorage`, and whose changes
 travel back to the agent through the Copy-all bundle so the states can be cemented into the source HTML.
 
+The [Dynamic Controls demo](https://urikanonov.github.io/ai-marketplace/commentable-html/demo/report-checklist.html)
+shows both checklist shapes alongside editable notes and a follow-up table. The audit checklist
+is still a checklist, not an editable table: author a separate `data-cmh-table` element for
+editable rows/columns, and never nest or overlap the control ownership.
+
 ## Contents
 
 - [Author markup](#author-markup)

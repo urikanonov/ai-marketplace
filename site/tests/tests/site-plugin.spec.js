@@ -334,11 +334,17 @@ test("the discussion card distinguishes unanswered questions from read receipts 
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const card = page.locator("#features .card.feature", { has: page.getByRole("heading", { name: "Discuss before requesting edits", exact: true }) });
   await expect(card).toContainText(/questions receive AI answers without authorizing edits/i);
-  await expect(card).toContainText(/explicitly mark a reply as a Command/i);
+  await expect(card).toContainText(/Request edit/i);
   await expect(card).toContainText(/whole history/i);
   await expect(card).toContainText(/Needs owner handoff \/ AI reply means unanswered/i);
   await expect(card).toContainText(/Copy and export are not read receipts/i);
   await expect(card).toContainText(/No server or folder permissions are needed/i);
+  await card.getByRole("link", { name: "AI discussion walkthrough" }).click();
+  await expect(page).toHaveURL(/\/commentable-html\/tutorial\//);
+  const tutorial = page.locator("main");
+  await expect(tutorial).toContainText(/choose Ask AI/i);
+  await expect(tutorial).toContainText(/remembers the latest human purpose/i);
+  await expect(tutorial).toContainText(/reload the answered HTML/i);
 });
 
 
@@ -494,7 +500,7 @@ test("demo slider switches the iframe, title, and full-screen target", async ({ 
 });
 
 
-test("demo slider exposes and loads the Checklist report (SITE-DEMO-09)", async ({ page }) => {
+test("demo slider exposes and loads the Dynamic Controls report (SITE-DEMO-09)", async ({ page }) => {
   test.slow();
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const checklist = page.locator("#demo-tab-checklist");
@@ -506,11 +512,19 @@ test("demo slider exposes and loads the Checklist report (SITE-DEMO-09)", async 
   await checklist.click();
   await expect(page.locator("#demo-iframe")).toHaveAttribute("src", /report-checklist\.html/);
   await expect(page.locator("#demo-fullscreen")).toHaveAttribute("href", /report-checklist\.html/);
-  await expect(page.locator("#demo-title")).toHaveText("Checklist");
+  await expect(page.locator("#demo-title")).toHaveText("Dynamic Controls");
   await expect(page.locator("#demo-panel")).toHaveAttribute("aria-labelledby", "demo-tab-checklist");
   const frame = await demoFrameReady(page, "#demo-iframe", "report-checklist.html");
   // The load is now waited for separately, so this budget covers only the in-frame mount.
   await expect(frame.locator("[data-cmh-checklist]")).toHaveCount(2, { timeout: 15000 });
+  await expect(frame.locator('[data-cmh-note="verdict"] textarea')).toBeVisible();
+  const table = frame.locator('[data-cmh-table="followups"]');
+  await table.locator('[data-cmh-row="loadtest"] [data-cmh-edit-column="owner"]').fill("Website reviewer");
+  await expect(frame.locator(".cm-card-table")).toHaveCount(1);
+  await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("main")).toContainText("Dynamic Controls demo");
+  await expect(page.locator("main li").filter({ hasText: "toolbar count badge" })).toContainText("checklist changes, review-note edits and table edits");
+  await expect(page.locator('main a[href$="report-checklist.html"]').first()).toBeVisible();
 });
 
 

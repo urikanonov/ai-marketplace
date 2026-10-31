@@ -94,19 +94,19 @@ Mermaid diagrams render when you open the file in a modern browser. If one does 
 
 ## 10. Work a review checklist
 
-Some reports embed interactive review checklists - grouped items whose state you cycle as you verify each one. The community garden plan does not use them, so this step uses [`examples/report-checklist.html`](../examples/report-checklist.html), which is built around a release-readiness checklist.
+Some reports embed interactive review checklists - grouped items whose state you cycle as you verify each one. The community garden plan does not use them, so this step uses the [Dynamic Controls demo](../examples/report-checklist.html): a release-readiness review combining checklists, editable notes and an editable follow-up table. Its existing `report-checklist.html` URL is unchanged.
 
 1. Open [`examples/report-checklist.html`](../examples/report-checklist.html).
 2. Click an item's box to cycle its state: blank, done (green check), failed (red cross), or unresolved (amber question). A group heading rolls up the state of its items, and clicking it propagates a state to every item beneath it.
-3. Your changes are saved with the document and surface as a checklist card in the sidebar (with jump and reset), so you can hand the updated states back to the agent. You can also select an item's text and click **Add Comment** to leave a note on that specific check. The toolbar count badge counts these checklist changes and any review-note edits too, alongside open comment threads, so it reflects everything still needing attention.
+3. Your changes are saved with the document and surface as a checklist card in the sidebar (with jump and reset), so you can hand the updated states back to the agent. You can also select an item's text and click **Add Comment** to leave a note on that specific check. The toolbar count badge counts checklist changes, review-note edits and table edits, alongside open comment threads, so it reflects everything still needing attention.
 
 ![A grouped review checklist with tickable items under Backend and Frontend headings](assets/checklist-01-checklist.png)
 
 ## 11. Edit a review note
 
-Notes are editable free-text fields authors embed for context, verdicts, or reviewer input. Each starts from an authored baseline you can edit in place. The garden plan has none, so this step uses [`examples/report-notes.html`](../examples/report-notes.html).
+Notes are editable free-text fields authors embed for context, verdicts, or reviewer input. Each starts from an authored baseline you can edit in place. Continue in **Review notes** in the [Dynamic Controls demo](../examples/report-checklist.html), or use the [dedicated notes example](../examples/report-notes.html).
 
-1. Open [`examples/report-notes.html`](../examples/report-notes.html).
+1. In the Dynamic Controls demo, find **Review notes** and edit **Release verdict**; the dedicated notes example uses **Overall verdict**.
 2. Click into a note and edit its text; use its single/multi-line toggle to switch the field height for longer entries.
 3. Your changes are saved with the document and appear as a note card in the sidebar (with jump and reset), so the agent can cement them back into the source. You can also select the note text and click **Add Comment** to leave a tracked comment on it.
 
@@ -114,7 +114,11 @@ Notes are editable free-text fields authors embed for context, verdicts, or revi
 
 ### Edit an entire table
 
-Open [the editable-table playground](../examples/report-editable-table.html). Unlike ordinary
+Continue to **Editable follow-up table** in the [Dynamic Controls demo](../examples/report-checklist.html),
+or open [the dedicated editable-table playground](../examples/report-editable-table.html). The combined
+demo includes text, numeric Effort and single-choice Status columns; sorting Effort puts 2.5, 12 and
+100 in numeric order. Edit a verdict, toggle a checklist item and change an owner to see three
+independent cards in one panel and all three state payloads in **Copy all**. Unlike ordinary
 commentable table cells, these cells are editable fields: type discussion text, assign an owner,
 or choose a status. Hover or focus a cell to reveal its editable surface. Use **Add row** and
 **Add column**; each vertical three-dot menu renames, inserts before/after, or removes its column.
@@ -233,18 +237,19 @@ When you pass a document back and forth with someone else, attribute each commen
 
 ## 17. Hand your comments back
 
-**Questions instead of edits:** choose **Discussion: ask AI** in a new comment's **Comment purpose**.
-The AI should answer in the thread without changing the document. Continue with **Reply**; when
-you do want an edit, explicitly choose **Command: edit the document using this discussion** under
-**Reply purpose**. Copy includes the complete conversation as context and only pending requests
-as work to perform. Answers stay in history; editing a question reopens it. Ordinary comments
-remain edit requests. The owner uses
+Use a discussion to understand a decision before asking the AI to change it:
+
+1. Select text, a table title or a cell, open **Add Comment**, and choose **Ask AI** under **Comment purpose**. Save your question. Unlike the default **Request edit**, this asks for an answer without authorizing a document change.
+2. Hand the question to the document owner with **Copy all** (or the thread's **Copy**) or **Export as Shareable**. Browser-only comments are local; the AI cannot read them until you make this handoff. The browser does not contact an AI automatically.
+3. The owner persists the AI answer in the thread and returns the file. Reload the answered HTML to see the reply; the discussion remains available for follow-ups.
+4. Click **Reply** and choose **Ask AI** for another question, or **Request edit** only when you want the agreed document change. Reply remembers the latest human purpose, so check **Reply purpose** before saving. Request edit is an explicit command: its text is the instruction, and the whole history supplies context.
+5. Copy or export again. The bundle carries the complete conversation but lists only pending questions and commands as work. AI answers are history, not new instructions. Editing a question reopens it; completing an edit never deletes the discussion.
+
+Ordinary comments remain edit requests. The owner uses
 [`review_threads.py`](https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/dev/skill/tools/authoring/review_threads.py) to import a Copy bundle
 or read exported HTML, persist version-bound answers, and acknowledge completed commands.
 See [AI discussions](https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/dev/skill/references/discussions.md) for the tested CLI commands.
-Discussions work in the standalone HTML without a server or folder permissions. The browser
-does not contact an AI automatically: hand back Copy or an exported file, then reload the
-answered HTML the owner returns.
+Discussions work in the standalone HTML without a server or folder permissions.
 
 1. Click **Copy all** in the toolbar or the sidebar.
 2. This copies every comment as a Markdown bundle: where each comment is, the quoted text, and your note, ending with a machine-readable handled-ids line.
