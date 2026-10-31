@@ -4,6 +4,40 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.858.0] - 2026-10-29
+
+### Added
+
+- Column-title comments anchored by stable table and column ids. Threads survive renaming,
+  sorting, reload and HTML export; removing a column keeps its discussion, and Undo reattaches it.
+- Drag data-column titles, empty header areas or the retained six-dot grips with the mouse to reorder.
+  Values, title discussions and the active row sort stay attached to their stable identities;
+  column order participates in cumulative changes, Undo/Redo, saved drafts and exports.
+- Insert rows at a boundary or with bottom New, with the new editor focused and active sorting cleared.
+  On hover-capable devices, the boundary plus appears only near the border in the # column.
+- Resize data-column borders or choose Autofit width; widths are tracked, undoable and exported.
+- Numeric columns accept blank, signed decimal and scientific-notation values with numeric sorting.
+- Cell-level review comments use stable table/row/column anchors and survive edits, moves and exports.
+
+### Changed
+
+- Compact trash-icon row removal and intrinsically sized row-number/action columns.
+- Vertical three-dot column menus with insertion before or after a column.
+- Standard sort chevrons, numeric/currency-aware comparison and sortable canonical row numbers.
+- Immediate, subtle neutral whole-cell hover preserves cell colors and reveals a comment icon,
+  without a red overlay or moving editing focus until click or Tab.
+- Compact branded column dialogs with an accent-colored Save action.
+- Soft-accent table action buttons with icons, hover feedback and operation-specific Undo/Redo tooltips.
+- Right-aligned header sort/menu controls and table-scoped Add Comment-style accent tooltips.
+- Explicit header comment icons replace title-click commenting. Header hover highlights its column
+  without click selection, and bold landing boundaries span the destination column during dragging.
+  Column movement is mouse-only; left/right menu buttons and keyboard/touch movement are removed.
+- Header dragging commits a focused editor before reordering and keeps clipped grips from scrolling the table under the pointer.
+- Deliberately raise the JS ceiling from 710000 to 735000, CSS from 148000 to 155000,
+  asset bundle from 900000 to 930000 and shareable template from 921000 to 950000 bytes
+  for column reorder/resize, numeric editors, cell-comment lifecycle and compact themed controls,
+  including integration with the released per-document reading-width controls.
+
 ## [1.857.1] - 2026-10-30
 
 ### Changed

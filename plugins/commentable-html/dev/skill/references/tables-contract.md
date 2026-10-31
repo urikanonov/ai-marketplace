@@ -8,6 +8,7 @@ the runtime adds its own `cm-skip` editing controls.
 
 - [Authoring rules](#authoring-rules)
 - [Canonical model and transaction](#canonical-model-and-transaction)
+- [Reviewer controls and title comments](#reviewer-controls-and-title-comments)
 - [Scaffold and cement tools](#scaffold-and-cement-tools)
 
 ```html
@@ -49,8 +50,13 @@ the runtime adds its own `cm-skip` editing controls.
   templates do not duplicate live table ids. A template in a caption is preserved
   verbatim by apply. The template element itself remains an active child: ownership
   markers on it are still rejected, as is a template inside a plain-text cell.
-- `data-cmh-column-type` defaults to `text`. Text columns have no options and an
-  empty default; choice-only attributes on a text header are ignored.
+- `data-cmh-column-type` defaults to `text`. Text and number columns have no options and an
+  empty default; choice-only attributes on those headers are ignored.
+- A `number` column accepts blank or signed ASCII decimals/scientific notation whose numeric value
+  is finite. Preserve exact text, including whitespace. Currency, grouped numbers, hexadecimal,
+  NaN and Infinity are invalid. Explicit number sorting compares numeric values.
+- Optional `data-cmh-width` is a digit-only integer CSS-pixel width in 96..4096. Omitting it uses
+  automatic layout. Widths are model data, not merely view preferences.
 - A `choice` column requires a JSON array of unique nonblank string options.
   Option spelling, whitespace and ordering are significant. Its default is empty
   unless authored, and otherwise must equal an option. A choice cell may be empty
@@ -76,7 +82,8 @@ The scaffold input is exactly a model with `columns` and `rows`:
 }
 ```
 
-All five column fields and both row fields are required. No extra fields, duplicate
+All five column fields and both row fields are required. A column may additionally have an integer
+`width` in 96..4096. No other extra fields, duplicate
 ids, invalid choice values or mismatched row widths are accepted. This model covers
 row and column insertion, removal, reordering, labels, types, defaults and cell edits.
 
@@ -90,6 +97,50 @@ The empty column arrays above are schema placeholders, not valid models: replace
 with a complete canonical baseline/edited model. Only changed tables appear in
 `tables`; an empty `tables` array is valid. `label` identifies the authored table and
 must still match. Each transaction has unique table ids.
+
+## Reviewer controls and title comments
+
+Rows have compact trash buttons. The row-number and remove-action columns use only
+their content width. A vertical three-dot header menu offers Rename, Insert before,
+Insert after and Remove; Escape or clicking outside closes it. Populated deletion
+requires confirmation. Undo/Redo restore edits and structure within the session;
+their hover/focus tooltips describe the next operation, including a pending cell edit.
+Toolbar and menu actions have decorative icons without changing accessible names.
+On hover-capable devices, boundary + appears only near a border in the # column, not while
+hovering data cells or the middle of a row number. Keyboard focus also reveals it; touch
+controls remain visible. Boundary + inserts before the target model row; bottom New appends. Both clear view sorting and
+focus the new row. Drag a header border or use its Left/Right keys to resize; Escape cancels a
+drag. Choose Autofit width or double-click the border to fit current values/header within the
+viewport. Widths are cumulative changes and participate in Undo/Redo, persistence and export.
+
+Drag a data-column title/empty header area or its six-dot grip with the mouse.
+Column movement is mouse-only; keyboard arrows, touch dragging and Move left/right menu
+buttons do not reorder columns. A bold landing boundary extends through the destination
+column, with a shaded target. Header hover subtly highlights the column without selecting it.
+Sort, comment, menu and resize controls keep their own actions. Number and row-action columns stay fixed.
+Reordering moves column metadata and each row's matching cell together, preserves
+stable title anchors and the active row sort, and is tracked in the cumulative
+model. Undo/Redo, persistence and exports carry the order. Escape, cancelled,
+outside and same-position drops do not create an order change.
+
+Sort chevrons match ordinary tables. Data columns use numeric comparison when all
+nonblank values are numeric, otherwise case-insensitive natural comparison. The `#`
+column sorts canonical model row numbers; those numbers move with their rows.
+Sorting is view-only and cycles ascending, descending, then model order.
+
+Click the column's comment icon, or focus that button and press Enter/Space, to leave a normal
+review comment. Clicking the title does not comment. Its `anchorType` is `table-column`, with `tableId`, `columnId` and the
+original title in `quote`. It has no prose offsets and does not claim widget ids.
+Threads remain anchored through rename, insert, sort, reload and HTML export.
+Removing a column preserves its thread as an unavailable anchor; Undo reattaches it.
+Do not reuse a removed column id for a different meaning when authoring revisions.
+Copy all, Markdown and print identify both the table and column.
+Each cell also has a hover/focus comment icon. Its `anchorType` is `table-cell`, with
+`tableId`, `rowId`, `columnId` and the original value in `quote`. These are whole-cell anchors,
+not prose offsets. Replies, search, deletion, Copy all, Markdown, print and section review retain
+the precise row context. Removing a target preserves an unavailable thread; Undo reattaches it.
+Orphan comment row/column ids remain reserved on reopen; never reuse an id for a different meaning.
+Cell edits still use the one cumulative table-change card, separate from explicit cell threads.
 
 ## Scaffold and cement tools
 

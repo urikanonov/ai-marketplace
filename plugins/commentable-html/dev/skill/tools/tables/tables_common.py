@@ -2,6 +2,7 @@
 """Canonical editable-table schema, markup and source spans shared by table tools."""
 import html
 import json
+import math
 import os
 import re
 import sys
@@ -12,6 +13,9 @@ import _browser_attrs  # noqa: E402
 SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]*\Z")
 VOID = frozenset("area base br col embed hr img input link meta param source track wbr".split())
 OWNER_ATTRS = ("data-cmh-note", "data-cmh-checklist", "data-cm-widget")
+NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z")
+# Match ECMAScript String.trim without changing the stored spelling.
+NUMBER_SPACE = "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
 
 
 def text(value):
@@ -47,20 +51,22 @@ def validate_model(model):
         raise ValueError("table rows must be an array")
     columns, rows, ids = [], [], set()
     for column in model["columns"]:
-        _object(column, "id label type options default", "table column")
+        _object(column, "id label type options default" + (" width" if isinstance(column, dict) and "width" in column else ""), "table column")
+        if "width" in column and (type(column["width"]) is not int or not 96 <= column["width"] <= 4096):
+            raise ValueError("table column width must be an integer from 96 to 4096 pixels")
         cid = identifier(column["id"])
         if cid in ids:
             raise ValueError("duplicate table column id: " + cid)
         ids.add(cid)
         kind = column["type"]
-        if kind not in ("text", "choice"):
-            raise ValueError("table column type must be text or choice")
+        if kind not in ("text", "number", "choice"):
+            raise ValueError("table column type must be text, number or choice")
         options = column["options"]
         default = text(column["default"])
         if not isinstance(options, list):
             raise ValueError("table choice options must be an array")
         options = [text(option) for option in options]
-        if kind == "text":
+        if kind != "choice":
             if options or default:
                 raise ValueError("text table columns require options:[] and default:\"\"")
         elif (not options or any(not option.strip() for option in options)
@@ -68,6 +74,8 @@ def validate_model(model):
             raise ValueError("table choice options must be unique nonblank strings; default must be an option")
         columns.append({"id": cid, "label": label(column["label"]), "type": kind,
                         "options": options, "default": default})
+        if "width" in column:
+            columns[-1]["width"] = column["width"]
     ids = set()
     for row in model["rows"]:
         _object(row, "id cells", "table row")
@@ -81,6 +89,10 @@ def validate_model(model):
         for column, cell in zip(columns, cells):
             if column["type"] == "choice" and cell and cell not in column["options"]:
                 raise ValueError("table choice cell must be empty or an authored option")
+            number = cell.strip(NUMBER_SPACE)
+            if column["type"] == "number" and number and (
+                    not NUMBER.fullmatch(number) or not math.isfinite(float(number))):
+                raise ValueError("numeric table cells must be blank or finite decimal numbers")
         rows.append({"id": rid, "cells": cells})
     return {"columns": columns, "rows": rows}
 
@@ -116,6 +128,8 @@ def render_sections(model):
         if column["type"] == "choice":
             attrs += ' data-cmh-options="%s" data-cmh-default="%s"' % (
                 _escape(json.dumps(column["options"], ensure_ascii=True)), _escape(column["default"]))
+        if "width" in column:
+            attrs += ' data-cmh-width="%d" style="width:%dpx;box-sizing:border-box"' % (column["width"], column["width"])
         headers.append("<th%s>%s</th>" % (attrs, _escape(column["label"])))
     rows = ['<tr data-cmh-row="%s">%s</tr>' % (
         row["id"], "".join("<td>%s</td>" % _escape(cell) for cell in row["cells"]))
@@ -263,6 +277,11 @@ def _model(node):
             default = attrs.get("data-cmh-default", "")
         columns.append({"id": attrs.get("data-cmh-column"), "label": _plain(th),
                         "type": kind, "options": options, "default": default})
+        if "data-cmh-width" in attrs:
+            raw_width = attrs["data-cmh-width"]
+            if not isinstance(raw_width, str) or not re.fullmatch(r"[0-9]+", raw_width):
+                raise ValueError("data-cmh-width must be an integer pixel width")
+            columns[-1]["width"] = int(raw_width)
     rows = [{"id": tr["attrs"].get("data-cmh-row"),
              "cells": [_plain(td) for td in _children(tr, "td")]}
             for tr in _children(body, "tr")]

@@ -77,7 +77,7 @@
   "60-comment-search.spec.js": 11202,
   "60-diagram-syntax.spec.js": 8136,
   "61-code-highlight-fallback.spec.js": 5791,
-  "62-deck-regressions.spec.js": 40273,
+  "62-deck-regressions.spec.js": 40949,
   "62-notes.spec.js": 16903,
   "64-validation-banner.spec.js": 26863,
   "65-deck-exports.spec.js": 31057,
@@ -128,5 +128,5 @@
   "99-discussions.spec.js": 28549,
   "99-timestamp-zone.spec.js": 16225,
   "document-width.spec.js": 8828,
-  "editable-tables.spec.js": 36876
+  "editable-tables.spec.js": 86180
 }

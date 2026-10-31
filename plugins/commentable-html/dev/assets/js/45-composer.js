@@ -35,7 +35,7 @@ function positionComposerNear(el, anchorRect) {
 // Where a new or edited composer opens from: the anchor's client rect, resolved per mode. An
 // unresolvable anchor (a diagram node or image that is no longer in the document) falls back to a
 // small on-screen box so the composer is always reachable.
-function composerAnchorRect({ mode, range, comment, mermaid, diff, image, widget, link }) {
+function composerAnchorRect({ mode, range, comment, mermaid, diff, image, widget, link, tableColumn }) {
   if (mode === "new") return range.getBoundingClientRect();
   if (mode === "new-mermaid") {
     const node = findMermaidNode(mermaid.diagramIndex, mermaid.nodeKey);
@@ -56,6 +56,10 @@ function composerAnchorRect({ mode, range, comment, mermaid, diff, image, widget
   if (mode === "new-widget") {
     const p = findWidgetPart(widget.widget, widget.part);
     return p ? p.getBoundingClientRect() : { left: 120, top: 100, bottom: 130, right: 320 };
+  }
+  if (mode === "new-table-column") {
+    const title = findTableColumn(tableColumn);
+    return title ? title.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
   }
   if (mode === "new-document" || mode === "new-slide") {
     const vp = cmhViewportBox();
@@ -78,13 +82,15 @@ function composerAnchorRect({ mode, range, comment, mermaid, diff, image, widget
     anchorEl = resolveLinkEl(anchorSrc);
   } else if (anchorSrc.anchorType === "widget") {
     anchorEl = findWidgetPart(anchorSrc.widget, anchorSrc.part);
+  } else if (_etIsAnchor(anchorSrc)) {
+    anchorEl = findTableColumn(anchorSrc);
   } else {
     anchorEl = root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
   }
   return anchorEl ? anchorEl.getBoundingClientRect() : { left: 100, top: 100, bottom: 130, right: 200 };
 }
 
-function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide, link }) {
+function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide, link, tableColumn }) {
   // When deck commenting is disabled ("off" present-only state) every "new-*" entry point
   // (selection, document, mermaid, image, diff, widget, heading) must be inert, not just the
   // text-selection popup. Editing is unreachable in off (it is only offered at zero comments),
@@ -159,6 +165,9 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
   } else if (mode === "new-widget") {
     el._widget = widget;
     el._quote = widget.quote || widget.label || widget.part || widget.widget;
+  } else if (mode === "new-table-column") {
+    el._tableColumn = tableColumn;
+    el._quote = tableColumn.quote;
   } else if (mode === "new-document") {
     el._quote = "(document-wide comment)";
   } else if (mode === "new-slide") {
@@ -189,7 +198,7 @@ function createComposerElement({ mode, range, quote, comment, mermaid, diff, ima
     document.body.appendChild(el);
     cmhAutogrowResize(ta);
     bringToFront(el);
-    positionComposerNear(el, composerAnchorRect({ mode, range, comment, mermaid, diff, image, widget, link }));
+    positionComposerNear(el, composerAnchorRect({ mode, range, comment, mermaid, diff, image, widget, link, tableColumn }));
     if (mode === "new") applyComposerPreview(el);
   } finally {
     endScrollGuard();
@@ -374,6 +383,7 @@ function openComposerForEdit(comment) {
       else if (anchorSrc.anchorType === "image") anchorEl = resolveImageEl(anchorSrc);
       else if (anchorSrc.anchorType === "link") anchorEl = resolveLinkEl(anchorSrc);
       else if (anchorSrc.anchorType === "widget") anchorEl = findWidgetPart(anchorSrc.widget, anchorSrc.part);
+      else if (_etIsAnchor(anchorSrc)) anchorEl = findTableColumn(anchorSrc);
       else anchorEl = root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
       if (anchorEl) positionComposerNear(existing, anchorEl.getBoundingClientRect());
     }
@@ -585,6 +595,18 @@ function saveComposerElementInner(el) {
     if (!applyWidgetHighlight(comment)) {
       showToast("Comment saved, but the widget part could not be highlighted.");
     }
+  } else if (el._mode === "new-table-column") {
+    const info = el._tableColumn;
+    const title = findTableColumn(info);
+    const host = title || (editableTables.find(t => t.id === info.tableId) || {}).table;
+    const ctx = host ? captureMermaidContext(host) : { section: null, headingPath: [] };
+    comments.push(stampAuthor({
+      id: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      anchorType: info.rowId === undefined ? "table-column" : "table-cell", tableId: info.tableId, columnId: info.columnId,
+      ...(info.rowId === undefined ? {} : { rowId: info.rowId }),
+      quote: info.quote, note, createdAt: new Date().toISOString(), ...ctx,
+    }));
+    _etTitleHighlights();
   } else if (el._mode === "new-document") {
     const id = "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const comment = {
@@ -688,4 +710,3 @@ function saveComposerElementInner(el) {
     });
   }
 }
-
