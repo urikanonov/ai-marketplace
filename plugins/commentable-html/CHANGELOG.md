@@ -14,6 +14,8 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   combined Copy all and export flow; keep the dedicated notes and table playgrounds.
 - Add the AI discussion walkthrough and align website, Help, README, showcase and author
   reference with the Ask AI / Request edit labels and remembered reply purpose.
+- Correct the checklist apply-tool path in Copy all and include table edits in Help's
+  pending-count and partial-copy descriptions.
 
 ## [1.858.0] - 2026-10-29
 

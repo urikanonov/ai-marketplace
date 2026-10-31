@@ -70,6 +70,8 @@ test.describe("Help terminology matches the current button labels", () => {
       await expect(body).toContainText(label);
     }
     await expect(body).not.toContainText(/NonShareable|Non-shareable/);
+    const sending = page.locator(".cm-help-topic", { hasText: "Sending comments to an agent" });
+    await expect(sending).toContainText(/Tracked note, checklist, table, and widget-layout changes are left out of a partial hand-back/);
   });
 
   test("the panel-and-toolbar topic describes the composite header ribbon, Search, and More menu (CMH-HELP-TERMS-01)", async ({ page }) => {
@@ -172,6 +174,7 @@ test.describe("Help documents recently shipped features (issue #655)", () => {
     expect(text).toMatch(/thread/i);
     expect(text).toMatch(/note/i);
     expect(text).toMatch(/checklist/i);
+    expect(text).toMatch(/table changes/i);
   });
 
   test("the help panel documents inline replies, author names, and thread export (CMH-HELP-THREADS-01)", async ({ page }) => {

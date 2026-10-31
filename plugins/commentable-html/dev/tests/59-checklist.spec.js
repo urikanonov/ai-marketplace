@@ -53,6 +53,10 @@ for (const [layout, width] of [["desktop", 1280], ["mobile", 390]]) {
     for (const marker of ["CHECKLIST_STATE_JSON:", "NOTES_STATE_JSON:", "TABLES_STATE_JSON:"]) {
       expect(bundle).toContain(marker);
     }
+    for (const tool of ["tools/checklist/checklist_apply.py", "tools/notes/notes_apply.py", "tools/tables/tables_apply.py"]) {
+      expect(bundle).toContain(tool);
+      expect(fs.existsSync(path.join(SKILL, tool))).toBe(true);
+    }
     expect(bundle).toContain("Taylor");
     expect(bundle).toContain("Hold until follow-ups are resolved.");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
