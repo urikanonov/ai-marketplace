@@ -26,7 +26,14 @@ for (const [layout, width] of [["desktop", 1280], ["mobile", 390]]) {
     await ready(page);
     const table = page.locator('[data-cmh-table="followups"]');
     const note = page.locator('[data-cmh-note="verdict"] textarea');
+    for (const tool of ["checklist_apply.py", "notes_apply.py", "tables_apply.py"]) {
+      await expect(page.locator("#about-example").locator("..")).toContainText(tool);
+    }
     await expect(table).toHaveCount(1);
+    if (layout === "mobile") {
+      const title = table.locator('[data-cmh-column="action"] .cmh-table-title');
+      expect((await title.boundingBox()).width).toBeGreaterThanOrEqual(90);
+    }
     await expect(page.locator(".cmh-checklist.cmh-checklist-ready")).toHaveCount(2);
     await note.fill("Hold until follow-ups are resolved.");
     if (layout === "mobile") await page.locator("#btnCloseSidebar").click();

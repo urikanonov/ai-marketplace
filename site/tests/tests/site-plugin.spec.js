@@ -523,6 +523,7 @@ test("demo slider exposes and loads the Dynamic Controls report (SITE-DEMO-09)",
   await expect(frame.locator(".cm-card-table")).toHaveCount(1);
   await page.goto("/commentable-html/tutorial/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("main")).toContainText("Dynamic Controls demo");
+  await expect(page.locator("main li").filter({ hasText: "toolbar count badge" })).toContainText("checklist changes, review-note edits and table edits");
   await expect(page.locator('main a[href$="report-checklist.html"]').first()).toBeVisible();
 });
 

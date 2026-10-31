@@ -98,7 +98,7 @@ Some reports embed interactive review checklists - grouped items whose state you
 
 1. Open [`examples/report-checklist.html`](../examples/report-checklist.html).
 2. Click an item's box to cycle its state: blank, done (green check), failed (red cross), or unresolved (amber question). A group heading rolls up the state of its items, and clicking it propagates a state to every item beneath it.
-3. Your changes are saved with the document and surface as a checklist card in the sidebar (with jump and reset), so you can hand the updated states back to the agent. You can also select an item's text and click **Add Comment** to leave a note on that specific check. The toolbar count badge counts these checklist changes and any review-note edits too, alongside open comment threads, so it reflects everything still needing attention.
+3. Your changes are saved with the document and surface as a checklist card in the sidebar (with jump and reset), so you can hand the updated states back to the agent. You can also select an item's text and click **Add Comment** to leave a note on that specific check. The toolbar count badge counts checklist changes, review-note edits and table edits, alongside open comment threads, so it reflects everything still needing attention.
 
 ![A grouped review checklist with tickable items under Backend and Frontend headings](assets/checklist-01-checklist.png)
 

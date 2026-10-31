@@ -50,7 +50,7 @@ Creation tools validate and surface warnings, but that never replaces the final 
 
 - **Self review:** generate the artifact, open it, comment inline, click **Copy all**, paste the bundle to the agent, let the agent update the HTML and mark handled ids, then reload.
 - **Peer review:** self-review first, click **Export as Shareable**, share the downloaded HTML, receive the peer's Shareable HTML with embedded comments, then feed those comments back to the agent.
-- **AI discussion:** choose Discussion, hand Copy or exported HTML to the agent, then reload its answered file. Continue with questions or an explicit Command. Schedule question-only answers only with owner consent; never enable a schedule automatically.
+- **AI discussion:** choose **Ask AI**, hand Copy or exported HTML to the agent, then reload its answered file. Check the remembered reply purpose: Ask AI for questions, **Request edit** for an explicit command. Schedule question-only answers only with owner consent; never enable a schedule automatically.
 - **Reviewer loop:** render Markdown to HTML and pass it to `tools/authoring/new_document.py --content`, or retrofit existing HTML with `tools/authoring/retrofit.py`, then return a Shareable file with embedded comments.
 
 ## Steps
