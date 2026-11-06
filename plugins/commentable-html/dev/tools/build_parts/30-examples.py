@@ -406,17 +406,44 @@ def build_examples(shareable_html, version, mermaid_version, examples_dir, gener
     content source in dev/examples/src/ (not from the shipped file itself). Returns {out_path: text}.
     An absent examples_dir (e.g. a temp-dir build) or an absent source dir yields no entries.
     Assembling from an independent source is what lets --check catch a stale or hand-edited example
-    instead of comparing it to itself. generated_date is stamped into each example's content root."""
+    instead of comparing it to itself. Strict-validate the assembled document before stamping its
+    content hash. generated_date is stamped into each example's content root."""
     result = {}
     if not os.path.isdir(examples_dir) or not os.path.isdir(EXAMPLES_SRC):
         return result
+    if STAGE_TOOLS not in sys.path:
+        sys.path.insert(0, STAGE_TOOLS)
+    import _toolpath
+    _toolpath.ensure()
+    import validate
+    import doc_stamp
+
     for name in sorted(os.listdir(EXAMPLES_SRC)):
         if not _EXAMPLE_NAME_RE.match(name):
             continue
         src_path = os.path.join(EXAMPLES_SRC, name)
         out_path = os.path.join(examples_dir, name)
-        result[out_path] = regen_example(read(src_path), shareable_html, version, mermaid_version, name,
-                                         generated_date=generated_date)
+        html = regen_example(read(src_path), shareable_html, version, mermaid_version, name,
+                             generated_date=generated_date)
+        errors, warnings = validate.validate(out_path, html=html)
+        fatal_warnings, _ = validate.partition_warnings(warnings)
+        if errors or fatal_warnings:
+            raise SystemExit("build: %s failed strict validation:\n%s" %
+                             (name, "\n".join(errors + fatal_warnings)))
+        # A release timestamp keeps regenerated examples byte-identical across builds.
+        when = datetime.datetime.fromisoformat(
+            (generated_date or read_release_date(version)) + "T23:59:59+00:00")
+        created = doc_stamp.get_meta(html, doc_stamp.CREATED_META)
+        if created is not None:
+            try:
+                created_at = datetime.datetime.fromisoformat(created.replace("Z", "+00:00"))
+                if created_at.tzinfo is None:
+                    raise ValueError("timezone required")
+            except ValueError as exc:
+                raise SystemExit("build: %s has an invalid creation timestamp: %s" % (name, created)) from exc
+            when = max(when, created_at)
+        stamp = when.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+        result[out_path] = doc_stamp.stamp_validated_html(html, when=stamp)
     return result
 
 

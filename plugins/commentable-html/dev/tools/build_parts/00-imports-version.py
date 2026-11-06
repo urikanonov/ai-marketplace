@@ -82,6 +82,7 @@ FIXTURES_GEN = os.path.join(HERE, "tests", "fixtures", "generate.mjs")
 # swap, so build.py copies it VERBATIM to the shipped examples/<same-name>.md and --check flags any
 # drift the same way.
 EXAMPLES_SRC = os.path.join(HERE, "examples", "src")
+STAGE_TOOLS = os.path.join(HERE, "skill", "tools")
 CANONICAL_BUILD_COMMAND = (
     "python tools/build.py --assets-dir assets --out-dir skill "
     "--pkg-dir ../pkg/skills/commentable-html --examples-dir ../examples")

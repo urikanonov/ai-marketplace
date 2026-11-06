@@ -19,6 +19,7 @@ BUILD_PY = os.path.join(_paths.DEV_TOOLS, "build.py")
 sys.path.insert(0, _paths.DEV_TOOLS)  # maintainer build tool (build.py lives in dev/tools)
 import build  # noqa: E402
 import upgrade  # noqa: E402  shipped authoring tool (on path via _paths -> _toolpath)
+import doc_stamp  # noqa: E402
 
 
 def _read_version():
@@ -81,11 +82,27 @@ class ExampleTests(unittest.TestCase):
             self.assertTrue(os.path.isfile(path), "example is missing: " + os.path.basename(path))
 
     def test_example_validates_clean(self):
+        examples = _all_example_docs()
+        self.assertTrue(examples)
         r = subprocess.run(
-            [sys.executable, os.path.join(SKILL, "tools", "validate", "validate.py"), "--no-stamp", *EXAMPLES],
+            [sys.executable, os.path.join(SKILL, "tools", "validate", "validate.py"),
+             "--strict", "--no-stamp", *examples],
             capture_output=True, text=True, cwd=SKILL)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertRegex(r.stdout, r"\b0 warning")
+
+    def test_every_example_has_current_validation_stamp(self):
+        examples = _all_example_docs()
+        self.assertTrue(examples)
+        for path in examples:
+            with self.subTest(example=os.path.basename(path)):
+                html = _read(path)
+                self.assertTrue(doc_stamp.get_meta(html, doc_stamp.VALIDATED_META))
+                content_hash = doc_stamp.section_hash.document_content_hash(html)
+                self.assertIsNotNone(content_hash)
+                self.assertEqual(
+                    doc_stamp.get_meta(html, doc_stamp.VALIDATED_HASH_META), content_hash,
+                    "strict-validate the example source, then rebuild the examples and site")
 
     def test_example_images_are_inlined_and_self_contained(self):
         html = _read(EXAMPLE)
