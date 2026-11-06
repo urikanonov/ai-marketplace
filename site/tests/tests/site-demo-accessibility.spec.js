@@ -1,4 +1,6 @@
 const { test, expect } = require("@playwright/test");
+const fs = require("fs");
+const path = require("path");
 const { contrastRatio, compositedContrast, demoFrameReady, installNetworkBlock, recordCopyFeedback } = require("./site-helpers");
 
 installNetworkBlock(test);
@@ -338,10 +340,29 @@ test("demo mounts inside the iframe on the plugin page (CSP allows it)", async (
 
 test("all demo reports load and their toolbars mount", async ({ page }) => {
   test.slow();
-  for (const report of ["report-taxi.html", "report-community-garden.html", "report-triage.html", "report-metrics.html", "report-checklist.html", "report-notes.html"]) {
+  const examplesDir = path.resolve(__dirname, "../../../plugins/commentable-html/examples");
+  const examples = fs.readdirSync(examplesDir).filter((name) => name.endsWith(".html")).sort();
+  expect(examples.length).toBeGreaterThan(0);
+  for (const report of examples) {
     await page.goto("/commentable-html/demo/" + report, { waitUntil: "domcontentloaded" });
     await expect(page.locator(".cm-toolbar")).toHaveCount(1, { timeout: 15000 });
     await expect(page.locator("#btnCopyAll")).toBeAttached({ timeout: 15000 });
+    await page.waitForFunction(() => typeof window.__cmhReview?.docHash === "function");
+    const validation = await page.evaluate(() => {
+      const meta = (name) => document.querySelector(`meta[name="${name}"]`)?.content || "";
+      return {
+        created: meta("commentable-html-created"),
+        validated: meta("commentable-html-validated"),
+        hash: meta("commentable-html-validated-hash"),
+        actualHash: window.__cmhReview.docHash(),
+      };
+    });
+    expect(Number.isFinite(Date.parse(validation.validated)), `${report}: missing validation`).toBe(true);
+    if (validation.created) {
+      expect(Date.parse(validation.validated), `${report}: stale validation`).toBeGreaterThanOrEqual(Date.parse(validation.created));
+    }
+    expect(validation.hash, `${report}: content changed after validation`).toBe(validation.actualHash);
+    await expect(page.locator(".cmh-unvalidated-banner"), report).toHaveCount(0);
   }
 });
 
@@ -403,4 +424,3 @@ test("commentable-html hero shows the plugin logo", async ({ page }) => {
   await expect(logo).toHaveCount(1);
   await expect(logo).toHaveAttribute("alt", /commentable html/i);
 });
-

@@ -274,6 +274,97 @@ class BuildTests(unittest.TestCase):
             self.assertIn("mermaid@%s/dist/" % mv, out[p])
             self.assertNotIn("mermaid@9.9.9/dist/", out[p])
 
+    def test_build_examples_refuses_invalid_content(self):
+        source = _read(os.path.join(_paths.EXAMPLES, "report-editable-table.html"))
+        with tempfile.TemporaryDirectory() as d:
+            src_dir = os.path.join(d, "src")
+            examples_dir = os.path.join(d, "examples")
+            os.makedirs(src_dir)
+            os.makedirs(examples_dir)
+            with mock.patch.object(build, "EXAMPLES_SRC", src_dir):
+                for content in ('<p id="btnCopyAll">Duplicate reserved id</p>',
+                                '<a href="https://example.com" target="_self">Same tab</a>'):
+                    with self.subTest(content=content):
+                        invalid = source.replace("<!-- END: commentable-html - CONTENT -->",
+                                                 content + "\n<!-- END: commentable-html - CONTENT -->")
+                        build.write(os.path.join(src_dir, "report-invalid.html"), invalid)
+                        with self.assertRaisesRegex(SystemExit, "report-invalid.html.*strict validation"):
+                            build.build_examples(
+                                _read(os.path.join(DIST, "SHAREABLE.html")), build.read_version(),
+                                build.read_mermaid_version(), examples_dir, generated_date="2026-11-06")
+
+    def test_build_examples_validation_is_deterministic(self):
+        import doc_stamp
+
+        source = _read(os.path.join(_paths.EXAMPLES, "report-editable-table.html"))
+        source = source.replace("<!-- END: commentable-html - CONTENT -->",
+                                "<p>New content since the previous validation.</p>\n"
+                                "<!-- END: commentable-html - CONTENT -->")
+        with tempfile.TemporaryDirectory() as d:
+            src_dir = os.path.join(d, "src")
+            examples_dir = os.path.join(d, "examples")
+            os.makedirs(src_dir)
+            os.makedirs(examples_dir)
+            build.write(os.path.join(src_dir, "report-updated.html"), source)
+            with mock.patch.object(build, "EXAMPLES_SRC", src_dir):
+                args = (_read(os.path.join(DIST, "SHAREABLE.html")), build.read_version(),
+                        build.read_mermaid_version(), examples_dir)
+                first = build.build_examples(*args, generated_date="2026-11-06")
+                self.assertEqual(first, build.build_examples(*args, generated_date="2026-11-06"))
+            html = first[os.path.join(examples_dir, "report-updated.html")]
+            self.assertEqual(doc_stamp.get_meta(html, doc_stamp.VALIDATED_META), "2026-11-06T23:59:59Z")
+            self.assertEqual(doc_stamp.get_meta(html, doc_stamp.VALIDATED_HASH_META),
+                             doc_stamp.section_hash.document_content_hash(html))
+            self.assertNotEqual(doc_stamp.get_meta(html, doc_stamp.VALIDATED_HASH_META),
+                                doc_stamp.get_meta(source, doc_stamp.VALIDATED_HASH_META))
+
+    def test_build_examples_refuses_invalid_deck(self):
+        source = _read(os.path.join(_paths.EXAMPLES, "deck-showcase.html"))
+        source, count = re.subn(r' data-slide-id="[^"]+"', "", source, count=1)
+        self.assertEqual(count, 1)
+        errors, warnings = validate.validate("deck-invalid.html", html=source)
+        self.assertEqual(errors, [])
+        self.assertEqual(validate.partition_warnings(warnings)[0], [])
+        with tempfile.TemporaryDirectory() as d:
+            src_dir = os.path.join(d, "src")
+            examples_dir = os.path.join(d, "examples")
+            os.makedirs(src_dir)
+            os.makedirs(examples_dir)
+            build.write(os.path.join(src_dir, "deck-invalid.html"), source)
+            with mock.patch.object(build, "EXAMPLES_SRC", src_dir):
+                with self.assertRaisesRegex(SystemExit, "deck-invalid.html.*strict validation"):
+                    build.build_examples(
+                        _read(os.path.join(DIST, "SHAREABLE.html")), build.read_version(),
+                        build.read_mermaid_version(), examples_dir, generated_date="2026-11-06")
+
+    def test_build_examples_compares_creation_as_an_instant(self):
+        import doc_stamp
+
+        source = _read(os.path.join(_paths.EXAMPLES, "report-editable-table.html"))
+        with tempfile.TemporaryDirectory() as d:
+            src_dir = os.path.join(d, "src")
+            examples_dir = os.path.join(d, "examples")
+            os.makedirs(src_dir)
+            os.makedirs(examples_dir)
+            with mock.patch.object(build, "EXAMPLES_SRC", src_dir):
+                args = (_read(os.path.join(DIST, "SHAREABLE.html")), build.read_version(),
+                        build.read_mermaid_version(), examples_dir)
+                for created, expected in (
+                    ("2026-11-06T20:00:00-05:00", "2026-11-07T01:00:00Z"),
+                    ("2026-11-07T01:00:00+05:00", "2026-11-06T23:59:59Z"),
+                ):
+                    with self.subTest(created=created):
+                        build.write(os.path.join(src_dir, "report-dated.html"),
+                                    doc_stamp.set_meta(source, doc_stamp.CREATED_META, created))
+                        html = next(iter(build.build_examples(*args, generated_date="2026-11-06").values()))
+                        self.assertEqual(doc_stamp.get_meta(html, doc_stamp.VALIDATED_META), expected)
+                for created in ("not-a-date", "2026-11-06T12:00:00"):
+                    with self.subTest(created=created):
+                        build.write(os.path.join(src_dir, "report-dated.html"),
+                                    doc_stamp.set_meta(source, doc_stamp.CREATED_META, created))
+                        with self.assertRaisesRegex(SystemExit, "report-dated.html.*creation timestamp"):
+                            build.build_examples(*args, generated_date="2026-11-06")
+
     def test_region_inner_rejects_duplicate_begin_marker(self):
         text = ("/* ============================================================\n"
                 "   BEGIN: commentable-html - CSS\n"
