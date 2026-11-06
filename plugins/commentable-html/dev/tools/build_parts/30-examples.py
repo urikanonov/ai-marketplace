@@ -426,6 +426,10 @@ def build_examples(shareable_html, version, mermaid_version, examples_dir, gener
         html = regen_example(read(src_path), shareable_html, version, mermaid_version, name,
                              generated_date=generated_date)
         errors, warnings = validate.validate(out_path, html=html)
+        if name.startswith("deck-"):
+            import deck_validate
+            errors.extend(deck_validate.deck_checks(html))
+            warnings.extend(deck_validate.deck_warnings(html))
         fatal_warnings, _ = validate.partition_warnings(warnings)
         if errors or fatal_warnings:
             raise SystemExit("build: %s failed strict validation:\n%s" %

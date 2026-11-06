@@ -318,6 +318,25 @@ class BuildTests(unittest.TestCase):
             self.assertNotEqual(doc_stamp.get_meta(html, doc_stamp.VALIDATED_HASH_META),
                                 doc_stamp.get_meta(source, doc_stamp.VALIDATED_HASH_META))
 
+    def test_build_examples_refuses_invalid_deck(self):
+        source = _read(os.path.join(_paths.EXAMPLES, "deck-showcase.html"))
+        source, count = re.subn(r' data-slide-id="[^"]+"', "", source, count=1)
+        self.assertEqual(count, 1)
+        errors, warnings = validate.validate("deck-invalid.html", html=source)
+        self.assertEqual(errors, [])
+        self.assertEqual(validate.partition_warnings(warnings)[0], [])
+        with tempfile.TemporaryDirectory() as d:
+            src_dir = os.path.join(d, "src")
+            examples_dir = os.path.join(d, "examples")
+            os.makedirs(src_dir)
+            os.makedirs(examples_dir)
+            build.write(os.path.join(src_dir, "deck-invalid.html"), source)
+            with mock.patch.object(build, "EXAMPLES_SRC", src_dir):
+                with self.assertRaisesRegex(SystemExit, "deck-invalid.html.*strict validation"):
+                    build.build_examples(
+                        _read(os.path.join(DIST, "SHAREABLE.html")), build.read_version(),
+                        build.read_mermaid_version(), examples_dir, generated_date="2026-11-06")
+
     def test_build_examples_compares_creation_as_an_instant(self):
         import doc_stamp
 
