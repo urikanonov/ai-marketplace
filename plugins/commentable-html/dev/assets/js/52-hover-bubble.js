@@ -3,6 +3,7 @@
    click there navigates instead of opening the comment. Hovering any highlight shows
    this small bubble; clicking it opens the comment regardless of what the text links to. */
 const hlBubble = cmhEl("hlBubble");
+const CMH_BUBBLE_ANCHOR_SEL = "mark.cm-hl, a.cm-link-hl";
 let hlBubbleCid = null, hlBubbleMark = null, hlBubbleHideTimer = null;
 // On a phone the comments panel is a full-width SHEET over the document (`assets/css/00-base.css`)
 // while the bubble floats above it (z-index 210 vs 90), so the highlight it points at is hidden
@@ -34,8 +35,25 @@ function positionHlBubble(mark) {
   if (top < bounds.top) top = visible.bottom - 4;
   left = _clamp(left, bounds.left, bounds.right - bw);
   top  = _clamp(top, bounds.top, bounds.bottom - bh);
+  if (mark.closest("a.cm-link-commentable") && linkAddBtn && !linkAddBtn.hidden) {
+    const add = linkAddBtn.getBoundingClientRect();
+    if (left < add.right && left + bw > add.left && top < add.bottom && top + bh > add.top) {
+      const below = Math.max(visible.bottom, add.bottom) + 4;
+      const above = Math.min(visible.top, add.top) - bh - 4;
+      if (below + bh <= bounds.bottom) top = below;
+      else if (above >= bounds.top) top = above;
+      else if (add.right + 4 + bw <= bounds.right) left = add.right + 4;
+      else if (add.left - bw - 4 >= bounds.left) left = add.left - bw - 4;
+      else if (add.width + bw + 4 <= bounds.right - bounds.left && bh <= bounds.bottom - bounds.top) {
+        left = bounds.left;
+        linkAddBtn.style.left = left + bw + 4 + "px";
+      } else { hlBubble.hidden = true; return; }
+    }
+  }
+  top  = _clamp(top, bounds.top, bounds.bottom - bh);
   hlBubble.style.left = left + "px";
   hlBubble.style.top  = top  + "px";
+  hlBubble.hidden = false;
 }
 function showHlBubbleFor(mark) {
   if (!mark.dataset.cid) return;
@@ -53,7 +71,7 @@ function scheduleHideHlBubble() {
 }
 root.addEventListener("mouseover", (e) => {
   if (e.buttons) return; // mid-drag: user is selecting text, don't pop the bubble
-  const mark = e.target.closest && e.target.closest("mark.cm-hl");
+  const mark = e.target.closest && e.target.closest(CMH_BUBBLE_ANCHOR_SEL);
   if (!mark || !root.contains(mark)) return;
   if (mark === hlBubbleMark && !hlBubble.hidden) {
     if (hlBubbleHideTimer) { clearTimeout(hlBubbleHideTimer); hlBubbleHideTimer = null; }
@@ -62,9 +80,9 @@ root.addEventListener("mouseover", (e) => {
   showHlBubbleFor(mark);
 });
 root.addEventListener("mouseout", (e) => {
-  if (!(e.target.closest && e.target.closest("mark.cm-hl"))) return;
+  if (!(e.target.closest && e.target.closest(CMH_BUBBLE_ANCHOR_SEL))) return;
   const to = e.relatedTarget;
-  if (to && to.closest && (to.closest("mark.cm-hl") || to.closest(".cm-hl-bubble"))) return;
+  if (to && to.closest && (to.closest(CMH_BUBBLE_ANCHOR_SEL) || to.closest(".cm-hl-bubble"))) return;
   scheduleHideHlBubble();
 });
 // A tap has no hover, and the mousedown below drops the bubble, so a plain click on a highlight
@@ -76,7 +94,7 @@ root.addEventListener("mouseout", (e) => {
 // click through, and the bubble then behaves exactly as it does on hover (the dirty-draft guard in
 // `openCommentPopover` is what protects the edit).
 root.addEventListener("click", (e) => {
-  const mark = e.target.closest && e.target.closest("mark.cm-hl");
+  const mark = e.target.closest && e.target.closest(CMH_BUBBLE_ANCHOR_SEL);
   if (!mark || !root.contains(mark) || !mark.dataset.cid) return;
   // A click that ENDS A SELECTION is a text-selection gesture (the Add-comment menu owns that one),
   // not a request to open the comment.

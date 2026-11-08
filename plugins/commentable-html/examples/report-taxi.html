@@ -5,9 +5,9 @@
 <meta name="commentable-html-validated" content="2026-11-08T23:59:59Z" />
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.859.0" />
+<meta name="commentable-html-version" content="1.859.1" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.859.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.859.1","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>NYC Taxi 2014 Report</title>
 
@@ -5078,7 +5078,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.859.0";
+const CMH_VERSION= "1.859.1";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -9313,6 +9313,7 @@ let top=visible.top-btnH-4;
 if(top<bounds.top)top=visible.bottom+4;
 linkAddBtn.style.left=_clamp(left,bounds.left,bounds.right-btnW)+"px";
 linkAddBtn.style.top=_clamp(top,bounds.top,bounds.bottom-btnH)+"px";
+if(hlBubbleMark&&a.contains(hlBubbleMark))positionHlBubble(hlBubbleMark);
 return true;
 }
 function showLinkAddFor(a){
@@ -14428,6 +14429,7 @@ input.focus();
 applyCommentSearch();
 }
 const hlBubble=cmhEl("hlBubble");
+const CMH_BUBBLE_ANCHOR_SEL= "mark.cm-hl, a.cm-link-hl";
 let hlBubbleCid=null,hlBubbleMark=null,hlBubbleHideTimer=null;
 function _sidebarCoversDocument(){
 if(!sidebar||!document.body.classList.contains("sidebar-open"))return false;
@@ -14450,8 +14452,25 @@ let top=visible.top-bh+4;
 if(top<bounds.top)top=visible.bottom-4;
 left=_clamp(left,bounds.left,bounds.right-bw);
 top=_clamp(top,bounds.top,bounds.bottom-bh);
+if(mark.closest("a.cm-link-commentable")&&linkAddBtn&&!linkAddBtn.hidden){
+const add=linkAddBtn.getBoundingClientRect();
+if(left<add.right&&left+bw>add.left&&top<add.bottom&&top+bh>add.top){
+const below=Math.max(visible.bottom,add.bottom)+4;
+const above=Math.min(visible.top,add.top)-bh-4;
+if(below+bh<=bounds.bottom)top=below;
+else if(above>=bounds.top)top=above;
+else if(add.right+4+bw<=bounds.right)left=add.right+4;
+else if(add.left-bw-4>=bounds.left)left=add.left-bw-4;
+else if(add.width+bw+4<=bounds.right-bounds.left&&bh<=bounds.bottom-bounds.top){
+left=bounds.left;
+linkAddBtn.style.left=left+bw+4+"px";
+}else{hlBubble.hidden=true;return;}
+}
+}
+top=_clamp(top,bounds.top,bounds.bottom-bh);
 hlBubble.style.left=left+"px";
 hlBubble.style.top=top+"px";
+hlBubble.hidden=false;
 }
 function showHlBubbleFor(mark){
 if(!mark.dataset.cid)return;
@@ -14469,7 +14488,7 @@ if(!hlBubble.matches(":hover")){hlBubble.hidden=true;hlBubbleCid=null;hlBubbleMa
 }
 root.addEventListener("mouseover",(e)=>{
 if(e.buttons)return;
-const mark=e.target.closest&&e.target.closest("mark.cm-hl");
+const mark=e.target.closest&&e.target.closest(CMH_BUBBLE_ANCHOR_SEL);
 if(!mark||!root.contains(mark))return;
 if(mark===hlBubbleMark&&!hlBubble.hidden){
 if(hlBubbleHideTimer){clearTimeout(hlBubbleHideTimer);hlBubbleHideTimer=null;}
@@ -14478,13 +14497,13 @@ return;
 showHlBubbleFor(mark);
 });
 root.addEventListener("mouseout",(e)=>{
-if(!(e.target.closest&&e.target.closest("mark.cm-hl")))return;
+if(!(e.target.closest&&e.target.closest(CMH_BUBBLE_ANCHOR_SEL)))return;
 const to=e.relatedTarget;
-if(to&&to.closest&&(to.closest("mark.cm-hl")||to.closest(".cm-hl-bubble")))return;
+if(to&&to.closest&&(to.closest(CMH_BUBBLE_ANCHOR_SEL)||to.closest(".cm-hl-bubble")))return;
 scheduleHideHlBubble();
 });
 root.addEventListener("click",(e)=>{
-const mark=e.target.closest&&e.target.closest("mark.cm-hl");
+const mark=e.target.closest&&e.target.closest(CMH_BUBBLE_ANCHOR_SEL);
 if(!mark||!root.contains(mark)||!mark.dataset.cid)return;
 const sel=window.getSelection&&window.getSelection();
 if(sel&&!sel.isCollapsed&&String(sel))return;

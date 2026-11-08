@@ -4,6 +4,20 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.859.1] - 2026-11-08
+
+### Fixed
+
+- Show the orange Open comment bubble when hovering or clicking a commented link, so its
+  existing comment can be edited in place. Keep it clear of the link's Add Comment button,
+  including at viewport edges and in short tables, without changing link navigation or
+  adding further comments.
+- In narrow, short tables, reposition both hover controls when they fit together. When
+  space cannot fit both, prioritize Add Comment and hide the orange bubble until space
+  becomes available; existing comments remain editable through the sidebar.
+- Deliberately raise only the runtime JS ceiling from 760 KB to 761 KB for the shared link
+  bubble and collision avoidance; all other component size ceilings remain unchanged.
+
 ## [1.859.0] - 2026-11-08
 
 - Deliberately raise the layer size ceilings for the bounded local revision matcher, manual

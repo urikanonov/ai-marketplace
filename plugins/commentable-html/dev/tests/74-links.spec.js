@@ -774,6 +774,34 @@ test.describe("link handling", () => {
     await expect(card).toContainText(/link 1/);
   });
 
+  test("hovering a commented link opens the existing comment for editing (CMH-LINK-02)", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stage(page);
+    await commentLink(page, "ext", "original link note");
+    const cid = await page.locator("#ext").getAttribute("data-cid");
+    for (const note of ["edited link note", "edited after reload"]) {
+      await page.mouse.move(1, 1);
+      await page.locator("#ext").hover();
+      const bubble = page.locator("#hlBubble");
+      await expect(bubble).toBeVisible();
+      await bubble.click();
+      const dialog = page.locator(".cm-comment-popover");
+      await expect(dialog).toContainText(note === "edited link note" ? "original link note" : "edited link note");
+      await dialog.getByRole("button", { name: "Edit", exact: true }).click();
+      await dialog.getByRole("textbox", { name: "Edit comment", exact: true }).fill(note);
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(page.locator(`.cm-card[data-cid="${cid}"]`)).toContainText(note);
+      await expect(page.locator(".cm-card")).toHaveCount(1);
+      await page.reload();
+      await ready(page);
+    }
+    await page.mouse.move(1, 1);
+    await page.locator("#rel").hover();
+    await expect(page.locator("#linkAddBtn")).toBeVisible();
+    await expect(page.locator("#hlBubble")).toBeHidden();
+  });
+
   test("the link add button wears the shared accent pill, hover and active states (CMH-UI-04)", async ({ page }) => {
     await stage(page);
     await hoverLink(page, "ext");
@@ -806,6 +834,70 @@ test.describe("link handling", () => {
     expect(pressed).toBe("matrix(1, 0, 0, 1, 0, 1)");
     await page.mouse.move(1, 1);
     await page.mouse.up();
+  });
+
+  test("commented-link bubbles stay clickable beside Add Comment at viewport edges (CMH-LINK-02)", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stage(page);
+    await commentLink(page, "ext", "edge link note");
+    for (const edge of ["top", "bottom", "table", "tiny", "narrow"]) {
+      await page.mouse.move(1, 400);
+      await page.locator("#ext").evaluate((a, edge) => {
+        if (["table", "narrow", "tiny"].includes(edge)) {
+          a.style.cssText = "";
+          const old = a.closest(".cmh-table-scroll");
+          const width = edge === "table" ? 500 : edge === "narrow" ? 160 : 120;
+          const wrap = document.createElement("div");
+          wrap.className = "cmh-table-scroll";
+          wrap.style.cssText = `position:fixed;left:20px;top:200px;width:${width}px;height:48px;overflow:auto`;
+          wrap.innerHTML = '<table style="width:800px;margin:0"><tbody><tr><td style="padding:0"></td></tr></tbody></table>';
+          a.before(wrap);
+          wrap.querySelector("td").appendChild(a);
+          if (old) old.replaceWith(wrap);
+          if (edge !== "table") a.style.cssText = `display:inline-block;width:110px;margin-left:${(width - 110) / 2}px`;
+        } else {
+          a.style.cssText = `position:fixed;left:1px;${edge}:1px`;
+        }
+      }, edge);
+      await page.locator("#ext").hover();
+      const bubble = page.locator("#hlBubble");
+      const add = page.locator("#linkAddBtn");
+      await expect(add).toBeVisible();
+      if (edge === "tiny") {
+        await expect(bubble).toBeHidden();
+        await page.locator("#ext").evaluate((a) => { a.closest(".cmh-table-scroll").style.width = "160px"; });
+        await page.setViewportSize({ width: 1279, height: 800 });
+        await expect(bubble).toBeVisible();
+        await page.locator("#ext").evaluate((a) => { a.closest(".cmh-table-scroll").style.width = "120px"; });
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await expect(bubble).toBeHidden();
+        await add.click();
+        const composer = page.locator(".cm-composer").last();
+        await expect(composer).toBeVisible();
+        await composer.locator("textarea").fill("another tiny-table note");
+        await composer.locator('[data-act="save"]').click();
+        await expect(page.locator(".cm-card").filter({ hasText: "another tiny-table note" })).toHaveCount(1);
+        continue;
+      }
+      await expect(bubble).toBeVisible();
+      const b = await bubble.boundingBox();
+      const a = await add.boundingBox();
+      expect(b.x < a.x + a.width && b.x + b.width > a.x
+        && b.y < a.y + a.height && b.y + b.height > a.y, "hover controls do not overlap").toBe(false);
+      if (edge === "narrow") {
+        const wrap = await page.locator("#ext").locator("xpath=ancestor::div[contains(@class,'cmh-table-scroll')]").boundingBox();
+        for (const box of [a, b]) {
+          expect(box.x).toBeGreaterThanOrEqual(wrap.x);
+          expect(box.x + box.width).toBeLessThanOrEqual(wrap.x + wrap.width);
+          expect(box.y).toBeGreaterThanOrEqual(wrap.y);
+          expect(box.y + box.height).toBeLessThanOrEqual(wrap.y + wrap.height + 1);
+        }
+      }
+      await bubble.click();
+      const dialog = page.locator(".cm-comment-popover");
+      await expect(dialog).toContainText("edge link note");
+      await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    }
   });
 
   test("a link comment survives reload (ring restored) (CMH-LINK-02)", async ({ page }) => {
@@ -875,6 +967,7 @@ test.describe("link handling", () => {
 
   test("the affordance does not navigate; a normal click still follows the link (CMH-LINK-03)", async ({ page }) => {
     await stage(page);
+    await commentLink(page, "nav", "commented navigation");
     // A real click on a commentable target=_blank link opens a new tab at its href and does
     // NOT open a comment composer (only #linkAddBtn / Alt+Enter comments). Use the local #nav
     // link so the popup resolves to a loadable file:// URL (hermetic - no network).
@@ -887,6 +980,7 @@ test.describe("link handling", () => {
     await popup.close();
     await expect(page.locator(".cm-composer")).toHaveCount(0); // no composer hijacked the click
     await expect(page.locator("#nav")).toHaveAttribute("target", "_blank"); // opened in a new tab
+    await expect(page.locator("#hlBubble")).toBeVisible();
   });
 
   test("one link can carry multiple comments; deleting one keeps the ring until the last (CMH-LINK-04)", async ({ page }) => {
@@ -901,6 +995,11 @@ test.describe("link handling", () => {
     await page.locator(".cm-card").filter({ hasText: "first link note" }).locator('[data-act="del"]').click();
     await expect(page.locator(".cm-card")).toHaveCount(1);
     await expect(page.locator("a.cm-link-hl")).toHaveCount(1);
+    await page.locator("#ext").hover();
+    await page.locator("#hlBubble").click();
+    const dialog = page.locator(".cm-comment-popover");
+    await expect(dialog).toContainText("second link note");
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
     await page.locator(".cm-card").filter({ hasText: "second link note" }).locator('[data-act="del"]').click();
     await expect(page.locator("a.cm-link-hl")).toHaveCount(0);
   });
