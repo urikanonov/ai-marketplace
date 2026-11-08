@@ -392,6 +392,10 @@ function _mdCommentsAppendix() {
       + (oneLine(where) || "comment") + _mdBy(c));
     out.push("");
     const replies = (typeof repliesOf === "function") ? repliesOf(c.id, live) : [];
+    if (cmhIsDetached(c)) {
+      out.push("Attachment: Detached - quoted text is historical, not a current document location.");
+      out.push("");
+    }
     if (c.threadType === "discussion") {
       const messages = [c].concat(replies);
       const pending = new Set(cmhPendingDiscussion(c, live).map((r) =>

@@ -1,0 +1,38 @@
+/* ---------- Detached comments and explicit reattachment ---------- */
+.cm-card-detached {
+  border-style: dashed;
+}
+.cm-detached-status {
+  margin-block: .5rem;
+  font-size: .8rem;
+  line-height: 1.5;
+}
+.cm-detached-status strong {
+  display: block;
+}
+.cm-reattach-prompt {
+  position: fixed;
+  inset-inline-start: 16px;
+  bottom: 16px;
+  z-index: 1200;
+  display: flex;
+  gap: .75rem;
+  align-items: center;
+  max-width: min(36rem, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: .75rem 1rem;
+  border: 1px solid var(--cp-border);
+  border-radius: .75rem;
+  background: var(--cp-surface);
+  color: var(--cp-text);
+  box-shadow: 0 4px 18px #0003;
+  font-size: .875rem;
+  line-height: 1.5;
+}
+.cm-reattach-prompt button {
+  flex-shrink: 0;
+  min-height: 44px;
+}
+@media print {
+  .cm-reattach-prompt { display: none !important; }
+}

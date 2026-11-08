@@ -223,6 +223,9 @@ function pendingPanelItemCount(roots, notePieces, checklistPieces) {
 }
 
 function renderComments() {
+  if (cmhPendingReattachment() && !comments.some(c => c.id === cmhPendingReattachment())) {
+    cmhCancelReattachment(false);
+  }
   // A render pass is the natural granularity for the zone-label formatter memo: built once here for
   // every timestamp the pass draws, then dropped so a host timezone change is picked up next pass.
   cmhForgetZoneFormatter();
@@ -408,7 +411,12 @@ function renderComments() {
     const cardClass = isDocument ? "cm-card cm-card-doc" : isSlide ? "cm-card cm-card-doc cm-card-slide" : "cm-card";
     // Slide comments have no text highlight but DO navigate to their owning slide, so they keep a
     // jump button (unlike deck-wide/document comments, which have nowhere specific to jump).
-    const jumpBtn = isDocument ? "" : isSlide
+    const detached = cmhIsDetached(c);
+    const detachedHtml = detached
+      ? '<div class="cm-detached-status"><strong>Detached</strong>The original text could not be identified confidently. Select a new location with Reattach.</div>' : "";
+    const jumpBtn = detached
+      ? '<button type="button" class="cm-card-btn" data-act="reattach" title="Select a new text location for this comment">Reattach</button>'
+      : isDocument ? "" : isSlide
       ? `<button type="button" class="cm-card-btn" data-act="jump" title="Go to this slide">jump</button>`
       : `<button type="button" class="cm-card-btn" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
     const picked = (typeof isCommentPicked === "function") && isCommentPicked(c.id);
@@ -416,7 +424,7 @@ function renderComments() {
     const copyLabel = "Copy comment #" + (i + 1);
     const pickChecked = picked ? " checked" : "";
     const pickHtml = `<span class="acts cm-pick-actions"><label class="cm-pick-label cm-pick" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label></span>`;
-    const articleClass = picked ? (cardClass + " cm-card-picked") : cardClass;
+    const articleClass = cardClass + (picked ? " cm-card-picked" : "") + (detached ? " cm-card-detached" : "");
     const rootPill = (typeof authorPillHtml === "function") ? authorPillHtml(c.author) : "";
     const replies = (typeof repliesOf === "function") ? repliesOf(c.id, comments) : [];
     const delTitle = replies.length ? "Delete this comment and its replies" : "Delete this comment";
@@ -440,6 +448,7 @@ function renderComments() {
       ${sectionHtml}
       ${quoteHtml}
       ${pinHtml}
+      ${detachedHtml}
       ${cmhDiscussionStatusHtml(c)}
       <div class="cm-entry cm-entry-root">
         <div class="note cmh-rich">${cmhMessageKindHtml(c, c)}${rootPill}${renderRichNote(c.note)}</div>
@@ -707,6 +716,10 @@ function _renderWidgetStateCard(changes) {
 // comment is affected before the composer opens or the confirm dialog appears).
 function scrollToAnchor(c) {
   if (!c) return;
+  if (cmhIsDetached(c)) {
+    showToast("This comment is Detached. Use Reattach to select its new location.");
+    return;
+  }
   let el = null;
   if (c.anchorType === "mermaid") el = findMermaidNode(c.diagramIndex, c.nodeKey);
   else if (c.anchorType === "diff") el = findDiffLineEls(c.diffIndex, c.lineKey)[0];
@@ -1271,6 +1284,14 @@ listEl.addEventListener("click", (e) => {
     return;
   }
   const c = comments.find(x => x.id === id);
+  if (act === "reattach") {
+    cmhBeginReattachment(c, e.target);
+    return;
+  }
+  if (cmhIsDetached(c)) {
+    showToast("This comment is Detached. Use Reattach to select its new location.");
+    return;
+  }
   scrollToAnchor(c);
 });
 // The pick checkbox is driven by `change`, not `click`: a click on the label's caption is

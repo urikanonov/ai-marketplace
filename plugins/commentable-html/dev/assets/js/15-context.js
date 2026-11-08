@@ -145,6 +145,7 @@ function backfillContext() {
   // re-walking the document per comment.
   const nodes = getTextNodes();
   for (const c of comments) {
+    if (!cmhIsTextAnchor(c) || cmhIsDetached(c)) continue;
     const hasAll = c.section !== undefined && c.before !== undefined && c.after !== undefined &&
                    c.headingPath !== undefined && c.occurrence !== undefined && c.blockTag !== undefined &&
                    c.isCode !== undefined;
@@ -153,7 +154,7 @@ function backfillContext() {
     if (processed >= CMH_MAX_BACKFILL) break; // work budget: bound context capture per load
     const range = rangeFromOffsets(c.start, c.end, nodes);
     const ctx = captureContext(c.start, c.end, range);
-    Object.assign(c, ctx);
+    for (const key of Object.keys(ctx)) if (c[key] === undefined) c[key] = ctx[key];
     changed = true;
     processed++;
   }

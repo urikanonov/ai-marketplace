@@ -164,6 +164,7 @@ function recomputeTextOffsets(persist) {
   function dropOffsets(c) {
     if (c.start !== undefined || c.end !== undefined) {
       delete c.start; delete c.end; changed = true;
+      if (c.cmAnchor && c.cmAnchor.v === 1) c.cmAnchor = { ...c.cmAnchor, discontiguous: true };
     }
   }
   function markedTextNode(markList, reverse) {
@@ -210,7 +211,14 @@ function recomputeTextOffsets(persist) {
     const e = offsetWithin(lT, lT.nodeValue.length);
     if (s >= 0 && e > s && (s !== c.start || e !== c.end)) { c.start = s; c.end = e; changed = true; }
   });
-  if (changed && persist) saveComments();
+  if (changed && persist) {
+    const index = cmhAnchorIndex();
+    comments.forEach(function (c) {
+      if (cmhIsTextAnchor(c) && !cmhIsDetached(c)
+        && root.querySelector('mark.cm-hl[data-cid="' + c.id + '"]')) cmhCaptureTextAnchor(c, index);
+    });
+    saveComments();
+  }
 }
 // Comments with offsets in the ORIGINAL (snapshot) DOM order, for export. While a table
 // is sorted, live comment offsets are in sorted order, but exports serialize the original
@@ -254,6 +262,10 @@ function _canonicalCommentsForExport() {
     sorts.forEach(function (s) { _unsortRows(s.body); s.unsorted = true; });
     recomputeTextOffsets(false);
     const snap = comments.map(function (c) { return Object.assign({}, c); });
+    const index = cmhAnchorIndex();
+    snap.forEach(function (c) {
+      if (cmhIsTextAnchor(c) && !cmhIsDetached(c)) cmhCaptureTextAnchor(c, index);
+    });
     restoreRows();
     if (sorts.length) recomputeTextOffsets(false);
     completed = true;

@@ -66,6 +66,7 @@ function _renderPrintComment(c, index) {
   }).join("");
   return '<article class="cmh-print-comment" data-cid="' + escapeHtml(c.id || "") + '">'
     + '<h3>Comment ' + (index + 1) + '</h3>'
+    + (cmhIsDetached(c) ? '<p><strong>Detached</strong> - original quote/context, not a current location.</p>' : "")
     + (path ? '<p class="cmh-print-path"><strong>In:</strong> ' + escapeHtml(path) + '</p>' : "")
     + '<p class="cmh-print-anchor"><strong>Anchor:</strong> ' + escapeHtml(_printAnchorLabel(c)) + '</p>'
     + (quote ? '<blockquote>' + escapeHtml(quote) + '</blockquote>' : "")

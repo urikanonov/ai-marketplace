@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.858.1<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.859.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -489,6 +489,19 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.859.0] - 2026-11-08</h3></div>
+            <ul>
+              <li>Deliberately raise the layer size ceilings for the bounded local revision matcher, manual reattachment controls and recovery help: JS to 760 KB, CSS to 156 KB, embedded assets to 960 KB, and Shareable HTML to 980 KB. The measured build remains below those ceilings; no rich-library payload or dependency is added.</li>
+            </ul>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Recover text-comment attachments locally across revisions, including unsent comments and comments saved while an agent edits the still-displayed old revision, without a copy-all workaround.</li>
+              <li>Keep uncertain anchors as Detached with original quote/context and replies, automatic later recovery, and an explicit, cancellable Reattach selection flow.</li>
+              <li>Carry additive recovery selectors through Shareable exports and label Detached anchors in Copy, Markdown and print while preserving legacy comment fields and safe older-runtime reads.</li>
+              <li>Explain both revision scenarios, recovery and downgrade limits in the tutorial, Help and showcase.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.858.1] - 2026-10-31</h3></div>
             <div class="group-label">Changed</div>
             <ul>
@@ -499,6 +512,8 @@
               <li>Correct the checklist apply-tool path in Copy all and include table edits in Help&#x27;s pending-count and partial-copy descriptions.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.858.0] - 2026-10-29</h3></div>
             <div class="group-label">Added</div>
@@ -524,8 +539,6 @@
               <li>Deliberately raise the JS ceiling from 710000 to 735000, CSS from 148000 to 155000, asset bundle from 900000 to 930000 and shareable template from 921000 to 950000 bytes for column reorder/resize, numeric editors, cell-comment lifecycle and compact themed controls, including integration with the released per-document reading-width controls.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.857.1] - 2026-10-30</h3></div>
             <div class="group-label">Changed</div>
@@ -567,28 +580,7 @@
               <li>Deliberately raise the runtime byte ceiling from 677000 to 710000 and the asset bundle ceiling from 865000 to 900000 for the editable-table model, controls and styles.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.854.0] - 2026-10-12</h3></div>
-            <div class="group-label">Added</div>
-            <ul>
-              <li>Anchored AI discussions: questions do not request edits; explicit command replies use the entire conversation as context. Version-bound answers preserve history and reopen edited questions instead of pruning discussion ids.</li>
-              <li><code>review_threads.py</code> for safe Copy-bundle imports, pending requests, persistent AI replies, and owner-supervised edit acknowledgements; guidance for consent-only, questions-only scheduled answering.</li>
-              <li>Needs owner handoff / AI reply on unresolved discussion questions. Copy and export are not AI read receipts; only an answer to the current request version clears it.</li>
-              <li>Standalone discussions use the existing HTML, browser-local storage, and Copy/export workflow without shared-folder permissions, a server, or live collaboration setup.</li>
-            </ul>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Copy discussion imports are snapshot-bound, reject stale/deleted/answered requests, and keep exact pending retries as no-ops. Owner replies update embedded review state atomically. Compact purpose controls and visual-viewport height caps keep discussion Save reachable when the keyboard opens.</li>
-              <li>Restored approximately 5% headroom in the shareable-template size budget after retaining main&#x27;s Mermaid flowchart recovery alongside AI discussions.</li>
-              <li>Only the latest human edit command remains pending while independent unanswered questions stay actionable. Markdown exports distinguish pending and historical discussion messages and label AI responses as context rather than requests.</li>
-            </ul>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>The AI-discussion showcase wraps long card headings so wider fallback fonts cannot expand the printed slide&#x27;s grid or clip its content.</li>
-              <li>Discussion imports reject duplicate incoming ids and ids colliding with unrelated comments or threads before writing document state.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">424 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">425 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

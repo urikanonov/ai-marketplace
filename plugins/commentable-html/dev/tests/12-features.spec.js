@@ -641,10 +641,12 @@ test.describe("rejection paths", () => {
   test("a comment whose stored text no longer exists degrades gracefully on reload", async ({ page }) => {
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section p", "will lose its anchor");
-    // Corrupt the stored offsets so restore-from-offsets cannot re-anchor.
+    // Remove the saved text evidence too: incorrect offsets alone are now recoverable.
     await page.evaluate(() => {
       const arr = window.__cmhStorageCodec.read();
       arr[0].start = 99999999; arr[0].end = 99999999 + 5;
+      arr[0].quote = "This previously selected passage no longer exists.";
+      arr[0].cmAnchor = { ...arr[0].cmAnchor, exact: arr[0].quote, block: null, prefix: "", suffix: "" };
       window.__cmhStorageCodec.write(arr);
     });
     const errors = [];

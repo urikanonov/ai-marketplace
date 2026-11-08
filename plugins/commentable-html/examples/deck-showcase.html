@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
-<meta name="commentable-html-validated-hash" content="16w9jtr" />
-<meta name="commentable-html-validated" content="2026-10-31T23:59:59Z" />
+<meta name="commentable-html-validated-hash" content="hibkfd" />
+<meta name="commentable-html-validated" content="2026-11-08T23:59:59Z" />
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.858.1" />
+<meta name="commentable-html-version" content="1.859.0" />
 <meta name="commentable-html-kind" content="slides" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.858.1","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.859.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Commentable HTML Showcase</title>
 
@@ -81,7 +81,7 @@ html.cmh-awaiting-style body { visibility: hidden; }
      content, not a template-owned region.
 -->
 <div class="app">
-<main id="commentRoot" data-cmh-content-root data-comment-key="deck-e0fac5524d" data-doc-label="Commentable HTML Showcase" data-doc-source="deck-showcase.html" data-generated="2026-10-31" data-cmh-mode="deck">
+<main id="commentRoot" data-cmh-content-root data-comment-key="deck-e0fac5524d" data-doc-label="Commentable HTML Showcase" data-doc-source="deck-showcase.html" data-generated="2026-11-08" data-cmh-mode="deck">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
 <style id="cmh-deck-stage">
@@ -689,6 +689,26 @@ Press Enter.</code></pre>
     </div>
   </div>
   <p class="show-lead" style="margin-top:26px;">Useful when one round of feedback is ready to go and the rest is still being written - the bundle says it is a partial hand-back, so the agent never assumes the others were dealt with.</p>
+</section>
+
+<section class="slide" data-slide-id="slide-c0a13630">
+  <div class="show-kicker">Act 2 - Comments across revisions</div>
+  <h2>Comments follow the content. Uncertain anchors stay <span class="show-mark">Detached</span>.</h2>
+  <div class="show-two">
+    <div class="show-card">
+      <h3>Only some comments handled</h3>
+      <p>Copy one thread or Copy selected. Only handled edit comments disappear; unsent comments follow the revised text locally.</p>
+      <h3>New comments while the agent edits</h3>
+      <p>Save more comments on the old revision still displayed. They recover on refresh even though the agent never received them.</p>
+    </div>
+    <div class="show-card">
+      <h3>Detached is recoverable, not resolved</h3>
+      <p>Deleted or ambiguous text keeps its quote, context and replies in the panel. No unrelated passage gets a guessed highlight.</p>
+      <p><b>Reattach</b>, select new text, then <b>Attach comment</b>. Cancel or Escape leaves the thread untouched.</p>
+      <p>Moved text, formatting changes and supported small edits recover automatically. Shareable exports carry recovery evidence.</p>
+    </div>
+  </div>
+  <p class="show-lead" style="margin-top:26px;">No server and no copy-all workaround. Existing comments stay readable; older runtimes need an upgrade to gain automatic recovery.</p>
 </section>
 
 <section class="slide" data-slide-id="slide-c9c66adb">
@@ -2872,6 +2892,44 @@ cursor: pointer;
 }
 @media (max-width: 640px) and (min-height: 360px) {
 .cm-select-clear { min-width: 44px; min-height: 44px; padding: 0.4rem 0.7rem; }
+}
+
+.cm-card-detached {
+border-style: dashed;
+}
+.cm-detached-status {
+margin-block: .5rem;
+font-size: .8rem;
+line-height: 1.5;
+}
+.cm-detached-status strong {
+display: block;
+}
+.cm-reattach-prompt {
+position: fixed;
+inset-inline-start: 16px;
+bottom: 16px;
+z-index: 1200;
+display: flex;
+gap: .75rem;
+align-items: center;
+max-width: min(36rem, calc(100vw - 32px));
+box-sizing: border-box;
+padding: .75rem 1rem;
+border: 1px solid var(--cp-border);
+border-radius: .75rem;
+background: var(--cp-surface);
+color: var(--cp-text);
+box-shadow: 0 4px 18px #0003;
+font-size: .875rem;
+line-height: 1.5;
+}
+.cm-reattach-prompt button {
+flex-shrink: 0;
+min-height: 44px;
+}
+@media print {
+.cm-reattach-prompt { display: none !important; }
 }
 
 #commentRoot .cmh-checklist ul, #commentRoot .cmh-checklist ol { list-style: none; }
@@ -5768,7 +5826,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.858.1";
+const CMH_VERSION= "1.859.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -6279,6 +6337,7 @@ return e.name=== "QuotaExceededError"
 ||e.code===22||e.code===1014;
 }
 function cmhEncodeStore(jsonStr){
+if(jsonStr.length>CMH_MAX_STORE_CHARS)return jsonStr;
 try{
 const framed=CMH_STORE_FRAME+LZString.compressToUTF16(jsonStr);
 return framed.length<jsonStr.length?framed:jsonStr;
@@ -6378,6 +6437,15 @@ function saveComments(){
 _cmhLastSaveQuota=false;
 if(_cmhStoreUnreadable)return true;
 if(typeof cmhPrepareDiscussionSave=== "function")cmhPrepareDiscussionSave();
+if(!_cmhStartupInProgress&&typeof cmhCaptureTextAnchor=== "function"){
+let index=null;
+for(const c of comments){
+if(!cmhIsTextAnchor(c)||c.cmAnchor||cmhIsDetached(c))continue;
+if(!root.querySelector(`mark.cm-hl[data-cid="${c.id}"]`))continue;
+index=index||cmhAnchorIndex();
+cmhCaptureTextAnchor(c,index);
+}
+}
 try{
 localStorage.setItem(CMH_STORE_KEY,cmhEncodeStore(JSON.stringify(comments)));
 _cmhPendingWrites.delete(CMH_STORE_KEY);
@@ -6761,6 +6829,7 @@ let changed=false;
 let processed=0;
 const nodes=getTextNodes();
 for(const c of comments){
+if(!cmhIsTextAnchor(c)||cmhIsDetached(c))continue;
 const hasAll=c.section!==undefined&&c.before!==undefined&&c.after!==undefined&&
 c.headingPath!==undefined&&c.occurrence!==undefined&&c.blockTag!==undefined&&
 c.isCode!==undefined;
@@ -6769,7 +6838,7 @@ if(typeof c.start!== "number"||typeof c.end!== "number")continue;
 if(processed>=CMH_MAX_BACKFILL)break;
 const range=rangeFromOffsets(c.start,c.end,nodes);
 const ctx=captureContext(c.start,c.end,range);
-Object.assign(c,ctx);
+for(const key of Object.keys(ctx))if(c[key]===undefined)c[key]=ctx[key];
 changed=true;
 processed++;
 }
@@ -6828,6 +6897,449 @@ else if(_etIsAnchor(comment))clearTableColumnHighlight(comment);
 else if(comment.anchorType=== "document"){}
 else if(comment.anchorType=== "slide"){}
 else unwrapMarks(comment.id);
+}
+const CMH_ANCHOR_SNAPSHOT=4096;
+const CMH_ANCHOR_TEXT_LIMIT=8000000;
+const CMH_ANCHOR_SCAN_BUDGET=64000000;
+const CMH_ANCHOR_CANDIDATES=128;
+const cmhAuthoredIds=new Set([...root.querySelectorAll("[id]")].map(el=>el.id));
+function cmhIsTextAnchor(c){
+return!!c&&!c.parentId&&(!c.anchorType||c.anchorType=== "text")
+&&(typeof c.quote=== "string"||Number.isFinite(c.start)||!!c.cmAnchor);
+}
+function cmhIsDetached(c){
+if(!c)return false;
+if(c.parentId){
+const parent=comments.find(p=>p.id===c.parentId&&!p.parentId);
+return!!parent&&cmhIsDetached(parent);
+}
+return cmhIsTextAnchor(c)&&(c.detached===true
+||(c.start===CMH_MAX_OFFSET&&c.end===CMH_MAX_OFFSET));
+}
+function cmhAnchorHash(text){
+let a=2166136261,b=5381;
+for(let i=0;i<text.length;i++){
+const ch=text.charCodeAt(i);
+a=Math.imul(a^ch,16777619);b=Math.imul(b,33)^ch;
+}
+return text.length+":"+(a>>>0).toString(36)+":"+(b>>>0).toString(36);
+}
+function cmhAnchorIndex(){
+const nodes=getTextNodes(),chunks=[],blocks=[],byElement=new Map();
+let length=0;
+for(const node of nodes){
+const start=length;length+=node.nodeValue.length;
+if(length>CMH_ANCHOR_TEXT_LIMIT)return{text:"",blocks:[],nodes,limited:true};
+chunks.push(node.nodeValue);
+let el=node.parentElement;
+while(el&&el!==root&&!BLOCK_TAG_RE.test(el.tagName))el=el.parentElement;
+el=el||root;
+let block=byElement.get(el);
+if(!block){
+let identified=el;
+while(identified&&identified!==root&&!identified.id)identified=identified.parentElement;
+block={el,start,end:length,id:identified&&identified!==root&&identified.id.length<=1024?identified.id:"",
+tag:el.tagName.toLowerCase(),code:!!el.closest("pre"),heading:""};
+blocks.push(block);byElement.set(el,block);
+}else block.end=length;
+}
+const text=chunks.join("");
+const headings=[];
+let headingHash= "";
+for(const block of blocks){
+if(/^h[1-6]$/.test(block.tag)){
+const level=+block.tag.slice(1);
+while(headings.length&&headings[headings.length-1].level>=level)headings.pop();
+headings.push({level,text:text.slice(block.start,Math.min(block.end,block.start+MAX_BLOCK_LEN)).trim().replace(/\s+/g," ")});
+headingHash=cmhAnchorHash(JSON.stringify(headings));
+}
+block.heading=headingHash;
+}
+const identities=[],seenIds=new Set();
+for(const el of root.querySelectorAll("[id]")){
+if(!cmhAuthoredIds.has(el.id)||el.closest(".cm-skip")||seenIds.has(el.id))continue;
+seenIds.add(el.id);identities.push(el.id.slice(0,1024));
+}
+return{text,blocks,nodes,revision:cmhAnchorHash(text)+":"+cmhAnchorHash(JSON.stringify(identities)),
+budget:CMH_ANCHOR_SCAN_BUDGET,matches:new Map()};
+}
+function cmhAnchorBlock(index,start,end){
+let found=null;
+for(const block of index.blocks){
+if(block.start<=start&&end<=block.end
+&&(!found||block.end-block.start<found.end-found.start))found=block;
+}
+return found;
+}
+function cmhAnchorOriginal(c){
+const original={start:c.start,end:c.end};
+for(const key of["quote","before","after","blockText","section"]){
+if(typeof c[key]=== "string"){
+const limit=key=== "quote"?CMH_ANCHOR_SNAPSHOT:MAX_BLOCK_LEN;
+original[key]=c[key].slice(0,limit);
+if(c[key].length>limit)original[key+"Truncated"]=true;
+}
+}
+if(Array.isArray(c.headingPath))original.headingPath=c.headingPath.slice(0,6).map(h=>({
+level:h&&h.level,text:h&&typeof h.text=== "string"?h.text.slice(0,MAX_BLOCK_LEN):""}));
+return original;
+}
+function cmhCaptureTextAnchor(c,index){
+if(!cmhIsTextAnchor(c)||cmhIsDetached(c))return false;
+index=index&&typeof index.text=== "string"?index:cmhAnchorIndex();
+const start=c.start,end=c.end;
+if(index.limited||!Number.isInteger(start)||!Number.isInteger(end)
+||start<0||end<=start||end>index.text.length)return false;
+const prior=c.cmAnchor&&typeof c.cmAnchor=== "object"&&!Array.isArray(c.cmAnchor)?c.cmAnchor:{};
+if(prior.v!==undefined&&prior.v!==1)return false;
+const block=cmhAnchorBlock(index,start,end);
+const from=block?Math.max(block.start,Math.min(start-1024,block.end-CMH_ANCHOR_SNAPSHOT)):start;
+const to=block?Math.min(block.end,Math.max(end,from+CMH_ANCHOR_SNAPSHOT)):end;
+const bounded=to-from<=CMH_ANCHOR_SNAPSHOT;
+const exact=end-start<=CMH_ANCHOR_SNAPSHOT?index.text.slice(start,end):undefined;
+const blockText=block&&bounded?index.text.slice(from,to):"";
+const normalized=!(block&&block.code||c.isCode);
+const prefix=index.text.slice(Math.max(block?block.start:0,start-CTX_PAD),start);
+const suffix=index.text.slice(end,Math.min(block?block.end:index.text.length,end+CTX_PAD));
+const unique=exact===undefined?undefined:cmhAnchorUnique(index,exact,normalized);
+const hits=exact===undefined?null:index.matches.get((normalized?"np":"rp")+exact);
+const rawHits=exact===undefined?null:index.matches.get("rp"+exact);
+const identityUnique=!!(block&&block.id&&hits
+&&rawHits&&[hits,rawHits].every(list=>list.filter(hit=>hit.block&&hit.block.id===block.id).length===1));
+const blockUnique=block&&from===block.start&&to===block.end
+?cmhAnchorUnique(index,blockText,normalized,block.tag):false;
+const contextUnique=exact===undefined?undefined:cmhAnchorUnique(index,prefix+exact+suffix,normalized);
+const sameBasis=prior.normalizedEvidence===normalized;
+c.cmAnchor={...prior,v:1,revision:index.revision,start,end,
+exact,normalizedEvidence:normalized,
+unique:unique===undefined&&sameBasis&&prior.exact===exact?prior.unique:unique,
+identityUnique:unique===undefined&&sameBasis&&prior.exact===exact?prior.identityUnique:identityUnique,
+contextUnique:contextUnique===undefined&&sameBasis&&prior.exact===exact
+&&prior.prefix===prefix&&prior.suffix===suffix?prior.contextUnique:contextUnique,
+blockUnique:blockUnique===undefined&&sameBasis&&prior.block&&prior.block.text===blockText
+?prior.blockUnique:blockUnique,
+prefix,suffix,
+heading:block?block.heading:"",
+code:block?block.code:!!c.isCode,
+block:block?{id:block.id,tag:block.tag,from:from-block.start,
+start:start-from,end:end-from,text:blockText}:null,
+original:prior.original||cmhAnchorOriginal(c)};
+delete c.cmAnchor.reason;
+delete c.cmAnchor.discontiguous;
+return true;
+}
+function cmhDetachComment(c,reason){
+if(!cmhIsTextAnchor(c))return;
+if(!c.cmAnchor)c.cmAnchor={v:1,original:cmhAnchorOriginal(c)};
+c.detached=true;
+c.start=c.end=CMH_MAX_OFFSET;
+if(c.cmAnchor&&c.cmAnchor.v===1)c.cmAnchor.reason=reason;
+}
+function cmhAnchorMetadataValid(a){
+if(!a||typeof a!== "object"||Array.isArray(a)||a.v!==1)return false;
+for(const key of["unique","blockUnique","identityUnique","contextUnique","normalizedEvidence","discontiguous"]){
+if(a[key]!==undefined&&typeof a[key]!== "boolean")return false;
+}
+for(const key of["exact","prefix","suffix","revision","heading"]){
+if(a[key]!==undefined&&(typeof a[key]!== "string"||a[key].length>
+CMH_ANCHOR_SNAPSHOT))return false;
+}
+if(a.revision!==undefined&&(!Number.isInteger(a.start)||!Number.isInteger(a.end)
+||a.start<0||a.end<=a.start||a.end>CMH_MAX_OFFSET))return false;
+if(a.block!=null){
+const b=a.block;
+if(typeof b!== "object"||typeof b.text!== "string"||b.text.length>CMH_ANCHOR_SNAPSHOT
+||typeof b.id!== "string"||b.id.length>1024||typeof b.tag!== "string"
+||!Number.isInteger(b.from)||b.from<0||!Number.isInteger(b.start)
+||!Number.isInteger(b.end)||b.start<0||b.end<b.start
+||(b.text&&b.end>b.text.length))return false;
+}
+return true;
+}
+function cmhAnchorNormalize(text,code,mapping){
+let chunk= "",last= "",count=0;
+const chunks=[];
+const starts=mapping?new Uint32Array(text.length):null;
+const ends=mapping?new Uint32Array(text.length):null;
+for(let i=0;i<text.length;i++){
+const original=text[i];
+let ch=original;
+if(!code){
+if(/\s/.test(ch))ch= " ";
+else if(/[\u2018\u2019]/.test(ch))ch= "'";
+else if(/[\u201c\u201d]/.test(ch))ch= '"';
+else if(/[\u2013\u2014]/.test(ch))ch= "-";
+}
+if(!code&&ch=== " "&&last=== " "){
+if(mapping)ends[count-1]=i+1;
+continue;
+}
+chunk+=ch;last=ch;
+if(mapping){starts[count]=i;ends[count]=i+1;}
+count++;
+if(chunk.length>=8192){chunks.push(chunk);chunk= "";}
+}
+chunks.push(chunk);
+return{text:chunks.join(""),starts,ends};
+}
+function cmhAnchorOccurrences(index,quote,code,normalized){
+if(typeof quote!== "string"||quote.length>CMH_ANCHOR_SNAPSHOT)return null;
+const key=(normalized?"n":"r")+(code?"c":"p")+quote;
+if(index.matches.has(key))return index.matches.get(key);
+if(!quote||index.budget<index.text.length)return null;
+index.budget-=index.text.length;
+let text=index.text,map=null,needle=quote;
+if(normalized){
+if(!index.normalized)index.normalized=cmhAnchorNormalize(text,false,true);
+map=index.normalized;text=map.text;
+needle=cmhAnchorNormalize(quote,false,false).text;
+}
+const hits=[];
+let pos=0,examined=0;
+while(needle&&(pos=text.indexOf(needle,pos))!==-1){
+if(examined++>=CMH_ANCHOR_CANDIDATES){index.matches.set(key,null);return null;}
+const start=map?map.starts[pos]:pos;
+const end=map?map.ends[pos+needle.length-1]:pos+needle.length;
+const block=cmhAnchorBlock(index,start,end);
+if(!normalized||!(block&&block.code))hits.push({start,end,block});
+pos++;
+}
+index.matches.set(key,hits);
+return hits;
+}
+function cmhAnchorUnique(index,quote,normalized,tag){
+const raw=normalized?cmhAnchorUnique(index,quote,false,tag):true;
+const hits=cmhAnchorOccurrences(index,quote,false,!!normalized);
+const unique=hits?hits.filter(hit=>!tag||hit.block&&hit.block.tag===tag).length===1
+:index.matches.has((normalized?"np":"rp")+quote)?false:undefined;
+return raw===false||unique===false?false:raw===undefined?undefined:unique;
+}
+function cmhAnchorContextScore(index,hit,a,c){
+const b=hit.block,text=index.text;
+const clean=value=>cmhAnchorNormalize(value||"",!!(a&&a.code||c.isCode),false).text;
+let prefix=a&&a.prefix!==undefined?a.prefix:c.before;
+let suffix=a&&a.suffix!==undefined?a.suffix:c.after;
+prefix=typeof prefix=== "string"?prefix.slice(-CTX_PAD*2):"";
+suffix=typeof suffix=== "string"?suffix.slice(0,CTX_PAD*2):"";
+if(!a||a.prefix===undefined)prefix=prefix.replace(/^\.\.\./,"");
+if(!a||a.suffix===undefined)suffix=suffix.replace(/\.\.\.$/,"");
+prefix=clean(prefix);suffix=clean(suffix);
+const before=clean(text.slice(Math.max(b?b.start:0,hit.start-CTX_PAD*2),hit.start));
+const after=clean(text.slice(hit.end,Math.min(b?b.end:text.length,hit.end+CTX_PAD*2)));
+let left=0,right=0;
+while(left<Math.min(prefix.length,before.length)&&prefix[prefix.length-left-1]===before[before.length-left-1])left++;
+while(right<Math.min(suffix.length,after.length)&&suffix[right]===after[right])right++;
+const heading=a&&a.heading!==undefined?a.heading
+:cmhAnchorLegacyHeading(c);
+const id=!!(a&&a.block&&a.block.id&&b&&a.block.id===b.id);
+const sameBlock=!!(a&&a.block&&b&&a.block.text
+&&a.block.tag===b.tag&&a.block.from===0&&b.end-b.start<=CMH_ANCHOR_SNAPSHOT
+&&clean(a.block.text)===clean(text.slice(b.start,b.end)));
+return{score:Math.min(left,40)+Math.min(right,40)+(id?24:0)
++(b&&heading&&heading===b.heading?20:0)+(sameBlock?32:0),
+context:left+right,left,right,id,sameBlock};
+}
+function cmhAnchorChoose(index,hits,a,c,quote){
+if(!hits||!hits.length)return null;
+const work=hits.length*(CTX_PAD*8+MAX_BLOCK_LEN*6+CMH_ANCHOR_SNAPSHOT*2);
+if(index.budget<work)return null;
+index.budget-=work;
+const ranked=hits.map(hit=>({...hit,evidence:cmhAnchorContextScore(index,hit,a,c)}))
+.sort((x,y)=>y.evidence.score-x.evidence.score);
+const best=ranked[0],evidence=best.evidence;
+if(!cmhAnchorRepeatedSafe(a,evidence))return null;
+if(a&&a.block&&a.block.id&&index.blocks.some(b=>b.id===a.block.id)
+&&!evidence.id&&evidence.context<16)return null;
+if(ranked.length===1){
+if(a&&a.block&&!evidence.sameBlock&&!evidence.id
+&&evidence.context<8&&quote.trim().length<32)return null;
+if(evidence.sameBlock||(!a&&best.start===c.start&&best.end===c.end)
+||quote.trim().length>=8||evidence.context>=8
+||(evidence.id&&evidence.context>=3))return best;
+return null;
+}
+if(evidence.score<16||evidence.score-ranked[1].evidence.score<12
+||(!evidence.sameBlock&&evidence.context<6))return null;
+return best;
+}
+function cmhAnchorRepeatedSafe(a,evidence){
+if(!a||a.unique!==false)return true;
+const clean=value=>cmhAnchorNormalize(value||"",!!a.code,false).text;
+return!!(a.blockUnique&&evidence.sameBlock||evidence.id&&a.identityUnique!==false
+||a.contextUnique&&evidence.context>=16
+&&evidence.left===clean((a.prefix||"").slice(-CTX_PAD*2)).length
+&&evidence.right===clean((a.suffix||"").slice(0,CTX_PAD*2)).length);
+}
+function cmhAnchorEditMap(oldText,newText,index){
+const cells=(oldText.length+1)*(newText.length+1);
+if(cells>1000000||index.budget<cells)return null;
+index.budget-=cells;
+const width=newText.length+1;
+const dp=new Uint32Array(cells);
+for(let i=0;i<=oldText.length;i++)dp[i*width]=i;
+for(let j=0;j<=newText.length;j++)dp[j]=j;
+for(let i=1;i<=oldText.length;i++){
+for(let j=1;j<=newText.length;j++)dp[i*width+j]=Math.min(
+dp[(i-1)*width+j]+1,dp[i*width+j-1]+1,
+dp[(i-1)*width+j-1]+(oldText[i-1]===newText[j-1]?0:1));
+}
+const distance=dp[cells-1];
+if(distance>Math.max(3,Math.floor(Math.max(oldText.length,newText.length)*0.2)))return null;
+const map=new Int32Array(oldText.length).fill(-1);
+let i=oldText.length,j=newText.length;
+while(i||j){
+const current=dp[i*width+j];
+if(i&&j&&current===dp[(i-1)*width+j-1]
++(oldText[i-1]===newText[j-1]?0:1)){
+if(oldText[i-1]===newText[j-1])map[i-1]=j-1;
+i--;j--;
+}else if(i&&current===dp[(i-1)*width+j]+1)i--;
+else if(j>0)j--;
+else return null;
+}
+return map;
+}
+function cmhAnchorFuzzy(index,a){
+if(!a||!a.block||!a.block.text||a.block.from!==0||a.code)return null;
+const old=a.block,candidates=[];
+const blocks=index.blocks.filter(b=>b.tag===old.tag
+&&(old.id?b.id===old.id:(!a.heading||b.heading===a.heading)));
+if(blocks.length>16)return null;
+for(const block of blocks){
+const cells=(old.text.length+1)*(block.end-block.start+1);
+const work=a.unique===false?CTX_PAD*8+MAX_BLOCK_LEN*6+CMH_ANCHOR_SNAPSHOT*2:0;
+if(cells>1000000||index.budget<cells+work)continue;
+index.budget-=work;
+const current=index.text.slice(block.start,block.end);
+const map=cmhAnchorEditMap(old.text,current,index);
+if(!map)continue;
+const s=old.start,e=old.end;
+let left=s-1,right=e;
+while(left>=0&&map[left]<0)left--;
+while(right<map.length&&map[right]<0)right++;
+let start,end;
+if(s===0&&e===old.text.length){start=0;end=current.length;}
+else if((s===0||(left>=0&&s-left<=4))
+&&(e===map.length||(right<map.length&&right-e<=4))){
+start=s===0?(map[0]>=0?map[0]:0):map[left]+1;
+end=e===map.length?(map[e-1]>=0?map[e-1]+1:current.length):map[right];
+}
+else continue;
+if(end<=start)continue;
+let unchanged=0;
+for(let k=s;k<e;k++)if(map[k]>=start&&map[k]<end)unchanged++;
+if(unchanged<Math.max(3,(e-s)*0.45))continue;
+let flank=0;
+for(let k=Math.max(0,s-24);k<s;k++)if(map[k]>=0)flank++;
+for(let k=e;k<Math.min(map.length,e+24);k++)if(map[k]>=0)flank++;
+if(!(s===0&&e===map.length)&&flank<16)continue;
+const hit={start:block.start+start,end:block.start+end,block};
+if(a.unique===false&&!cmhAnchorRepeatedSafe(a,cmhAnchorContextScore(index,hit,a,{})))continue;
+candidates.push(hit);
+}
+return candidates.length===1?candidates[0]:null;
+}
+function cmhAnchorLegacySelector(c){
+if(c.isCode||typeof c.blockText!== "string"||!c.blockText
+||c.blockText.length>CMH_ANCHOR_SNAPSHOT||/\.\.\.$|\u2026$/.test(c.blockText)
+||typeof c.quote!== "string"||!c.quote||c.quote.length>CMH_ANCHOR_SNAPSHOT
+||typeof c.blockTag!== "string")return null;
+const quote=cmhAnchorNormalize(c.quote,false,false).text;
+const text=cmhAnchorNormalize(c.blockText,false,false).text;
+const start=text.indexOf(quote);
+if(start<0||text.indexOf(quote,start+1)>=0)return null;
+return{heading:cmhAnchorLegacyHeading(c),
+block:{id:"",tag:c.blockTag,from:0,text,start,end:start+quote.length}};
+}
+function cmhAnchorLegacyHeading(c){
+if(!Array.isArray(c.headingPath)||!c.headingPath.length)return"";
+return cmhAnchorHash(JSON.stringify(c.headingPath.slice(0,6).map(h=>({
+level:h&&typeof h.level=== "number"?h.level:0,
+text:h&&typeof h.text=== "string"?h.text.slice(0,MAX_BLOCK_LEN):""
+}))));
+}
+function cmhAnchorFlanked(index,a){
+if(!a||a.code||typeof a.exact!== "string"||!a.exact
+||typeof a.prefix!== "string"||typeof a.suffix!== "string"
+||a.prefix.length<12||a.suffix.length<12)return null;
+const prefix=a.prefix.slice(-48),suffix=a.suffix.slice(0,48);
+const left=cmhAnchorOccurrences(index,prefix,false,false);
+const right=cmhAnchorOccurrences(index,suffix,false,false);
+if(!left||!right)return null;
+const candidates=[];
+for(const l of left){
+for(const r of right){
+const start=l.end,end=r.start;
+if(end<=start||end-start>a.exact.length*1.5+16)continue;
+const block=cmhAnchorBlock(index,l.start,r.end);
+if(!block||block.code||(a.block&&a.block.id&&block.id!==a.block.id))continue;
+if(a.unique===false){
+const work=CTX_PAD*8+MAX_BLOCK_LEN*6+CMH_ANCHOR_SNAPSHOT*2;
+if(index.budget<work)return null;
+index.budget-=work;
+if(!cmhAnchorRepeatedSafe(a,cmhAnchorContextScore(index,{start,end,block},a,{})))continue;
+}
+const old=prefix+a.exact+suffix;
+const current=index.text.slice(l.start,r.end);
+const map=cmhAnchorEditMap(old,current,index);
+if(!map)continue;
+let unchanged=0;
+for(let k=prefix.length;k<prefix.length+a.exact.length;k++){
+if(map[k]>=prefix.length&&map[k]<current.length-suffix.length)unchanged++;
+}
+if(unchanged<Math.max(3,a.exact.length*0.45))continue;
+candidates.push({start,end,block});
+if(candidates.length>1)return null;
+}
+}
+return candidates.length===1?candidates[0]:null;
+}
+function cmhReattachComments(){
+const roots=comments.filter(cmhIsTextAnchor);
+if(!roots.length)return;
+const index=cmhAnchorIndex();
+let changed=false;
+for(const c of roots){
+const prior=JSON.stringify([c.start,c.end,c.detached,c.cmAnchor]);
+const hasMetadata=c.cmAnchor!=null,raw=hasMetadata?c.cmAnchor:null;
+const valid=cmhAnchorMetadataValid(raw);
+const a=valid?raw:null;
+const knownVersion=raw&&typeof raw=== "object"&&!Array.isArray(raw)&&raw.v===1;
+let hit=null;
+if(!index.limited&&(!hasMetadata||valid||knownVersion)){
+const quote=a&&typeof a.exact=== "string"&&a.exact?a.exact:typeof c.quote=== "string"?c.quote:"";
+if(a&&!quote&&a.revision===index.revision&&a.end<=index.text.length)
+hit={start:a.start,end:a.end};
+else if(a&&a.revision===index.revision&&a.start===c.start&&a.end===c.end
+&&Number.isInteger(c.start)&&c.start>=0&&c.end>c.start&&c.end<=index.text.length
+&&index.text.slice(c.start,c.end)===quote)hit={start:c.start,end:c.end};
+else if(!quote&&!hasMetadata&&Number.isInteger(c.start)&&Number.isInteger(c.end)
+&&c.start>=0&&c.end>c.start&&c.end<=index.text.length)hit={start:c.start,end:c.end};
+else if(quote){
+hit=cmhAnchorChoose(index,cmhAnchorOccurrences(index,quote,!!(a&&a.code||c.isCode),false),a,c,quote);
+if(!hit&&!(a&&a.code||c.isCode))hit=cmhAnchorChoose(index,
+cmhAnchorOccurrences(index,quote,false,true),a,c,quote);
+if(!hit&&!(a&&a.discontiguous))hit=cmhAnchorFuzzy(index,a&&a.block?a:cmhAnchorLegacySelector(c));
+if(!hit&&!(a&&a.discontiguous))hit=cmhAnchorFlanked(index,a);
+}
+}
+if(hit){
+if(!a)c.cmAnchor={...(knownVersion?raw:{}),v:1,
+original:raw&&raw.original||cmhAnchorOriginal(c)};
+c.start=hit.start;c.end=hit.end;c.detached=false;
+cmhCaptureTextAnchor(c,index);
+if(c.cmAnchor&&c.cmAnchor.v===1)delete c.cmAnchor.reason;
+}else if(a&&a.discontiguous&&c.start===undefined&&c.end===undefined){
+c.detached=true;
+}else if(!hasMetadata&&c.start===undefined&&c.end===undefined
+&&typeof c.quote=== "string"&&/\.\.\.|\u2026/.test(c.quote)){
+}else cmhDetachComment(c,index.limited?"budget":"unresolved");
+if(JSON.stringify([c.start,c.end,c.detached,c.cmAnchor])!==prior)changed=true;
+}
+if(changed&&!saveComments()&&_cmhLastSaveQuota){
+showStartupDiagnostic("Reattached comment locations NOT saved to this browser (storage full) "
++"- use Manage storage or Export as Shareable before reloading.",{alert:true,duration:8000});
+}
 }
 const mermaidAddBtn=cmhEl("mermaidAddBtn");
 const mermaidDiagrams=[];
@@ -11644,6 +12156,7 @@ const ms=cmhEl("menuSlideComment");
 const md=cmhEl("menuDocComment");
 const deckDoc=(mode=== "document")&&IS_DECK;
 if(mc)mc.hidden=(mode!== "text");
+if(mc)mc.textContent=cmhPendingReattachment()?"Attach comment":"Add Comment";
 if(ms)ms.hidden=!deckDoc;
 if(md){
 md.hidden=(mode!== "document");
@@ -11882,6 +12395,11 @@ showMenu(x,y);
 function hideMenu(){menu.hidden=true;}
 cmhEl("menuComment").addEventListener("click",()=>{
 hideMenu();
+if(cmhPendingReattachment()){
+if(pendingRange&&!pendingDiffSel)cmhFinishReattachment(pendingRange);
+else showToast("Select ordinary text to reattach this comment.");
+return;
+}
 if(pendingDiffSel){
 const d=pendingDiffSel;
 pendingDiffSel=null;
@@ -13249,6 +13767,8 @@ window.getSelection().removeAllRanges();
 }
 const savedComment=el._editingId?comments.find(function(c){return c.id===el._editingId;})
 :comments.find(function(c){return!beforeIds.has(c.id);});
+if(savedComment&&cmhIsTextAnchor(savedComment)&&!cmhIsDetached(savedComment)
+&&(!el._editingId||!savedComment.cmAnchor))cmhCaptureTextAnchor(savedComment);
 if(purpose)cmhStampDiscussion(savedComment,purpose.value);
 const saved=saveComments();
 renderComments();
@@ -13406,6 +13926,99 @@ try{console.warn("commentable-html: delete selected comments failed:",e);}catch(
 });
 }
 })();
+let _cmhReattachId=null;
+let _cmhReattachPrompt=null;
+let _cmhReattachOpener=null;
+function cmhPendingReattachment(){return _cmhReattachId;}
+function cmhCancelReattachment(restoreFocus){
+const opener=_cmhReattachOpener;
+_cmhReattachId=null;
+_cmhReattachOpener=null;
+if(_cmhReattachPrompt)_cmhReattachPrompt.remove();
+_cmhReattachPrompt=null;
+hideMenu();
+const button=cmhEl("menuComment");
+if(button)button.textContent= "Add Comment";
+if(restoreFocus&&opener&&opener.isConnected){
+try{opener.focus({preventScroll:true});}catch(e){opener.focus();}
+}
+}
+function cmhBeginReattachment(c,opener){
+if(!c||!cmhIsTextAnchor(c)||!cmhIsDetached(c)||_cmhFocusBlockedByModal())return;
+cmhCancelReattachment(false);
+_cmhReattachId=c.id;
+_cmhReattachOpener=opener;
+const box=document.createElement("div");
+box.className= "cm-reattach-prompt cm-skip";
+box.setAttribute("role","status");
+box.setAttribute("aria-live","polite");
+const message=document.createElement("span");
+message.textContent= "Reattaching a Detached comment. Select its new text, then choose Attach comment.";
+const cancel=document.createElement("button");
+cancel.type= "button";
+cancel.textContent= "Cancel";
+cancel.setAttribute("aria-label","Cancel reattachment");
+cancel.addEventListener("click",()=>cmhCancelReattachment(true));
+box.append(message,cancel);
+document.body.appendChild(box);
+_cmhReattachPrompt=box;
+window.__cmhPrioritizeEscapePopup(_cmhReattachPopup);
+}
+function cmhFinishReattachment(range){
+if(_cmhFocusBlockedByModal())return;
+const c=comments.find(item=>item.id===_cmhReattachId);
+if(!c||!cmhIsTextAnchor(c)||!cmhIsDetached(c)){
+cmhCancelReattachment(false);
+return;
+}
+const start=offsetWithin(range.startContainer,range.startOffset);
+const end=offsetWithin(range.endContainer,range.endOffset);
+const resolved=start>=0&&end>start&&rangeFromOffsets(start,end);
+if(!resolved||!resolved.toString().trim()||rangeOverlapsHighlight(start,end)){
+showToast("Could not attach that selection. Choose non-overlapping commentable text.",{alert:true});
+return;
+}
+try{wrapRangeWithMark(resolved,c.id);}
+catch(e){
+unwrapMarks(c.id);
+showToast("Could not attach that selection. The Detached comment is unchanged.",{alert:true});
+return;
+}
+const previous=Object.assign({},c);
+try{
+if(c.cmAnchor&&!cmhAnchorMetadataValid(c.cmAnchor)){
+c.cmAnchor={v:1,original:c.cmAnchor.original||cmhAnchorOriginal(c),
+previousSelector:c.cmAnchor};
+}
+c.start=start;
+c.end=end;
+c.quote=rangeFromOffsets(start,end).toString();
+Object.assign(c,captureContext(start,end,rangeFromOffsets(start,end)));
+c.detached=false;
+if(!cmhCaptureTextAnchor(c))throw new Error("Unsupported or over-budget attachment evidence");
+}catch(e){
+unwrapMarks(c.id);
+Object.keys(c).forEach(key=>{delete c[key];});
+Object.assign(c,previous);
+showToast("Could not attach that selection. The Detached comment is unchanged.",{alert:true});
+return;
+}
+const saved=saveComments();
+cmhCancelReattachment(false);
+window.getSelection().removeAllRanges();
+renderComments();
+const card=listEl.querySelector('.cm-card[data-cid="'+c.id+'"]');
+const jump=card&&card.querySelector('[data-act="jump"]');
+if(jump){try{jump.focus({preventScroll:true});}catch(e){jump.focus();}}
+if(saved)showToast("Comment reattached.");
+else showToast("Comment reattached in this session but NOT saved to this browser. Export as Shareable to keep it.",
+{alert:true,duration:8000,action:cmhStorageAction(CMH_STORE_KEY)});
+}
+const _cmhReattachPopup={
+isOpen:()=>!!_cmhReattachId,
+close:()=>cmhCancelReattachment(true),
+};
+window.__cmhRegisterEscapePopup(_cmhReattachPopup);
 (function(){
 const aux=document.querySelector(".cm-sidebar .head-aux");
 if(!aux)return;
@@ -13586,6 +14199,9 @@ function pendingPanelItemCount(roots,notePieces,checklistPieces){
 return roots.length+notePieces.length+checklistPieces.length+tableChanges().length;
 }
 function renderComments(){
+if(cmhPendingReattachment()&&!comments.some(c=>c.id===cmhPendingReattachment())){
+cmhCancelReattachment(false);
+}
 cmhForgetZoneFormatter();
 if(typeof window!== "undefined"&&window.__cmhPerf)window.__cmhPerf.renders=(window.__cmhPerf.renders||0)+1;
 const _listFocus=_captureListFocus();
@@ -13717,7 +14333,12 @@ pinBits.push(c.codeLanguage?`code (${escapeHtml(c.codeLanguage)})`:"code block")
 const pinHtml=pinBits.length?`<div class="pin">${pinBits.join(" - ")}</div>`:"";
 const jumpTarget=isMermaid?"node":isDiff?"diff line":isImage?(c.imageKind=== "chart"?"chart":"image"):isLink?"link":isWidget?"element":isTableColumn?(c.anchorType=== "table-cell"?"table cell":"column title"):isSlide?"slide":"text";
 const cardClass=isDocument?"cm-card cm-card-doc":isSlide?"cm-card cm-card-doc cm-card-slide":"cm-card";
-const jumpBtn=isDocument?"":isSlide
+const detached=cmhIsDetached(c);
+const detachedHtml=detached
+?'<div class="cm-detached-status"><strong>Detached</strong>The original text could not be identified confidently. Select a new location with Reattach.</div>':"";
+const jumpBtn=detached
+?'<button type="button" class="cm-card-btn" data-act="reattach" title="Select a new text location for this comment">Reattach</button>'
+:isDocument?"":isSlide
 ?`<button type="button" class="cm-card-btn" data-act="jump" title="Go to this slide">jump</button>`
 :`<button type="button" class="cm-card-btn" data-act="jump" title="Scroll to highlighted ${jumpTarget}">jump</button>`;
 const picked=(typeof isCommentPicked=== "function")&&isCommentPicked(c.id);
@@ -13725,7 +14346,7 @@ const pickLabel= "Select comment #"+(i+1);
 const copyLabel= "Copy comment #"+(i+1);
 const pickChecked=picked?" checked":"";
 const pickHtml=`<span class="acts cm-pick-actions"><label class="cm-pick-label cm-pick" title="Select this comment for Copy selected / Delete selected comments"><input type="checkbox" class="cm-pick-box" data-act="pick" aria-label="${pickLabel}"${pickChecked}><span class="cm-pick-cap">Select</span></label></span>`;
-const articleClass=picked?(cardClass+" cm-card-picked"):cardClass;
+const articleClass=cardClass+(picked?" cm-card-picked":"")+(detached?" cm-card-detached":"");
 const rootPill=(typeof authorPillHtml=== "function")?authorPillHtml(c.author):"";
 const replies=(typeof repliesOf=== "function")?repliesOf(c.id,comments):[];
 const delTitle=replies.length?"Delete this comment and its replies":"Delete this comment";
@@ -13749,6 +14370,7 @@ return`
       ${sectionHtml}
       ${quoteHtml}
       ${pinHtml}
+      ${detachedHtml}
       ${cmhDiscussionStatusHtml(c)}
       <div class="cm-entry cm-entry-root">
         <div class="note cmh-rich">${cmhMessageKindHtml(c,c)}${rootPill}${renderRichNote(c.note)}</div>
@@ -13945,6 +14567,10 @@ return html;
 }
 function scrollToAnchor(c){
 if(!c)return;
+if(cmhIsDetached(c)){
+showToast("This comment is Detached. Use Reattach to select its new location.");
+return;
+}
 let el=null;
 if(c.anchorType=== "mermaid")el=findMermaidNode(c.diagramIndex,c.nodeKey);
 else if(c.anchorType=== "diff")el=findDiffLineEls(c.diffIndex,c.lineKey)[0];
@@ -14381,6 +15007,14 @@ openInlineNoteEdit(entry,id);
 return;
 }
 const c=comments.find(x=>x.id===id);
+if(act=== "reattach"){
+cmhBeginReattachment(c,e.target);
+return;
+}
+if(cmhIsDetached(c)){
+showToast("This comment is Detached. Use Reattach to select its new location.");
+return;
+}
 scrollToAnchor(c);
 });
 listEl.addEventListener("change",(e)=>{
@@ -15560,6 +16194,9 @@ const isWidget=c.anchorType=== "widget";
 const isTableColumn=_etIsAnchor(c);
 const isDocument=c.anchorType=== "document";
 const isSlide=c.anchorType=== "slide";
+if(cmhIsDetached(c)){
+lines.push("Attachment: Detached - original quote/context below are historical, not a current location.");
+}
 lines.push(`## ${c.threadType=== "discussion"?"Discussion":"Comment"} ${i+1}${isMermaid?" (mermaid)":isDiff?" (diff)":isImage?" (image)":isLink?" (link)":isWidget?" (widget)":isDocument?" (document)":isSlide?" (slide)":""}`);
 lines.push(`Id: ${oneLine(c.id)}`);
 const whenCreated=oneLine(formatTime(c.createdAt));
@@ -16976,6 +17613,10 @@ out.push("### "+(i+1)+". "
 +(oneLine(where)||"comment")+_mdBy(c));
 out.push("");
 const replies=(typeof repliesOf=== "function")?repliesOf(c.id,live):[];
+if(cmhIsDetached(c)){
+out.push("Attachment: Detached - quoted text is historical, not a current document location.");
+out.push("");
+}
 if(c.threadType=== "discussion"){
 const messages=[c].concat(replies);
 const pending=new Set(cmhPendingDiscussion(c,live).map((r)=>
@@ -17402,6 +18043,7 @@ let changed=false;
 function dropOffsets(c){
 if(c.start!==undefined||c.end!==undefined){
 delete c.start;delete c.end;changed=true;
+if(c.cmAnchor&&c.cmAnchor.v===1)c.cmAnchor={...c.cmAnchor,discontiguous:true};
 }
 }
 function markedTextNode(markList,reverse){
@@ -17442,7 +18084,14 @@ const s=offsetWithin(fT,0);
 const e=offsetWithin(lT,lT.nodeValue.length);
 if(s>=0&&e>s&&(s!==c.start||e!==c.end)){c.start=s;c.end=e;changed=true;}
 });
-if(changed&&persist)saveComments();
+if(changed&&persist){
+const index=cmhAnchorIndex();
+comments.forEach(function(c){
+if(cmhIsTextAnchor(c)&&!cmhIsDetached(c)
+&&root.querySelector('mark.cm-hl[data-cid="'+c.id+'"]'))cmhCaptureTextAnchor(c,index);
+});
+saveComments();
+}
 }
 function _canonicalCommentsForExport(){
 const liveOffsets=comments.map(function(c){return{c:c,start:c.start,end:c.end};});
@@ -17469,6 +18118,10 @@ try{
 sorts.forEach(function(s){_unsortRows(s.body);s.unsorted=true;});
 recomputeTextOffsets(false);
 const snap=comments.map(function(c){return Object.assign({},c);});
+const index=cmhAnchorIndex();
+snap.forEach(function(c){
+if(cmhIsTextAnchor(c)&&!cmhIsDetached(c))cmhCaptureTextAnchor(c,index);
+});
 restoreRows();
 if(sorts.length)recomputeTextOffsets(false);
 completed=true;
@@ -20657,6 +21310,22 @@ T('Managing comments',
 '<li>Select one or more comment cards and use <strong>Delete selected comments</strong> in the <strong>More</strong> menu to delete only those threads.</li>'+
 '<li><strong>Delete all comments</strong> (in the sidebar\'s <strong>More</strong> menu'+(hasToolbarClear?', or the collapsed toolbar\'s overflow <kbd>...</kbd> menu':'')+') deletes every comment and always asks for confirmation first (Cancel is the default)'+(hasToolbarClear?', so you can delete without re-opening the panel':'')+'.</li>'+
 '</ul>')+
+T('Comments across revisions',
+'<p>Text comments follow identifiable content when you reload an updated document. '
++'The browser checks the quote, surrounding text and section/block evidence instead of trusting old character offsets. '
++'Moved passages, formatting changes and supported small edits can recover automatically; ambiguous or deleted text is never guessed.</p>'
++'<p><strong>Only some comments handled:</strong> hand back one thread with Copy, or use Copy selected. '
++'Only handled edit IDs disappear. Remaining comments follow the new content locally, without sending all comments to the agent.</p>'
++'<p><strong>New comments while the agent edits:</strong> you can keep commenting on the old document still displayed in this browser. '
++'Those comments carry that displayed revision and recover when you refresh, even though the agent never received them. '
++'Save your comment before refreshing and keep the same document identity.</p>'
++'<p><strong>Detached</strong> means the original text could not be located confidently. '
++'Its quote, context and replies stay in the panel and in Copy/export. Click <strong>Reattach</strong>, '
++'select its new text, then choose <strong>Attach comment</strong>. Cancel or Escape leaves it unchanged. '
++'The thread is not resolved or edited by moving it; identifiable original text can also recover on a later refresh.</p>'
++'<p>Everything is local; no server or AI connection is needed. Shareable exports carry recovery metadata to another browser. '
++'Existing comments and shells remain readable. Older runtimes keep migrated comments and safe Detached notes, '
++'but do not gain this recovery UI or protection against subsequent edits; update the runtime for that.</p>')+
 T('Threads, replies and author names',
 '<ul>'+
 '<li><strong>Set your name:</strong> the <strong>Commenting as</strong> line in the panel shows the name attached to your comments. Click <em>set name</em> (or <em>change</em>) to enter a display name; it is remembered in this browser and applies to your future comments only - it never rewrites comments you already made. An author who generated the file can pre-fill it with <code>data-cm-author</code>.</li>'+
@@ -21771,6 +22440,7 @@ return'<div class="cmh-print-reply"><div class="cmh-print-note cmh-rich">'+rp+re
 }).join("");
 return'<article class="cmh-print-comment" data-cid="'+escapeHtml(c.id||"")+'">'
 +'<h3>Comment '+(index+1)+'</h3>'
++(cmhIsDetached(c)?'<p><strong>Detached</strong> - original quote/context, not a current location.</p>':"")
 +(path?'<p class="cmh-print-path"><strong>In:</strong> '+escapeHtml(path)+'</p>':"")
 +'<p class="cmh-print-anchor"><strong>Anchor:</strong> '+escapeHtml(_printAnchorLabel(c))+'</p>'
 +(quote?'<blockquote>'+escapeHtml(quote)+'</blockquote>':"")
@@ -22620,23 +23290,26 @@ const present=new Set((arr||[]).filter(c=>c&&!handled.has(c.id)&&!(c&&c.parentId
 return(arr||[]).filter(c=>!handled.has(c.id)&&!(c&&c.parentId&&!present.has(c.parentId)));
 }
 function restoreHighlights(){
-const textComments=comments.filter(c=>c.anchorType!== "mermaid"&&c.anchorType!== "diff"
-&&c.anchorType!== "image"&&c.anchorType!== "link"&&c.anchorType!== "widget"&&!_etIsAnchor(c)
-&&c.anchorType!== "document"&&c.anchorType!== "slide"
+const textComments=comments.filter(c=>cmhIsTextAnchor(c)&&!cmhIsDetached(c)
 &&Number.isFinite(c.start)&&Number.isFinite(c.end));
 const sorted=[...textComments].sort((a,b)=>a.start-b.start);
 let maxAppliedEnd=-Infinity;
 let nodes=getTextNodes();
+let detached=false;
 sorted.forEach(c=>{
-if(c.start<maxAppliedEnd)return;
+if(c.start<maxAppliedEnd){
+cmhDetachComment(c,"overlap");detached=true;return;
+}
 const r=rangeFromOffsets(c.start,c.end,nodes);
 if(r){
 try{wrapRangeWithMark(r,c.id);maxAppliedEnd=Math.max(maxAppliedEnd,c.end);nodes=getTextNodes();}
-catch(e){unwrapMarks(c.id);nodes=getTextNodes();console.warn("Could not restore highlight for",c.id,e);}
+catch(e){unwrapMarks(c.id);nodes=getTextNodes();cmhDetachComment(c,"wrap");detached=true;console.warn("Could not restore highlight for",c.id,e);}
 }else{
+cmhDetachComment(c,"range");detached=true;
 console.warn("Lost anchor for comment",c.id,"- offsets",c.start,c.end);
 }
 });
+if(detached)saveComments();
 }
 function setupChartContainment(){
 root.querySelectorAll("figure.chart > .chart-wrap").forEach(function(wrap){
@@ -22878,6 +23551,7 @@ setupNotesLayer();
 setupEditableTables();
 setupTableScroll();
 applyPersistedTableSorts();
+cmhReattachComments();
 backfillContext();
 restoreHighlights();
 _cmhStoreUnreadable=false;
