@@ -45,6 +45,7 @@ function _setMenuMode(mode) {
   // a flat document offers only the single document-wide comment.
   const deckDoc = (mode === "document") && IS_DECK;
   if (mc) mc.hidden = (mode !== "text");
+  if (mc) mc.textContent = cmhPendingReattachment() ? "Attach comment" : "Add Comment";
   if (ms) ms.hidden = !deckDoc;
   if (md) {
     md.hidden = (mode !== "document");
@@ -372,6 +373,11 @@ function showMenuForRange(range) {
 function hideMenu() { menu.hidden = true; }
 cmhEl("menuComment").addEventListener("click", () => {
   hideMenu();
+  if (cmhPendingReattachment()) {
+    if (pendingRange && !pendingDiffSel) cmhFinishReattachment(pendingRange);
+    else showToast("Select ordinary text to reattach this comment.");
+    return;
+  }
   // Diff sub-line selection: comment the selected region of a line; the same
   // region re-opens its existing comment, a different region makes a new one.
   if (pendingDiffSel) {

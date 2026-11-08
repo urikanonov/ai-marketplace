@@ -4,6 +4,23 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.859.0] - 2026-11-08
+
+- Deliberately raise the layer size ceilings for the bounded local revision matcher, manual
+  reattachment controls and recovery help: JS to 760 KB, CSS to 156 KB, embedded assets to 960 KB,
+  and Shareable HTML to 980 KB. The measured build remains below those ceilings; no rich-library
+  payload or dependency is added.
+
+### Added
+
+- Recover text-comment attachments locally across revisions, including unsent comments and comments
+  saved while an agent edits the still-displayed old revision, without a copy-all workaround.
+- Keep uncertain anchors as Detached with original quote/context and replies, automatic later
+  recovery, and an explicit, cancellable Reattach selection flow.
+- Carry additive recovery selectors through Shareable exports and label Detached anchors in Copy,
+  Markdown and print while preserving legacy comment fields and safe older-runtime reads.
+- Explain both revision scenarios, recovery and downgrade limits in the tutorial, Help and showcase.
+
 ## [1.858.1] - 2026-10-31
 
 ### Changed

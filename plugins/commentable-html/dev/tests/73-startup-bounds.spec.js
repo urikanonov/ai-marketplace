@@ -91,7 +91,7 @@ test("an oversized embeddedComments array is capped at merge time and startup st
 test("comments with non-finite or absurd start/end offsets are dropped without breaking other comments (CMH-PERSIST-04)", async ({ page }) => {
   const goodId = idFor(999999);
   const arr = [
-    { id: goodId, start: 0, end: 4, quote: "Some", note: "GOOD-COMMENT", createdAt: "2024-01-01T00:00:00Z" },
+    { id: goodId, start: 3, end: 7, note: "GOOD-COMMENT", createdAt: "2024-01-01T00:00:00Z" },
     // Not a finite number (string offset from a hand-crafted / poisoned JSON array).
     { id: idFor(1), start: "not-a-number", end: 10, quote: "x", note: "bad-string-start", createdAt: "2024-01-01T00:00:00Z" },
     // Negative offsets.
@@ -130,7 +130,7 @@ test("a flood of offsetless, non-anchor-typed comments does not drive per-commen
   test.setTimeout(15000);
   const FLOOD = 1000; // at the CMH_MAX_COMMENTS cap: the worst case that survives merging
   const goodId = idFor(999999);
-  const arr = [{ id: goodId, start: 3, end: 7, quote: "word", note: "GOOD-COMMENT", createdAt: "2024-01-01T00:00:00Z" }];
+  const arr = [{ id: goodId, start: 3, end: 7, note: "GOOD-COMMENT", createdAt: "2024-01-01T00:00:00Z" }];
   for (let i = 0; i < FLOOD - 1; i++) {
     arr.push({ id: idFor(i), note: "offsetless-" + i, createdAt: "2024-01-01T00:00:00Z" });
   }
@@ -201,15 +201,13 @@ test("a flood of uncontexted comments caps backfill context capture at CMH_MAX_B
   const CMH_MAX_BACKFILL = 400;
   const arr = [];
   for (let i = 0; i < FLOOD; i++) {
-    // Sane, in-range offsets PAST the ~28k-char document (below CMH_MAX_OFFSET) and NO context
-    // fields: every one is a backfill candidate, but because the offsets never resolve to a range
-    // restoreHighlights() adds no wraps, so this isolates the backfill pass's single shared scan
-    // from real highlight-wrap rebuilds.
+    // Legacy quote-less roots with valid identical offsets are genuine backfill candidates.
+    // Restore wraps only the first and rejects overlaps, isolating the shared backfill scan
+    // without pretending unresolved historical offsets are safe context-capture candidates.
     arr.push({
       id: idFor(i),
-      start: 500000 + i,
-      end: 500000 + i + 1,
-      quote: "x",
+      start: 3,
+      end: 7,
       note: "uncontexted-" + i,
       createdAt: "2024-01-01T00:00:00Z",
     });

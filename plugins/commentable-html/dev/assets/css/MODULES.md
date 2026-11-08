@@ -24,6 +24,7 @@ order the directory listing gives.
 | `70-kql.css` | CMH-KQL, CMH-CODE | Kusto query figure + KQL token styling; standalone code-block frame and optional caption. |
 | `80-focus.css` | CMH-A11Y | Shared themed focus ring for interactive controls. |
 | `84-comment-selection.css` | CMH-PICK, CMH-RESP | The per-comment pick control, the picked-card accent ring, and the panel's selection bar (count + Clear selection), with their phone touch targets. |
+| `84-reattachment.css` | CMH-REATTACH | Detached card status and the cancellable, responsive text-reattachment prompt. |
 | `85-checklist.css` | CMH-CHECK | Layered checklist controls, hierarchy indentation, and the per-list change card. |
 | `86-notes.css` | CMH-NOTE | Editable notes fields: the textarea, label chip, single/multi-line toggle, and the per-note change card. |
 | `87-editable-tables.css` | CMH-TABLE | Responsive editable-table fields, schema dialogs, recovery notices, and print values. |

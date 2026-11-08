@@ -286,6 +286,33 @@ comments still need Copy/import or export. The agent must never create that sche
 Reload the file the agent hands back. Ordinary comments it marked handled are pruned automatically;
 discussion answers stay in history. Repeat the loop until the review is resolved.
 
+### Comments follow revisions
+
+You do not need to send every comment to the agent. Use a thread's **Copy**, or select a subset
+and **Copy selected**. Only handled edit comments disappear; remaining text comments are relocated
+locally using their quote, surrounding text and section/block evidence.
+
+You can also add and save comments on the old revision still displayed while the agent edits the
+file. Those comments remember that displayed revision, not the new file on disk. On refresh they
+follow confidently identifiable content, even though the agent never received them. Keep the same
+document identity (`data-comment-key`) for revisions of one document.
+
+If a passage was deleted, extensively rewritten or has indistinguishable matches, its comment is
+**Detached** instead of highlighting unrelated text. The original quote, context and entire thread
+remain available in the panel, search, Copy and exports. Click **Reattach**, select the new text,
+and choose **Attach comment**. **Cancel** or **Escape** leaves it untouched. Reattachment changes
+only the location, not the review message or its handled/answered state. Detached comments can
+also recover automatically when identifiable content returns in a later revision.
+
+If automatic recovery or manual reattachment reports that locations were **NOT saved** because
+browser storage is full or blocked, use **Manage storage** or **Export as Shareable** before
+refreshing. The recovered session remains visible and exportable; a warning is not a durable save.
+
+**Export as Shareable** carries the recovery evidence into another browser. Older comments and
+document shells remain usable with the current runtime. Older runtimes still read migrated
+comments and preserve safe Detached notes, but cannot acquire the new recovery behavior from
+metadata alone; upgrade the document's runtime before further revisions.
+
 To share the review with another person instead, use the export menu's **Shareable** action to bake the comments into a single self-contained copy, or **Plain HTML** to hand over a clean copy with the commenting layer removed.
 
 Use **Export Offline** for a zero-network handoff after Mermaid diagrams and charts have rendered in the browser. It starts from the Shareable export, strips remote loaders, conditionally inlines Mermaid / Chart.js, and reopens with the **Offline** badge while keeping live diagrams and chart tooltips. The export itself downloads the library it inlines once and checks it against a hash recorded when the document was generated, so this one step needs a connection - it sends no referrer, and if the download fails or does not match you get an error and no file rather than a copy whose diagrams cannot render. The file it writes needs no network at all.

@@ -5,7 +5,7 @@ description: Turn a standalone HTML report, plan, dashboard, or design doc into 
 
 # Commentable HTML
 
-**Version:** `1.858.1`
+**Version:** `1.859.0`
 
 Review exact prose, code, diagrams, charts, images, widgets, or table cells; copy/export edit requests or AI discussions. Discussions work in the standalone HTML without a server or folder permissions.
 
@@ -115,9 +115,11 @@ python tools/authoring/content_replace.py <file.html> --content frag.html \
     --handled-from-bundle bundle.txt        # swap + re-bake + validate + stamp, atomically
 ```
 
-`content_replace.py` is ONE transaction - it re-bakes, strict-validates and re-stamps internally, or leaves the file byte-for-byte unchanged - so there is no follow-up step to remember. Untouched sections keep their hashes, so Mark-reviewed markers survive an edit elsewhere. For a peer-review file that arrives with comments already embedded (nobody pasted a bundle), read them with `python tools/authoring/extract_comments.py <file.html> --text`; that prints the EMBEDDED snapshot only, since no tool can read a reviewer's browser `localStorage`.
+`content_replace.py` atomically re-bakes, strict-validates and re-stamps; failure leaves bytes unchanged. Untouched section hashes and Mark-reviewed markers survive. Read embedded peer comments with `python tools/authoring/extract_comments.py <file.html> --text`; this reads the EMBEDDED snapshot, not browser `localStorage`.
 
-Tell the user to reload, using Ctrl+F5 if needed. Do not edit the user's `localStorage` directly. Details of the Copy-all payload live in [Copy payload format](references/copy-payload.md).
+Tell the user to reload (Ctrl+F5 if needed); never edit their `localStorage`. See [Copy format](references/copy-payload.md).
+
+Unsent comments recover locally or stay Detached: [reattachment](references/reattachment.md).
 
 **Discussions:** follow the [owner workflow](references/discussions.md); import Copy bundles or
 read the exported HTML. Reply to exact versions: `--kind answer` for questions,

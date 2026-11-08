@@ -173,6 +173,9 @@ function buildCopyText(pickedIds, partialScope) {
     const isTableColumn = _etIsAnchor(c);
     const isDocument = c.anchorType === "document";
     const isSlide = c.anchorType === "slide";
+    if (cmhIsDetached(c)) {
+      lines.push("Attachment: Detached - original quote/context below are historical, not a current location.");
+    }
     lines.push(`## ${c.threadType === "discussion" ? "Discussion" : "Comment"} ${i + 1}${isMermaid ? " (mermaid)" : isDiff ? " (diff)" : isImage ? " (image)" : isLink ? " (link)" : isWidget ? " (widget)" : isDocument ? " (document)" : isSlide ? " (slide)" : ""}`);
     lines.push(`Id: ${oneLine(c.id)}`);
     // A comment with no usable timestamp contributes no When: line at all, rather than a dangling

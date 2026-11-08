@@ -39,9 +39,7 @@ function restoreHighlights() {
   // would still run its full-document text-node walk for it despite mergeCommentSets()
   // treating an offsetless entry as trivially sane. This keeps the per-comment restore
   // work bounded to comments that can actually resolve to a range.
-  const textComments = comments.filter(c => c.anchorType !== "mermaid" && c.anchorType !== "diff"
-    && c.anchorType !== "image" && c.anchorType !== "link" && c.anchorType !== "widget" && !_etIsAnchor(c)
-    && c.anchorType !== "document" && c.anchorType !== "slide"
+  const textComments = comments.filter(c => cmhIsTextAnchor(c) && !cmhIsDetached(c)
     && Number.isFinite(c.start) && Number.isFinite(c.end));
   const sorted = [...textComments].sort((a, b) => a.start - b.start);
   // Apply-time overlap defense: a legitimately saved set can no longer contain overlapping
@@ -59,16 +57,21 @@ function restoreHighlights() {
   // doc). A successful wrapRangeWithMark() splits text nodes and inserts marks, so rebuild the
   // index after each wrap (and after a failed wrap's unwrap/normalize) before the next lookup.
   let nodes = getTextNodes();
+  let detached = false;
   sorted.forEach(c => {
-    if (c.start < maxAppliedEnd) return; // overlaps an already-highlighted range; leave unhighlighted
+    if (c.start < maxAppliedEnd) {
+      cmhDetachComment(c, "overlap"); detached = true; return;
+    }
     const r = rangeFromOffsets(c.start, c.end, nodes);
     if (r) {
       try { wrapRangeWithMark(r, c.id); maxAppliedEnd = Math.max(maxAppliedEnd, c.end); nodes = getTextNodes(); }
-      catch (e) { unwrapMarks(c.id); nodes = getTextNodes(); console.warn("Could not restore highlight for", c.id, e); }
+      catch (e) { unwrapMarks(c.id); nodes = getTextNodes(); cmhDetachComment(c, "wrap"); detached = true; console.warn("Could not restore highlight for", c.id, e); }
     } else {
+      cmhDetachComment(c, "range"); detached = true;
       console.warn("Lost anchor for comment", c.id, "- offsets", c.start, c.end);
     }
   });
+  if (detached) saveComments();
 }
 
 
@@ -373,6 +376,7 @@ setupNotesLayer();
 setupEditableTables();
 setupTableScroll();
 applyPersistedTableSorts();
+cmhReattachComments();
 backfillContext();
 restoreHighlights();
 // Re-enable comment persistence only AFTER every automatic startup step that may saveComments()

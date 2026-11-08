@@ -11,6 +11,7 @@ function cmhIsQuotaError(e) {
 // Encode a comments JSON string for the modern slot: a framed lz-string payload when that is
 // SMALLER (in UTF-16 code units, which is what localStorage costs), else the plain JSON unchanged.
 function cmhEncodeStore(jsonStr) {
+  if (jsonStr.length > CMH_MAX_STORE_CHARS) return jsonStr;
   try {
     const framed = CMH_STORE_FRAME + LZString.compressToUTF16(jsonStr);
     return framed.length < jsonStr.length ? framed : jsonStr;
@@ -156,6 +157,15 @@ function saveComments() {
   // after pruning, so a genuine user edit still persists.
   if (_cmhStoreUnreadable) return true;
   if (typeof cmhPrepareDiscussionSave === "function") cmhPrepareDiscussionSave();
+  if (!_cmhStartupInProgress && typeof cmhCaptureTextAnchor === "function") {
+    let index = null;
+    for (const c of comments) {
+      if (!cmhIsTextAnchor(c) || c.cmAnchor || cmhIsDetached(c)) continue;
+      if (!root.querySelector(`mark.cm-hl[data-cid="${c.id}"]`)) continue;
+      index = index || cmhAnchorIndex();
+      cmhCaptureTextAnchor(c, index);
+    }
+  }
   try {
     // Always write the modern slot FIRST (an empty array serializes to "[]"); only on success
     // remove the legacy key, so a quota failure never leaves both slots empty (any legacy value

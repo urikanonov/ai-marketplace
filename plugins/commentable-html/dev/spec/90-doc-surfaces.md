@@ -64,6 +64,31 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 
 | Feature id | Doc surface | Deck |
 | --- | --- | --- |
+| CMH-REATTACH-01 | tutorial, help | deck |
+| CMH-REATTACH-02 | tutorial, help | deck |
+| CMH-REATTACH-03 | tutorial, help | deck |
+| CMH-REATTACH-04 | tutorial, help | deck |
+| CMH-REATTACH-05 | tutorial, help | deck |
+| CMH-REATTACH-06 | tutorial, help | deck |
+| CMH-REATTACH-07 | tutorial, help | deck |
+| CMH-REATTACH-08 | tutorial, help | deck |
+| CMH-REATTACH-09 | tutorial, help | deck |
+| CMH-REATTACH-10 | tutorial, help | deck |
+| CMH-REATTACH-11 | tutorial, help | deck |
+| CMH-REATTACH-12 | tutorial, help | deck |
+| CMH-REATTACH-13 | tutorial, help | deck |
+| CMH-REATTACH-14 | tutorial, help | deck |
+| CMH-REATTACH-15 | tutorial, help | deck |
+| CMH-REATTACH-16 | tutorial, help | deck |
+| CMH-REATTACH-17 | opt-out: canonical export coordinate invariant | opt-out: internal attachment metadata |
+| CMH-REATTACH-18 | tutorial, help | deck |
+| CMH-REATTACH-19 | tutorial, help | deck |
+| CMH-REATTACH-20 | help | opt-out: local persistence failure recovery detail |
+| CMH-REATTACH-21 | help | opt-out: responsive accessibility invariant |
+| CMH-REATTACH-22 | tutorial, help | deck |
+| CMH-REATTACH-23 | opt-out: imported future-selector compatibility invariant | opt-out: metadata archive detail, not a viewer workflow |
+| CMH-REATTACH-24 | opt-out: bounded storage codec round-trip invariant | opt-out: internal persistence safety gate |
+| CMH-REATTACH-25 | tutorial | opt-out: storage failure recovery warning, not a new viewer workflow |
 | CMH-WIDTH-01 | help | opt-out: flow-document layout, not a fixed-stage deck feature |
 | CMH-WIDTH-02 | help | opt-out: flow-document reading control absent from decks |
 | CMH-WIDTH-03 | help | opt-out: browser-local flow-document preference, not deck state |

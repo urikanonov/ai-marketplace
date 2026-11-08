@@ -688,6 +688,8 @@ function saveComposerElementInner(el) {
   }
   const savedComment = el._editingId ? comments.find(function (c) { return c.id === el._editingId; })
     : comments.find(function (c) { return !beforeIds.has(c.id); });
+  if (savedComment && cmhIsTextAnchor(savedComment) && !cmhIsDetached(savedComment)
+    && (!el._editingId || !savedComment.cmAnchor)) cmhCaptureTextAnchor(savedComment);
   if (purpose) cmhStampDiscussion(savedComment, purpose.value);
   const saved = saveComments();
   renderComments();

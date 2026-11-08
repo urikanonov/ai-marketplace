@@ -95,6 +95,22 @@ function showHelp(restoreEl) {
           '<li>Select one or more comment cards and use <strong>Delete selected comments</strong> in the <strong>More</strong> menu to delete only those threads.</li>' +
           '<li><strong>Delete all comments</strong> (in the sidebar\'s <strong>More</strong> menu' + (hasToolbarClear ? ', or the collapsed toolbar\'s overflow <kbd>...</kbd> menu' : '') + ') deletes every comment and always asks for confirmation first (Cancel is the default)' + (hasToolbarClear ? ', so you can delete without re-opening the panel' : '') + '.</li>' +
         '</ul>') +
+      T('Comments across revisions',
+        '<p>Text comments follow identifiable content when you reload an updated document. '
+          + 'The browser checks the quote, surrounding text and section/block evidence instead of trusting old character offsets. '
+          + 'Moved passages, formatting changes and supported small edits can recover automatically; ambiguous or deleted text is never guessed.</p>'
+        + '<p><strong>Only some comments handled:</strong> hand back one thread with Copy, or use Copy selected. '
+          + 'Only handled edit IDs disappear. Remaining comments follow the new content locally, without sending all comments to the agent.</p>'
+        + '<p><strong>New comments while the agent edits:</strong> you can keep commenting on the old document still displayed in this browser. '
+          + 'Those comments carry that displayed revision and recover when you refresh, even though the agent never received them. '
+          + 'Save your comment before refreshing and keep the same document identity.</p>'
+        + '<p><strong>Detached</strong> means the original text could not be located confidently. '
+          + 'Its quote, context and replies stay in the panel and in Copy/export. Click <strong>Reattach</strong>, '
+          + 'select its new text, then choose <strong>Attach comment</strong>. Cancel or Escape leaves it unchanged. '
+          + 'The thread is not resolved or edited by moving it; identifiable original text can also recover on a later refresh.</p>'
+        + '<p>Everything is local; no server or AI connection is needed. Shareable exports carry recovery metadata to another browser. '
+          + 'Existing comments and shells remain readable. Older runtimes keep migrated comments and safe Detached notes, '
+          + 'but do not gain this recovery UI or protection against subsequent edits; update the runtime for that.</p>') +
       T('Threads, replies and author names',
         '<ul>' +
           '<li><strong>Set your name:</strong> the <strong>Commenting as</strong> line in the panel shows the name attached to your comments. Click <em>set name</em> (or <em>change</em>) to enter a display name; it is remembered in this browser and applies to your future comments only - it never rewrites comments you already made. An author who generated the file can pre-fill it with <code>data-cm-author</code>.</li>' +

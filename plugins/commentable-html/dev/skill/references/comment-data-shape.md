@@ -40,6 +40,11 @@ Each comment captures concrete pinpoint info, not just the user's note - enough 
 }
 ```
 
+Text comments additionally carry optional `cmAnchor` recovery selectors and `detached` state.
+Their legacy fields and array storage format remain compatible. Detached comments retain their
+original quote/context but use safe out-of-document offsets until confidently or manually reattached.
+See [text reattachment](reattachment.md) for revision handling, recovery and downgrade limits.
+
 ### Mermaid-node comments (`anchorType: "mermaid"`)
 
 When the user clicks the floating **Add Comment** button on a rendered mermaid node, gantt task/bar, or sequence/gantt text, the comment is anchored to the diagram + node rather than to character offsets. When the user clicks **Comment on diagram**, `nodeKey` is `"__diagram__"` and the anchor is the whole diagram:
