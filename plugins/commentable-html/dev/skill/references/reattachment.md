@@ -59,6 +59,10 @@ still refresh it. An intact complete block with a unique current ID and historic
 identity can verify its selected text locally. Shared or changed blocks do not qualify for that
 shortcut. Normalization maps and block indexes are ephemeral, rebuilt from the displayed document,
 and never add a new storage format or relax the existing recovery limits.
+All roots resolve before current evidence is recaptured from the remaining shared budget.
+Unchecked uniqueness is conservative across changed revision/layout evidence, so an exhausted
+capture cannot authorize a later surviving duplicate; an intact stable block can still prove
+its occurrence identity locally.
 Legacy context backfill shares an immutable per-pass text/layout scan without replacing
 historical fields. Highlight restoration updates its local text-node index when wrapping splits
 nodes, and rebuilds it after failed-wrap cleanup. Neither index is persisted or reused in a later

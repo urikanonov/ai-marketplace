@@ -48,6 +48,10 @@ report("unchanged-large", 3000, 10, 500);
 report("upgrade-large", 3000, 10, 500);
 fixtures[fixtures.length - 1].migration = true;
 report("inserted-large", 3000, 10, 30, "resolve", "insert");
+report("mixed-id-large", 3000, 10, 30, "resolve", "insert");
+for (const key of ["original", "revised"]) fixtures[fixtures.length - 1][key] =
+  fixtures[fixtures.length - 1][key].replace(/<p id="p(\d+)">/g,
+    (match, i) => Number(i) < 1000 && Number(i) % 100 === 0 ? match : "<p>");
 report("normalized-medium", 1000, 8, 30, "resolve", "normalize");
 report("edited-small", 100, 2, 20, "resolve", "fuzzy");
 report("capture-large", 3000, 10, 1, "capture");
@@ -288,7 +292,7 @@ try {
       return { context, page };
     }
     try {
-      const startupFixtures = fixtures.filter(f => ["unchanged-medium", "unchanged-large", "inserted-large"].includes(f.name))
+      const startupFixtures = fixtures.filter(f => ["unchanged-medium", "unchanged-large", "inserted-large", "mixed-id-large"].includes(f.name))
         .map(f => ({ ...f, quotes: f.name === "unchanged-large" ? f.quotes.slice(0, 100) : f.quotes }));
       startupFixtures.push({ ...fixtures.find(f => f.name === "unchanged-large"), name: "unchanged-large-500" });
       startupFixtures.push({ ...fixtures.find(f => f.name === "unchanged-medium"),

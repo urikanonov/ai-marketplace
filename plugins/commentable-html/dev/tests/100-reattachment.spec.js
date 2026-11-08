@@ -212,6 +212,29 @@ test("normalized offsets avoid identity maps and redundant per-character arrays 
   expect(unicode).toBe(true);
 });
 
+test("already normalized prose avoids replacement passes while preserving whitespace and typography folding (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<p>Text</p>");
+  const result = await page.evaluate(() => {
+    const source = "Plain prose with single spaces and an emoji \ud83d\ude00.".repeat(1000);
+    const replace = String.prototype.replace;
+    let calls = 0, plain;
+    String.prototype.replace = function (...args) { calls++; return replace.apply(this, args); };
+    try { plain = cmhAnchorNormalize(source, false, true); }
+    finally { String.prototype.replace = replace; }
+    const spaces = [9, 10, 11, 12, 13, 160, 5760, 8192, 8193, 8194, 8195, 8196,
+      8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288, 65279];
+    return { calls, plain: plain.text === source && plain.ends === null,
+      whitespace: spaces.every(ch => cmhAnchorNormalize("A" + String.fromCharCode(ch) + "B", false, true).text === "A B"),
+      doubled: cmhAnchorNormalize("A  B", false, true).text,
+      typography: cmhAnchorNormalize("\u2018A\u2019 \u201cB\u201d \u2013 \u2014", false, true).text };
+  });
+  expect(result.calls).toBe(0);
+  expect(result.plain).toBe(true);
+  expect(result.whitespace).toBe(true);
+  expect(result.doubled).toBe("A B");
+  expect(result.typography).toBe("'A' \"B\" - -");
+});
+
 test("small-edit alignment bounds arithmetic to the admissible edit band (CMH-REATTACH-08)", async ({ page }) => {
   await harness(page, "<p>Text</p>");
   const result = await page.evaluate(() => {
@@ -255,6 +278,68 @@ test("small-edit alignment bounds arithmetic to the admissible edit band (CMH-RE
     }));
   });
   expect(differential).toBe(true);
+});
+
+test("resolving mixed identity and quote-only roots precedes bounded evidence recapture (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<p>Setup</p>");
+  const result = await page.evaluate(() => {
+    const paragraphs = Array.from({ length: 3000 }, (_, i) =>
+      `<p${i < 10 ? ' id="stable' + i + '"' : ""}>A unique selected review passage number ${i}. `
+        + "Surrounding context for this report. ".repeat(8) + "</p>");
+    const html = paragraphs.join("");
+    anchorTest.set(html);
+    const index = anchorTest.index();
+    const roots = Array.from({ length: 30 }, (_, i) => {
+      const quote = `A unique selected review passage number ${i}.`;
+      const start = index.text.indexOf(quote), c = { id: "c" + i, quote, start, end: start + quote.length };
+      index.budget = CMH_ANCHOR_SCAN_BUDGET;
+      cmhCaptureTextAnchor(c, index);
+      return c;
+    });
+    anchorTest.replace(roots);
+    anchorTest.set("<p>New introduction.</p>" + html);
+    anchorTest.resolve();
+    const text = anchorTest.text();
+    return { chars: text.length, attached: roots.filter(c => !c.detached).length,
+      correct: roots.every(c => text.slice(c.start, c.end) === c.quote) };
+  });
+  expect(result.chars).toBeGreaterThan(1000000);
+  expect(result.attached).toBe(30);
+  expect(result.correct).toBe(true);
+});
+
+test("unverified changed-revision uniqueness cannot authorize a later surviving duplicate (CMH-REATTACH-05)", async ({ page }) => {
+  const content = "Prefix with substantial context before chosen review phrase. Suffix with substantial context after.";
+  await harness(page, `<p id="original">${content}</p>`);
+  const result = await page.evaluate(content => {
+    const c = anchorTest.add("chosen review phrase");
+    const original = structuredClone(c.cmAnchor.original);
+    anchorTest.set(`<p id="original">${content}</p><p id="copy">${content}</p>`);
+    const index = anchorTest.index();
+    index.budget = 0;
+    cmhCaptureTextAnchor(c, index);
+    const captured = structuredClone(c.cmAnchor);
+    anchorTest.set(`<p id="copy">${content}</p>`);
+    anchorTest.resolve();
+    return { captured, original, c };
+  }, content);
+  expect(result.captured.unique).toBe(false);
+  expect(result.captured.original).toEqual(result.original);
+  expect(result.c.detached).toBe(true);
+});
+
+test("shared-budget refusals are distinguished from unresolved evidence (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<p>A uniquely selected review passage with enough context.</p>");
+  const result = await page.evaluate(() => {
+    const c = anchorTest.add("selected review passage");
+    anchorTest.set("<p>Introduction.</p><p>A uniquely selected review passage with enough context.</p>");
+    const original = cmhAnchorIndex;
+    cmhAnchorIndex = () => { const index = original(); index.budget = 0; return index; };
+    try { anchorTest.resolve(); return c; }
+    finally { cmhAnchorIndex = original; }
+  });
+  expect(result.detached).toBe(true);
+  expect(result.cmAnchor.reason).toBe("budget");
 });
 
 test("intact uniquely identified blocks recover without whole-document quote scans (CMH-REATTACH-02)", async ({ page }) => {

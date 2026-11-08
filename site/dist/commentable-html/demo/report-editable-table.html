@@ -6088,23 +6088,31 @@ const blockText=block&&bounded?index.text.slice(from,to):"";
 const normalized=!(block&&block.code||c.isCode);
 const prefix=index.text.slice(Math.max(block?block.start:0,start-CTX_PAD),start);
 const suffix=index.text.slice(end,Math.min(block?block.end:index.text.length,end+CTX_PAD));
-const unique=exact===undefined?undefined:cmhAnchorUnique(index,exact,normalized);
+const sameBasis=prior.normalizedEvidence===normalized;
+const sameEvidence=sameBasis&&prior.revision===index.revision&&prior.basis===index.basis;
+const sameSelection=sameEvidence&&prior.exact===exact;
+const unique=exact===undefined?undefined:sameSelection&&typeof prior.unique=== "boolean"
+?prior.unique:cmhAnchorUnique(index,exact,normalized);
 const hits=exact===undefined?null:index.matches.get((normalized?"np":"rp")+exact);
 const rawHits=exact===undefined?null:index.matches.get("rp"+exact);
-const identityUnique=!!(block&&block.id&&hits
+const intact=exact===undefined?null:cmhAnchorIntactBlock(index,prior,exact);
+const identityUnique=!!(intact&&intact.start===start&&intact.end===end)
+||!!(sameSelection&&block&&prior.block&&block.id===prior.block.id&&prior.identityUnique===true)
+||!!(block&&block.id&&hits
 &&rawHits&&[hits,rawHits].every(list=>list.filter(hit=>hit.block&&hit.block.id===block.id).length===1));
 const blockUnique=block&&from===block.start&&to===block.end
-?cmhAnchorUnique(index,blockText,normalized,block.tag):false;
-const contextUnique=exact===undefined?undefined:cmhAnchorUnique(index,prefix+exact+suffix,normalized);
-const sameBasis=prior.normalizedEvidence===normalized;
+?sameEvidence&&prior.block&&prior.block.text===blockText&&prior.block.tag===block.tag
+&&typeof prior.blockUnique=== "boolean"?prior.blockUnique:cmhAnchorUnique(index,blockText,normalized,block.tag)
+:false;
+const contextUnique=exact===undefined?undefined:sameSelection
+&&prior.prefix===prefix&&prior.suffix===suffix&&typeof prior.contextUnique=== "boolean"
+?prior.contextUnique:cmhAnchorUnique(index,prefix+exact+suffix,normalized);
 c.cmAnchor={...prior,v:1,revision:index.revision,basis:index.basis,start,end,
 exact,normalizedEvidence:normalized,
-unique:unique===undefined&&sameBasis&&prior.exact===exact?prior.unique:unique,
-identityUnique:unique===undefined&&sameBasis&&prior.exact===exact?prior.identityUnique:identityUnique,
-contextUnique:contextUnique===undefined&&sameBasis&&prior.exact===exact
-&&prior.prefix===prefix&&prior.suffix===suffix?prior.contextUnique:contextUnique,
-blockUnique:blockUnique===undefined&&sameBasis&&prior.block&&prior.block.text===blockText
-?prior.blockUnique:blockUnique,
+unique:unique===undefined&&exact!==undefined?false:unique,
+identityUnique,
+contextUnique:contextUnique===undefined&&exact!==undefined?false:contextUnique,
+blockUnique:blockUnique===undefined?false:blockUnique,
 prefix,suffix,
 heading:block?block.heading:"",
 code:block?block.code:!!c.isCode,
@@ -6144,7 +6152,7 @@ if(typeof b!== "object"||typeof b.text!== "string"||b.text.length>CMH_ANCHOR_SNA
 return true;
 }
 function cmhAnchorNormalize(text,code,mapping){
-if(code)return{text,ends:null};
+if(code||!/[^\S ]| {2}|[\u2018\u2019\u201c\u201d\u2013\u2014]/.test(text))return{text,ends:null};
 const normalized=text.replace(/\s+/g," ").replace(/[\u2018\u2019]/g,"'")
 .replace(/[\u201c\u201d]/g,'"').replace(/[\u2013\u2014]/g,"-");
 let ends=null;
@@ -6187,7 +6195,8 @@ function cmhAnchorOccurrences(index,quote,code,normalized){
 if(typeof quote!== "string"||quote.length>CMH_ANCHOR_SNAPSHOT)return null;
 const key=(normalized?"n":"r")+(code?"c":"p")+quote;
 if(index.matches.has(key))return index.matches.get(key);
-if(!quote||index.budget<index.text.length)return null;
+if(!quote)return null;
+if(index.budget<index.text.length){index.exhausted=true;return null;}
 index.budget-=index.text.length;
 let text=index.text,map=null,needle=quote;
 if(normalized){
@@ -6243,7 +6252,7 @@ context:left+right,left,right,id,sameBlock};
 function cmhAnchorChoose(index,hits,a,c,quote){
 if(!hits||!hits.length)return null;
 const work=hits.length*(CTX_PAD*8+MAX_BLOCK_LEN*6+CMH_ANCHOR_SNAPSHOT*2);
-if(index.budget<work)return null;
+if(index.budget<work){index.exhausted=true;return null;}
 index.budget-=work;
 const ranked=hits.map(hit=>({...hit,evidence:cmhAnchorContextScore(index,hit,a,c)}))
 .sort((x,y)=>y.evidence.score-x.evidence.score);
@@ -6273,7 +6282,8 @@ return!!(a.blockUnique&&evidence.sameBlock||evidence.id&&a.identityUnique!==fals
 }
 function cmhAnchorEditMap(oldText,newText,index){
 const cells=(oldText.length+1)*(newText.length+1);
-if(cells>1000000||index.budget<cells)return null;
+if(cells>1000000)return null;
+if(index.budget<cells){index.exhausted=true;return null;}
 const limit=Math.max(3,Math.floor(Math.max(oldText.length,newText.length)*0.2));
 if(Math.abs(oldText.length-newText.length)>limit)return null;
 index.budget-=cells;
@@ -6312,7 +6322,8 @@ if(blocks.length>16)return null;
 for(const block of blocks){
 const cells=(old.text.length+1)*(block.end-block.start+1);
 const work=a.unique===false?CTX_PAD*8+MAX_BLOCK_LEN*6+CMH_ANCHOR_SNAPSHOT*2:0;
-if(cells>1000000||index.budget<cells+work)continue;
+if(cells>1000000)continue;
+if(index.budget<cells+work){index.exhausted=true;continue;}
 index.budget-=work;
 const current=index.text.slice(block.start,block.end);
 const map=cmhAnchorEditMap(old.text,current,index);
@@ -6379,7 +6390,7 @@ const block=cmhAnchorBlock(index,l.start,r.end);
 if(!block||block.code||(a.block&&a.block.id&&block.id!==a.block.id))continue;
 if(a.unique===false){
 const work=CTX_PAD*8+MAX_BLOCK_LEN*6+CMH_ANCHOR_SNAPSHOT*2;
-if(index.budget<work)return null;
+if(index.budget<work){index.exhausted=true;return null;}
 index.budget-=work;
 if(!cmhAnchorRepeatedSafe(a,cmhAnchorContextScore(index,{start,end,block},a,{})))continue;
 }
@@ -6413,8 +6424,10 @@ function cmhReattachComments(){
 const roots=comments.filter(cmhIsTextAnchor);
 if(!roots.length)return;
 const index=cmhAnchorIndex();
+const recapture=[];
 let changed=false;
 for(const c of roots){
+index.exhausted=false;
 const prior=JSON.stringify([c.start,c.end,c.detached,c.cmAnchor]);
 const hasMetadata=c.cmAnchor!=null,raw=hasMetadata?c.cmAnchor:null;
 const valid=cmhAnchorMetadataValid(raw);
@@ -6446,14 +6459,19 @@ if(hit){
 if(!a)c.cmAnchor={...(knownVersion?raw:{}),v:1,
 original:raw&&raw.original||cmhAnchorOriginal(c)};
 c.start=hit.start;c.end=hit.end;c.detached=false;
-if(!verified)cmhCaptureTextAnchor(c,index);
+if(!verified)recapture.push(c);
 if(c.cmAnchor&&c.cmAnchor.v===1)delete c.cmAnchor.reason;
 }else if(a&&a.discontiguous&&c.start===undefined&&c.end===undefined){
 c.detached=true;
 }else if(!hasMetadata&&c.start===undefined&&c.end===undefined
 &&typeof c.quote=== "string"&&/\.\.\.|\u2026/.test(c.quote)){
-}else cmhDetachComment(c,index.limited?"budget":"unresolved");
+}else cmhDetachComment(c,index.limited||index.exhausted?"budget":"unresolved");
 if(JSON.stringify([c.start,c.end,c.detached,c.cmAnchor])!==prior)changed=true;
+}
+for(const c of recapture){
+const prior=JSON.stringify(c.cmAnchor);
+cmhCaptureTextAnchor(c,index);
+if(JSON.stringify(c.cmAnchor)!==prior)changed=true;
 }
 if(changed&&!saveComments()&&_cmhLastSaveQuota){
 showStartupDiagnostic("Reattached comment locations NOT saved to this browser (storage full) "
