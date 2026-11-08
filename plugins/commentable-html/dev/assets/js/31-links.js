@@ -354,7 +354,7 @@ function positionLinkAdd(a) {
   if (top < bounds.top) top = visible.bottom + 4;
   linkAddBtn.style.left = _clamp(left, bounds.left, bounds.right - btnW) + "px";
   linkAddBtn.style.top = _clamp(top, bounds.top, bounds.bottom - btnH) + "px";
-  if (hlBubbleMark && a.contains(hlBubbleMark) && !hlBubble.hidden) positionHlBubble(hlBubbleMark);
+  if (hlBubbleMark && a.contains(hlBubbleMark)) positionHlBubble(hlBubbleMark);
   return true;
 }
 function showLinkAddFor(a) {

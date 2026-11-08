@@ -43,12 +43,17 @@ function positionHlBubble(mark) {
       if (below + bh <= bounds.bottom) top = below;
       else if (above >= bounds.top) top = above;
       else if (add.right + 4 + bw <= bounds.right) left = add.right + 4;
-      else left = _clamp(add.left - bw - 4, bounds.left, bounds.right - bw);
+      else if (add.left - bw - 4 >= bounds.left) left = add.left - bw - 4;
+      else if (add.width + bw + 4 <= bounds.right - bounds.left && bh <= bounds.bottom - bounds.top) {
+        left = bounds.left;
+        linkAddBtn.style.left = left + bw + 4 + "px";
+      } else { hlBubble.hidden = true; return; }
     }
   }
   top  = _clamp(top, bounds.top, bounds.bottom - bh);
   hlBubble.style.left = left + "px";
   hlBubble.style.top  = top  + "px";
+  hlBubble.hidden = false;
 }
 function showHlBubbleFor(mark) {
   if (!mark.dataset.cid) return;

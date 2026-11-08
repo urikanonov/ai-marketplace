@@ -840,17 +840,21 @@ test.describe("link handling", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await stage(page);
     await commentLink(page, "ext", "edge link note");
-    for (const edge of ["top", "bottom", "table"]) {
+    for (const edge of ["top", "bottom", "table", "tiny", "narrow"]) {
       await page.mouse.move(1, 400);
       await page.locator("#ext").evaluate((a, edge) => {
-        if (edge === "table") {
+        if (["table", "narrow", "tiny"].includes(edge)) {
           a.style.cssText = "";
+          const old = a.closest(".cmh-table-scroll");
+          const width = edge === "table" ? 500 : edge === "narrow" ? 160 : 120;
           const wrap = document.createElement("div");
           wrap.className = "cmh-table-scroll";
-          wrap.style.cssText = "position:fixed;left:20px;top:200px;width:500px;height:48px;overflow:auto";
-          wrap.innerHTML = '<table style="width:800px;margin:0"><tbody><tr><td></td></tr></tbody></table>';
+          wrap.style.cssText = `position:fixed;left:20px;top:200px;width:${width}px;height:48px;overflow:auto`;
+          wrap.innerHTML = '<table style="width:800px;margin:0"><tbody><tr><td style="padding:0"></td></tr></tbody></table>';
           a.before(wrap);
           wrap.querySelector("td").appendChild(a);
+          if (old) old.replaceWith(wrap);
+          if (edge !== "table") a.style.cssText = `display:inline-block;width:110px;margin-left:${(width - 110) / 2}px`;
         } else {
           a.style.cssText = `position:fixed;left:1px;${edge}:1px`;
         }
@@ -858,12 +862,37 @@ test.describe("link handling", () => {
       await page.locator("#ext").hover();
       const bubble = page.locator("#hlBubble");
       const add = page.locator("#linkAddBtn");
-      await expect(bubble).toBeVisible();
       await expect(add).toBeVisible();
+      if (edge === "tiny") {
+        await expect(bubble).toBeHidden();
+        await page.locator("#ext").evaluate((a) => { a.closest(".cmh-table-scroll").style.width = "160px"; });
+        await page.setViewportSize({ width: 1279, height: 800 });
+        await expect(bubble).toBeVisible();
+        await page.locator("#ext").evaluate((a) => { a.closest(".cmh-table-scroll").style.width = "120px"; });
+        await page.setViewportSize({ width: 1280, height: 800 });
+        await expect(bubble).toBeHidden();
+        await add.click();
+        const composer = page.locator(".cm-composer").last();
+        await expect(composer).toBeVisible();
+        await composer.locator("textarea").fill("another tiny-table note");
+        await composer.locator('[data-act="save"]').click();
+        await expect(page.locator(".cm-card").filter({ hasText: "another tiny-table note" })).toHaveCount(1);
+        continue;
+      }
+      await expect(bubble).toBeVisible();
       const b = await bubble.boundingBox();
       const a = await add.boundingBox();
       expect(b.x < a.x + a.width && b.x + b.width > a.x
         && b.y < a.y + a.height && b.y + b.height > a.y, "hover controls do not overlap").toBe(false);
+      if (edge === "narrow") {
+        const wrap = await page.locator("#ext").locator("xpath=ancestor::div[contains(@class,'cmh-table-scroll')]").boundingBox();
+        for (const box of [a, b]) {
+          expect(box.x).toBeGreaterThanOrEqual(wrap.x);
+          expect(box.x + box.width).toBeLessThanOrEqual(wrap.x + wrap.width);
+          expect(box.y).toBeGreaterThanOrEqual(wrap.y);
+          expect(box.y + box.height).toBeLessThanOrEqual(wrap.y + wrap.height + 1);
+        }
+      }
       await bubble.click();
       const dialog = page.locator(".cm-comment-popover");
       await expect(dialog).toContainText("edge link note");

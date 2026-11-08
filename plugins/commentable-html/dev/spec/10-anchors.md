@@ -1,5 +1,12 @@
 ## Anchor types
 
+CMH-LINK-02 constrained-layout exception: when a short clipping container cannot fit the
+orange bubble beside Add Comment at its normal position, reposition both controls if the
+pair fits. If the pair cannot fit, prioritize Add Comment and hide the bubble; existing
+comments remain editable through the sidebar. Restore the bubble when space becomes available.
+Covered by `tests/74-links.spec.js` -
+`commented-link bubbles stay clickable beside Add Comment at viewport edges (CMH-LINK-02)`.
+
 | Feature id | Behavior | Covering tests |
 | --- | --- | --- |
 | CMH-TEXT-01 | Text comments capture quote, offsets, heading path, section, before/after context, occurrence count, containing block tag, and containing block text for agent pinpointing. | `tests/12-features.spec.js` - `the bundle carries the full documented contract for a text comment`, `a comment under headings surfaces Where / Pinpoint / In context metadata`; `tests/11-coverage.spec.js` - `anchors to the correct occurrence when the same phrase repeats` |
