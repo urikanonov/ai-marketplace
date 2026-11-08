@@ -20,7 +20,7 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 - Resolve every root before bounded evidence recapture, distinguish exhausted budgets, and
   never inherit unchecked uniqueness across changed revisions/layouts.
 - Add reproducible paired Chromium latency, work and allocation benchmarks with raw samples.
-- Deliberately raise JS, embedded-assets and Shareable ceilings by 5 KB for indexed recovery and
+- Deliberately raise JS by 4 KB and embedded-assets/Shareable ceilings by 5 KB for indexed recovery and
   adaptive mapping (765/965/985 KB). No dependency or rich-library payload is added.
 
 ## [1.859.1] - 2026-11-08

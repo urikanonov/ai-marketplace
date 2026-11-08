@@ -1,7 +1,8 @@
 # Local comment recovery performance
 
 Issue #1366 compares the delivered 1.859.0 runtime at
-`8bd2b3814f08d6c8d4d2dfddbe6437169c600053` with the 1.860.0 candidate.
+`8bd2b3814f08d6c8d4d2dfddbe6437169c600053` with the 1.860.0 candidate,
+rebased onto the separately delivered 1.859.1 link-hover fix.
 The benchmark driver is `tests/benchmark-reattachment.mjs`. Measured samples,
 source hashes, allocation diagnostics and environment metadata are retained in
 `reattachment-results.json`.
@@ -10,7 +11,10 @@ source hashes, allocation diagnostics and environment metadata are retained in
 
 Chromium 153.0.8010.12, Node 26.13.0, Windows x64, AMD EPYC 7763, 16 visible
 logical CPUs. Baseline and candidate run serially in alternating order, without
-concurrent test suites or review agents. This is a shared host, not an isolated
+concurrent test suites or review agents during the final primary and repeat.
+Earlier exploratory runs, including a primary run overlapping a finishing
+read-only reviewer, are not mixed into the final retained distributions.
+This is a shared host, not an isolated
 performance laboratory; these results are not universal latency guarantees.
 
 The kernel comparison runs the original and candidate reattachment partials
@@ -43,22 +47,30 @@ Warm median milliseconds from the 25-sample run:
 | Workload | Baseline | Candidate | Attachment outcome |
 | --- | ---: | ---: | --- |
 | Unchanged, 100 blocks / 20 comments | 1.8 | 0.3 | 20 / 20 in both |
-| Unchanged, 1000 blocks / 200 comments | 48.5 | 2.9 | 200 / 200 in both |
-| Unchanged, 3000 blocks / 500 comments | 186.6 | 9.8 | 500 / 500 in both |
-| Upgrade without layout basis, 500 comments | 189.2 | 32.1 | 500 / 500 in both |
-| Insertion, 3000 blocks / 30 comments | 182.4 | 32.1 | 11 -> 30 attached |
-| Normalized revision, 30 comments | 52.4 | 22.7 | 27 / 30 in both |
-| Small edits, 20 comments | 5.1 | 2.4 | 20 / 20 in both |
-| New selector capture, 3000 blocks | 160.6 | 15.9 | Correct offsets in both |
-| Index plus 1000 nested-block lookups | 33.3 | 23.9 | Same containing blocks |
-| Eight near-cell-limit alignments | 28.5 | 15.0 | Same alignment |
-| Unsafe duplicate deletion | 5.1 | 1.7 | Detached in both |
-| Normalize 7.56 million source units | 1193.1 | 111.2 | Same text |
-| Normalize 7.5 million densely spaced units | 1105.4 | 147.5 | Same text / boundaries |
+| Unchanged, 1000 blocks / 200 comments | 45.7 | 2.8 | 200 / 200 in both |
+| Unchanged, 3000 blocks / 500 comments | 185.8 | 9.5 | 500 / 500 in both |
+| Upgrade without layout basis, 500 comments | 188.0 | 32.7 | 500 / 500 in both |
+| Insertion, 3000 blocks / 30 comments | 176.5 | 32.1 | 11 -> 30 attached |
+| Mixed identity/quote-only insertion, 30 comments | 171.2 | 27.1 | 10 -> 30 attached |
+| Normalized revision, 30 comments | 50.4 | 22.5 | 27 -> 30 attached |
+| Small edits, 20 comments | 5.2 | 2.6 | 20 / 20 in both |
+| New selector capture, 3000 blocks | 159.1 | 16.0 | Correct offsets in both |
+| Index plus 1000 nested-block lookups | 32.9 | 23.2 | Same containing blocks |
+| Eight near-cell-limit alignments | 28.6 | 14.6 | Same alignment |
+| Unsafe duplicate deletion | 4.9 | 1.6 | Detached in both |
+| Normalize 7.56 million source units | 1202.2 | 30.6 | Same text |
+| Normalize 7.5 million densely spaced units | 1123.0 | 150.9 | Same text / boundaries |
 
-The large unchanged resolver is about 19x faster; new capture is about 10x
+The large unchanged resolver is about 20x faster; new capture is about 10x
 faster. These are kernel improvements, not whole-page speedups. Cold and p95
 values, which can differ materially from warmed kernels, are in the raw results.
+
+A final measured refinement removed four no-op replacement passes on already
+normalized prose: the near-limit candidate fell from an exploratory 112.4 ms
+to 30.6 ms, about 39x faster than the delivered baseline. Its fast detector still
+recognizes every whitespace/typography class folded by the existing normalizer.
+All roots now resolve before bounded recapture, so insertion, mixed identities
+and normalized revisions recover all 30 roots without increasing the 64m budget.
 
 Mapping allocations fall from 60,480,000 to zero bytes for length-preserving
 normalization, and from 60,000,000 to 27,000,000 bytes for dense whitespace
@@ -73,11 +85,12 @@ Five-sample medians, milliseconds:
 
 | Native saved comments / source size | Baseline ready | Candidate ready |
 | --- | ---: | ---: |
-| 200 comments / about 296k source units | 1162.1 | 619.2 |
-| 100 comments / about 1.06m source units | 1470.7 | 610.1 |
-| 500 comments / about 1.06m source units | 7318.7 | 1253.6 |
-| 30 comments after insertion / about 1.06m units | 762.6 | 559.8 |
-| 200 legacy missing-context comments / about 296k units | 8471.8 | 630.1 |
+| 200 comments / about 296k source units | 1153.1 | 606.0 |
+| 100 comments / about 1.06m source units | 1496.4 | 613.8 |
+| 500 comments / about 1.06m source units | 6939.7 | 1193.9 |
+| 30 comments after insertion / about 1.06m units | 756.3 | 565.8 |
+| 30 mixed identity/quote-only comments after insertion | 734.5 | 541.8 |
+| 200 legacy missing-context comments / about 296k units | 8610.2 | 624.6 |
 
 The original full-page probe exposed about eight seconds of legacy context
 backfill, overwhelming the resolver gains. Sharing one immutable context/layout
@@ -88,16 +101,16 @@ still rebuilds its index, and historical context fields are never replaced.
 
 Native medium startup improved about 47%, native large startup about 59% at
 100 comments and 83% at 500 comments, and legacy startup about 93%.
-The 500-comment highlight phase fell from 5935.0 to 63.2 ms while restoring
-all 500 comments. Legacy context backfill fell from 7390.3 to 119.3 ms.
+The 500-comment highlight phase fell from 5649.1 to 61.0 ms while restoring
+all 500 comments. Legacy context backfill fell from 7563.0 to 118.9 ms.
 Parsing, unrelated startup and sidebar/layout work
 remain in these totals, so a 19x resolver improvement does not imply a 19x page
 improvement. The repeated linear offset lookups, occurrence scans, full edit
 matrix allocation and browser rendering are deliberately still visible costs,
 not hidden behind a persistent DOM cache or relaxed limits.
 
-The independent repeat measured large unchanged recovery at 202.1 -> 10.8 ms
-(18.7x) and near-limit normalization at 1532.9 -> 141.8 ms (10.8x).
+The independent repeat measured large unchanged recovery at 188.5 -> 10.1 ms
+(18.7x) and near-limit normalization at 1172.4 -> 30.2 ms (38.8x).
 Absolute times varied, particularly the long normalization run, while the
 speedup ratios and attachment outcomes remained consistent. Raw repeated
 samples are retained rather than selecting only the fastest run.
@@ -141,16 +154,25 @@ regeneration, not these benchmarks.
 
 ## Safeguards
 
-Eight red-first deterministic performance tests cover evidence recapture,
+Twelve red-first deterministic work/correctness tests cover evidence recapture,
 layout invalidation, block containment, identity/sparse/dense normalization,
-banded alignment, intact-block proof, shared context and highlight indexing.
+banded alignment, intact-block proof, shared context and highlight indexing,
+resolution-before-recapture, conservative unchecked uniqueness, budget refusal
+diagnostics and bypassing four no-op replacement passes on unchanged prose.
 They assert work/allocation ceilings plus actual attachment/DOM correctness,
 not flaky wall-clock limits. The full recovery, export, storage, skipped-text,
 code and legacy-runtime regression suites remain required.
 
+The first independent review identified recapture starvation, unchecked
+cross-revision uniqueness and misleading budget diagnostics. Each was reproduced
+RED before its fix. Evidence reuse requires matching revision, layout basis and
+normalization, not revision alone: code/tag changes can alter eligible normalized
+occurrences without changing the source/identity revision.
+
 Source limits (8m units), snapshots (4096), candidate count (128), shared scan
 budget (64m), fuzzy-block and alignment-cell limits are unchanged. No message,
 thread, historical evidence or foreign metadata is discarded. The additive
-layout basis does not require a new persisted format. Runtime/asset/Shareable
-size ceilings rise by a deliberate 5000 bytes; every rebuilt payload remains
+layout basis does not require a new persisted format. Runtime size ceilings
+rise by 4000 bytes from current main, and asset/Shareable ceilings by 5000 bytes;
+every rebuilt payload remains
 inside its enforced budget.
