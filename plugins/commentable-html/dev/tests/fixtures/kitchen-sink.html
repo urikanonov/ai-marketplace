@@ -6083,19 +6083,27 @@ const to=block?Math.min(block.end,Math.max(end,from+CMH_ANCHOR_SNAPSHOT)):end;
 const bounded=to-from<=CMH_ANCHOR_SNAPSHOT;
 const exact=end-start<=CMH_ANCHOR_SNAPSHOT?index.text.slice(start,end):undefined;
 const blockText=block&&bounded?index.text.slice(from,to):"";
-const unique=exact===undefined?undefined:cmhAnchorUnique(index,exact);
-const hits=exact===undefined?null:index.matches.get("rp"+exact);
+const normalized=!(block&&block.code||c.isCode);
+const prefix=index.text.slice(Math.max(block?block.start:0,start-CTX_PAD),start);
+const suffix=index.text.slice(end,Math.min(block?block.end:index.text.length,end+CTX_PAD));
+const unique=exact===undefined?undefined:cmhAnchorUnique(index,exact,normalized);
+const hits=exact===undefined?null:index.matches.get((normalized?"np":"rp")+exact);
+const rawHits=exact===undefined?null:index.matches.get("rp"+exact);
 const identityUnique=!!(block&&block.id&&hits
-&&hits.filter(hit=>hit.block&&hit.block.id===block.id).length===1);
+&&rawHits&&[hits,rawHits].every(list=>list.filter(hit=>hit.block&&hit.block.id===block.id).length===1));
 const blockUnique=block&&from===block.start&&to===block.end
-?cmhAnchorUnique(index,blockText):false;
+?cmhAnchorUnique(index,blockText,normalized,block.tag):false;
+const contextUnique=exact===undefined?undefined:cmhAnchorUnique(index,prefix+exact+suffix,normalized);
+const sameBasis=prior.normalizedEvidence===normalized;
 c.cmAnchor={...prior,v:1,revision:index.revision,start,end,
-exact,unique:unique===undefined&&prior.exact===exact?prior.unique:unique,
-identityUnique:unique===undefined&&prior.exact===exact?prior.identityUnique:identityUnique,
-blockUnique:blockUnique===undefined&&prior.block&&prior.block.text===blockText
+exact,normalizedEvidence:normalized,
+unique:unique===undefined&&sameBasis&&prior.exact===exact?prior.unique:unique,
+identityUnique:unique===undefined&&sameBasis&&prior.exact===exact?prior.identityUnique:identityUnique,
+contextUnique:contextUnique===undefined&&sameBasis&&prior.exact===exact
+&&prior.prefix===prefix&&prior.suffix===suffix?prior.contextUnique:contextUnique,
+blockUnique:blockUnique===undefined&&sameBasis&&prior.block&&prior.block.text===blockText
 ?prior.blockUnique:blockUnique,
-prefix:index.text.slice(Math.max(block?block.start:0,start-CTX_PAD),start),
-suffix:index.text.slice(end,Math.min(block?block.end:index.text.length,end+CTX_PAD)),
+prefix,suffix,
 heading:block?block.heading:"",
 code:block?block.code:!!c.isCode,
 block:block?{id:block.id,tag:block.tag,from:from-block.start,
@@ -6114,7 +6122,7 @@ if(c.cmAnchor&&c.cmAnchor.v===1)c.cmAnchor.reason=reason;
 }
 function cmhAnchorMetadataValid(a){
 if(!a||typeof a!== "object"||Array.isArray(a)||a.v!==1)return false;
-for(const key of["unique","blockUnique","identityUnique","discontiguous"]){
+for(const key of["unique","blockUnique","identityUnique","contextUnique","normalizedEvidence","discontiguous"]){
 if(a[key]!==undefined&&typeof a[key]!== "boolean")return false;
 }
 for(const key of["exact","prefix","suffix","revision","heading"]){
@@ -6172,9 +6180,9 @@ map=index.normalized;text=map.text;
 needle=cmhAnchorNormalize(quote,false,false).text;
 }
 const hits=[];
-let pos=0;
+let pos=0,examined=0;
 while(needle&&(pos=text.indexOf(needle,pos))!==-1){
-if(hits.length>=CMH_ANCHOR_CANDIDATES){index.matches.set(key,null);return null;}
+if(examined++>=CMH_ANCHOR_CANDIDATES){index.matches.set(key,null);return null;}
 const start=map?map.starts[pos]:pos;
 const end=map?map.ends[pos+needle.length-1]:pos+needle.length;
 const block=cmhAnchorBlock(index,start,end);
@@ -6184,9 +6192,12 @@ pos++;
 index.matches.set(key,hits);
 return hits;
 }
-function cmhAnchorUnique(index,quote){
-const hits=cmhAnchorOccurrences(index,quote,false,false);
-return hits?hits.length===1:index.matches.has("rp"+quote)?false:undefined;
+function cmhAnchorUnique(index,quote,normalized,tag){
+const raw=normalized?cmhAnchorUnique(index,quote,false,tag):true;
+const hits=cmhAnchorOccurrences(index,quote,false,!!normalized);
+const unique=hits?hits.filter(hit=>!tag||hit.block&&hit.block.tag===tag).length===1
+:index.matches.has((normalized?"np":"rp")+quote)?false:undefined;
+return raw===false||unique===false?false:raw===undefined?undefined:unique;
 }
 function cmhAnchorContextScore(index,hit,a,c){
 const b=hit.block,text=index.text;
@@ -6207,7 +6218,7 @@ const heading=a&&a.heading!==undefined?a.heading
 :cmhAnchorLegacyHeading(c);
 const id=!!(a&&a.block&&a.block.id&&b&&a.block.id===b.id);
 const sameBlock=!!(a&&a.block&&b&&a.block.text
-&&a.block.from===0&&b.end-b.start<=CMH_ANCHOR_SNAPSHOT
+&&a.block.tag===b.tag&&a.block.from===0&&b.end-b.start<=CMH_ANCHOR_SNAPSHOT
 &&clean(a.block.text)===clean(text.slice(b.start,b.end)));
 return{score:Math.min(left,40)+Math.min(right,40)+(id?24:0)
 +(b&&heading&&heading===b.heading?20:0)+(sameBlock?32:0),
@@ -6221,8 +6232,7 @@ index.budget-=work;
 const ranked=hits.map(hit=>({...hit,evidence:cmhAnchorContextScore(index,hit,a,c)}))
 .sort((x,y)=>y.evidence.score-x.evidence.score);
 const best=ranked[0],evidence=best.evidence;
-if(a&&a.unique===false&&!a.blockUnique
-&&!(evidence.id&&a.identityUnique!==false))return null;
+if(!cmhAnchorRepeatedSafe(a,evidence))return null;
 if(a&&a.block&&a.block.id&&index.blocks.some(b=>b.id===a.block.id)
 &&!evidence.id&&evidence.context<16)return null;
 if(ranked.length===1){
@@ -6236,6 +6246,14 @@ return null;
 if(evidence.score<16||evidence.score-ranked[1].evidence.score<12
 ||(!evidence.sameBlock&&evidence.context<6))return null;
 return best;
+}
+function cmhAnchorRepeatedSafe(a,evidence){
+if(!a||a.unique!==false)return true;
+const clean=value=>cmhAnchorNormalize(value||"",!!a.code,false).text;
+return!!(a.blockUnique&&evidence.sameBlock||evidence.id&&a.identityUnique!==false
+||a.contextUnique&&evidence.context>=16
+&&evidence.left===clean((a.prefix||"").slice(-CTX_PAD*2)).length
+&&evidence.right===clean((a.suffix||"").slice(0,CTX_PAD*2)).length);
 }
 function cmhAnchorEditMap(oldText,newText,index){
 const cells=(oldText.length+1)*(newText.length+1);
@@ -6269,13 +6287,14 @@ return map;
 function cmhAnchorFuzzy(index,a){
 if(!a||!a.block||!a.block.text||a.block.from!==0||a.code)return null;
 const old=a.block,candidates=[];
-if(a.unique===false&&!a.blockUnique&&(!old.id||a.identityUnique===false))return null;
 const blocks=index.blocks.filter(b=>b.tag===old.tag
 &&(old.id?b.id===old.id:(!a.heading||b.heading===a.heading)));
 if(blocks.length>16)return null;
 for(const block of blocks){
 const cells=(old.text.length+1)*(block.end-block.start+1);
-if(cells>1000000||index.budget<cells)continue;
+const work=a.unique===false?CTX_PAD*8+MAX_BLOCK_LEN*6+CMH_ANCHOR_SNAPSHOT*2:0;
+if(cells>1000000||index.budget<cells+work)continue;
+index.budget-=work;
 const current=index.text.slice(block.start,block.end);
 const map=cmhAnchorEditMap(old.text,current,index);
 if(!map)continue;
@@ -6299,7 +6318,9 @@ let flank=0;
 for(let k=Math.max(0,s-24);k<s;k++)if(map[k]>=0)flank++;
 for(let k=e;k<Math.min(map.length,e+24);k++)if(map[k]>=0)flank++;
 if(!(s===0&&e===map.length)&&flank<16)continue;
-candidates.push({start:block.start+start,end:block.start+end,block});
+const hit={start:block.start+start,end:block.start+end,block};
+if(a.unique===false&&!cmhAnchorRepeatedSafe(a,cmhAnchorContextScore(index,hit,a,{})))continue;
+candidates.push(hit);
 }
 return candidates.length===1?candidates[0]:null;
 }
@@ -6337,8 +6358,12 @@ const start=l.end,end=r.start;
 if(end<=start||end-start>a.exact.length*1.5+16)continue;
 const block=cmhAnchorBlock(index,l.start,r.end);
 if(!block||block.code||(a.block&&a.block.id&&block.id!==a.block.id))continue;
-if(a.unique===false&&!a.blockUnique
-&&!(a.block&&a.block.id&&block.id===a.block.id&&a.identityUnique!==false))continue;
+if(a.unique===false){
+const work=CTX_PAD*8+MAX_BLOCK_LEN*6+CMH_ANCHOR_SNAPSHOT*2;
+if(index.budget<work)return null;
+index.budget-=work;
+if(!cmhAnchorRepeatedSafe(a,cmhAnchorContextScore(index,{start,end,block},a,{})))continue;
+}
 const old=prefix+a.exact+suffix;
 const current=index.text.slice(l.start,r.end);
 const map=cmhAnchorEditMap(old,current,index);
@@ -6367,9 +6392,11 @@ const a=valid?raw:null;
 const knownVersion=raw&&typeof raw=== "object"&&!Array.isArray(raw)&&raw.v===1;
 let hit=null;
 if(!index.limited&&(!hasMetadata||valid||knownVersion)){
-const quote=a&&typeof a.exact=== "string"?a.exact:typeof c.quote=== "string"?c.quote:"";
-if(a&&a.revision===index.revision&&a.start===c.start&&a.end===c.end
-&&Number.isInteger(c.start)&&c.end>c.start
+const quote=a&&typeof a.exact=== "string"&&a.exact?a.exact:typeof c.quote=== "string"?c.quote:"";
+if(a&&!quote&&a.revision===index.revision&&a.end<=index.text.length)
+hit={start:a.start,end:a.end};
+else if(a&&a.revision===index.revision&&a.start===c.start&&a.end===c.end
+&&Number.isInteger(c.start)&&c.start>=0&&c.end>c.start&&c.end<=index.text.length
 &&index.text.slice(c.start,c.end)===quote)hit={start:c.start,end:c.end};
 else if(!quote&&!hasMetadata&&Number.isInteger(c.start)&&Number.isInteger(c.end)
 &&c.start>=0&&c.end>c.start&&c.end<=index.text.length)hit={start:c.start,end:c.end};

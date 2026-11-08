@@ -23,11 +23,15 @@ supported small edits can recover. Repeated matches need distinguishing evidence
 nearest offset or ordinal alone is not permission to guess. Substantial rewrites or missing evidence
 may remain Detached: no algorithm can infer a reviewer's intended location from arbitrary new prose.
 
-New selectors also remember quote/block uniqueness and whether the quote was unique within its
-identified block or ancestor. Removing one of previously indistinguishable copies cannot make
-the surviving copy a safe replacement: a shared ancestor ID alone cannot distinguish them.
-Older selectors without this historical evidence still use their available quote/context;
-they cannot reconstruct whether a deleted duplicate used to exist.
+New selectors also remember quote/block/identity/context uniqueness across raw exact and normalized
+prose recovery (`normalizedEvidence`); code evidence stays raw and raw code copies still count.
+Whole-block identity includes its tag. Removing one of previously
+equivalent copies cannot make the survivor a safe replacement. Historical block uniqueness helps
+only while the block still matches; a shared ancestor ID alone cannot distinguish repeated quotes
+inside it. Otherwise occurrence-specific identity or historically unique, fully preserved flanks
+must survive. This also permits supported edits to repeated selections without guessing.
+Older selectors without this historical or normalization-aware evidence still use their available
+quote/context; they cannot reconstruct whether a deleted equivalent copy used to exist.
 
 Sorting can scatter a multi-row highlight into noncontiguous fragments. Its saved selectors then
 require an intact raw/normalized quote match, never an approximate interval that encloses unrelated
@@ -51,8 +55,11 @@ Automatic recovery warns at startup too if quota pressure prevents saving the re
 
 ## Compatibility
 
-Legacy comments with no saved quote preserve their offset-only behavior; there is no historical
-text evidence with which to verify an older revision. Malformed known-version selectors can fall
+Legacy comments with no saved quote preserve their initial offset-only behavior; there is no
+historical text evidence with which to verify an older revision. Once migrated, a matching
+revision/offset fingerprint preserves unchanged reloads, including selections beyond the quote
+snapshot limit, and restores saved positions if that verified revision returns. Changed revisions
+still require recovery evidence. Malformed known-version selectors can fall
 back to valid legacy quote/context. Unknown future selectors stay Detached automatically, but an
 explicit manual selection adopts current selectors and retains the foreign object under
 `cmAnchor.previousSelector`.

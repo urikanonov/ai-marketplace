@@ -197,6 +197,92 @@ test("deleting one historically identical paragraph cannot bind its comment to t
   }
 });
 
+test("normalized historical duplicates cannot become safe merely by deleting their original (CMH-REATTACH-05)", async ({ page }) => {
+  for (const [original, copy, copyTag = "p"] of [
+    ['A "repeated review" remains.', "A \u201crepeated review\u201d remains."],
+    ["A repeated review remains.", "A  repeated review remains."],
+    ["A repeated review remains.", "A repeated review remains.", "pre"],
+  ]) {
+    await harness(page, `<p>${original}</p><${copyTag}>${copy}</${copyTag}>`);
+    const c = await page.evaluate(({ original, copy, copyTag }) => {
+      anchorTest.add(original);
+      anchorTest.set(`<${copyTag}>${copy}</${copyTag}>`);
+      return anchorTest.resolve()[0];
+    }, { original, copy, copyTag });
+    expect(c.detached).toBe(true);
+  }
+});
+
+test("a unique historical block cannot substitute for the original repeated occurrence (CMH-REATTACH-05)", async ({ page }) => {
+  for (const [source, quote, revised] of [
+    ['<p id="budget">Budget: thirty minutes. Revised budget: thirty minutes.</p>',
+      "thirty minutes.", '<p id="budget">Revised budget: thirty minutes.</p>'],
+    ["<p>Original reasoning. A repeated lengthy selected review passage. Original conclusion.</p>"
+      + "<p>Other reasoning. A repeated lengthy selected review passage. Other conclusion.</p>",
+      "A repeated lengthy selected review passage.",
+      "<p>Other reasoning. A repeated lengthy selected review passage. Other conclusion.</p>"],
+  ]) {
+    await harness(page, source);
+    const c = await page.evaluate(({ quote, revised }) => {
+      anchorTest.add(quote);
+      anchorTest.set(revised);
+      return anchorTest.resolve()[0];
+    }, { quote, revised });
+    expect(c.detached).toBe(true);
+  }
+});
+
+test("occurrence-specific preserved flanks can recover an edited repeated selection (CMH-REATTACH-04)", async ({ page }) => {
+  const source = "<p>" + "Stable introduction. ".repeat(5)
+    + "Original reliable preceding context. selected brown fox. Original reliable following context."
+    + " Stable conclusion.".repeat(5) + "</p>"
+    + "<p>Other preceding context. selected brown fox. Other following context.</p>";
+  await harness(page, source);
+  const recovered = await page.evaluate(html => {
+    const c = anchorTest.add("selected brown fox");
+    anchorTest.set(html.replace("Stable introduction.", "Revised introduction.").replace("selected brown fox", "selected red fox"));
+    anchorTest.resolve();
+    return { c, text: anchorTest.text().slice(c.start, c.end) };
+  }, source);
+  expect(recovered.c.detached).toBe(false);
+  expect(recovered.text).toBe("selected red fox");
+});
+
+test("excluded code occurrences still bound normalized recovery work (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<pre>\u201crepeated recovery target\u201d</pre>".repeat(1000));
+  const result = await page.evaluate(() => {
+    const index = anchorTest.index(), original = cmhAnchorBlock;
+    let lookups = 0;
+    cmhAnchorBlock = (...args) => { lookups++; return original(...args); };
+    try {
+      return { hits: cmhAnchorOccurrences(index, '"repeated recovery target"', false, true),
+        lookups };
+    } finally { cmhAnchorBlock = original; }
+  });
+  expect(result.lookups).toBeLessThanOrEqual(128);
+  expect(result.hits).toBeNull();
+});
+
+test("large quote-less legacy selections survive unchanged migrated reloads (CMH-REATTACH-07)", async ({ page }) => {
+  await harness(page, "<p>" + "x".repeat(5000) + "</p>");
+  const result = await page.evaluate(() => {
+    anchorTest.replace([{ id: "long-legacy", start: 0, end: 5000, note: "Legacy note" }]);
+    anchorTest.resolve();
+    anchorTest.replace(JSON.parse(JSON.stringify(anchorTest.comments())));
+    anchorTest.resolve();
+    const unchanged = JSON.parse(JSON.stringify(anchorTest.comments()[0]));
+    anchorTest.set("<p>New prefix." + "x".repeat(5000) + "</p>");
+    anchorTest.resolve();
+    const revised = JSON.parse(JSON.stringify(anchorTest.comments()[0]));
+    anchorTest.set("<p>" + "x".repeat(5000) + "</p>");
+    anchorTest.resolve();
+    return { unchanged, revised, recovered: anchorTest.comments()[0] };
+  });
+  expect(result.unchanged).toMatchObject({ start: 0, end: 5000, detached: false });
+  expect(result.revised.detached).toBe(true);
+  expect(result.recovered).toMatchObject({ start: 0, end: 5000, detached: false });
+});
+
 test("a huge rewrite cannot overflow small-block edit alignment into a false attachment (CMH-REATTACH-08)", async ({ page }) => {
   await harness(page, '<p id="stable">abc</p>');
   const c = await page.evaluate(() => {
