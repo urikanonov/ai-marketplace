@@ -100,7 +100,7 @@ function rangeFromOffsets(start, end, nodes) {
   // An optional precomputed text-node list lets a caller restoring/backfilling MANY comments reuse
   // one getTextNodes() walk across lookups instead of re-walking the whole document per comment
   // (O(count x doc) -> O(count + doc)). It is only safe to reuse while the DOM is unchanged, so a
-  // caller must rebuild the list after any mutation (e.g. a successful wrapRangeWithMark).
+  // caller must update or rebuild the list after any mutation (e.g. split nodes during wrapping).
   nodes = nodes || getTextNodes();
   let total = 0;
   const range = document.createRange();

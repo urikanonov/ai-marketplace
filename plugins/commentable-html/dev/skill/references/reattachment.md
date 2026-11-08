@@ -53,6 +53,17 @@ the writer never compresses beyond its reader's 8-million-character bound. A rep
 session remains exportable; no message or foreign selector is silently discarded to fit.
 Automatic recovery warns at startup too if quota pressure prevents saving the refreshed locations.
 
+Verified unchanged positions also carry an additive layout `basis`: matching source/identity and
+layout fingerprints avoid rescanning historical evidence, while changes to code or block structure
+still refresh it. An intact complete block with a unique current ID and historical occurrence
+identity can verify its selected text locally. Shared or changed blocks do not qualify for that
+shortcut. Normalization maps and block indexes are ephemeral, rebuilt from the displayed document,
+and never add a new storage format or relax the existing recovery limits.
+Legacy context backfill shares an immutable per-pass text/layout scan without replacing
+historical fields. Highlight restoration updates its local text-node index when wrapping splits
+nodes, and rebuilds it after failed-wrap cleanup. Neither index is persisted or reused in a later
+capture/restore operation.
+
 ## Compatibility
 
 Legacy comments with no saved quote preserve their initial offset-only behavior; there is no

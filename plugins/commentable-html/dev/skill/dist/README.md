@@ -1,6 +1,6 @@
 # dist
 
-**Version:** `1.859.1`
+**Version:** `1.860.0`
 
 Generated Commentable HTML bundle. Do not hand-edit these files.
 

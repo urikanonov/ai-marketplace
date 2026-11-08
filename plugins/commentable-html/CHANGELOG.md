@@ -4,6 +4,22 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.860.0] - 2026-11-08
+
+### Changed
+
+- Avoid rescanning evidence on verified unchanged reloads, guarded by an additive layout fingerprint.
+  Recover intact uniquely identified blocks locally instead of exhausting full-document scan budgets.
+- Index nested block containment, normalize prose using native string operations and sparse or
+  single-array offset maps, and restrict small-edit arithmetic to the admissible edit band.
+  Ambiguity rules, code semantics, original evidence and older-runtime compatibility are retained.
+- Share immutable context/layout work during legacy backfill and scope highlight wrapping to
+  selected subtrees with in-place split-node index updates, retaining skipped-text exclusion
+  and the existing backfill cap. Failed-wrap cleanup still rebuilds its index.
+- Add reproducible paired Chromium latency, work and allocation benchmarks with raw samples.
+- Deliberately raise JS, embedded-assets and Shareable ceilings by 5 KB for indexed recovery and
+  adaptive mapping (765/965/985 KB). No dependency or rich-library payload is added.
+
 ## [1.859.1] - 2026-11-08
 
 ### Fixed

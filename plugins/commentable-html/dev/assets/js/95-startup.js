@@ -53,9 +53,8 @@ function restoreHighlights() {
   let maxAppliedEnd = -Infinity;
   // Reuse ONE text-node index across the whole restore. A comment that fails to resolve (offsets
   // beyond the document, the flood case) does not mutate the DOM, so the same index serves every
-  // failing lookup - turning a flood of unresolvable comments from O(count x doc) into O(count +
-  // doc). A successful wrapRangeWithMark() splits text nodes and inserts marks, so rebuild the
-  // index after each wrap (and after a failed wrap's unwrap/normalize) before the next lookup.
+  // failing lookup. Successful wrapping updates the split nodes in place; a failed wrap's
+  // unwrap/normalize requires rebuilding the index before the next lookup.
   let nodes = getTextNodes();
   let detached = false;
   sorted.forEach(c => {
@@ -64,7 +63,7 @@ function restoreHighlights() {
     }
     const r = rangeFromOffsets(c.start, c.end, nodes);
     if (r) {
-      try { wrapRangeWithMark(r, c.id); maxAppliedEnd = Math.max(maxAppliedEnd, c.end); nodes = getTextNodes(); }
+      try { wrapRangeWithMark(r, c.id, nodes); maxAppliedEnd = Math.max(maxAppliedEnd, c.end); }
       catch (e) { unwrapMarks(c.id); nodes = getTextNodes(); cmhDetachComment(c, "wrap"); detached = true; console.warn("Could not restore highlight for", c.id, e); }
     } else {
       cmhDetachComment(c, "range"); detached = true;
