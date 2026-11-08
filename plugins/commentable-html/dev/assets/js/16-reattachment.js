@@ -3,6 +3,8 @@ const CMH_ANCHOR_SNAPSHOT = 4096;
 const CMH_ANCHOR_TEXT_LIMIT = 8000000;
 const CMH_ANCHOR_SCAN_BUDGET = 64000000;
 const CMH_ANCHOR_CANDIDATES = 128;
+// Capture before startup adds heading/TOC ids; those are chrome, not authored revision evidence.
+const cmhAuthoredIds = new Set([...root.querySelectorAll("[id]")].map(el => el.id));
 function cmhIsTextAnchor(c) {
   return !!c && !c.parentId && (!c.anchorType || c.anchorType === "text")
     && (typeof c.quote === "string" || Number.isFinite(c.start) || !!c.cmAnchor);
@@ -58,7 +60,7 @@ function cmhAnchorIndex() {
   // Highlight extraction can split block elements without changing source text or identities.
   const identities = [], seenIds = new Set();
   for (const el of root.querySelectorAll("[id]")) {
-    if (el.closest(".cm-skip") || seenIds.has(el.id)) continue;
+    if (!cmhAuthoredIds.has(el.id) || el.closest(".cm-skip") || seenIds.has(el.id)) continue;
     seenIds.add(el.id); identities.push(el.id.slice(0, 1024));
   }
   return { text, blocks, nodes, revision: cmhAnchorHash(text) + ":" + cmhAnchorHash(JSON.stringify(identities)),
@@ -119,6 +121,7 @@ function cmhCaptureTextAnchor(c, index) {
       start: start - from, end: end - from, text: blockText } : null,
     original: prior.original || cmhAnchorOriginal(c) };
   delete c.cmAnchor.reason;
+  delete c.cmAnchor.discontiguous;
   return true;
 }
 function cmhDetachComment(c, reason) {
@@ -131,7 +134,7 @@ function cmhDetachComment(c, reason) {
 }
 function cmhAnchorMetadataValid(a) {
   if (!a || typeof a !== "object" || Array.isArray(a) || a.v !== 1) return false;
-  for (const key of ["unique", "blockUnique", "identityUnique"]) {
+  for (const key of ["unique", "blockUnique", "identityUnique", "discontiguous"]) {
     if (a[key] !== undefined && typeof a[key] !== "boolean") return false;
   }
   for (const key of ["exact", "prefix", "suffix", "revision", "heading"]) {
@@ -396,8 +399,8 @@ function cmhReattachComments() {
         hit = cmhAnchorChoose(index, cmhAnchorOccurrences(index, quote, !!(a && a.code || c.isCode), false), a, c, quote);
         if (!hit && !(a && a.code || c.isCode)) hit = cmhAnchorChoose(index,
           cmhAnchorOccurrences(index, quote, false, true), a, c, quote);
-        if (!hit) hit = cmhAnchorFuzzy(index, a && a.block ? a : cmhAnchorLegacySelector(c));
-        if (!hit) hit = cmhAnchorFlanked(index, a);
+        if (!hit && !(a && a.discontiguous)) hit = cmhAnchorFuzzy(index, a && a.block ? a : cmhAnchorLegacySelector(c));
+        if (!hit && !(a && a.discontiguous)) hit = cmhAnchorFlanked(index, a);
       }
     }
     if (hit) {
@@ -406,6 +409,8 @@ function cmhReattachComments() {
       c.start = hit.start; c.end = hit.end; c.detached = false;
       cmhCaptureTextAnchor(c, index);
       if (c.cmAnchor && c.cmAnchor.v === 1) delete c.cmAnchor.reason;
+    } else if (a && a.discontiguous && c.start === undefined && c.end === undefined) {
+      c.detached = true;
     } else if (!hasMetadata && c.start === undefined && c.end === undefined
       && typeof c.quote === "string" && /\.\.\.|\u2026/.test(c.quote)) {
       // Older sorted-table exports deliberately retain a discontiguous quote without offsets.

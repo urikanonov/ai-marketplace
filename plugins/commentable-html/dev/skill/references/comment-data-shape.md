@@ -42,7 +42,8 @@ Each comment captures concrete pinpoint info, not just the user's note - enough 
 
 Text comments additionally carry optional `cmAnchor` recovery selectors and `detached` state.
 Their legacy fields and array storage format remain compatible. Detached comments retain their
-original quote/context but use safe out-of-document offsets until confidently or manually reattached.
+original quote/context but use safe out-of-document or already unavailable offsets until confidently
+or manually reattached.
 See [text reattachment](reattachment.md) for revision handling, recovery and downgrade limits.
 
 ### Mermaid-node comments (`anchorType: "mermaid"`)

@@ -164,6 +164,7 @@ function recomputeTextOffsets(persist) {
   function dropOffsets(c) {
     if (c.start !== undefined || c.end !== undefined) {
       delete c.start; delete c.end; changed = true;
+      if (c.cmAnchor && c.cmAnchor.v === 1) c.cmAnchor = { ...c.cmAnchor, discontiguous: true };
     }
   }
   function markedTextNode(markList, reverse) {

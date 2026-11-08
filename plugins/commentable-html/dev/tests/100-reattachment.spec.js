@@ -26,7 +26,13 @@ async function harness(page, html) {
     ${reattachment ? "" : "function cmhCaptureTextAnchor() {} function cmhReattachComments() {} function cmhIsDetached(c) { return !!c.detached; }"}
     function restoreHighlights()${restore}
     window.anchorTest = {
-      set(html) { root.innerHTML = html; },
+      set(html) {
+        root.innerHTML = html;
+        if (typeof cmhAuthoredIds !== "undefined") {
+          cmhAuthoredIds.clear();
+          root.querySelectorAll("[id]").forEach(el => cmhAuthoredIds.add(el.id));
+        }
+      },
       text() { return getTextNodes().map(n => n.nodeValue).join(""); },
       add(quote, extra = {}, occurrence = 0) {
         const text = this.text(); let start = -1;
@@ -76,6 +82,18 @@ test("finds moved exact passages without ordinal or distance guesses (CMH-REATTA
   });
   expect(c.c.start).toBe(c.text.indexOf("distinct selected passage"));
   expect(c.c.detached).not.toBe(true);
+});
+
+test("runtime-generated identities cannot detach unchanged duplicate text (CMH-REATTACH-02)", async ({ page }) => {
+  await harness(page, "<nav>Repeated</nav><h2>Repeated</h2>");
+  const result = await page.evaluate(() => {
+    root.querySelector("nav").id = "cmhToc0";
+    root.querySelector("h2").id = "generated-heading";
+    anchorTest.add("Repeated");
+    anchorTest.set("<nav>Repeated</nav><h2>Repeated</h2>");
+    return anchorTest.resolve()[0];
+  });
+  expect(result).toMatchObject({ start: 0, end: 8, detached: false });
 });
 
 test("maps typography and prose whitespace to original offsets (CMH-REATTACH-03)", async ({ page }) => {
@@ -270,6 +288,27 @@ test("preserves legacy and future metadata and skips structural roots and replie
   expect(result.arr[5]).toMatchObject({ start: 17, end: 31, detached: false });
   expect(result.arr[6]).toEqual({ id: "discontiguous", quote: "missing ... fragments" });
   expect(result.arr[7]).toMatchObject({ start: 0, end: 6, detached: false });
+});
+
+test("discontiguous selectors require intact text rather than approximate interval recovery (CMH-REATTACH-07)", async ({ page }) => {
+  const html = "<p>Stable surrounding words before alpha bravo and stable surrounding words after.</p>";
+  await harness(page, html);
+  const result = await page.evaluate(original => {
+    const c = anchorTest.add("alpha bravo");
+    c.cmAnchor.discontiguous = true;
+    delete c.start; delete c.end;
+    anchorTest.set(original.replace("alpha bravo", "alpha EXTRA bravo"));
+    anchorTest.resolve();
+    const detached = JSON.parse(JSON.stringify(c));
+    anchorTest.set(original);
+    anchorTest.resolve();
+    return { detached, recovered: c };
+  }, html);
+  expect(result.detached.detached).toBe(true);
+  expect(result.detached.start).toBeUndefined();
+  expect(result.detached.end).toBeUndefined();
+  expect(result.recovered).toMatchObject({ start: 32, end: 43, detached: false });
+  expect(result.recovered.cmAnchor.discontiguous).toBeUndefined();
 });
 
 test("excludes skipped source text and bounds snapshots and matcher work (CMH-REATTACH-08)", async ({ page }) => {

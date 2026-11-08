@@ -29,6 +29,11 @@ the surviving copy a safe replacement: a shared ancestor ID alone cannot disting
 Older selectors without this historical evidence still use their available quote/context;
 they cannot reconstruct whether a deleted duplicate used to exist.
 
+Sorting can scatter a multi-row highlight into noncontiguous fragments. Its saved selectors then
+require an intact raw/normalized quote match, never an approximate interval that encloses unrelated
+rows. Live unsorting and canonical exports can restore genuinely contiguous offsets; otherwise the
+comment becomes Detached with its original evidence and unavailable offsets retained.
+
 A Detached comment retains its message, original quote/context, author and replies. It remains
 searchable by its review text, copyable, exportable and eligible for automatic recovery when its
 content becomes identifiable again. Copy, Markdown and print label its historical attachment.
@@ -60,7 +65,8 @@ established. Missing optional authored IDs do not make a document incompatible.
 Attached comments have current legacy offsets, so old offset readers can highlight them. Automatic
 relocation retains the historical quote while current matching evidence lives in `cmAnchor`.
 Detached comments use equal, finite out-of-document sentinel offsets, retaining recoverable
-selectors in `cmAnchor`; old offset-only runtimes leave them listed without a guessed highlight.
+selectors in `cmAnchor`; already offsetless scattered-table comments retain unavailable offsets.
+Old offset-only runtimes leave both shapes listed without a guessed highlight.
 The prior runtime is archived as `tests/fixtures/legacy-offset-runtime.js.gz` and exercised against
 new exported files, rather than replacing it with a synthetic compatibility implementation.
 
