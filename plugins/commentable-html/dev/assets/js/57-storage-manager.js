@@ -364,6 +364,7 @@ function _cmhDocComments(g) {
 // path: tombstone the embedded ids, drop from the in-memory array, remove highlights, persist, and
 // re-render the sidebar - mirroring the sidebar's own delete so nothing resurrects on reload.
 function _cmhDeleteCommentFromCurrent(id) {
+  if (cmhReviewReadOnly()) return cmhShowReadOnlyNotice();
   const dropIds = comments.filter(function (c) { return c && (c.id === id || c.parentId === id); })
     .map(function (c) { return c.id; });
   if (!dropIds.length) return;
@@ -460,6 +461,7 @@ function openStorageManager(opts) {
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
+    if (tag === "button") cmhMarkLayerChrome(e);
     if (cls) e.className = cls;
     if (text != null) e.textContent = text; // ALWAYS textContent: labels/paths are untrusted
     return e;
@@ -490,7 +492,7 @@ function openStorageManager(opts) {
       let anyKey;
       _cmhPendingWrites.forEach(function (rec, key) { if (anyKey === undefined) anyKey = key; });
       const onlyComment = _cmhPendingWrites.size === 1 && _cmhPendingWrites.has(CMH_STORE_KEY);
-      showToast((onlyComment ? "Your comment is" : "Your edits are")
+      showToast(cmhReviewReadOnly() ? cmhStorageUnavailableMessage("Changes") : (onlyComment ? "Your comment is" : "Your edits are")
         + " still not saved - this browser's storage is full. Free space from Manage storage, or use "
         + "Copy all / Export as Shareable to keep it.",
         { alert: true, duration: 8000, action: cmhStorageAction(anyKey) });
@@ -860,6 +862,7 @@ function openStorageManager(opts) {
   // Inline row confirmation: swap the trigger for Confirm/Cancel in place (avoids nesting a second
   // modal + focus-trap conflict). Focus moves to Confirm; Cancel restores and refocuses the trigger.
   function inlineConfirm(triggerBtn, message, onConfirm) {
+    if (cmhReviewReadOnly()) return cmhShowReadOnlyNotice();
     const parent = triggerBtn.parentNode;
     if (!parent) return;
     const wrap = el("div", "cm-storage-confirm");
@@ -882,7 +885,10 @@ function openStorageManager(opts) {
       parent.replaceChild(triggerBtn, wrap);
       triggerBtn.focus();
     });
-    yes.addEventListener("click", function () { onConfirm(); });
+    yes.addEventListener("click", function () {
+      if (cmhReviewReadOnly()) return cmhShowReadOnlyNotice();
+      onConfirm();
+    });
     yes.focus();
   }
 
@@ -950,3 +956,94 @@ window.__cmhStorageCodec = {
 // Register this document in the shared index on load so the manager can list it by name even before
 // the first comment is saved.
 try { cmhRegisterDocument(); } catch (e) { /* best-effort */ }
+let _cmhStorageNoticeReady = false;
+let _cmhStorageNotice = null;
+function setupStorageNotice() {
+  _cmhStorageNoticeReady = true;
+  try {
+    cmhProbeStorage();
+    cmhSetStorageIssue(null);
+  } catch (e) { cmhSetStorageIssue(cmhStorageFailureKind(e)); }
+}
+function cmhUpdateStorageNotice() {
+  if (!_cmhStorageNoticeReady) return;
+  const unavailable = cmhReviewReadOnly();
+  if (!unavailable) {
+    if (_cmhStorageNotice) _cmhStorageNotice.hidden = true;
+    return;
+  }
+  if (_cmhStorageNotice) {
+    _cmhStorageNotice.hidden = false;
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "cm-skip cm-storage-notice";
+  _cmhStorageNotice = wrap;
+  cmhMarkLayerChrome(wrap);
+  CMH_INJECTED_CHROME.add(wrap);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "cm-storage-info";
+  button.setAttribute("aria-label", "Comment saving unavailable - Read-only");
+  button.setAttribute("aria-expanded", "false");
+  button.setAttribute("aria-controls", "cmStorageNoticeDetails");
+  button.setAttribute("aria-haspopup", "dialog");
+  button.innerHTML = '<span class="cm-storage-info-icon" aria-hidden="true">i</span><span>Read-only</span>';
+  const details = document.createElement("div");
+  details.id = "cmStorageNoticeDetails";
+  details.className = "cm-storage-info-details";
+  details.hidden = true;
+  details.tabIndex = -1;
+  details.setAttribute("role", "dialog");
+  details.setAttribute("aria-label", "Comment saving unavailable");
+  const heading = document.createElement("strong");
+  heading.textContent = cmhStorageUnavailableExplanation();
+  const guidance = document.createElement("p");
+  guidance.textContent = "Download the original HTML using your viewer's Download button, "
+    + "then open it locally in your browser to leave comments.";
+  const recovery = document.createElement("p");
+  recovery.textContent = "Review changes and file exports are disabled because this environment cannot save changes "
+    + "and may also block downloads. Existing comments remain visible. If saving stopped after you made changes, "
+    + "keep this page open and copy those changes before leaving.";
+  const privacy = document.createElement("p");
+  privacy.className = "cm-storage-info-hint";
+  privacy.textContent = "If saving is still blocked locally, check your browser's privacy settings. "
+    + "Reload after restoring access to safely load previously saved review data.";
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "cm-storage-btn";
+  closeButton.textContent = "Close";
+  function close(restoreFocus) {
+    details.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+    if (restoreFocus) button.focus({ preventScroll: true });
+  }
+  button.addEventListener("click", function () {
+    if (!details.hidden) { close(true); return; }
+    hideToast();
+    details.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    details.focus({ preventScroll: true });
+  });
+  closeButton.addEventListener("click", function () { close(true); });
+  document.addEventListener("pointerdown", function (e) {
+    if (!details.hidden && !wrap.contains(e.target)) close(false);
+  });
+  window.__cmhRegisterEscapePopup({
+    isOpen: function () { return !wrap.hidden && !details.hidden; },
+    close: function () { close(true); },
+  });
+  details.append(heading, guidance, recovery, privacy, closeButton);
+  wrap.append(button, details);
+  document.body.appendChild(wrap);
+  function position() {
+    const view = cmhViewportBox();
+    wrap.style.left = (view.left + 12) + "px";
+    wrap.style.bottom = Math.max(12, window.innerHeight - view.top - view.height + 12) + "px";
+    wrap.style.maxWidth = Math.max(0, view.width - 24) + "px";
+    details.style.maxWidth = Math.max(0, view.width - 24) + "px";
+    details.style.maxHeight = Math.max(0, view.height - 88) + "px";
+  }
+  cmhOnViewportChange(position);
+  position();
+}

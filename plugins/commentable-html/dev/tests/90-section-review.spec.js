@@ -928,11 +928,11 @@ test.describe("section review tracking", () => {
   });
 
   test("marking a section reviewed warns when the mark cannot be persisted (CMH-REVIEW-15)", async ({ page }) => {
-    // Block only the reviews key so the mark write fails like a full/blocked localStorage.
+    // Deny the reviews key while leaving startup reads available.
     await page.addInitScript(() => {
       const original = Storage.prototype.setItem;
       Storage.prototype.setItem = function (key, value) {
-        if (String(key).indexOf("::reviews") !== -1) throw new Error("blocked storage");
+        if (String(key).indexOf("::reviews") !== -1) throw new DOMException("blocked storage", "SecurityError");
         return original.call(this, key, value);
       };
     });
@@ -941,7 +941,9 @@ test.describe("section review tracking", () => {
     await page.locator("#rv-alpha .cmh-review-badge").click();
     // The reader must be told the mark did not persist (matching the un-review warning path),
     // not left with a green badge that silently reverts on reload. The warning is assertive.
-    await expect(page.locator("#toast")).toContainText(/could not persist/i);
+    await expect(page.locator("#toast")).toContainText("Section review NOT saved");
+    await expect(page.locator("#toast")).toContainText("Download the original HTML");
+    await expect(page.locator("#btnSaveHtml")).toBeDisabled();
     await expect(page.locator("#toast")).toHaveAttribute("role", "alert");
     await expect(page.locator("#toast")).toHaveAttribute("aria-live", "assertive");
   });

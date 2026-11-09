@@ -111,7 +111,8 @@ function _etFlush() {
 function _etChanged(t, deferred) {
   const ok = _etSave();
   t.status.textContent = ok ? "Saved in this browser. Export HTML to carry these edits."
-    : "Not saved in this browser. Copy all or export HTML before closing.";
+    : cmhReviewReadOnly() ? "Not saved in this browser. Review changes and file exports are disabled; copy these changes before leaving if your viewer permits."
+      : "Not saved in this browser. Copy all or export HTML before closing.";
   _etHistoryButtons(t);
   const has = tableChanges().length > 0;
   if (has !== _etHadChanges) {
@@ -149,6 +150,7 @@ function _etHistoryButtons(t) {
   });
 }
 function _etMutate(t, change, focus) {
+  if (cmhReviewReadOnly()) return;
   if (t.stale || _etUnreadable !== null) return;
   _etCommitEditor(t);
   const before = _etClone(t.model);
@@ -253,6 +255,7 @@ function _etColumnDialog(t, renameId, besideId, before = false) {
   header.querySelector("svg").removeAttribute("data-cmh-tip");
   form.append(header);
   function field(text, el) {
+    cmhMarkLayerChrome(el);
     const label = document.createElement("label");
     const caption = document.createElement("span");
     caption.textContent = text;
@@ -283,6 +286,7 @@ function _etColumnDialog(t, renameId, besideId, before = false) {
   const actions = document.createElement("div"); actions.className = "cmh-table-actions";
   const cancel = _etBtn("Cancel", () => dialog.close());
   const save = document.createElement("button"); save.type = "submit"; save.textContent = "Save"; save.className = "cmh-table-save";
+  cmhMarkLayerChrome(save);
   actions.append(save, cancel); form.append(actions); dialog.append(form);
   const previous = document.activeElement;
   let applied = false;
@@ -908,8 +912,11 @@ function setupEditableTables() {
       const recovery = document.createElement("div"); recovery.className = "cmh-table-recovery"; t.recovery = recovery;
       const text = document.createElement("p"); text.textContent = "Saved table draft could not be applied to this source. Copy it before discarding; editing is paused to protect it.";
       const raw = _etUnreadable !== null ? _etUnreadable : JSON.stringify({ version: 1, tables: [t.stale] });
-      recovery.append(text, _etBtn("Copy saved draft", () => _copyBundleToClipboard(raw)), _etBtn("Discard saved draft", async () => {
+      const copy = _etBtn("Copy saved draft", () => _copyBundleToClipboard(raw));
+      copy.classList.add("cmh-table-copy-draft");
+      recovery.append(text, copy, _etBtn("Discard saved draft", async () => {
         if (!(await showConfirm({ message: "Discard this saved draft? Copy it first if you need to keep it.", confirmLabel: "Discard", danger: true }))) return;
+        if (cmhReviewReadOnly()) return cmhShowReadOnlyNotice();
         const affected = _etUnreadable !== null ? editableTables : [t];
         _etUnreadable = null;
         affected.forEach(item => {
@@ -933,9 +940,12 @@ function setupEditableTables() {
     const recovery = document.createElement("div"); recovery.className = "cmh-table-recovery cm-skip";
     const text = document.createElement("p"); text.textContent = "Saved table drafts do not match an editable table in this document.";
     const raw = _etUnreadable !== null ? _etUnreadable : JSON.stringify({ version: 1, tables: _etUnmatched });
-    recovery.append(text, _etBtn("Copy saved draft", () => _copyBundleToClipboard(raw)),
+    const copy = _etBtn("Copy saved draft", () => _copyBundleToClipboard(raw));
+    copy.classList.add("cmh-table-copy-draft");
+    recovery.append(text, copy,
       _etBtn("Discard saved draft", async () => {
         if (!(await showConfirm({ message: "Discard unmatched saved table drafts?", confirmLabel: "Discard", danger: true }))) return;
+        if (cmhReviewReadOnly()) return cmhShowReadOnlyNotice();
         _etUnmatched = []; _etUnreadable = null; recovery.remove(); _etSave();
       }));
     root.prepend(recovery);

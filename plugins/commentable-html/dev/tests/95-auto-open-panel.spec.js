@@ -467,9 +467,11 @@ test("CMH-MENU-PREF-06: a browser that throws on storage degrades to the default
   await expect(menu.locator(OVERRIDE_ROW)).toHaveAttribute("aria-checked", "false");
   await menu.locator(DEFAULT_ROW).click();
   await menu.locator(OVERRIDE_ROW).click();
+  await expect(menu.locator(DEFAULT_ROW)).toHaveAttribute("aria-checked", "true");
+  await expect(menu.locator(OVERRIDE_ROW)).toHaveAttribute("aria-checked", "false");
   await hideSidebar(page);
-  // Nothing could be stored, so the effective value stays the ON default and the panel opens.
-  await addTextComment(page, "#one", "private mode note");
+  await expect(page.locator("#menuComment")).toBeDisabled();
+  await showSidebar(page);
   expect(await sidebarOpen(page)).toBe(true);
   expect(errors).toEqual([]);
 });

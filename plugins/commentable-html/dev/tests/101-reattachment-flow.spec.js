@@ -352,7 +352,7 @@ test("Markdown and print disclose Detached anchors rather than claiming historic
   await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
 });
 
-test("blocked persistence warns after manual reattachment while export still retains the session anchor (CMH-REATTACH-20)", async ({ page }) => {
+test("blocked persistence preserves the session anchor and disables exports until recovery (CMH-REATTACH-20)", async ({ page }) => {
   const staged = fixture();
   await open(page, staged);
   const id = await comment(page, "#question", "Keep the recovered session anchor.");
@@ -362,7 +362,7 @@ test("blocked persistence warns after manual reattachment while export still ret
   await page.evaluate(() => {
     const original = Storage.prototype.setItem;
     Storage.prototype.setItem = function (key, value) {
-      if (key === "cmh-reattach-flow::z") throw new DOMException("Blocked", "SecurityError");
+      if (key === "cmh-reattach-flow::z" && !window.__restoreReattachStorage) throw new DOMException("Blocked", "SecurityError");
       return original.call(this, key, value);
     };
   });
@@ -370,8 +370,21 @@ test("blocked persistence warns after manual reattachment while export still ret
   await select(page, "#new-target");
   await page.locator("#menuComment").click();
   await expect(page.locator("#toast")).toContainText("NOT saved");
+  await expect(page.locator("#toast")).toContainText("file exports are now disabled");
+  await expect(page.locator("#toast")).not.toContainText("Export as Shareable");
   await expect(page.locator(`#new-target mark[data-cid="${id}"]`)).toHaveText("A completely new recovery policy.");
+  await expect(page.locator("#btnSaveHtml")).toBeDisabled();
+  await page.locator(`.cm-card[data-cid="${id}"] [data-act="copy"]`).click();
+  expect(await lastCopied(page)).toContain("A completely new recovery policy.");
+  await page.evaluate(() => {
+    window.__restoreReattachStorage = true;
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(page.locator("#btnSaveHtml")).toBeEnabled();
   expect(embedded(await exportHtml(page))[0].quote).toBe("A completely new recovery policy.");
+  await page.reload();
+  await ready(page);
+  await expect(page.locator(`#new-target mark[data-cid="${id}"]`)).toHaveText("A completely new recovery policy.");
 });
 
 test("manual reattachment remains keyboard-operable and visible on a narrow viewport (CMH-REATTACH-21)", async ({ page }) => {

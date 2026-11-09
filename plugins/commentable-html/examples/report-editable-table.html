@@ -2,15 +2,15 @@
 <html lang="en" data-theme="light">
 <head>
 <meta name="commentable-html-validated-hash" content="2vo4j1" />
-<meta name="commentable-html-validated" content="2026-11-08T23:59:59Z" />
+<meta name="commentable-html-validated" content="2026-11-09T23:59:59Z" />
 <meta name="commentable-html-agent" content="copilot" />
 <meta name="commentable-html-session-id" content="c91727bc-4692-4c20-a11a-d72910caf8e0" />
 <meta name="commentable-html-created" content="2026-10-29T14:19:10Z" />
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.860.0" />
+<meta name="commentable-html-version" content="1.861.0" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.860.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.861.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Editable table playground</title>
 
@@ -85,7 +85,7 @@ html.cmh-awaiting-style body { visibility: hidden; }
      region.
 -->
 <div class="app">
-<main data-generated="2026-11-08" id="commentRoot" data-cmh-content-root="" data-comment-key="cmh-editable-table-playground-1347" data-doc-label="Editable table playground" data-doc-source="report-editable-table.html">
+<main data-generated="2026-11-09" id="commentRoot" data-cmh-content-root="" data-comment-key="cmh-editable-table-playground-1347" data-doc-label="Editable table playground" data-doc-source="report-editable-table.html">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
 <h1>Editable table playground</h1>
@@ -2704,6 +2704,39 @@ body:has(> .cm-modal-overlay > [aria-modal="true"]) .cm-toast-action { display: 
 .cm-storage-comment { flex-direction: column; align-items: stretch; }
 .cm-storage-comment .cm-storage-actions { justify-content: flex-end; }
 }
+.cm-storage-notice {
+position: fixed; z-index: 180; width: max-content;
+font-family: inherit; font-size: 13px; line-height: 1.5; color: var(--cp-text);
+}
+.cm-storage-notice[hidden],
+.cm-storage-info-details[hidden] { display: none; }
+.cm-storage-info {
+display: flex; align-items: center; gap: 8px; min-height: 44px;
+padding: 8px 14px 8px 10px; border: 1px solid var(--cp-border); border-radius: 999px;
+background: var(--cp-surface); color: var(--cp-text); box-shadow: var(--cp-shadow);
+font: inherit; font-weight: 600; cursor: pointer;
+}
+.cm-storage-info:hover { border-color: var(--cp-accent); }
+.cm-storage-info-icon {
+display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+background: var(--cp-accent-soft); color: var(--cp-accent); border: 1px solid currentColor;
+font-weight: 700; font-family: Georgia, serif;
+}
+.cm-storage-info-details {
+position: absolute; bottom: calc(100% + 10px); left: 0;
+box-sizing: border-box; width: 350px; max-width: min(350px, calc(100vw - 24px));
+padding: 18px; border: 1px solid var(--cp-border); border-radius: 14px;
+background: var(--cp-surface); box-shadow: var(--cp-shadow); overflow-y: auto;
+}
+.cm-storage-info-details strong { display: block; font-size: 14px; line-height: 1.45; }
+.cm-storage-info-details p { margin: 12px 0; font-size: 13px; line-height: 1.55; }
+.cm-storage-info-details .cm-storage-info-hint { color: var(--cp-text-soft); font-size: 12px; }
+.cm-storage-info:focus-visible,
+.cm-storage-info-details:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 3px; }
+body:has(> .cm-modal-overlay) .cm-storage-notice { visibility: hidden; }
+@media print {
+.cm-storage-notice { display: none !important; }
+}
 
 body.cmh-deck-present .cm-toolbar,
 body.cmh-deck-present #sidebar {
@@ -4871,7 +4904,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.860.0";
+const CMH_VERSION= "1.861.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -5381,6 +5414,49 @@ return e.name=== "QuotaExceededError"
 ||e.name=== "NS_ERROR_DOM_QUOTA_REACHED"
 ||e.code===22||e.code===1014;
 }
+let _cmhStorageIssue=null;
+let _cmhInitialStorageReadFailed=false;
+let _cmhReadOnlyReady=false;
+function cmhReviewReadOnly(){
+return _cmhInitialStorageReadFailed||_cmhStorageIssue=== "blocked"||_cmhStorageIssue=== "unavailable";
+}
+function cmhProbeStorage(){
+const key= "commentable-html::probe:"+Math.random().toString(36).slice(2);
+localStorage.setItem(key,"1");
+try{
+if(localStorage.getItem(key)!== "1")throw new Error("Storage did not retain the probe");
+}finally{localStorage.removeItem(key);}
+}
+function cmhStorageFailureKind(e){
+if(e&&e.name=== "SecurityError")return"blocked";
+if(cmhIsQuotaError(e)){
+try{
+if(localStorage.length>0)return"quota";
+cmhProbeStorage();
+return"quota";
+}catch(probeError){
+return probeError&&probeError.name=== "SecurityError"?"blocked":"unavailable";
+}
+}
+return"unavailable";
+}
+function cmhSetStorageIssue(issue){
+_cmhStorageIssue=issue;
+cmhUpdateStorageNotice();
+if(_cmhReadOnlyReady)cmhUpdateReadOnlyMode();
+}
+function cmhStorageUnavailableExplanation(){
+const preview=window.self!==window.top
+||/(^|\.)(onedrive\.live\.com|onedrive\.cloud\.microsoft|sharepoint\.com)$/.test(location.hostname);
+if(_cmhInitialStorageReadFailed&&!preview)return"Review data could not be loaded when this document opened.";
+return preview?"Comments cannot be saved in this preview."
+:"Browser storage is "+(_cmhStorageIssue=== "blocked"?"blocked.":"unavailable.");
+}
+function cmhStorageUnavailableMessage(what){
+return what+" NOT saved. "+cmhStorageUnavailableExplanation()
++" Review changes and file exports are now disabled. Download the original HTML using your viewer's Download button "
++"and open it locally to review. Keep this page open and copy any unsaved changes before leaving.";
+}
 function cmhEncodeStore(jsonStr){
 if(jsonStr.length>CMH_MAX_STORE_CHARS)return jsonStr;
 try{
@@ -5401,10 +5477,20 @@ return{ok:true,json:out};
 function cmhLoadStored(){
 let raw=null;
 let fromModern=true;
-try{raw=localStorage.getItem(CMH_STORE_KEY);}catch(e){return{arr:[],unreadable:false};}
+try{raw=localStorage.getItem(CMH_STORE_KEY);}
+catch(e){
+_cmhInitialStorageReadFailed=true;
+cmhSetStorageIssue(cmhStorageFailureKind(e));
+return{arr:[],unreadable:false};
+}
 if(raw==null){
 fromModern=false;
-try{raw=localStorage.getItem(COMMENT_KEY);}catch(e){return{arr:[],unreadable:false};}
+try{raw=localStorage.getItem(COMMENT_KEY);}
+catch(e){
+_cmhInitialStorageReadFailed=true;
+cmhSetStorageIssue(cmhStorageFailureKind(e));
+return{arr:[],unreadable:false};
+}
 if(raw==null)return{arr:[],unreadable:false};
 }
 const dec=cmhDecodeStore(raw);
@@ -5421,18 +5507,23 @@ let _cmhLastSaveQuota=false;
 let _cmhStoreUnreadable=false;
 let _cmhStartupInProgress=true;
 function cmhTrySetItem(key,produce,label){
+if(_cmhInitialStorageReadFailed)return false;
 try{
 const value=produce();
 if(value==null)localStorage.removeItem(key);
 else localStorage.setItem(key,value);
 _cmhPendingWrites.delete(key);
+if(!_cmhPendingWrites.size)cmhSetStorageIssue(null);
 return true;
 }catch(e){
-if(cmhIsQuotaError(e))_cmhPendingWrites.set(key,{produce:produce,label:label||"data"});
+const issue=cmhStorageFailureKind(e);
+cmhSetStorageIssue(issue);
+_cmhPendingWrites.set(key,{produce:produce,label:label||"data"});
 return false;
 }
 }
 function cmhRetryPendingWrites(){
+if(_cmhInitialStorageReadFailed)return[];
 const done=[];
 _cmhPendingWrites.forEach(function(rec,key){
 try{
@@ -5442,20 +5533,22 @@ _cmhPendingWrites.delete(key);
 if(key===CMH_STORE_KEY){try{localStorage.removeItem(COMMENT_KEY);}catch(e){}}
 if(done.indexOf(rec.label)===-1)done.push(rec.label);
 }catch(e){
-if(!cmhIsQuotaError(e))_cmhPendingWrites.delete(key);
+const issue=cmhStorageFailureKind(e);
+cmhSetStorageIssue(issue);
 }
 });
+if(!_cmhPendingWrites.size)cmhSetStorageIssue(null);
 return done;
 }
 function cmhStorageFullToast(key,what){
-const quota=_cmhPendingWrites.has(key);
+const quota=_cmhStorageIssue=== "quota"&&_cmhPendingWrites.has(key);
 showToast(quota
 ?what+" could not be saved - this browser's storage is full. Free space from Manage storage."
-:what+" NOT saved to this browser (storage full or blocked) - it will be lost on reload.",
-{alert:true,duration:8000,action:cmhStorageAction(key)});
+:cmhStorageUnavailableMessage(what),
+{alert:true,duration:quota?8000:6400,action:cmhStorageAction(key)});
 }
 function cmhStorageAction(key){
-return(_cmhPendingWrites.has(key)&&typeof openStorageManager=== "function")
+return(_cmhStorageIssue=== "quota"&&_cmhPendingWrites.has(key)&&typeof openStorageManager=== "function")
 ?{
 label:"Manage storage",
 onClick:function(restoreFocus){openStorageManager({restoreFocus:restoreFocus||undefined});},
@@ -5480,6 +5573,7 @@ if(JSON.stringify(comments)!==JSON.stringify(local))saveComments();
 }
 function saveComments(){
 _cmhLastSaveQuota=false;
+if(_cmhInitialStorageReadFailed)return false;
 if(_cmhStoreUnreadable)return true;
 if(typeof cmhPrepareDiscussionSave=== "function")cmhPrepareDiscussionSave();
 if(!_cmhStartupInProgress&&typeof cmhCaptureTextAnchor=== "function"){
@@ -5494,26 +5588,30 @@ cmhCaptureTextAnchor(c,index);
 try{
 localStorage.setItem(CMH_STORE_KEY,cmhEncodeStore(JSON.stringify(comments)));
 _cmhPendingWrites.delete(CMH_STORE_KEY);
+if(!_cmhPendingWrites.size)cmhSetStorageIssue(null);
 try{localStorage.removeItem(COMMENT_KEY);}catch(e){}
 if(typeof cmhRegisterDocument=== "function")cmhRegisterDocument();
 if(typeof _cmhResetQuotaEpisode=== "function")_cmhResetQuotaEpisode();
 return true;
 }catch(e){
-if(cmhIsQuotaError(e)){
-_cmhLastSaveQuota=true;
+const issue=cmhStorageFailureKind(e);
+cmhSetStorageIssue(issue);
 _cmhPendingWrites.set(CMH_STORE_KEY,{
 produce:function(){return cmhEncodeStore(JSON.stringify(comments));},
 label:"comment",
 });
+if(issue=== "quota"){
+_cmhLastSaveQuota=true;
 return false;
 }
-const notify=_cmhStartupInProgress?showStartupDiagnostic:showToast;
-notify("Comment NOT saved to this browser (storage full or blocked) - it will be lost on "
-+"reload. Use Copy all or Export as Shareable to keep it.",{alert:true,duration:8000});
+if(!_cmhStartupInProgress){
+showToast(cmhStorageUnavailableMessage("Comment"),{alert:true,duration:8000});
+}
 return false;
 }
 }
 const CMH_DELETED_KEY=COMMENT_KEY+"::deleted";
+const _cmhDeletedThisSession=new Set();
 function _deletedEmbeddedIds(){
 try{
 const a=JSON.parse(localStorage.getItem(CMH_DELETED_KEY)||"[]");
@@ -5524,14 +5622,27 @@ function _tombstoneEmbedded(ids){
 const emb=_embeddedCommentSig();
 const t=_deletedEmbeddedIds();
 let changed=false;
-(ids||[]).forEach(function(id){if(id&&emb.has(id)&&!t.has(id)){t.add(id);changed=true;}});
+(ids||[]).forEach(function(id){
+if(id&&emb.has(id)&&!t.has(id)){
+_cmhDeletedThisSession.add(id);
+changed=true;
+}
+});
 if(!changed)return true;
-try{localStorage.setItem(CMH_DELETED_KEY,JSON.stringify([...t]));return true;}
-catch(e){return false;}
+return cmhTrySetItem(CMH_DELETED_KEY,function(){
+const raw=localStorage.getItem(CMH_DELETED_KEY);
+let saved=[];
+try{saved=JSON.parse(raw||"[]");}catch(e){}
+const merged=new Set(Array.isArray(saved)?saved.filter(id=>SAFE_ID_RE.test(id)):[]);
+_cmhDeletedThisSession.forEach(id=>merged.add(id));
+return JSON.stringify([...merged]);
+},"Deleted comment markers");
 }
 function _ensureTombstoneEmbedded(ids,firstWriteOk,commentsWriteOk){
 if(commentsWriteOk&&(firstWriteOk||_tombstoneEmbedded(ids)))return true;
-showToast("Deleted embedded comment was removed in this session, but the browser could not persist its delete marker. It may reappear after reload; use Export as Shareable after freeing storage.",{alert:true,duration:10000});
+showToast(cmhReviewReadOnly()?cmhStorageUnavailableMessage("Comment deletion")
+:"Deleted embedded comment was removed in this session, but the browser could not persist its delete marker. It may reappear after reload; use Export as Shareable after freeing storage.",
+{alert:true,duration:cmhReviewReadOnly()?8000:10000});
 return false;
 }
 function commentTimestamp(c){
@@ -6502,6 +6613,10 @@ let mermaidAddHideTimer=null;
 let mermaidActiveNode=null;
 let _activeAdd=null;
 function setActiveAdd(entry){
+if(cmhReviewReadOnly()){
+if(entry&&entry.btn)entry.btn.hidden=true;
+return false;
+}
 const prev=_activeAdd;
 if(prev&&prev.btn&&prev.btn!==(entry&&entry.btn)){
 if(!prev.btn.hidden&&prev.el&&entry&&entry.el&&prev.el!==entry.el&&entry.el.contains(prev.el)){
@@ -9426,7 +9541,7 @@ function _onWidgetPointerUp(e){
 if(!_widgetDrag||e.pointerId!==_widgetDrag.pointerId)return;
 const drag=_widgetDrag;
 try{
-if(drag.active){
+if(drag.active&&!cmhReviewReadOnly()){
 e.preventDefault();
 const target=drag.dropSlot;
 if(target&&target!==drag.fromSlot&&!drag.part.contains(target)){
@@ -9445,6 +9560,7 @@ function setupWidgetDragDrop(){
 if(root._cmWidgetDragAttached)return;
 root._cmWidgetDragAttached=true;
 root.addEventListener("pointerdown",function(e){
+if(cmhReviewReadOnly())return;
 const hit=_widgetDragPartFromEvent(e);
 if(hit)_startWidgetDrag(e,hit);
 },true);
@@ -9851,6 +9967,7 @@ if(has&&!_clHadChanges&&!document.body.classList.contains("cmh-deck-comments-off
 _clHadChanges=has;
 }
 function _clCycleItem(item){
+if(cmhReviewReadOnly())return;
 const cache=new Map();
 const next=_clNextState(_clItemState(item,cache));
 if(item.isBranch)_clDescendantLeaves(item).forEach((l)=>_clSetLeaf(l,next));
@@ -10085,6 +10202,7 @@ if(typeof renderComments=== "function")renderComments();
 const _NOTE_RENDER_DEBOUNCE_MS=150;
 let _noteRenderTimer=0;
 function _noteOnInput(note){
+if(cmhReviewReadOnly())return;
 _noteSave();
 _noteSyncUi();
 if(_noteRenderTimer)clearTimeout(_noteRenderTimer);
@@ -10357,6 +10475,7 @@ renderComments();
 function _etChanged(t,deferred){
 const ok=_etSave();
 t.status.textContent=ok?"Saved in this browser. Export HTML to carry these edits."
+:cmhReviewReadOnly()?"Not saved in this browser. Review changes and file exports are disabled; copy these changes before leaving if your viewer permits."
 :"Not saved in this browser. Copy all or export HTML before closing.";
 _etHistoryButtons(t);
 const has=tableChanges().length>0;
@@ -10395,6 +10514,7 @@ if(window.__cmhRefreshTip)window.__cmhRefreshTip(button);
 });
 }
 function _etMutate(t,change,focus){
+if(cmhReviewReadOnly())return;
 if(t.stale||_etUnreadable!==null)return;
 _etCommitEditor(t);
 const before=_etClone(t.model);
@@ -10498,6 +10618,7 @@ header.insertAdjacentHTML("beforeend",CMH_ICON_SVG);
 header.querySelector("svg").removeAttribute("data-cmh-tip");
 form.append(header);
 function field(text,el){
+cmhMarkLayerChrome(el);
 const label=document.createElement("label");
 const caption=document.createElement("span");
 caption.textContent=text;
@@ -10528,6 +10649,7 @@ form.append(error);
 const actions=document.createElement("div");actions.className= "cmh-table-actions";
 const cancel=_etBtn("Cancel",()=>dialog.close());
 const save=document.createElement("button");save.type= "submit";save.textContent= "Save";save.className= "cmh-table-save";
+cmhMarkLayerChrome(save);
 actions.append(save,cancel);form.append(actions);dialog.append(form);
 const previous=document.activeElement;
 let applied=false;
@@ -11153,8 +11275,11 @@ if(t.stale||_etUnreadable!==null){
 const recovery=document.createElement("div");recovery.className= "cmh-table-recovery";t.recovery=recovery;
 const text=document.createElement("p");text.textContent= "Saved table draft could not be applied to this source. Copy it before discarding; editing is paused to protect it.";
 const raw=_etUnreadable!==null?_etUnreadable:JSON.stringify({version:1,tables:[t.stale]});
-recovery.append(text,_etBtn("Copy saved draft",()=>_copyBundleToClipboard(raw)),_etBtn("Discard saved draft",async()=>{
+const copy=_etBtn("Copy saved draft",()=>_copyBundleToClipboard(raw));
+copy.classList.add("cmh-table-copy-draft");
+recovery.append(text,copy,_etBtn("Discard saved draft",async()=>{
 if(!(await showConfirm({message:"Discard this saved draft? Copy it first if you need to keep it.",confirmLabel:"Discard",danger:true})))return;
+if(cmhReviewReadOnly())return cmhShowReadOnlyNotice();
 const affected=_etUnreadable!==null?editableTables:[t];
 _etUnreadable=null;
 affected.forEach(item=>{
@@ -11178,9 +11303,12 @@ if(_etUnmatched.length||(_etUnreadable!==null&&!editableTables.length)){
 const recovery=document.createElement("div");recovery.className= "cmh-table-recovery cm-skip";
 const text=document.createElement("p");text.textContent= "Saved table drafts do not match an editable table in this document.";
 const raw=_etUnreadable!==null?_etUnreadable:JSON.stringify({version:1,tables:_etUnmatched});
-recovery.append(text,_etBtn("Copy saved draft",()=>_copyBundleToClipboard(raw)),
+const copy=_etBtn("Copy saved draft",()=>_copyBundleToClipboard(raw));
+copy.classList.add("cmh-table-copy-draft");
+recovery.append(text,copy,
 _etBtn("Discard saved draft",async()=>{
 if(!(await showConfirm({message:"Discard unmatched saved table drafts?",confirmLabel:"Discard",danger:true})))return;
+if(cmhReviewReadOnly())return cmhShowReadOnlyNotice();
 _etUnmatched=[];_etUnreadable=null;recovery.remove();_etSave();
 }));
 root.prepend(recovery);
@@ -11319,6 +11447,7 @@ md.textContent=IS_DECK?"Comment on deck":"Comment on document";
 }
 }
 document.addEventListener("contextmenu",(e)=>{
+if(cmhReviewReadOnly()){hideMenu();return;}
 if(e.target.closest(".cm-skip")){hideMenu();return;}
 if(document.body.classList.contains("cmh-deck-comments-off"))return;
 if(_coarsePointer)return;
@@ -11442,6 +11571,7 @@ if(target)closeComposerElement(target);
 }
 });
 function showMenu(x,y){
+if(cmhReviewReadOnly())return;
 if(_mouseupCleanupTimer){clearTimeout(_mouseupCleanupTimer);_mouseupCleanupTimer=null;}
 const rf=document.activeElement;
 _menuReturnFocus=(rf&&rf!==document.body&&menu&&!menu.contains(rf))?rf:null;
@@ -12409,6 +12539,7 @@ anchorEl=root.querySelector(`mark.cm-hl[data-cid="${anchorSrc.id}"]`);
 return anchorEl?anchorEl.getBoundingClientRect():{left:100,top:100,bottom:130,right:200};
 }
 function createComposerElement({mode,range,quote,comment,mermaid,diff,image,widget,slide,link,tableColumn}){
+if(cmhReviewReadOnly()){cmhShowReadOnlyNotice();return null;}
 if(String(mode||"").indexOf("new")===0
 &&document.body.classList.contains("cmh-deck-comments-off")){
 return null;
@@ -12701,6 +12832,7 @@ endScrollGuard();
 }
 }
 function saveComposerElementInner(el){
+if(cmhReviewReadOnly()){cmhShowReadOnlyNotice();return;}
 const ta=el.querySelector("textarea");
 const note=ta.value.trim();
 if(!note){
@@ -13012,6 +13144,7 @@ return out;
 }
 let _cmClearSelectedBusy=false;
 function _cmDeleteSelectedThreads(ids){
+if(cmhReviewReadOnly())return false;
 const drop=new Set(ids);
 if(typeof openEditComposers!== "undefined"){
 ids.forEach(function(id){
@@ -13166,7 +13299,8 @@ const card=listEl.querySelector('.cm-card[data-cid="'+c.id+'"]');
 const jump=card&&card.querySelector('[data-act="jump"]');
 if(jump){try{jump.focus({preventScroll:true});}catch(e){jump.focus();}}
 if(saved)showToast("Comment reattached.");
-else showToast("Comment reattached in this session but NOT saved to this browser. Export as Shareable to keep it.",
+else showToast(cmhReviewReadOnly()?cmhStorageUnavailableMessage("Reattached comment")
+:"Comment reattached in this session but NOT saved to this browser. Export as Shareable to keep it.",
 {alert:true,duration:8000,action:cmhStorageAction(CMH_STORE_KEY)});
 }
 const _cmhReattachPopup={
@@ -13794,6 +13928,7 @@ save.type= "button";save.className= "cm-reply-save";save.textContent=saveLabel;
 actions.appendChild(cancel);actions.appendChild(save);
 wrap.appendChild(formatBar);wrap.appendChild(ta);wrap.appendChild(actions);
 function doSave(){
+if(cmhReviewReadOnly()){cmhShowReadOnlyNotice();return;}
 const val=ta.value.trim();
 if(!val){ta.setAttribute("aria-invalid","true");ta.classList.add("cm-invalid");ta.focus();return;}
 onSave(val);
@@ -14055,6 +14190,7 @@ if(eb)_restoreFocusTo(eb);
 editor._focus();
 }
 function cmhConfirmDeleteThread(id,opts){
+if(cmhReviewReadOnly())return false;
 const c=comments.find((x)=>x.id===id);
 if(!c)return false;
 const o=opts||{};
@@ -14854,6 +14990,7 @@ _popoverFormatOff=wireNoteFormatBar(formatBar,ta);
 ta.value=c.note==null?"":c.note;
 cmhAutogrow(ta,function(){_refitCommentPopover();});
 function doSave(){
+if(cmhReviewReadOnly()){cmhShowReadOnlyNotice();return;}
 const val=ta.value.trim();
 if(!val){
 ta.setAttribute("aria-invalid","true");
@@ -14901,6 +15038,10 @@ _cancelCommentPopoverEdit();
 ta.addEventListener("input",()=>{ta.removeAttribute("aria-invalid");ta.classList.remove("cm-invalid");});
 const onEditorKeydown=(e)=>{
 if(e.isComposing||isNoteComposing(ta))return;
+if(cmhReviewReadOnly()){
+if(e.key=== "Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();e.stopPropagation();cmhShowReadOnlyNotice();}
+return;
+}
 if(handleNoteFormatShortcut(e,ta))return;
 if(e.key=== "Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();e.stopPropagation();doSave();}
 };
@@ -14959,10 +15100,10 @@ return;
 e.preventDefault();e.stopPropagation();
 closeCommentPopover();
 };
+document.addEventListener("keydown",_popoverKeydown,true);
 setTimeout(()=>{
 if(!commentPopover)return;
 document.addEventListener("click",_popoverDismiss,true);
-document.addEventListener("keydown",_popoverKeydown,true);
 _popoverArmed=true;
 },0);
 const editBtn=el.querySelector('[data-act="edit"]');
@@ -15972,6 +16113,7 @@ if(!dec.ok||dec.json==null)return[];
 try{const a=JSON.parse(dec.json);return Array.isArray(a)?a:[];}catch(e){return[];}
 }
 function _cmhDeleteCommentFromCurrent(id){
+if(cmhReviewReadOnly())return cmhShowReadOnlyNotice();
 const dropIds=comments.filter(function(c){return c&&(c.id===id||c.parentId===id);})
 .map(function(c){return c.id;});
 if(!dropIds.length)return;
@@ -16046,6 +16188,7 @@ overlay.appendChild(box);
 document.body.appendChild(overlay);
 function el(tag,cls,text){
 const e=document.createElement(tag);
+if(tag=== "button")cmhMarkLayerChrome(e);
 if(cls)e.className=cls;
 if(text!=null)e.textContent=text;
 return e;
@@ -16062,7 +16205,7 @@ if(_cmhPendingWrites.size&&typeof cmhStorageAction=== "function"){
 let anyKey;
 _cmhPendingWrites.forEach(function(rec,key){if(anyKey===undefined)anyKey=key;});
 const onlyComment=_cmhPendingWrites.size===1&&_cmhPendingWrites.has(CMH_STORE_KEY);
-showToast((onlyComment?"Your comment is":"Your edits are")
+showToast(cmhReviewReadOnly()?cmhStorageUnavailableMessage("Changes"):(onlyComment?"Your comment is":"Your edits are")
 +" still not saved - this browser's storage is full. Free space from Manage storage, or use "
 +"Copy all / Export as Shareable to keep it.",
 {alert:true,duration:8000,action:cmhStorageAction(anyKey)});
@@ -16371,6 +16514,7 @@ row.appendChild(actTd);
 tbody.appendChild(row);
 }
 function inlineConfirm(triggerBtn,message,onConfirm){
+if(cmhReviewReadOnly())return cmhShowReadOnlyNotice();
 const parent=triggerBtn.parentNode;
 if(!parent)return;
 const wrap=el("div","cm-storage-confirm");
@@ -16393,7 +16537,10 @@ no.addEventListener("click",function(){
 parent.replaceChild(triggerBtn,wrap);
 triggerBtn.focus();
 });
-yes.addEventListener("click",function(){onConfirm();});
+yes.addEventListener("click",function(){
+if(cmhReviewReadOnly())return cmhShowReadOnlyNotice();
+onConfirm();
+});
 yes.focus();
 }
 function onKey(e){
@@ -16444,6 +16591,212 @@ try{localStorage.removeItem(COMMENT_KEY);}catch(e){}
 },
 };
 try{cmhRegisterDocument();}catch(e){}
+let _cmhStorageNoticeReady=false;
+let _cmhStorageNotice=null;
+function setupStorageNotice(){
+_cmhStorageNoticeReady=true;
+try{
+cmhProbeStorage();
+cmhSetStorageIssue(null);
+}catch(e){cmhSetStorageIssue(cmhStorageFailureKind(e));}
+}
+function cmhUpdateStorageNotice(){
+if(!_cmhStorageNoticeReady)return;
+const unavailable=cmhReviewReadOnly();
+if(!unavailable){
+if(_cmhStorageNotice)_cmhStorageNotice.hidden=true;
+return;
+}
+if(_cmhStorageNotice){
+_cmhStorageNotice.hidden=false;
+return;
+}
+const wrap=document.createElement("div");
+wrap.className= "cm-skip cm-storage-notice";
+_cmhStorageNotice=wrap;
+cmhMarkLayerChrome(wrap);
+CMH_INJECTED_CHROME.add(wrap);
+const button=document.createElement("button");
+button.type= "button";
+button.className= "cm-storage-info";
+button.setAttribute("aria-label","Comment saving unavailable - Read-only");
+button.setAttribute("aria-expanded","false");
+button.setAttribute("aria-controls","cmStorageNoticeDetails");
+button.setAttribute("aria-haspopup","dialog");
+button.innerHTML= '<span class="cm-storage-info-icon" aria-hidden="true">i</span><span>Read-only</span>';
+const details=document.createElement("div");
+details.id= "cmStorageNoticeDetails";
+details.className= "cm-storage-info-details";
+details.hidden=true;
+details.tabIndex=-1;
+details.setAttribute("role","dialog");
+details.setAttribute("aria-label","Comment saving unavailable");
+const heading=document.createElement("strong");
+heading.textContent=cmhStorageUnavailableExplanation();
+const guidance=document.createElement("p");
+guidance.textContent= "Download the original HTML using your viewer's Download button, "
++"then open it locally in your browser to leave comments.";
+const recovery=document.createElement("p");
+recovery.textContent= "Review changes and file exports are disabled because this environment cannot save changes "
++"and may also block downloads. Existing comments remain visible. If saving stopped after you made changes, "
++"keep this page open and copy those changes before leaving.";
+const privacy=document.createElement("p");
+privacy.className= "cm-storage-info-hint";
+privacy.textContent= "If saving is still blocked locally, check your browser's privacy settings. "
++"Reload after restoring access to safely load previously saved review data.";
+const closeButton=document.createElement("button");
+closeButton.type= "button";
+closeButton.className= "cm-storage-btn";
+closeButton.textContent= "Close";
+function close(restoreFocus){
+details.hidden=true;
+button.setAttribute("aria-expanded","false");
+if(restoreFocus)button.focus({preventScroll:true});
+}
+button.addEventListener("click",function(){
+if(!details.hidden){close(true);return;}
+hideToast();
+details.hidden=false;
+button.setAttribute("aria-expanded","true");
+details.focus({preventScroll:true});
+});
+closeButton.addEventListener("click",function(){close(true);});
+document.addEventListener("pointerdown",function(e){
+if(!details.hidden&&!wrap.contains(e.target))close(false);
+});
+window.__cmhRegisterEscapePopup({
+isOpen:function(){return!wrap.hidden&&!details.hidden;},
+close:function(){close(true);},
+});
+details.append(heading,guidance,recovery,privacy,closeButton);
+wrap.append(button,details);
+document.body.appendChild(wrap);
+function position(){
+const view=cmhViewportBox();
+wrap.style.left=(view.left+12)+"px";
+wrap.style.bottom=Math.max(12,window.innerHeight-view.top-view.height+12)+"px";
+wrap.style.maxWidth=Math.max(0,view.width-24)+"px";
+details.style.maxWidth=Math.max(0,view.width-24)+"px";
+details.style.maxHeight=Math.max(0,view.height-88)+"px";
+}
+cmhOnViewportChange(position);
+position();
+}
+const CMH_READ_ONLY_MESSAGE= "This document is read-only because browser storage was unavailable. "
++"Review changes and file exports are disabled. Download the original HTML using your viewer's Download button "
++"and open it locally in your browser to review.";
+const CMH_READ_ONLY_SELECTOR=[
+"#contextMenu button","#btnClearAll","#btnClearAllTop","#btnClearSelected",
+".cm-storage-manager .cm-storage-danger",
+"#btnSaveHtml","#btnSaveHtmlTop","#btnSavePlain","#btnSavePlainTop",
+"#btnExportOffline","#btnExportOfflineTop","#btnExportMd","#btnExportMdTop",
+".cmh-note-input",".cmh-check",".cmh-review-badge",".cm-widget-reset",
+".cmh-editable-table :is(button:not(.cmh-table-copy-draft),input,textarea,select,summary,.cmh-table-resize)",
+".cmh-table-recovery button:not(.cmh-table-copy-draft)",
+".cmh-table-dialog :is(input,textarea,select,button[type=submit])",
+".cm-composer :is(input,textarea,select,button:not([data-act=cancel]))",
+".cm-reply-input",".cm-reply-compose button:not(.cm-reply-cancel)",".cm-comment-popover-input",
+".cm-comment-popover-edit button:not([data-act=edit-cancel])",
+":is(#commentList,.cm-comment-popover) :is([data-act=reply],[data-act=reply-edit],[data-act=reply-del],"
++"[data-act=edit],[data-act=del],[data-act=popover-del],[data-act=edit-save],[data-act=reattach],"
++"[data-act=state-reset],[data-act=cl-reset],[data-act=note-reset],[data-act=table-reset])",
+].join(",");
+const _cmhReadOnlyControls=new Map();
+function cmhShowReadOnlyNotice(){
+showToast(CMH_READ_ONLY_MESSAGE,{alert:true,duration:8000});
+}
+function cmhIsReviewControl(el){
+if(cmhClickHitsLayerChrome(el)||_cmhClickIsInLayerEditor(el)||_cmhClickIsInPopover(el))return true;
+return["sidebar","contextMenu","toolbarMenu"].some(function(id){
+const surface=cmhEl(id);
+return surface&&(root===document.body||!root.contains(surface))&&surface.contains(el);
+});
+}
+function cmhRestrictReviewControls(node){
+if(!node.querySelectorAll)return;
+const controls=[...node.querySelectorAll(CMH_READ_ONLY_SELECTOR)];
+if(node.matches&&node.matches(CMH_READ_ONLY_SELECTOR))controls.push(node);
+controls.forEach(function(el){
+if(!cmhIsReviewControl(el))return;
+if(!_cmhReadOnlyControls.has(el)){
+const saved={};
+["disabled","readonly","tabindex","aria-disabled","title"].forEach(function(name){
+saved[name]=el.getAttribute(name);
+});
+_cmhReadOnlyControls.set(el,saved);
+}
+if(el.matches("textarea,input:not([type=checkbox]):not([type=radio]):not([type=button])")){
+if(!el.readOnly)el.readOnly=true;
+}else if("disabled"in el){
+if(!el.disabled)el.disabled=true;
+}else if(el.tabIndex!==-1)el.tabIndex=-1;
+if(el.getAttribute("aria-disabled")!== "true")el.setAttribute("aria-disabled","true");
+if(el.title!==CMH_READ_ONLY_MESSAGE)el.title=CMH_READ_ONLY_MESSAGE;
+});
+}
+function cmhUpdateReadOnlyMode(){
+const readonly=cmhReviewReadOnly();
+document.body.classList.toggle("cm-review-read-only",readonly);
+if(readonly){
+hideMenu();
+cmhRestrictReviewControls(document);
+}else{
+const restoring=_cmhReadOnlyControls.size>0;
+_cmhReadOnlyControls.forEach(function(attrs,el){
+Object.keys(attrs).forEach(function(name){
+if(attrs[name]===null)el.removeAttribute(name);
+else el.setAttribute(name,attrs[name]);
+});
+});
+_cmhReadOnlyControls.clear();
+if(restoring)editableTables.forEach(function(t){
+if(!t.stale&&_etUnreadable===null)_etHistoryButtons(t);
+});
+}
+}
+function setupReadOnlyMode(){
+_cmhReadOnlyReady=true;
+cmhUpdateReadOnlyMode();
+new MutationObserver(function(records){
+if(!cmhReviewReadOnly())return;
+records.forEach(function(record){
+if(record.type=== "attributes")cmhRestrictReviewControls(record.target);
+else record.addedNodes.forEach(cmhRestrictReviewControls);
+});
+}).observe(document.body,{
+subtree:true,childList:true,attributes:true,
+attributeFilter:["disabled","readonly","tabindex","aria-disabled"],
+});
+function block(e){
+if(!cmhReviewReadOnly())return;
+const control=e.target.closest&&e.target.closest(CMH_READ_ONLY_SELECTOR);
+if(!control||!cmhIsReviewControl(control))return;
+const text=control.matches("textarea,input:not([type=checkbox]):not([type=radio]):not([type=button])");
+if(text){
+if(e.type=== "keydown"){
+if(["Tab","Escape","ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End","PageUp","PageDown"].includes(e.key)
+||((e.ctrlKey||e.metaKey)&&["a","c"].includes(e.key.toLowerCase())))return;
+}else if(!["beforeinput","input","change"].includes(e.type))return;
+}
+e.preventDefault();
+e.stopImmediatePropagation();
+if(e.type=== "click"||e.type=== "keydown")cmhShowReadOnlyNotice();
+}
+["pointerdown","click","keydown","beforeinput","input","change"].forEach(function(type){
+window.addEventListener(type,block,true);
+});
+window.addEventListener("focus",function(){
+if(!cmhReviewReadOnly()||_cmhInitialStorageReadFailed)return;
+if(_cmhPendingWrites.size){
+cmhRetryPendingWrites();
+if(_cmhStorageIssue=== "quota")cmhStorageFullToast(_cmhPendingWrites.keys().next().value,"Changes");
+}
+if(!_cmhPendingWrites.size)setupStorageNotice();
+});
+}
+function cmhAssertDownloadAllowed(){
+if(cmhReviewReadOnly())throw new Error(CMH_READ_ONLY_MESSAGE);
+}
 const _MD_SKIP_TAGS={SCRIPT:1,STYLE:1,NAV:1,NOSCRIPT:1,TEMPLATE:1};
 const _MD_ALERT={info:"NOTE",success:"TIP",warning:"WARNING",danger:"CAUTION"};
 function _mdCollapse(s){return String(s==null?"":s).replace(/\s+/g," ").trim();}
@@ -16850,6 +17203,7 @@ try{URL.revokeObjectURL(url);}catch(e){}
 try{if(a)a.remove();}catch(e){}
 }
 function _downloadTextFile(text,filename,mime){
+cmhAssertDownloadAllowed();
 const blob=new Blob([text],{type:(mime||"text/plain")+";charset=utf-8"});
 const url=URL.createObjectURL(blob);
 let a=null;
@@ -17519,6 +17873,7 @@ cancelBtn.focus();
 }
 let _clearAllBusy=false;
 function performClearAll(){
+if(cmhReviewReadOnly())return;
 if(typeof openEditComposers!== "undefined"){
 Array.from(openEditComposers.values()).forEach((elc)=>closeComposerElement(elc));
 }
@@ -17596,7 +17951,7 @@ try{console.warn("commentable-html: delete all comments failed:",e);}catch(e2){}
 });
 }
 });
-const _TRANSIENT_BODY_CLASSES={"sidebar-open":1,"cm-sidebar-resizing":1,"cm-widget-dragging":1,"cmh-deck-present":1,"cmh-deck-comments-off":1};
+const _TRANSIENT_BODY_CLASSES={"sidebar-open":1,"cm-sidebar-resizing":1,"cm-widget-dragging":1,"cmh-deck-present":1,"cmh-deck-comments-off":1,"cm-review-read-only":1};
 function _stripTransientBodyClasses(html){
 return String(html==null?"":html).replace(/<body\b[^>]*>/i,function(tag){
 return tag.replace(
@@ -17975,6 +18330,7 @@ const clean=m[1].replace(/-comments$/i,"").replace(/-(?:shareable|portable)$/i,"
 return clean+"-offline"+m[2];
 }
 function _downloadHtml(text,filename){
+cmhAssertDownloadAllowed();
 const blob=new Blob([text],{type:"text/html;charset=utf-8"});
 const url=URL.createObjectURL(blob);
 let a=null;
@@ -20618,6 +20974,7 @@ T('Managing storage',
 '<li><strong>Manage storage</strong> (in the sidebar&#39;s <em>More</em> menu, or the collapsed toolbar&#39;s overflow <kbd>...</kbd> menu) lists every document&#39;s stored data with its size, and lets you delete another document&#39;s data to free space. Your own comments are never uploaded - this only clears local browser storage.</li>'+
 '<li>The window shows a <strong>pie chart</strong> of how the browser storage is used - <em>This document</em>, <em>Other commentable-html documents</em>, <em>Other</em> site data, and the <em>Free</em> headroom - above a per-document <strong>table</strong> (Document, Comments, Size, Share, Actions) whose <em>Share</em> column is each document&#39;s percentage of commentable-html storage. Expand a row&#39;s <strong>Show comments</strong> to browse and delete individual comments.</li>'+
 '<li>If a comment cannot be saved because storage is full, the <strong>Manage storage</strong> window opens automatically; delete another document&#39;s data and your comment is saved.</li>'+
+'<li>If a preview (such as OneDrive) or browser privacy setting blocks storage, a bottom-left <strong>Read-only</strong> information bubble explains what to do. Comments, replies, review edits and file exports are disabled so you cannot make changes that will be lost. Existing comments remain visible. Use the viewer&#39;s own <strong>Download</strong> command to get the original HTML, then open it locally to review. A preview may also block copying or downloads; the layer cannot override those restrictions. A blocked or zero-capacity store is not reported as full.</li>'+
 '<li>Comments are stored compressed, so far more reviews fit before the space runs out.</li>'+
 '</ul>')+
 T('Self-contained and privacy',
@@ -22140,6 +22497,7 @@ clone.querySelectorAll(".cm-skip, script, style, template").forEach(function(e){
 return(clone.textContent||"").trim().replace(REVIEW_WS_RE," ").slice(0,200);
 }
 function markSectionReviewed(heading){
+if(cmhReviewReadOnly())return;
 if(!heading||!heading.id)return;
 reviewMarkers[heading.id]={
 hash:_cmhHashForHeadingEl(heading),
@@ -22151,13 +22509,15 @@ const tomb=_deletedReviewIds();
 if(tomb.delete(heading.id))_saveDeletedReviewIds(tomb);
 const savedOk=saveReviewMarkers();
 if(!savedOk&&typeof showToast=== "function"){
-showToast("Could not persist reviewing this section (browser storage full or blocked) - it "
+showToast(cmhReviewReadOnly()?cmhStorageUnavailableMessage("Section review")
+:"Could not persist reviewing this section (browser storage full or blocked) - it "
 +"may not stick on reload. Use Export as Shareable to keep the change.",
-{alert:true,duration:8000,action:cmhStorageAction(REVIEW_KEY)});
+{alert:true,duration:cmhReviewReadOnly()?6400:8000,action:cmhStorageAction(REVIEW_KEY)});
 }
 refreshReviewUI();
 }
 function clearSectionReviewed(heading){
+if(cmhReviewReadOnly())return;
 if(!heading||!heading.id)return;
 delete reviewMarkers[heading.id];
 const embedded=getEmbeddedReviewMarkers();
@@ -22170,9 +22530,10 @@ tombOk=_saveDeletedReviewIds(tomb);
 }
 const savedOk=saveReviewMarkers();
 if(wasBaked&&(!tombOk||!savedOk)&&typeof showToast=== "function"){
-showToast("Could not persist un-reviewing this section (browser storage full or blocked) - it "
+showToast(cmhReviewReadOnly()?cmhStorageUnavailableMessage("Section review removal")
+:"Could not persist un-reviewing this section (browser storage full or blocked) - it "
 +"may come back on reload. Use Export as Shareable to keep the change.",
-{alert:true,duration:8000,action:cmhStorageAction(REVIEW_DELETED_KEY)||cmhStorageAction(REVIEW_KEY)});
+{alert:true,duration:cmhReviewReadOnly()?6400:8000,action:cmhStorageAction(REVIEW_DELETED_KEY)||cmhStorageAction(REVIEW_KEY)});
 }
 refreshReviewUI();
 }
@@ -23427,6 +23788,8 @@ setupScrollProgress();
 }
 setupTooltips();
 setupValidationBanner();
+setupReadOnlyMode();
+setupStorageNotice();
 for(let cur=CMH_LAYER_SCRIPT;cur&&cur.parentNode;cur=cur.parentNode){
 for(let s=cur.nextSibling;s;s=s.nextSibling){
 if(s.nodeType===1)CMH_INJECTED_CHROME.add(s);

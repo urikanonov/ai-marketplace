@@ -806,6 +806,7 @@ function _buildInlineReplyEditor(initialText, saveLabel, onSave, onCancel, opts)
   actions.appendChild(cancel); actions.appendChild(save);
   wrap.appendChild(formatBar); wrap.appendChild(ta); wrap.appendChild(actions);
   function doSave() {
+    if (cmhReviewReadOnly()) { cmhShowReadOnlyNotice(); return; }
     const val = ta.value.trim();
     if (!val) { ta.setAttribute("aria-invalid", "true"); ta.classList.add("cm-invalid"); ta.focus(); return; }
     onSave(val);
@@ -1160,6 +1161,7 @@ function openInlineNoteEdit(entry, cid) {
 // showing a removed id, drop the highlight, save, and re-render. Keeping it in one function is what
 // makes the two surfaces impossible to drift apart.
 function cmhConfirmDeleteThread(id, opts) {
+  if (cmhReviewReadOnly()) return false;
   const c = comments.find((x) => x.id === id);
   if (!c) return false;
   const o = opts || {};

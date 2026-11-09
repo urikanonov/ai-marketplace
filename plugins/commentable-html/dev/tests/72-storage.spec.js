@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { fileUrl, ready, stageContent, stageInline, INLINE, addTextComment, storedComments, currentToast, clickSidebarMore } from "./helpers.js";
+import fs from "fs";
+import { fileUrl, ready, stageContent, stageInline, INLINE, addTextComment, openComposerFor, storedComments, currentToast, clickSidebarMore, denyExternalNetwork, clickSidebarExport, readDownload, installClipboardCapture, copiedBundle } from "./helpers.js";
 
 // The storage manager and compression codec (CMH-STORE-*). Each test loads an isolated document
 // (its own data-comment-key) so seeded "other document" data is unambiguous.
@@ -23,6 +24,591 @@ async function openManager(page) {
     await page.click("#btnStorageTop");
   }
   await expect(page.locator(".cm-storage-manager")).toBeVisible();
+}
+
+test("pending embedded deletions accumulate and tolerate malformed saved markers (CMH-STORE-19)", async ({ page }) => {
+  page.on("dialog", dialog => dialog.accept());
+  const key = "cmh-pending-deletions";
+  const html = await open(page, { key });
+  const embedded = ["cfirstdelete", "cseconddelete"].map((id) => ({
+    id, anchorType: "document", quote: "", note: id, createdAt: "2026-01-01T00:00:00Z",
+  }));
+  fs.writeFileSync(html, fs.readFileSync(html, "utf8").replace(
+    /(<script[^>]*id="embeddedComments"[^>]*>)[\s\S]*?(<\/script>)/,
+    (_m, a, b) => a + JSON.stringify(embedded) + b));
+  await page.reload();
+  await ready(page);
+  await page.evaluate((k) => {
+    localStorage.setItem(k + "::deleted", "{malformed");
+  }, key);
+  await page.locator('.cm-card[data-cid="cfirstdelete"] [data-act="del"]').click();
+  await expect(page.locator("#btnSaveHtml")).toBeEnabled();
+  await page.reload();
+  await ready(page);
+  await expect(page.locator('.cm-card[data-cid="cfirstdelete"]')).toHaveCount(0);
+  // Restore both embedded threads so two failed deletes share one pending marker write.
+  await page.evaluate((k) => {
+    localStorage.removeItem(k + "::deleted");
+    localStorage.removeItem(k + "::z");
+  }, key);
+  await page.reload();
+  await ready(page);
+  await page.evaluate((k) => {
+    const bloat = "commentable-html:/reports/deletion-bloat.html::z";
+    localStorage.setItem(bloat, "\u0001z" + "x".repeat(200));
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (name, value) {
+      if ((name === k + "::deleted" || name === k + "::z") && localStorage.getItem(bloat) !== null) {
+        throw new DOMException("quota", "QuotaExceededError");
+      }
+      return original.call(this, name, value);
+    };
+  }, key);
+  for (const comment of embedded) {
+    await page.locator(`.cm-card[data-cid="${comment.id}"] [data-act="del"]`).click();
+  }
+  await openManager(page);
+  const bloatRow = page.locator(".cm-storage-row", { hasText: "deletion-bloat.html" });
+  await bloatRow.locator(".cm-storage-danger").click();
+  await bloatRow.locator(".cm-storage-danger", { hasText: "Confirm" }).click();
+  await page.reload();
+  await ready(page);
+  await expect(page.locator(".cm-card")).toHaveCount(0);
+  expect(await page.evaluate(k => JSON.parse(localStorage.getItem(k + "::deleted")).sort(), key))
+    .toEqual(embedded.map(c => c.id).sort());
+});
+
+test("storage loss preserves an open popover draft against keyboard saves (CMH-STORE-19)", async ({ page }) => {
+  await open(page);
+  await addTextComment(page, "#commentRoot p", "Original saved comment");
+  await page.locator("mark.cm-hl").hover();
+  await page.locator("#hlBubble").click();
+  const popover = page.locator(".cm-comment-popover");
+  await popover.locator('[data-act="edit"]').click();
+  await popover.locator("textarea").fill("Unsaved popover draft");
+  await page.evaluate(() => {
+    Storage.prototype.setItem = () => { throw new DOMException("Denied", "SecurityError"); };
+  });
+  await page.locator(".cmh-review-badge").click();
+  await expect(page.locator("body")).toHaveClass(/cm-review-read-only/);
+  await popover.locator('[data-act="edit-cancel"]').focus();
+  await page.keyboard.press("Control+Enter");
+  await expect(popover).toBeVisible();
+  await expect(popover.locator("textarea")).toHaveValue("Unsaved popover draft");
+  await expect(page.locator(".cm-card .note")).toHaveText("Original saved comment");
+  await popover.locator('[data-act="edit-cancel"]').click();
+  await expect(popover.locator("textarea")).toHaveCount(0);
+  await expect(popover.locator(".cm-comment-popover-note")).toHaveText("Original saved comment");
+});
+
+test("read-only restrictions leave authored lookalike controls usable (CMH-STORE-19)", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", {
+      get() { throw new DOMException("Denied", "SecurityError"); },
+    });
+  });
+  const { html } = stageContent(`<section><h2>Authored controls</h2><p>Reviewable text.</p>
+    <button id="host-badge" class="cmh-review-badge" style="position:static">Host action</button>
+    <button id="host-reset" class="cm-widget-reset" style="position:static">Host reset</button>
+    <textarea id="host-note" class="cmh-note-input">Host text</textarea></section>`);
+  await page.goto(fileUrl(html));
+  await ready(page);
+  for (const id of ["host-badge", "host-reset"]) {
+    await expect(page.locator("#" + id)).toBeEnabled();
+    await page.locator("#" + id).evaluate(el => el.addEventListener("click", () => { el.dataset.clicked = "yes"; }));
+    await page.locator("#" + id).click();
+    await expect(page.locator("#" + id)).toHaveAttribute("data-clicked", "yes");
+  }
+  await expect(page.locator("#host-note")).toBeEditable();
+  await page.locator("#host-note").fill("Authored edit still works");
+  await expect(page.locator("#host-note")).toHaveValue("Authored edit still works");
+  await expect(page.locator(".cmh-review-badge:not(#host-badge)")).toBeDisabled();
+});
+
+test("storage loss preserves an open column dialog without allowing edits (CMH-STORE-19)", async ({ page }) => {
+  const { html } = stageContent(`<section><h2>Review</h2>
+    <table data-cmh-table="actions" data-cmh-table-label="Actions">
+      <thead><tr><th data-cmh-column="task">Task</th></tr></thead>
+      <tbody><tr data-cmh-row="first"><td>Original task</td></tr></tbody>
+    </table></section>`);
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await page.getByRole("button", { name: "Add column", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Add column", exact: true });
+  await dialog.getByLabel("Column name", { exact: true }).fill("Status");
+  await dialog.getByLabel("Column type").selectOption("choice");
+  const choices = dialog.getByLabel("Choices (one per line)");
+  await choices.fill("Open\nDone");
+  await page.evaluate(() => {
+    Storage.prototype.setItem = () => { throw new DOMException("Denied", "SecurityError"); };
+    document.querySelector(".cmh-review-badge").click();
+  });
+  await expect(page.locator("body")).toHaveClass(/cm-review-read-only/);
+  await expect(choices).not.toBeEditable();
+  await expect(choices).toHaveValue("Open\nDone");
+  await expect(dialog.getByLabel("Column name", { exact: true })).not.toBeEditable();
+  await expect(dialog.getByLabel("Column type")).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
+for (const action of ["mark", "unmark"]) {
+  test(`blocked section ${action} uses local-download guidance instead of disabled exports (CMH-STORE-19)`, async ({ page }) => {
+    const html = await open(page);
+    if (action === "unmark") {
+      await page.locator(".cmh-review-badge").click();
+      const markers = await page.evaluate(() => localStorage.getItem("cmh-store-cur::reviews"));
+      fs.writeFileSync(html, fs.readFileSync(html, "utf8").replace(
+        /(<script[^>]*id="reviewedSections"[^>]*>)[\s\S]*?(<\/script>)/,
+        (_m, a, b) => a + markers + b));
+      await page.reload();
+      await ready(page);
+    }
+    await page.evaluate(() => {
+      Storage.prototype.setItem = () => { throw new DOMException("Denied", "SecurityError"); };
+    });
+    await page.locator(".cmh-review-badge").click();
+    await expect(page.locator("#toast")).toContainText("file exports are now disabled");
+    await expect(page.locator("#toast")).toContainText("Download the original HTML");
+    await expect(page.locator("#toast")).not.toContainText("Export as Shareable");
+  });
+}
+
+test("unavailable storage makes review controls and file exports read-only (CMH-STORE-19)", async ({ page }) => {
+  await denyExternalNetwork(page);
+  await page.addInitScript(() => {
+    const storage = window.localStorage;
+    window.__denyStorage = sessionStorage.getItem("cmh-test-storage-restored") !== "yes";
+    Object.defineProperty(window, "localStorage", {
+      get() {
+        if (window.__denyStorage) throw new DOMException("Access denied", "SecurityError");
+        return storage;
+      },
+    });
+  });
+  const { html } = stageContent(`
+    <section><h2>Read-only review</h2><p>Reviewable paragraph.</p>
+    <div class="cmh-note" data-cmh-note="decision">Original note</div>
+    <div class="cmh-checklist" data-cmh-checklist="checks" data-cmh-checklist-label="Checks">
+      <div data-cmh-item="first">Original task</div>
+    </div>
+    <table data-cmh-table="actions" data-cmh-table-label="Actions">
+      <thead><tr><th data-cmh-column="task">Task</th></tr></thead>
+      <tbody><tr data-cmh-row="first"><td>Original task</td></tr></tbody>
+    </table><button id="host-action" type="button">Host control</button></section>`);
+  const { html: seeded } = stageInline({ mutate: () => fs.readFileSync(html, "utf8").replace(
+    /(<script[^>]*id="embeddedComments"[^>]*>)[\s\S]*?(<\/script>)/,
+    (_m, a, b) => a + JSON.stringify([{
+      id: "creadonly01", anchorType: "document", quote: "", note: "Existing review remains visible",
+      createdAt: "2026-01-01T00:00:00Z",
+    }, {
+      id: "creadonly02", parentId: "creadonly01", note: "Existing reply remains visible",
+      createdAt: "2026-01-01T00:00:01Z",
+    }]) + b) });
+  const downloads = [];
+  page.on("download", download => downloads.push(download));
+  await page.goto(fileUrl(seeded));
+  await ready(page);
+  await expect(page.locator('[data-cmh-note="decision"] textarea')).not.toBeEditable();
+  await expect(page.locator(".cmh-check")).toBeDisabled();
+  await expect(page.locator('[data-cmh-table="actions"] textarea')).not.toBeEditable();
+  await expect(page.locator(".cmh-editable-table").getByRole("button", { name: "Add row", exact: true })).toBeDisabled();
+  const card = page.locator('.cm-card[data-cid="creadonly01"]');
+  await expect(card).toContainText("Existing review remains visible");
+  await expect(card).toContainText("Existing reply remains visible");
+  for (const action of ["reply", "edit", "del", "reply-edit", "reply-del"]) await expect(card.locator(`[data-act="${action}"]`)).toBeDisabled();
+  const originalReply = await card.locator('[data-act="reply"]').elementHandle();
+  await page.locator("#btnSort").click();
+  expect(await originalReply.evaluate(el => el.isConnected)).toBe(false);
+  await expect(card.locator('[data-act="reply"]')).toBeDisabled();
+  await expect(page.locator(".cmh-review-badge")).toBeDisabled();
+  await expect(card.locator('[data-act="copy"]')).toBeEnabled();
+  await expect(page.locator("#host-action")).toBeEnabled();
+  for (const id of ["btnSaveHtml", "btnSaveHtmlTop", "btnExportOffline", "btnExportMd", "btnSavePlain"]) {
+    await expect(page.locator("#" + id)).toBeDisabled();
+  }
+  await card.locator('[data-act="reply"]').dispatchEvent("click");
+  await expect(page.locator(".cm-reply-compose")).toHaveCount(0);
+  await page.locator("#btnSaveHtml").dispatchEvent("click");
+  await expect(page.locator("#toast")).toContainText("read-only");
+  await expect(page.locator("#toast")).not.toContainText("Downloaded");
+  expect(downloads).toHaveLength(0);
+  await page.locator("#commentRoot p").first().dispatchEvent("contextmenu");
+  await expect(page.locator("#contextMenu")).toBeHidden();
+  await page.getByRole("button", { name: "Comment saving unavailable" }).click();
+  await expect(page.getByRole("dialog", { name: "Comment saving unavailable" })).toContainText("viewer");
+  await page.keyboard.press("Escape");
+  await openManager(page);
+  await page.locator(".cm-storage-current .cm-storage-show-comments").click();
+  const managerDelete = page.getByRole("button", { name: "Delete this comment", exact: true }).first();
+  await expect(managerDelete).toBeDisabled();
+  await managerDelete.dispatchEvent("click");
+  await expect(page.locator(".cm-storage-confirm")).toHaveCount(0);
+  await page.locator(".cm-storage-manager").getByRole("button", { name: "Close", exact: true }).click();
+  await page.evaluate(() => {
+    window.__denyStorage = false;
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(page.locator('[data-cmh-note="decision"] textarea')).not.toBeEditable();
+  await page.evaluate(() => { sessionStorage.setItem("cmh-test-storage-restored", "yes"); });
+  await page.reload();
+  await ready(page);
+  await expect(page.getByRole("button", { name: "Comment saving unavailable" })).toBeHidden();
+  await expect(page.locator('[data-cmh-note="decision"] textarea')).toBeEditable();
+  await expect(page.locator('[data-cmh-table="actions"] textarea')).toBeEditable();
+  await expect(page.locator(".cmh-editable-table").getByRole("button", { name: "Add row", exact: true })).toBeEnabled();
+  await expect(page.locator(".cmh-editable-table").getByRole("button", { name: "Undo", exact: true })).toBeDisabled();
+  await expect(page.locator("#btnSaveHtml")).toBeEnabled();
+  await expect(card.locator('[data-act="reply"]')).toBeEnabled();
+});
+
+test("storage recovery persists failed embedded-comment deletions (CMH-STORE-19)", async ({ page }) => {
+  await denyExternalNetwork(page);
+  await page.addInitScript(() => {
+    const storage = window.localStorage;
+    if (!storage.getItem("cmh-delete-recovery::deleted")) {
+      storage.setItem("cmh-delete-recovery::deleted", JSON.stringify(["cprevious01"]));
+    }
+    Object.defineProperty(window, "localStorage", {
+      get() {
+        if (window.__denyStorage) throw new DOMException("Denied", "SecurityError");
+        return storage;
+      },
+    });
+  });
+  const { html } = stageContent("<section><h2>Review</h2><p>Reviewable text.</p></section>", { key: "cmh-delete-recovery" });
+  const { html: seeded } = stageInline({ mutate: () => fs.readFileSync(html, "utf8").replace(
+    /(<script[^>]*id="embeddedComments"[^>]*>)[\s\S]*?(<\/script>)/,
+    (_m, a, b) => a + JSON.stringify([{
+      id: "cdelete01", anchorType: "document", quote: "", note: "Delete this embedded comment",
+      createdAt: "2026-01-01T00:00:00Z",
+    }, {
+      id: "cprevious01", anchorType: "document", quote: "", note: "Previously deleted comment",
+      createdAt: "2026-01-01T00:00:00Z",
+    }]) + b) });
+  await page.goto(fileUrl(seeded));
+  await ready(page);
+  await openManager(page);
+  await page.locator(".cm-storage-current .cm-storage-show-comments").click();
+  await page.getByRole("button", { name: "Delete this comment", exact: true }).click();
+  await page.evaluate(() => { window.__denyStorage = true; });
+  await page.locator(".cm-storage-confirm .cm-storage-danger").click();
+  await page.locator(".cm-storage-manager").getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Comment saving unavailable" })).toBeVisible();
+  await page.evaluate(() => {
+    window.__denyStorage = false;
+    window.dispatchEvent(new Event("focus"));
+  });
+  await page.reload();
+  await ready(page);
+  await expect(page.locator(".cm-card")).toHaveCount(0);
+});
+
+test("startup-denied storage never overwrites previously saved review data (CMH-STORE-19)", async ({ page }) => {
+  await denyExternalNetwork(page);
+  await page.addInitScript(() => {
+    const storage = window.localStorage;
+    window.__denyStorage = sessionStorage.getItem("cmh-deny-next-load") === "yes";
+    Object.defineProperty(window, "localStorage", {
+      get() {
+        if (window.__denyStorage) throw new DOMException("Denied", "SecurityError");
+        return storage;
+      },
+    });
+  });
+  await open(page);
+  await addTextComment(page, "#commentRoot p", "Saved before storage was blocked");
+  await page.evaluate(() => { sessionStorage.setItem("cmh-deny-next-load", "yes"); });
+  await page.reload();
+  await ready(page);
+  await expect(page.locator("body")).toHaveClass(/cm-review-read-only/);
+  await page.evaluate(() => {
+    window.__denyStorage = false;
+    sessionStorage.removeItem("cmh-deny-next-load");
+    window.dispatchEvent(new Event("focus"));
+  });
+  expect((await storedComments(page))[0]?.note).toBe("Saved before storage was blocked");
+  await expect(page.locator("#btnSaveHtml")).toBeDisabled();
+  await page.getByRole("button", { name: "Comment saving unavailable" }).click();
+  await expect(page.getByRole("dialog", { name: "Comment saving unavailable" })).toContainText("Reload");
+  await page.reload();
+  await ready(page);
+  await expect(page.locator(".cm-card")).toContainText("Saved before storage was blocked");
+  await expect(page.locator("#btnSaveHtml")).toBeEnabled();
+});
+
+test("storage recovery preserves table undo and saved-draft copying (CMH-STORE-19)", async ({ page }) => {
+  await denyExternalNetwork(page);
+  await installClipboardCapture(page);
+  const key = "cmh-readonly-table-recovery";
+  const { html } = stageContent(`<section><h2>Actions</h2>
+    <table data-cmh-table="actions" data-cmh-table-label="Actions">
+      <thead><tr><th data-cmh-column="task">Task</th></tr></thead>
+      <tbody><tr data-cmh-row="first"><td>Original task</td></tr></tbody>
+    </table></section>`, { key });
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await page.evaluate(() => {
+    window.__denyStorage = true;
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (window.__denyStorage) throw new DOMException("Denied", "SecurityError");
+      return original.call(this, key, value);
+    };
+  });
+  const cell = page.locator('[data-cmh-table="actions"] textarea');
+  await cell.fill("Keep this first edit");
+  await cell.blur();
+  await expect(cell).not.toBeEditable();
+  await page.evaluate(() => {
+    window.__denyStorage = false;
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(page.locator(".cmh-editable-table").getByRole("button", { name: "Undo", exact: true })).toBeEnabled();
+  await page.reload();
+  await ready(page);
+  await expect(cell).toHaveValue("Keep this first edit");
+  await page.evaluate(key => {
+    const saved = JSON.parse(localStorage.getItem(key + "::tables"));
+    saved.tables[0].from.rows[0].cells[0] = "Different original";
+    localStorage.setItem(key + "::tables", JSON.stringify(saved));
+  }, key);
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = function () { throw new DOMException("Denied", "SecurityError"); };
+  });
+  await page.reload();
+  await ready(page);
+  const copy = page.getByRole("button", { name: "Copy saved draft", exact: true });
+  await expect(copy).toBeEnabled();
+  await copy.click();
+  expect(await copiedBundle(page)).toContain("Keep this first edit");
+  await expect(page.getByRole("button", { name: "Discard saved draft", exact: true })).toBeDisabled();
+});
+
+test("denied storage gives local-download guidance instead of a full-storage warning (CMH-STORE-17)", async ({ page }) => {
+  await denyExternalNetwork(page);
+  await page.addInitScript(() => {
+    const storage = window.localStorage;
+    Object.defineProperty(window, "localStorage", {
+      get() {
+        if (window.__denyStorage) throw new DOMException("Access denied", "SecurityError");
+        return storage;
+      },
+    });
+  });
+  await open(page);
+  const info = page.getByRole("button", { name: "Comment saving unavailable" });
+  const composer = await openComposerFor(page, "#commentRoot p");
+  await composer.locator("textarea").fill("Keep this temporary comment");
+  await page.evaluate(() => { window.__denyStorage = true; });
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
+  await composer.locator('[data-act="save"]').click();
+  await expect(page.locator("#toast")).toContainText("NOT saved");
+  await expect(page.locator("#toast")).toContainText("Download");
+  await expect(page.locator("#toast")).toContainText("Review changes and file exports are now disabled");
+  await expect(page.locator("#toast")).not.toContainText("storage full");
+  await expect(page.locator(".cm-storage-manager")).toHaveCount(0);
+  await expect(page.locator(".cm-card")).toContainText("Keep this temporary comment");
+  await page.clock.runFor(7999);
+  await expect(page.locator("#toast")).toHaveClass(/\bshow\b/);
+  await page.clock.runFor(1);
+  await expect(page.locator("#toast")).not.toHaveClass(/\bshow\b/);
+  await expect(info).toBeVisible();
+  await expect(info).toHaveAccessibleName("Comment saving unavailable - Read-only");
+  await info.click();
+  await expect(page.getByRole("dialog", { name: "Comment saving unavailable" })).toContainText("Download");
+});
+
+test("a native sandboxed preview explains why comments need a local copy (CMH-STORE-17)", async ({ page }) => {
+  await denyExternalNetwork(page);
+  const { html } = stageContent("<section><h2>Preview</h2><p>Reviewable preview text.</p></section>");
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await page.evaluate((srcdoc) => {
+    const frame = document.createElement("iframe");
+    frame.id = "preview";
+    frame.sandbox = "allow-scripts";
+    frame.srcdoc = srcdoc;
+    frame.style.cssText = "position:fixed;inset:0;width:100%;height:100%;border:0;z-index:999999";
+    document.body.appendChild(frame);
+  }, fs.readFileSync(html, "utf8"));
+  const frame = page.locator("iframe#preview").contentFrame();
+  const info = frame.getByRole("button", { name: "Comment saving unavailable" });
+  await expect(info).toBeVisible();
+  await expect(frame.locator("#toast")).not.toHaveClass(/\bshow\b/);
+  await info.click();
+  const dialog = frame.getByRole("dialog", { name: "Comment saving unavailable" });
+  await expect(dialog).toContainText("Comments cannot be saved in this preview");
+  await expect(dialog).toContainText("open it locally");
+  await expect(dialog).toContainText("file exports are disabled");
+  await expect(frame.locator(".cm-storage-manager")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await frame.locator("#commentRoot p").dispatchEvent("contextmenu");
+  await expect(frame.locator("#contextMenu")).toBeHidden();
+  await expect(frame.locator("#btnSaveHtml")).toBeDisabled();
+  await expect(frame.locator(".cm-composer")).toHaveCount(0);
+});
+
+test("a zero-capacity store is unavailable rather than a reclaimable quota (CMH-STORE-17)", async ({ page }) => {
+  await denyExternalNetwork(page);
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = function () { throw new DOMException("Disabled", "QuotaExceededError"); };
+  });
+  await open(page);
+  await expect(page.getByRole("button", { name: "Comment saving unavailable" })).toBeVisible();
+  await page.locator("#commentRoot p").dispatchEvent("contextmenu");
+  await expect(page.locator("#contextMenu")).toBeHidden();
+  await expect(page.locator("#btnSaveHtml")).toBeDisabled();
+  await expect(page.locator(".cm-storage-manager")).toHaveCount(0);
+});
+
+test("working storage and a real full store do not show the unavailable notice (CMH-STORE-17)", async ({ page }) => {
+  await denyExternalNetwork(page);
+  await open(page);
+  await expect(page.getByRole("button", { name: "Comment saving unavailable" })).toHaveCount(0);
+  await page.evaluate(() => {
+    localStorage.setItem("other-application", "retained data");
+    Storage.prototype.setItem = function () { throw new DOMException("Full", "QuotaExceededError"); };
+  });
+  await addTextComment(page, "#commentRoot p", "Recover through the storage manager");
+  await expect(page.locator(".cm-storage-manager")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Comment saving unavailable" })).toHaveCount(0);
+});
+
+test("a large first write still uses quota recovery when a tiny write fits (CMH-STORE-17)", async ({ page }) => {
+  await denyExternalNetwork(page);
+  await open(page);
+  await page.evaluate(() => {
+    localStorage.clear();
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key.endsWith("::z")) throw new DOMException("Payload too large", "QuotaExceededError");
+      return original.call(this, key, value);
+    };
+  });
+  await addTextComment(page, "#commentRoot p", "A first comment that exceeds capacity");
+  await expect(page.locator(".cm-storage-manager")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Comment saving unavailable" })).toHaveCount(0);
+});
+
+test("a note edit detects newly blocked storage and hides the notice after recovery (CMH-STORE-17)", async ({ page }) => {
+  await denyExternalNetwork(page);
+  const { html } = stageContent(
+    '<section><p>Reviewable text.</p><div class="cmh-note" data-cmh-note="risk">Baseline</div></section>');
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await page.evaluate(() => {
+    window.__denyStorage = true;
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (window.__denyStorage) throw new DOMException("Denied", "SecurityError");
+      return original.call(this, key, value);
+    };
+  });
+  const input = page.locator('[data-cmh-note="risk"] .cmh-note-input');
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
+  await input.fill("Temporary edit");
+  await input.blur();
+  const info = page.getByRole("button", { name: "Comment saving unavailable" });
+  await expect(info).toBeVisible();
+  await expect(page.locator("#toast")).toContainText("Download");
+  await expect(page.locator("#toast")).not.toContainText("storage full");
+  await page.clock.runFor(6399);
+  await expect(page.locator("#toast")).toHaveClass(/\bshow\b/);
+  await page.clock.runFor(1);
+  await expect(page.locator("#toast")).not.toHaveClass(/\bshow\b/);
+  await expect(info).toBeVisible();
+  await expect(input).not.toBeEditable();
+  await page.evaluate(() => {
+    window.__denyStorage = false;
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(input).toBeEditable();
+  await expect(info).toBeHidden();
+  await page.reload();
+  await ready(page);
+  await expect(page.locator('[data-cmh-note="risk"] .cmh-note-input')).toHaveValue("Temporary edit");
+});
+
+test("export keeps temporary comments but not the unavailable-storage UI (CMH-STORE-18)", async ({ page, browser }) => {
+  await denyExternalNetwork(page);
+  await page.addInitScript(() => {
+    const storage = window.localStorage;
+    Object.defineProperty(window, "localStorage", {
+      get() {
+        if (window.__denyStorage) throw new DOMException("Denied", "SecurityError");
+        return storage;
+      },
+    });
+  });
+  await open(page);
+  const composer = await openComposerFor(page, "#commentRoot p");
+  await composer.locator("textarea").fill("Recover this comment in the export");
+  await page.evaluate(() => { window.__denyStorage = true; });
+  await composer.locator('[data-act="save"]').click();
+  await expect(page.locator("#btnSaveHtml")).toBeDisabled();
+  await page.evaluate(() => {
+    window.__denyStorage = false;
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(page.locator("#btnSaveHtml")).toBeEnabled();
+  expect((await storedComments(page))[0].note).toBe("Recover this comment in the export");
+  const download = page.waitForEvent("download");
+  await clickSidebarExport(page, "#btnSaveHtml");
+  const exported = await readDownload(await download);
+  expect(exported).not.toContain('class="cm-skip cm-storage-notice"');
+  const { html } = stageInline({ mutate: () => exported });
+  const context = await browser.newContext();
+  try {
+    const local = await context.newPage();
+    await denyExternalNetwork(local);
+    await local.goto(fileUrl(html));
+    await ready(local);
+    await expect(local.locator(".cm-card")).toContainText("Recover this comment in the export");
+    await expect(local.getByRole("button", { name: "Comment saving unavailable" })).toHaveCount(0);
+  } finally { await context.close(); }
+});
+
+for (const width of [1280, 390]) {
+  test(`the information bubble is keyboard accessible and fits a ${width}px viewport (CMH-STORE-18)`, async ({ page }) => {
+    await denyExternalNetwork(page);
+    await page.setViewportSize({ width, height: 800 });
+    await page.addInitScript(() => {
+      Storage.prototype.setItem = function () { throw new DOMException("Denied", "SecurityError"); };
+    });
+    await open(page);
+    const info = page.getByRole("button", { name: "Comment saving unavailable" });
+    await expect(info).toBeVisible();
+    await page.locator("#btnSaveHtml").dispatchEvent("click");
+    await expect(page.locator("#toast")).toHaveClass(/\bshow\b/);
+    await info.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Comment saving unavailable" });
+    await expect(dialog).toBeVisible();
+    await expect(page.locator("#toast")).not.toHaveClass(/\bshow\b/);
+    await expect(info).toHaveAttribute("aria-expanded", "true");
+    const bounds = await dialog.boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(800);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(info).toBeFocused();
+    await expect(info).toHaveAttribute("aria-expanded", "false");
+    await info.click();
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(info).toBeVisible();
+    await info.click();
+    await page.locator("#commentRoot p").click();
+    await expect(dialog).toBeHidden();
+    await page.emulateMedia({ media: "print" });
+    await expect(info).toBeHidden();
+  });
 }
 
 test("codec round-trips arbitrary Unicode and stores the smaller of plain/framed (CMH-STORE-01, CMH-STORE-03)", async ({ page }) => {

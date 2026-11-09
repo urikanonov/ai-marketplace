@@ -115,6 +115,7 @@ function _noteFlushRender() {
 const _NOTE_RENDER_DEBOUNCE_MS = 150;
 let _noteRenderTimer = 0;
 function _noteOnInput(note) {
+  if (cmhReviewReadOnly()) return;
   _noteSave();
   _noteSyncUi();
   if (_noteRenderTimer) clearTimeout(_noteRenderTimer);

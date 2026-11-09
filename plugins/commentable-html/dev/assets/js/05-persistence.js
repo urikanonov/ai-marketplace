@@ -8,6 +8,51 @@ function cmhIsQuotaError(e) {
     || e.name === "NS_ERROR_DOM_QUOTA_REACHED"
     || e.code === 22 || e.code === 1014;
 }
+let _cmhStorageIssue = null;
+// An incomplete startup snapshot must not overwrite review data we could not read.
+let _cmhInitialStorageReadFailed = false;
+let _cmhReadOnlyReady = false;
+function cmhReviewReadOnly() {
+  return _cmhInitialStorageReadFailed || _cmhStorageIssue === "blocked" || _cmhStorageIssue === "unavailable";
+}
+function cmhProbeStorage() {
+  const key = "commentable-html::probe:" + Math.random().toString(36).slice(2);
+  localStorage.setItem(key, "1");
+  try {
+    if (localStorage.getItem(key) !== "1") throw new Error("Storage did not retain the probe");
+  } finally { localStorage.removeItem(key); }
+}
+function cmhStorageFailureKind(e) {
+  if (e && e.name === "SecurityError") return "blocked";
+  if (cmhIsQuotaError(e)) {
+    try {
+      if (localStorage.length > 0) return "quota";
+      // An empty store may reject a large value, or have no capacity at all (private previews).
+      cmhProbeStorage();
+      return "quota";
+    } catch (probeError) {
+      return probeError && probeError.name === "SecurityError" ? "blocked" : "unavailable";
+    }
+  }
+  return "unavailable";
+}
+function cmhSetStorageIssue(issue) {
+  _cmhStorageIssue = issue;
+  cmhUpdateStorageNotice();
+  if (_cmhReadOnlyReady) cmhUpdateReadOnlyMode();
+}
+function cmhStorageUnavailableExplanation() {
+  const preview = window.self !== window.top
+    || /(^|\.)(onedrive\.live\.com|onedrive\.cloud\.microsoft|sharepoint\.com)$/.test(location.hostname);
+  if (_cmhInitialStorageReadFailed && !preview) return "Review data could not be loaded when this document opened.";
+  return preview ? "Comments cannot be saved in this preview."
+    : "Browser storage is " + (_cmhStorageIssue === "blocked" ? "blocked." : "unavailable.");
+}
+function cmhStorageUnavailableMessage(what) {
+  return what + " NOT saved. " + cmhStorageUnavailableExplanation()
+    + " Review changes and file exports are now disabled. Download the original HTML using your viewer's Download button "
+    + "and open it locally to review. Keep this page open and copy any unsaved changes before leaving.";
+}
 // Encode a comments JSON string for the modern slot: a framed lz-string payload when that is
 // SMALLER (in UTF-16 code units, which is what localStorage costs), else the plain JSON unchanged.
 function cmhEncodeStore(jsonStr) {
@@ -36,10 +81,20 @@ function cmhDecodeStore(raw) {
 function cmhLoadStored() {
   let raw = null;
   let fromModern = true;
-  try { raw = localStorage.getItem(CMH_STORE_KEY); } catch (e) { return { arr: [], unreadable: false }; }
+  try { raw = localStorage.getItem(CMH_STORE_KEY); }
+  catch (e) {
+    _cmhInitialStorageReadFailed = true;
+    cmhSetStorageIssue(cmhStorageFailureKind(e));
+    return { arr: [], unreadable: false };
+  }
   if (raw == null) {
     fromModern = false;
-    try { raw = localStorage.getItem(COMMENT_KEY); } catch (e) { return { arr: [], unreadable: false }; }
+    try { raw = localStorage.getItem(COMMENT_KEY); }
+    catch (e) {
+      _cmhInitialStorageReadFailed = true;
+      cmhSetStorageIssue(cmhStorageFailureKind(e));
+      return { arr: [], unreadable: false };
+    }
     if (raw == null) return { arr: [], unreadable: false };
   }
   // ANY unreadable value in the MODERN slot is protected: the ::z slot stores EITHER a framed
@@ -57,8 +112,7 @@ function cmhLoadStored() {
     return { arr: [], unreadable: fromModern };
   } catch (e) { return { arr: [], unreadable: fromModern }; }
 }
-// Pending write retries keyed by storage key. A quota failure stashes the exact producer so the
-// storage manager can re-run it (recomputing the latest value) once the reviewer frees space.
+// Retain failed writes until space is freed or browser storage becomes available again.
 const _cmhPendingWrites = new Map();
 // Set true by saveComments() when its last attempt failed on quota (vs a blocked/private-mode
 // error); the comment-composer save reads it to open the storage manager for that specific case.
@@ -70,23 +124,27 @@ let _cmhLastSaveQuota = false;
 let _cmhStoreUnreadable = false;
 let _cmhStartupInProgress = true;
 // Persist key <- produce(). produce() returns a string to store or null to removeItem. Returns
-// true on immediate success (set or remove). On a quota error it stashes the producer for retry
-// and returns false (callers already treat false as "not saved"); other errors return false too.
+// true on immediate success (set or remove); failed producers remain available for recovery.
 function cmhTrySetItem(key, produce, label) {
+  if (_cmhInitialStorageReadFailed) return false;
   try {
     const value = produce();
     if (value == null) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
     _cmhPendingWrites.delete(key);
+    if (!_cmhPendingWrites.size) cmhSetStorageIssue(null);
     return true;
   } catch (e) {
-    if (cmhIsQuotaError(e)) _cmhPendingWrites.set(key, { produce: produce, label: label || "data" });
+    const issue = cmhStorageFailureKind(e);
+    cmhSetStorageIssue(issue);
+    _cmhPendingWrites.set(key, { produce: produce, label: label || "data" });
     return false;
   }
 }
 // Re-run every pending write (called by the storage manager after space is freed). Returns the
 // distinct labels that now succeeded, so the manager can confirm what was saved.
 function cmhRetryPendingWrites() {
+  if (_cmhInitialStorageReadFailed) return [];
   const done = [];
   _cmhPendingWrites.forEach(function (rec, key) {
     try {
@@ -97,29 +155,29 @@ function cmhRetryPendingWrites() {
       if (key === CMH_STORE_KEY) { try { localStorage.removeItem(COMMENT_KEY); } catch (e) { /* best-effort */ } }
       if (done.indexOf(rec.label) === -1) done.push(rec.label);
     } catch (e) {
-      // Still full: leave the entry pending for the next delete. A NON-quota failure (blocked/
-      // corrupt) will never succeed on retry, so drop it rather than retrying forever.
-      if (!cmhIsQuotaError(e)) _cmhPendingWrites.delete(key);
+      const issue = cmhStorageFailureKind(e);
+      cmhSetStorageIssue(issue);
     }
   });
+  if (!_cmhPendingWrites.size) cmhSetStorageIssue(null);
   return done;
 }
 // Recovery toast for a secondary writer (notes/checklist/reviews) that failed via cmhTrySetItem.
 // A quota failure (the write is now pending in _cmhPendingWrites) offers a "Manage storage" action;
 // a blocked/private-mode failure just warns. Call only after cmhTrySetItem returned false.
 function cmhStorageFullToast(key, what) {
-  const quota = _cmhPendingWrites.has(key);
+  const quota = _cmhStorageIssue === "quota" && _cmhPendingWrites.has(key);
   showToast(quota
     ? what + " could not be saved - this browser's storage is full. Free space from Manage storage."
-    : what + " NOT saved to this browser (storage full or blocked) - it will be lost on reload.",
-    { alert: true, duration: 8000, action: cmhStorageAction(key) });
+    : cmhStorageUnavailableMessage(what),
+    { alert: true, duration: quota ? 8000 : 6400, action: cmhStorageAction(key) });
 }
 // The "Manage storage" toast action object for a key whose write is pending after a quota failure
 // (else null). Lets a caller with its own message keep the recovery action without double-toasting.
 // showToast hands the handler a focus-restore target, because the action button is gone by the time
 // this runs and the dialog would otherwise snapshot <body> (issue #939).
 function cmhStorageAction(key) {
-  return (_cmhPendingWrites.has(key) && typeof openStorageManager === "function")
+  return (_cmhStorageIssue === "quota" && _cmhPendingWrites.has(key) && typeof openStorageManager === "function")
     ? {
       label: "Manage storage",
       onClick: function (restoreFocus) { openStorageManager({ restoreFocus: restoreFocus || undefined }); },
@@ -152,6 +210,7 @@ function loadComments() {
 }
 function saveComments() {
   _cmhLastSaveQuota = false;
+  if (_cmhInitialStorageReadFailed) return false;
   // While the store was loaded UNREADABLE, do not overwrite it from an automatic save (startup
   // prune/convergence); the recoverable bytes survive a reload-without-edit. Startup clears the flag
   // after pruning, so a genuine user edit still persists.
@@ -172,29 +231,30 @@ function saveComments() {
     // stays recoverable).
     localStorage.setItem(CMH_STORE_KEY, cmhEncodeStore(JSON.stringify(comments)));
     _cmhPendingWrites.delete(CMH_STORE_KEY);
+    if (!_cmhPendingWrites.size) cmhSetStorageIssue(null);
     try { localStorage.removeItem(COMMENT_KEY); } catch (e) { /* best-effort legacy reclaim */ }
     if (typeof cmhRegisterDocument === "function") cmhRegisterDocument();
     if (typeof _cmhResetQuotaEpisode === "function") _cmhResetQuotaEpisode();
     return true;
   } catch (e) {
-    if (cmhIsQuotaError(e)) {
+    const issue = cmhStorageFailureKind(e);
+    cmhSetStorageIssue(issue);
+    _cmhPendingWrites.set(CMH_STORE_KEY, {
+      produce: function () { return cmhEncodeStore(JSON.stringify(comments)); },
+      label: "comment",
+    });
+    if (issue === "quota") {
       _cmhLastSaveQuota = true;
-      // The comment is still in memory (visible in the list). Stash the exact write for retry; the
-      // composer save opens the storage manager so the reviewer can free space and it is re-saved.
-      _cmhPendingWrites.set(CMH_STORE_KEY, {
-        produce: function () { return cmhEncodeStore(JSON.stringify(comments)); },
-        label: "comment",
-      });
       return false;
     }
-    // Blocked / private mode: keep the existing recovery-path warning.
-    const notify = _cmhStartupInProgress ? showStartupDiagnostic : showToast;
-    notify("Comment NOT saved to this browser (storage full or blocked) - it will be lost on "
-      + "reload. Use Copy all or Export as Shareable to keep it.", { alert: true, duration: 8000 });
+    if (!_cmhStartupInProgress) {
+      showToast(cmhStorageUnavailableMessage("Comment"), { alert: true, duration: 8000 });
+    }
     return false;
   }
 }
 const CMH_DELETED_KEY = COMMENT_KEY + "::deleted";
+const _cmhDeletedThisSession = new Set();
 function _deletedEmbeddedIds() {
   try {
     const a = JSON.parse(localStorage.getItem(CMH_DELETED_KEY) || "[]");
@@ -207,14 +267,27 @@ function _tombstoneEmbedded(ids) {
   const emb = _embeddedCommentSig();
   const t = _deletedEmbeddedIds();
   let changed = false;
-  (ids || []).forEach(function (id) { if (id && emb.has(id) && !t.has(id)) { t.add(id); changed = true; } });
+  (ids || []).forEach(function (id) {
+    if (id && emb.has(id) && !t.has(id)) {
+      _cmhDeletedThisSession.add(id);
+      changed = true;
+    }
+  });
   if (!changed) return true;
-  try { localStorage.setItem(CMH_DELETED_KEY, JSON.stringify([...t])); return true; }
-  catch (e) { return false; }
+  return cmhTrySetItem(CMH_DELETED_KEY, function () {
+    const raw = localStorage.getItem(CMH_DELETED_KEY);
+    let saved = [];
+    try { saved = JSON.parse(raw || "[]"); } catch (e) { /* malformed markers are empty */ }
+    const merged = new Set(Array.isArray(saved) ? saved.filter(id => SAFE_ID_RE.test(id)) : []);
+    _cmhDeletedThisSession.forEach(id => merged.add(id));
+    return JSON.stringify([...merged]);
+  }, "Deleted comment markers");
 }
 function _ensureTombstoneEmbedded(ids, firstWriteOk, commentsWriteOk) {
   if (commentsWriteOk && (firstWriteOk || _tombstoneEmbedded(ids))) return true;
-  showToast("Deleted embedded comment was removed in this session, but the browser could not persist its delete marker. It may reappear after reload; use Export as Shareable after freeing storage.", { alert: true, duration: 10000 });
+  showToast(cmhReviewReadOnly() ? cmhStorageUnavailableMessage("Comment deletion")
+    : "Deleted embedded comment was removed in this session, but the browser could not persist its delete marker. It may reappear after reload; use Export as Shareable after freeing storage.",
+  { alert: true, duration: cmhReviewReadOnly() ? 8000 : 10000 });
   return false;
 }
 function commentTimestamp(c) {

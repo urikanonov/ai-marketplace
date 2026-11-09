@@ -53,6 +53,7 @@ function _setMenuMode(mode) {
   }
 }
 document.addEventListener("contextmenu", (e) => {
+  if (cmhReviewReadOnly()) { hideMenu(); return; }
   if (e.target.closest(".cm-skip")) { hideMenu(); return; }
   // Deck with commenting disabled ("off" state): keep the native context menu and do not raise
   // the text/document comment menu. Commenting stays available with the panel merely closed.
@@ -215,6 +216,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 function showMenu(x, y) {
+  if (cmhReviewReadOnly()) return;
   // A pending mouseup cleanup (scheduled by a preceding empty-space click that collapsed a
   // selection) would tear this menu down the instant it opens; opening the menu supersedes that
   // cleanup, so cancel it. This keeps a right-click comment menu on non-interactive slide text

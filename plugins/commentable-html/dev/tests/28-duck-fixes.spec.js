@@ -128,7 +128,7 @@ test.describe("multi-duck panel regression + reload-persistence coverage", () =>
       Storage.prototype.setItem = function (key, value) {
         if (String(key).endsWith("::deleted") && !reducedCommentsSaved) {
           window.__cmhQuotaOrder.push("tombstone-before-save");
-          throw new Error("simulated quota");
+          throw new DOMException("simulated quota", "QuotaExceededError");
         }
         try {
           const parsed = JSON.parse(String(value));
@@ -180,7 +180,7 @@ test.describe("multi-duck panel regression + reload-persistence coverage", () =>
       Storage.prototype.setItem = function (key, value) {
         if (String(key).endsWith("::deleted") && !emptyCommentsSaved) {
           window.__cmhQuotaOrder.push("tombstone-before-save");
-          throw new Error("simulated quota");
+          throw new DOMException("simulated quota", "QuotaExceededError");
         }
         try {
           const parsed = JSON.parse(String(value));
@@ -230,7 +230,7 @@ test.describe("multi-duck panel regression + reload-persistence coverage", () =>
     await p2.addInitScript(() => {
       const original = Storage.prototype.setItem;
       Storage.prototype.setItem = function (key, value) {
-        if (String(key).endsWith("::deleted")) throw new Error("simulated quota");
+        if (String(key).endsWith("::deleted")) throw new DOMException("simulated quota", "QuotaExceededError");
         return original.call(this, key, value);
       };
     });
@@ -259,7 +259,7 @@ test.describe("multi-duck panel regression + reload-persistence coverage", () =>
           const parsed = JSON.parse(String(value));
           if (!String(key).endsWith("::deleted") && Array.isArray(parsed) && parsed.length === 0) {
             window.__cmhSaveFailOrder.push("comments-save-failed");
-            throw new Error("simulated comments quota");
+            throw new DOMException("simulated comments quota", "QuotaExceededError");
           }
         } catch (e) {
           if (e && e.message === "simulated comments quota") throw e;

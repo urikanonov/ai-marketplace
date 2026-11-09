@@ -14,7 +14,7 @@
 // single-, or unquoted) matching whole tokens, so a <body class="..."> literal elsewhere
 // (inlined script/content) is left alone, a superstring like x-sidebar-open is preserved,
 // and non-transient classes survive; the live layer re-derives the sidebar state on load.
-const _TRANSIENT_BODY_CLASSES = { "sidebar-open": 1, "cm-sidebar-resizing": 1, "cm-widget-dragging": 1, "cmh-deck-present": 1, "cmh-deck-comments-off": 1 };
+const _TRANSIENT_BODY_CLASSES = { "sidebar-open": 1, "cm-sidebar-resizing": 1, "cm-widget-dragging": 1, "cmh-deck-present": 1, "cmh-deck-comments-off": 1, "cm-review-read-only": 1 };
 function _stripTransientBodyClasses(html) {
   return String(html == null ? "" : html).replace(/<body\b[^>]*>/i, function (tag) {
     return tag.replace(
@@ -528,6 +528,7 @@ function _suggestedOfflineFilename() {
   return clean + "-offline" + m[2];
 }
 function _downloadHtml(text, filename) {
+  cmhAssertDownloadAllowed();
   const blob = new Blob([text], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   // Everything after the object URL exists cleans up on its way out, the anchor's own creation

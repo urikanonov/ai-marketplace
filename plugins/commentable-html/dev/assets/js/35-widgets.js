@@ -155,7 +155,7 @@ function _onWidgetPointerUp(e) {
   if (!_widgetDrag || e.pointerId !== _widgetDrag.pointerId) return;
   const drag = _widgetDrag;
   try {
-    if (drag.active) {
+    if (drag.active && !cmhReviewReadOnly()) {
       e.preventDefault();
       const target = drag.dropSlot;
       if (target && target !== drag.fromSlot && !drag.part.contains(target)) {
@@ -174,6 +174,7 @@ function setupWidgetDragDrop() {
   if (root._cmWidgetDragAttached) return;
   root._cmWidgetDragAttached = true;
   root.addEventListener("pointerdown", function (e) {
+    if (cmhReviewReadOnly()) return;
     const hit = _widgetDragPartFromEvent(e);
     if (hit) _startWidgetDrag(e, hit);
   }, true);
