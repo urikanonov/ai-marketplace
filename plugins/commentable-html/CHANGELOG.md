@@ -16,12 +16,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   Ambiguity rules, code semantics, original evidence and older-runtime compatibility are retained.
 - Share immutable context/layout work during legacy backfill and scope highlight wrapping to
   selected subtrees with in-place split-node index updates, retaining skipped-text exclusion
-  and the existing backfill cap. Failed-wrap cleanup still rebuilds its index.
+  and the existing backfill cap. Broad highlights batch index updates linearly without
+  changing wrapping order; failed-wrap cleanup still rebuilds its index.
 - Resolve every root before bounded evidence recapture, distinguish exhausted budgets, and
   never inherit unchecked uniqueness across changed revisions/layouts.
+- Reuse proven quote uniqueness for contiguous block/context evidence, prioritize roots without
+  occurrence identity during recapture, and exclude generated IDs from block/layout evidence.
+  Quote-only comments retain safe selectors across successive edits.
 - Add reproducible paired Chromium latency, work and allocation benchmarks with raw samples.
-- Deliberately raise JS by 4 KB and embedded-assets/Shareable ceilings by 5 KB for indexed recovery and
-  adaptive mapping (765/965/985 KB). No dependency or rich-library payload is added.
+- Deliberately raise JS, embedded-assets and Shareable ceilings by 5 KB for indexed recovery and
+  adaptive mapping (766/965/985 KB). No dependency or rich-library payload is added.
 
 ## [1.859.1] - 2026-11-08
 

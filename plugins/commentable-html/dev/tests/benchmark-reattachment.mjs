@@ -89,7 +89,7 @@ const result = {
   sources: versions.map(v => ({ name: v.name, sha256: createHash("sha256").update(v.source).digest("hex") })),
   sharedHelpersSha256: createHash("sha256").update(prefix).digest("hex"),
   driverSha256: createHash("sha256").update(fs.readFileSync(fileURLToPath(import.meta.url))).digest("hex"),
-  method: "Serial alternating baseline/candidate browser contexts. Cold is the first invocation in a fresh document/isolate after selectors are seeded in a discarded document; warm samples follow three warmups. DOM setup, selector seeding, IPC and profiling are outside timed intervals. Each version captures its own selectors from identical original content; the unchanged-upgrade case removes additive basis evidence. Seeding resets the fixture's scan budget between independent comments (as independent saves do), reusing immutable text to avoid timing fixture generation. Timing is resolver/capture/index work, not whole-page startup. Profiled work/allocation and heap deltas are diagnostic, not latency samples.",
+  method: "Serial alternating baseline/candidate browser contexts. The cold field is the first invocation in a fresh document after selector seeding in a discarded document and requested GC, NOT a cold isolate/process: the Page/context is reused and JIT/code caches can remain warm. Warm samples follow three warmups. DOM setup, selector seeding, IPC and profiling are outside timed intervals. Each version captures its own selectors from identical original content; the unchanged-upgrade case removes additive basis evidence. Seeding resets the fixture's scan budget between independent comments (as independent saves do), reusing immutable text to avoid timing fixture generation. Timing is resolver/capture/index work, not whole-page startup. Profiled work/allocation and heap deltas are diagnostic, not latency samples.",
   fixtures: [],
 };
 try {
@@ -271,9 +271,12 @@ try {
               return c;
             });
           },
-          state() { return { roots: comments.filter(cmhIsTextAnchor).length,
-            attached: comments.filter(c => cmhIsTextAnchor(c) && !cmhIsDetached(c)).length,
-            marks: root.querySelectorAll("mark.cm-hl").length }; }
+          state() {
+            const roots = comments.filter(cmhIsTextAnchor), attached = roots.filter(c => !cmhIsDetached(c));
+            const marks = [...root.querySelectorAll("mark.cm-hl")], ids = new Set(marks.map(m => m.dataset.cid));
+            return { roots: roots.length, attached: attached.length, marks: ids.size, markNodes: marks.length,
+              missingMarks: attached.filter(c => !ids.has(c.id)).length };
+          }
         };`);
       if (!text.includes("window.__bench_api")) throw new Error("Missing runtime readiness hook");
       return text;
@@ -297,6 +300,9 @@ try {
       startupFixtures.push({ ...fixtures.find(f => f.name === "unchanged-large"), name: "unchanged-large-500" });
       startupFixtures.push({ ...fixtures.find(f => f.name === "unchanged-medium"),
         name: "legacy-context-medium", legacy: true });
+      const broad = "<p>A<b>B</b><span class=\"cm-skip\">private</span>C</p>".repeat(5000);
+      startupFixtures.push({ name: "broad-highlight-15000", original: broad, revised: broad,
+        quotes: ["ABC".repeat(5000)], minMarkNodes: 15000 });
       const selectedStartup = startupFixtures.filter(f => f.name.includes(filter));
       if (startupOnly && !selectedStartup.length) throw new Error("No matching startup fixtures");
       for (const fixture of selectedStartup) {
@@ -319,8 +325,10 @@ try {
             }));
             if (sample.roots !== fixture.quotes.length)
               throw new Error("Startup did not load every fixture comment");
-            if (sample.marks !== sample.attached)
+            if (sample.marks !== sample.attached || sample.missingMarks)
               throw new Error("Startup failed to highlight its attached comments");
+            if (fixture.minMarkNodes && sample.markNodes < fixture.minMarkNodes)
+              throw new Error("Startup did not exercise the broad multi-node highlight");
             row.samples[version.name].push(sample);
             await run.context.close();
           }

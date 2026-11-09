@@ -201,6 +201,8 @@ function wrapRangeWithMark(range, id, index) {
     while ((n = walker.nextNode())) nodes.push(n);
   }
   const toWrap = nodes.filter(n => range.intersectsNode(n));
+  const updated = index && toWrap.length > 1 ? [] : null;
+  let first = -1, cursor = -1;
   toWrap.forEach(tn => {
     let s = 0, e = tn.nodeValue.length;
     if (tn === range.startContainer) s = range.startOffset;
@@ -223,11 +225,24 @@ function wrapRangeWithMark(range, id, index) {
     target.parentNode.insertBefore(m, target);
     m.appendChild(target);
     if (index) {
-      const at = index.indexOf(tn);
-      if (at < 0) throw new Error("Stale highlight text index");
-      index.splice(at, 1, ...parts);
+      if (updated) {
+        if (first < 0) first = cursor = index.indexOf(tn);
+        while (cursor >= 0 && cursor < index.length && index[cursor] !== tn) updated.push(index[cursor++]);
+        if (cursor < 0 || cursor === index.length) throw new Error("Stale highlight text index");
+        updated.push(...parts); cursor++;
+      } else {
+        const at = index.indexOf(tn);
+        if (at < 0) throw new Error("Stale highlight text index");
+        index.splice(at, 1, ...parts);
+      }
     }
   });
+  if (updated && first >= 0) {
+    const tail = index.slice(cursor);
+    index.length = first;
+    for (const n of updated) index.push(n);
+    for (const n of tail) index.push(n);
+  }
 }
 function unwrapMarks(id) {
   root.querySelectorAll(`mark.cm-hl[data-cid="${id}"]`).forEach(m => {

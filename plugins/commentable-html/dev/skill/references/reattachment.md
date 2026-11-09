@@ -55,11 +55,14 @@ Automatic recovery warns at startup too if quota pressure prevents saving the re
 
 Verified unchanged positions also carry an additive layout `basis`: matching source/identity and
 layout fingerprints avoid rescanning historical evidence, while changes to code or block structure
-still refresh it. An intact complete block with a unique current ID and historical occurrence
+still refresh it. Runtime-generated heading/TOC IDs are excluded from block/layout evidence too;
+an authored ancestor remains eligible. An intact complete block with a unique current ID and historical occurrence
 identity can verify its selected text locally. Shared or changed blocks do not qualify for that
 shortcut. Normalization maps and block indexes are ephemeral, rebuilt from the displayed document,
 and never add a new storage format or relax the existing recovery limits.
 All roots resolve before current evidence is recaptured from the remaining shared budget.
+Recapture prioritizes roots without historical occurrence identity and derives contiguous
+block/context uniqueness from proven quote uniqueness instead of rescanning those supersets.
 Unchecked uniqueness is conservative across changed revision/layout evidence, so an exhausted
 capture cannot authorize a later surviving duplicate; an intact stable block can still prove
 its occurrence identity locally.

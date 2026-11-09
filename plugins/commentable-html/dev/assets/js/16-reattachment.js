@@ -39,7 +39,7 @@ function cmhAnchorIndex() {
     let block = byElement.get(el);
     if (!block) {
       let identified = el;
-      while (identified && identified !== root && !identified.id) identified = identified.parentElement;
+      while (identified && identified !== root && (!identified.id || !cmhAuthoredIds.has(identified.id))) identified = identified.parentElement;
       block = { el, start, end: length, id: identified && identified !== root && identified.id.length <= 1024 ? identified.id : "",
         tag: el.tagName.toLowerCase(), code: !!el.closest("pre"), heading: "" };
       blocks.push(block); byElement.set(el, block);
@@ -131,11 +131,13 @@ function cmhCaptureTextAnchor(c, index) {
     || !!(sameSelection && block && prior.block && block.id === prior.block.id && prior.identityUnique === true)
     || !!(block && block.id && hits
     && rawHits && [hits, rawHits].every(list => list.filter(hit => hit.block && hit.block.id === block.id).length === 1));
+  // Quote uniqueness also proves its contiguous supersets.
   const blockUnique = block && from === block.start && to === block.end
-    ? sameEvidence && prior.block && prior.block.text === blockText && prior.block.tag === block.tag
+    ? unique === true ? true : unique === undefined ? undefined
+      : sameEvidence && prior.block && prior.block.text === blockText && prior.block.tag === block.tag
       && typeof prior.blockUnique === "boolean" ? prior.blockUnique : cmhAnchorUnique(index, blockText, normalized, block.tag)
     : false;
-  const contextUnique = exact === undefined ? undefined : sameSelection
+  const contextUnique = exact === undefined || unique === undefined ? undefined : unique === true ? true : sameSelection
     && prior.prefix === prefix && prior.suffix === suffix && typeof prior.contextUnique === "boolean"
     ? prior.contextUnique : cmhAnchorUnique(index, prefix + exact + suffix, normalized);
   // An unchecked current uniqueness claim cannot inherit true from another revision/layout.
@@ -505,6 +507,7 @@ function cmhReattachComments() {
     if (JSON.stringify([c.start, c.end, c.detached, c.cmAnchor]) !== prior) changed = true;
   }
   // Evidence refresh must not consume the budget before later roots can resolve.
+  recapture.sort((a, b) => !!a.cmAnchor?.identityUnique - !!b.cmAnchor?.identityUnique);
   for (const c of recapture) {
     const prior = JSON.stringify(c.cmAnchor);
     cmhCaptureTextAnchor(c, index);

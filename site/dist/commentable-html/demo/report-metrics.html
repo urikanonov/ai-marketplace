@@ -6030,6 +6030,8 @@ let n;
 while((n=walker.nextNode()))nodes.push(n);
 }
 const toWrap=nodes.filter(n=>range.intersectsNode(n));
+const updated=index&&toWrap.length>1?[]:null;
+let first=-1,cursor=-1;
 toWrap.forEach(tn=>{
 let s=0,e=tn.nodeValue.length;
 if(tn===range.startContainer)s=range.startOffset;
@@ -6052,11 +6054,24 @@ m.dataset.cid=id;
 target.parentNode.insertBefore(m,target);
 m.appendChild(target);
 if(index){
+if(updated){
+if(first<0)first=cursor=index.indexOf(tn);
+while(cursor>=0&&cursor<index.length&&index[cursor]!==tn)updated.push(index[cursor++]);
+if(cursor<0||cursor===index.length)throw new Error("Stale highlight text index");
+updated.push(...parts);cursor++;
+}else{
 const at=index.indexOf(tn);
 if(at<0)throw new Error("Stale highlight text index");
 index.splice(at,1,...parts);
 }
+}
 });
+if(updated&&first>=0){
+const tail=index.slice(cursor);
+index.length=first;
+for(const n of updated)index.push(n);
+for(const n of tail)index.push(n);
+}
 }
 function unwrapMarks(id){
 root.querySelectorAll(`mark.cm-hl[data-cid="${id}"]`).forEach(m=>{
@@ -6119,7 +6134,7 @@ el=el||root;
 let block=byElement.get(el);
 if(!block){
 let identified=el;
-while(identified&&identified!==root&&!identified.id)identified=identified.parentElement;
+while(identified&&identified!==root&&(!identified.id||!cmhAuthoredIds.has(identified.id)))identified=identified.parentElement;
 block={el,start,end:length,id:identified&&identified!==root&&identified.id.length<=1024?identified.id:"",
 tag:el.tagName.toLowerCase(),code:!!el.closest("pre"),heading:""};
 blocks.push(block);byElement.set(el,block);
@@ -6210,10 +6225,11 @@ const identityUnique=!!(intact&&intact.start===start&&intact.end===end)
 ||!!(block&&block.id&&hits
 &&rawHits&&[hits,rawHits].every(list=>list.filter(hit=>hit.block&&hit.block.id===block.id).length===1));
 const blockUnique=block&&from===block.start&&to===block.end
-?sameEvidence&&prior.block&&prior.block.text===blockText&&prior.block.tag===block.tag
+?unique===true?true:unique===undefined?undefined
+:sameEvidence&&prior.block&&prior.block.text===blockText&&prior.block.tag===block.tag
 &&typeof prior.blockUnique=== "boolean"?prior.blockUnique:cmhAnchorUnique(index,blockText,normalized,block.tag)
 :false;
-const contextUnique=exact===undefined?undefined:sameSelection
+const contextUnique=exact===undefined||unique===undefined?undefined:unique===true?true:sameSelection
 &&prior.prefix===prefix&&prior.suffix===suffix&&typeof prior.contextUnique=== "boolean"
 ?prior.contextUnique:cmhAnchorUnique(index,prefix+exact+suffix,normalized);
 c.cmAnchor={...prior,v:1,revision:index.revision,basis:index.basis,start,end,
@@ -6577,6 +6593,7 @@ c.detached=true;
 }else cmhDetachComment(c,index.limited||index.exhausted?"budget":"unresolved");
 if(JSON.stringify([c.start,c.end,c.detached,c.cmAnchor])!==prior)changed=true;
 }
+recapture.sort((a,b)=>!!a.cmAnchor?.identityUnique-!!b.cmAnchor?.identityUnique);
 for(const c of recapture){
 const prior=JSON.stringify(c.cmAnchor);
 cmhCaptureTextAnchor(c,index);

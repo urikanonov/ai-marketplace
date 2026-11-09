@@ -7,6 +7,10 @@ The benchmark driver is `tests/benchmark-reattachment.mjs`. Measured samples,
 source hashes, allocation diagnostics and environment metadata are retained in
 `reattachment-results.json`.
 
+The tables currently retain the pre-final-review checkpoint. Follow-up fixes and
+the broad-highlight fixture are implemented; coherent final measurements await
+the complete serial validation run.
+
 ## Method
 
 Chromium 153.0.8010.12, Node 26.13.0, Windows x64, AMD EPYC 7763, 16 visible
@@ -20,8 +24,9 @@ performance laboratory; these results are not universal latency guarantees.
 The kernel comparison runs the original and candidate reattachment partials
 with the same offset/context helpers. Those helper paths are not the kernels
 being compared. Each runtime seeds its own selectors from identical original
-content outside timing. Cold is the first invocation in a fresh document/isolate
-after discarded-document seeding and a requested GC. Warm distributions contain
+content outside timing. The raw `cold` field is a fresh-document first run after
+discarded-document seeding and a requested GC, not a cold isolate/process: the
+Page/context is reused and JIT/code caches can remain warm. Warm distributions contain
 25 samples after three warmups. An independent 15-sample repeat checks stability.
 DOM creation, IPC, selector seeding and instrumented profiling are not timed.
 Upgrade fixtures remove the additive layout basis.
@@ -55,7 +60,7 @@ Warm median milliseconds from the 25-sample run:
 | Normalized revision, 30 comments | 50.4 | 22.5 | 27 -> 30 attached |
 | Small edits, 20 comments | 5.2 | 2.6 | 20 / 20 in both |
 | New selector capture, 3000 blocks | 159.1 | 16.0 | Correct offsets in both |
-| Index plus 1000 nested-block lookups | 32.9 | 23.2 | Same containing blocks |
+| Index plus 1000 block lookups | 32.9 | 23.2 | Same containing blocks |
 | Eight near-cell-limit alignments | 28.6 | 14.6 | Same alignment |
 | Unsafe duplicate deletion | 4.9 | 1.6 | Detached in both |
 | Normalize 7.56 million source units | 1202.2 | 30.6 | Same text |
@@ -154,11 +159,17 @@ regeneration, not these benchmarks.
 
 ## Safeguards
 
-Twelve red-first deterministic work/correctness tests cover evidence recapture,
+Fourteen new red-first deterministic work/correctness tests cover evidence recapture,
 layout invalidation, block containment, identity/sparse/dense normalization,
 banded alignment, intact-block proof, shared context and highlight indexing,
 resolution-before-recapture, conservative unchecked uniqueness, budget refusal
-diagnostics and bypassing four no-op replacement passes on unchanged prose.
+diagnostics, bypassing four no-op replacement passes on unchanged prose and
+linear index updates for broad multi-node highlights.
+Existing cases were also strengthened RED first for successive large mixed-ID
+revisions and generated-ID layout stability. Runtime-generated IDs are excluded
+from block evidence as well as the revision, and proven quote uniqueness derives
+contiguous block/context uniqueness without redundant source scans. Recapture
+prioritizes roots without historical occurrence identity.
 They assert work/allocation ceilings plus actual attachment/DOM correctness,
 not flaky wall-clock limits. The full recovery, export, storage, skipped-text,
 code and legacy-runtime regression suites remain required.
@@ -172,7 +183,7 @@ occurrences without changing the source/identity revision.
 Source limits (8m units), snapshots (4096), candidate count (128), shared scan
 budget (64m), fuzzy-block and alignment-cell limits are unchanged. No message,
 thread, historical evidence or foreign metadata is discarded. The additive
-layout basis does not require a new persisted format. Runtime size ceilings
-rise by 4000 bytes from current main, and asset/Shareable ceilings by 5000 bytes;
+layout basis does not require a new persisted format. Runtime/asset/Shareable
+size ceilings rise by 5000 bytes from current main;
 every rebuilt payload remains
 inside its enforced budget.

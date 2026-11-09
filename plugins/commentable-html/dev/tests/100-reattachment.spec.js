@@ -143,6 +143,34 @@ test("highlight restoration updates split-node indexes without rescanning unrela
   expect(result.nested).toBe(0);
 });
 
+test("broad highlights update many split nodes with linear index work (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<p>Unselected introduction.</p>" + Array.from({ length: 1000 }, (_, i) =>
+    `<p>Prefix selected ${i}<span class="cm-skip">private</span> suffix.</p>`).join("")
+    + "<p>Unselected ending.</p>");
+  const result = await page.evaluate(() => {
+    const text = anchorTest.text(), start = text.indexOf("selected 0"), end = text.lastIndexOf(" suffix.") + 4;
+    const range = rangeFromOffsets(start, end), nodes = getTextNodes();
+    let reads = 0, writes = 0;
+    const index = new Proxy(nodes, {
+      get(target, key) { if (/^\d+$/.test(String(key))) reads++; return Reflect.get(target, key); },
+      set(target, key, value) { if (/^\d+$/.test(String(key))) writes++; return Reflect.set(target, key, value); },
+    });
+    const count = nodes.length;
+    wrapRangeWithMark(range, "cbroad", index);
+    const actual = getTextNodes();
+    return { reads, writes, count,
+      sameNodes: nodes.length === actual.length && nodes.every((node, i) => node === actual[i]),
+      selected: [...root.querySelectorAll("mark.cm-hl")].map(el => el.textContent).join(""),
+      expected: text.slice(start, end), unchanged: anchorTest.text() === text,
+      skipped: [...root.querySelectorAll(".cm-skip")].every(el => el.innerHTML === "private") };
+  });
+  expect(result.reads + result.writes).toBeLessThan(result.count * 20);
+  expect(result.sameNodes).toBe(true);
+  expect(result.selected).toBe(result.expected);
+  expect(result.unchanged).toBe(true);
+  expect(result.skipped).toBe(true);
+});
+
 test("nested block lookup preserves smallest containment without scanning all blocks (CMH-REATTACH-08)", async ({ page }) => {
   await harness(page, "<section>Before <p>Inside <b>inline</b> text.</p> After</section>" + "<p>Tail.</p>".repeat(3000));
   const result = await page.evaluate(() => {
@@ -284,13 +312,13 @@ test("resolving mixed identity and quote-only roots precedes bounded evidence re
   await harness(page, "<p>Setup</p>");
   const result = await page.evaluate(() => {
     const paragraphs = Array.from({ length: 3000 }, (_, i) =>
-      `<p${i < 10 ? ' id="stable' + i + '"' : ""}>A unique selected review passage number ${i}. `
-        + "Surrounding context for this report. ".repeat(8) + "</p>");
+      `<p${i < 1000 && i % 100 === 0 ? ' id="stable' + i + '"' : ""}>Introduction ${i}. A selected review passage number ${i}. `
+        + "Context for careful review. ".repeat(10) + ` Conclusion ${i}.</p>`);
     const html = paragraphs.join("");
     anchorTest.set(html);
     const index = anchorTest.index();
     const roots = Array.from({ length: 30 }, (_, i) => {
-      const quote = `A unique selected review passage number ${i}.`;
+      const quote = `A selected review passage number ${i * 100}.`;
       const start = index.text.indexOf(quote), c = { id: "c" + i, quote, start, end: start + quote.length };
       index.budget = CMH_ANCHOR_SCAN_BUDGET;
       cmhCaptureTextAnchor(c, index);
@@ -299,11 +327,15 @@ test("resolving mixed identity and quote-only roots precedes bounded evidence re
     anchorTest.replace(roots);
     anchorTest.set("<p>New introduction.</p>" + html);
     anchorTest.resolve();
+    const first = roots.filter(c => !c.detached).length;
+    anchorTest.set("<p>Second introduction.</p>" + html);
+    anchorTest.resolve();
     const text = anchorTest.text();
-    return { chars: text.length, attached: roots.filter(c => !c.detached).length,
+    return { chars: text.length, first, attached: roots.filter(c => !c.detached).length,
       correct: roots.every(c => text.slice(c.start, c.end) === c.quote) };
   });
   expect(result.chars).toBeGreaterThan(1000000);
+  expect(result.first).toBe(30);
   expect(result.attached).toBe(30);
   expect(result.correct).toBe(true);
 });
@@ -395,11 +427,34 @@ test("runtime-generated identities cannot detach unchanged duplicate text (CMH-R
   const result = await page.evaluate(() => {
     root.querySelector("nav").id = "cmhToc0";
     root.querySelector("h2").id = "generated-heading";
-    anchorTest.add("Repeated");
+    const c = anchorTest.add("Repeated"), basis = c.cmAnchor.basis;
     anchorTest.set("<nav>Repeated</nav><h2>Repeated</h2>");
-    return anchorTest.resolve()[0];
+    const occurrences = cmhAnchorOccurrences;
+    let scans = 0;
+    cmhAnchorOccurrences = (...args) => { scans++; return occurrences(...args); };
+    try { return { c: anchorTest.resolve()[0], scans, sameBasis: c.cmAnchor.basis === basis }; }
+    finally { cmhAnchorOccurrences = occurrences; }
   });
-  expect(result).toMatchObject({ start: 0, end: 8, detached: false });
+  expect(result.c).toMatchObject({ start: 0, end: 8, detached: false });
+  expect(result.scans).toBe(0);
+  expect(result.sameBasis).toBe(true);
+});
+
+test("runtime-generated block ids preserve authored ancestor evidence across heading edits (CMH-REATTACH-02)", async ({ page }) => {
+  const heading = "The introduction gives reliable context. The selected brown fox jumps over the lazy dog. The conclusion stays unchanged.";
+  await harness(page, `<section id="authored"><h2>${heading}</h2></section>`);
+  const result = await page.evaluate(heading => {
+    root.querySelector("h2").id = "generated-heading";
+    const c = anchorTest.add("selected brown fox");
+    const capturedId = c.cmAnchor.block.id;
+    anchorTest.set(`<p>New introduction.</p><section id="authored"><h2>${heading.replace("brown fox", "brown fast fox")}</h2></section>`);
+    anchorTest.resolve();
+    return { capturedId, c, selected: anchorTest.text().slice(c.start, c.end) };
+  }, heading);
+  expect(result.capturedId).toBe("authored");
+  expect(result.c.detached).toBe(false);
+  expect(result.selected).toBe("selected brown fast fox");
+  expect(result.c.quote).toBe("selected brown fox");
 });
 
 test("maps typography and prose whitespace to original offsets (CMH-REATTACH-03)", async ({ page }) => {
