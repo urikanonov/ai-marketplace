@@ -7,9 +7,9 @@ The benchmark driver is `tests/benchmark-reattachment.mjs`. Measured samples,
 source hashes, allocation diagnostics and environment metadata are retained in
 `reattachment-results.json`.
 
-The tables currently retain the pre-final-review checkpoint. Follow-up fixes and
-the broad-highlight fixture are implemented; coherent final measurements await
-the complete serial validation run.
+Final measurements include all review fixes at source checkpoint `ae78a3da6`.
+Baseline/current partials, shared helpers, driver and genuine Shareable templates
+were checked against their recorded SHA-256 hashes before retaining the results.
 
 ## Method
 
@@ -51,20 +51,20 @@ Warm median milliseconds from the 25-sample run:
 
 | Workload | Baseline | Candidate | Attachment outcome |
 | --- | ---: | ---: | --- |
-| Unchanged, 100 blocks / 20 comments | 1.8 | 0.3 | 20 / 20 in both |
-| Unchanged, 1000 blocks / 200 comments | 45.7 | 2.8 | 200 / 200 in both |
-| Unchanged, 3000 blocks / 500 comments | 185.8 | 9.5 | 500 / 500 in both |
-| Upgrade without layout basis, 500 comments | 188.0 | 32.7 | 500 / 500 in both |
-| Insertion, 3000 blocks / 30 comments | 176.5 | 32.1 | 11 -> 30 attached |
-| Mixed identity/quote-only insertion, 30 comments | 171.2 | 27.1 | 10 -> 30 attached |
-| Normalized revision, 30 comments | 50.4 | 22.5 | 27 -> 30 attached |
-| Small edits, 20 comments | 5.2 | 2.6 | 20 / 20 in both |
-| New selector capture, 3000 blocks | 159.1 | 16.0 | Correct offsets in both |
-| Index plus 1000 block lookups | 32.9 | 23.2 | Same containing blocks |
-| Eight near-cell-limit alignments | 28.6 | 14.6 | Same alignment |
-| Unsafe duplicate deletion | 4.9 | 1.6 | Detached in both |
-| Normalize 7.56 million source units | 1202.2 | 30.6 | Same text |
-| Normalize 7.5 million densely spaced units | 1123.0 | 150.9 | Same text / boundaries |
+| Unchanged, 100 blocks / 20 comments | 1.9 | 0.3 | 20 / 20 in both |
+| Unchanged, 1000 blocks / 200 comments | 45.7 | 2.9 | 200 / 200 in both |
+| Unchanged, 3000 blocks / 500 comments | 188.6 | 9.5 | 500 / 500 in both |
+| Upgrade without layout basis, 500 comments | 191.3 | 35.0 | 500 / 500 in both |
+| Insertion, 3000 blocks / 30 comments | 180.7 | 28.5 | 11 -> 30 attached |
+| Mixed identity/quote-only insertion, 30 comments | 184.8 | 26.3 | 10 -> 30 attached |
+| Normalized revision, 30 comments | 54.6 | 15.8 | 27 -> 30 attached |
+| Small edits, 20 comments | 5.1 | 2.3 | 20 / 20 in both |
+| New selector capture, 3000 blocks | 166.9 | 15.6 | Correct offsets in both |
+| Index plus 1000 block lookups | 32.9 | 24.7 | Same containing blocks |
+| Eight near-cell-limit alignments | 28.9 | 15.0 | Same alignment |
+| Unsafe duplicate deletion | 5.1 | 1.5 | Detached in both |
+| Normalize 7.56 million source units | 1253.3 | 31.1 | Same text |
+| Normalize 7.5 million densely spaced units | 1163.9 | 151.6 | Same text / boundaries |
 
 The large unchanged resolver is about 20x faster; new capture is about 10x
 faster. These are kernel improvements, not whole-page speedups. Cold and p95
@@ -72,7 +72,7 @@ values, which can differ materially from warmed kernels, are in the raw results.
 
 A final measured refinement removed four no-op replacement passes on already
 normalized prose: the near-limit candidate fell from an exploratory 112.4 ms
-to 30.6 ms, about 39x faster than the delivered baseline. Its fast detector still
+to a final 31.1 ms, about 40x faster than the delivered baseline. Its fast detector still
 recognizes every whitespace/typography class folded by the existing normalizer.
 All roots now resolve before bounded recapture, so insertion, mixed identities
 and normalized revisions recover all 30 roots without increasing the 64m budget.
@@ -90,12 +90,13 @@ Five-sample medians, milliseconds:
 
 | Native saved comments / source size | Baseline ready | Candidate ready |
 | --- | ---: | ---: |
-| 200 comments / about 296k source units | 1153.1 | 606.0 |
-| 100 comments / about 1.06m source units | 1496.4 | 613.8 |
-| 500 comments / about 1.06m source units | 6939.7 | 1193.9 |
-| 30 comments after insertion / about 1.06m units | 756.3 | 565.8 |
-| 30 mixed identity/quote-only comments after insertion | 734.5 | 541.8 |
-| 200 legacy missing-context comments / about 296k units | 8610.2 | 624.6 |
+| 200 comments / about 296k source units | 1169.1 | 623.7 |
+| 100 comments / about 1.06m source units | 1521.2 | 619.7 |
+| 500 comments / about 1.06m source units | 6936.4 | 1162.0 |
+| 30 comments after insertion / about 1.06m units | 776.3 | 569.9 |
+| 30 mixed identity/quote-only comments after insertion | 747.5 | 561.0 |
+| 200 legacy missing-context comments / about 296k units | 9089.0 | 645.7 |
+| One broad highlight / 15000 marked text nodes | 877.5 | 833.9 |
 
 The original full-page probe exposed about eight seconds of legacy context
 backfill, overwhelming the resolver gains. Sharing one immutable context/layout
@@ -106,16 +107,21 @@ still rebuilds its index, and historical context fields are never replaced.
 
 Native medium startup improved about 47%, native large startup about 59% at
 100 comments and 83% at 500 comments, and legacy startup about 93%.
-The 500-comment highlight phase fell from 5649.1 to 61.0 ms while restoring
-all 500 comments. Legacy context backfill fell from 7563.0 to 118.9 ms.
+The 500-comment highlight phase fell from 5629.5 to 62.1 ms while restoring
+all 500 comments. Legacy context backfill fell from 7998.2 to 124.3 ms.
 Parsing, unrelated startup and sidebar/layout work
-remain in these totals, so a 19x resolver improvement does not imply a 19x page
+remain in these totals, so a 20x resolver improvement does not imply a 20x page
 improvement. The repeated linear offset lookups, occurrence scans, full edit
 matrix allocation and browser rendering are deliberately still visible costs,
 not hidden behind a persistent DOM cache or relaxed limits.
 
-The independent repeat measured large unchanged recovery at 188.5 -> 10.1 ms
-(18.7x) and near-limit normalization at 1172.4 -> 30.2 ms (38.8x).
+The broad fixture verifies exactly 15000 mark nodes and every attached root ID.
+Its approximately 5% startup improvement is modest: the highlight phase is
+97.0 -> 86.4 ms, while parsing/rendering dominate. A deterministic work guard,
+not this noisy small latency difference, proves linear index bookkeeping.
+
+The independent repeat measured large unchanged recovery at 190.9 -> 9.8 ms
+(19.5x) and near-limit normalization at 1226.3 -> 31.4 ms (39.1x).
 Absolute times varied, particularly the long normalization run, while the
 speedup ratios and attachment outcomes remained consistent. Raw repeated
 samples are retained rather than selecting only the fastest run.
@@ -133,10 +139,17 @@ Extract the baseline from the exact delivered commit, not current main:
 
 ```powershell
 New-Item -ItemType Directory -Force tmp\reattachment-bench | Out-Null
-git show 8bd2b3814:plugins/commentable-html/dev/assets/js/16-reattachment.js |
-  Set-Content -Encoding utf8 tmp\reattachment-bench\baseline.js
-git show 8bd2b3814:plugins/commentable-html/dev/skill/dist/SHAREABLE.html |
-  Set-Content -Encoding utf8 tmp\reattachment-bench\baseline-shareable.html
+@'
+from pathlib import Path
+import subprocess
+for leaf, source in [
+    ("baseline.js", "assets/js/16-reattachment.js"),
+    ("baseline-shareable.html", "skill/dist/SHAREABLE.html"),
+]:
+    blob = "8bd2b3814:plugins/commentable-html/dev/" + source
+    Path(r"tmp\reattachment-bench").joinpath(leaf).write_bytes(
+        subprocess.check_output(["git", "show", blob]))
+'@ | python -
 python scripts\setup_dev.py --check
 python scripts\rebuild_all.py
 Set-Location plugins\commentable-html\dev
@@ -152,9 +165,8 @@ node tests\benchmark-reattachment.mjs `
 Use `--startup-only --filter unchanged-large-500` to isolate the 500-comment
 whole-page case. Baseline seeding captures real historical context outside the
 timed interval and can itself take considerably longer than optimized startup.
-PowerShell text extraction can change newline/BOM bytes, so compare semantic
-inputs and record the resulting hashes; the retained measurement used exact
-LF baseline copies. Docker is needed only for pinned tutorial screenshot
+Python's byte extraction preserves the exact baseline blobs, avoiding PowerShell
+text-pipeline newline/BOM conversions. Docker is needed only for pinned tutorial screenshot
 regeneration, not these benchmarks.
 
 ## Safeguards
@@ -179,6 +191,11 @@ cross-revision uniqueness and misleading budget diagnostics. Each was reproduced
 RED before its fix. Evidence reuse requires matching revision, layout basis and
 normalization, not revision alone: code/tag changes can alter eligible normalized
 occurrences without changing the source/identity revision.
+
+The second review found quadratic broad-highlight bookkeeping, inaccurate cold
+labeling, redundant recapture scans that lost evidence on the next revision, and
+generated-ID block/layout pollution. All were confirmed and fixed before these
+final measurements; independent follow-up reviewers accepted the fixes.
 
 Source limits (8m units), snapshots (4096), candidate count (128), shared scan
 budget (64m), fuzzy-block and alignment-cell limits are unchanged. No message,
