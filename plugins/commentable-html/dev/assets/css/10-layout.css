@@ -9,23 +9,31 @@ body.sidebar-open .app { padding-right: 1.5rem; }
 }
 
 .cm-document-width {
-  display: inline-flex; align-items: center; gap: 0.15rem; flex: none;
-  color: var(--cp-text-soft); font-size: var(--cp-chrome-small-font);
+  display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 0.35rem; flex: none;
+  padding: var(--cp-chrome-menu-item-y) var(--cp-chrome-action-x);
+  color: var(--cp-text); font-size: var(--cp-chrome-body-font);
 }
-.cm-document-width output { min-width: 3.5rem; text-align: center; font-variant-numeric: tabular-nums; }
-.cm-toolbar .cm-document-width button,
-.cm-sidebar .cm-document-width button {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 1.8rem; height: 1.8rem; padding: 0; border: 0; border-radius: 0.4rem;
-  background: transparent; color: var(--cp-text); font: inherit; font-size: 1rem; cursor: pointer;
+.cm-document-width > span { grid-column: 1 / -1; }
+.cm-document-width > button:first-of-type { grid-column: 2; }
+.cm-document-width output { min-width: 2.75rem; text-align: center; font-variant-numeric: tabular-nums; }
+.cm-toolbar-menu .cm-document-width button,
+.cm-sidebar .cm-sidebar-more-menu .cm-document-width button {
+  display: inline-flex; align-items: center; justify-content: center; justify-self: center;
+  box-sizing: border-box; flex: none; width: 2rem; height: 2rem;
+  min-width: 32px; min-height: 32px; padding: 0; border: 1px solid var(--cp-accent); border-radius: 0.4rem;
+  background: var(--cp-bg-elevated); color: var(--cp-accent);
+  font: inherit; font-size: 1.125rem; font-weight: 700; cursor: pointer;
+  text-align: center;
 }
-.cm-document-width button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.cm-toolbar-menu .cm-document-width button:hover:not(:disabled),
+.cm-sidebar .cm-sidebar-more-menu .cm-document-width button:hover:not(:disabled) {
+  background: var(--cp-accent); color: var(--cp-accent-fg);
+}
 .cm-document-width button:disabled { opacity: 0.4; cursor: default; }
-.cm-sidebar .cm-document-width { align-self: flex-end; }
 @media (max-width: 640px) {
   .cm-toolbar { max-width: calc(100vw - 2rem); box-sizing: border-box; flex-wrap: wrap; justify-content: flex-end; }
-  .cm-toolbar .cm-document-width button,
-  .cm-sidebar .cm-document-width button { min-width: 44px; min-height: 44px; }
+  .cm-toolbar-menu .cm-document-width button,
+  .cm-sidebar .cm-sidebar-more-menu .cm-document-width button { min-width: 44px; min-height: 44px; }
 }
 
 .cm-sidebar header {

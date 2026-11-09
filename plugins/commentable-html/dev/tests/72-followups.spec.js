@@ -578,7 +578,7 @@ test.describe("visual-audit follow-ups", () => {
       // search) rather than adding a fourth.
       for (const [toggle, menu, count] of [
         ["#btnSidebarExportMenu", "#sidebarExportMenu", 5],
-        ["#btnMoreMenu", "#sidebarMoreMenu", 5],
+        ["#btnMoreMenu", "#sidebarMoreMenu", 7],
       ]) {
         await page.evaluate((t) => {
           const b = document.querySelector(t);
@@ -725,7 +725,7 @@ test.describe("visual-audit follow-ups", () => {
       // them into scrollers.
       for (const [toggle, menu, count] of [
         ["#btnSidebarExportMenu", "#sidebarExportMenu", 5],
-        ["#btnMoreMenu", "#sidebarMoreMenu", 6],
+        ["#btnMoreMenu", "#sidebarMoreMenu", 8],
       ]) {
         await page.evaluate((t) => {
           const b = document.querySelector(t);

@@ -164,8 +164,9 @@ For a before/after of code, prefer a [code review diff block](code-review-diffs.
 
 The sidebar is `position: fixed` and resizable. The runtime stores the chosen width in localStorage, exposes it as `--cm-sidebar-w`, and clamps it to the viewport. When `body.sidebar-open` is set, the page should reserve room for the current width on wide screens and let the panel overlay on narrow screens.
 
-New flow documents default to a responsive 1800px body maximum. The toolbar's **Width - / +**
-controls (mirrored in the comments panel) adjust that maximum by 100px within 800-3000px and remember
+New flow documents default to a responsive 1800px body maximum. Open the toolbar's **three-dot menu**
+or **More** in the expanded comments panel to find **Width - / +**. Both menus stay open while these
+controls adjust the maximum by 100px within 800-3000px and remember
 the choice in localStorage for this document's `data-comment-key` only. Existing custom authored
 widths remain intact until explicitly adjusted. The preference is screen-only: it does not change
 print, exported author styling, or fixed-stage decks. The runtime exposes the active cap as

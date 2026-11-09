@@ -19,7 +19,7 @@ const MENU_FOCUS_IDENTITY = (el) => Array.from(el.querySelectorAll("*"))
   .filter((node) => node.tabIndex >= 0 && !node.hidden)
   .map((node) => node.id || (node.matches("a.cm-brand-link") ? "brand-site-link" : node.tagName.toLowerCase()));
 const MENU_ACTION_IDS = [
-  "btnAutoOpenPanelTop", "btnAutoOpenPanelOverrideTop", "btnUtcTimesTop",
+  "btnAutoOpenPanelTop", "btnAutoOpenPanelOverrideTop", "button", "button", "btnUtcTimesTop",
   "btnShowTop", "btnSaveHtmlTop", "btnExportOfflineTop", "btnSavePlainTop", "btnExportMdTop",
   "btnPrintTop", "btnStorageTop", "btnClearAllTop", "btnHelpTop",
 ];

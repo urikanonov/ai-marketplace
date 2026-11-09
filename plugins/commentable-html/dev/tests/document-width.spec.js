@@ -13,7 +13,7 @@ const minus = (page) => controls(page).getByRole("button", { name: "Decrease doc
 const readout = (page) => controls(page).getByRole("status");
 const appWidth = (page) => page.locator(".app").evaluate((el) => el.getBoundingClientRect().width);
 
-async function openDoc(page, { key = KEY, custom = "", headings = false } = {}) {
+async function openDoc(page, { key = KEY, custom = "", headings = false, menu = true } = {}) {
   const staged = stageContent(
     custom + '<section><h' + (headings ? "2" : "1") + '>Width demo</h' + (headings ? "2" : "1")
     + '><p>Responsive document content.</p></section>'
@@ -22,12 +22,114 @@ async function openDoc(page, { key = KEY, custom = "", headings = false } = {}) 
   );
   await page.goto(fileUrl(staged.html));
   await ready(page);
+  if (menu) await openToolbarMenu(page);
   return staged;
 }
 
 test.beforeEach(async ({ page }) => {
   await denyExternalNetwork(page);
   await page.setViewportSize({ width: 2560, height: 900 });
+});
+
+async function checkWidthMenus(page, viewport) {
+    await page.setViewportSize(viewport);
+    await page.addInitScript(() => localStorage.setItem("commentable-html::sidebarWidth", "256"));
+    await openDoc(page, { menu: false });
+    await expect(page.locator(".cm-document-width").first()).toBeHidden();
+    await openToolbarMenu(page);
+    const toolbarWidth = page.locator("#toolbarMenu .cm-document-width");
+    await expect(toolbarWidth).toBeVisible();
+    await expect(toolbarWidth.getByLabel("Decrease document width", { exact: true })).toHaveAccessibleDescription("1800px");
+    await toolbarWidth.getByLabel("Decrease document width", { exact: true }).click();
+    await expect(toolbarWidth.getByRole("status")).toHaveText("1700px");
+    await expect(page.locator("#toolbarMenu")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(toolbarWidth).toBeHidden();
+    await expect(page.locator("#btnToolbarMenu")).toBeFocused();
+    await page.locator("#btnToggleSidebar").click();
+    const panelWidth = page.locator("#sidebarMoreMenu .cm-document-width");
+    await expect(panelWidth).toBeHidden();
+    await expect(page.locator("#sidebar .head-aux .cm-document-width")).toHaveCount(0);
+    await page.locator("#btnMoreMenu").click();
+    await expect(panelWidth).toBeVisible();
+    await panelWidth.getByLabel("Increase document width", { exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect(panelWidth.getByRole("status")).toHaveText("1800px");
+    await expect(page.locator("#sidebarMoreMenu")).toBeVisible();
+    await page.keyboard.press("ArrowUp");
+    await expect(panelWidth.getByLabel("Decrease document width", { exact: true })).toBeFocused();
+    await expect(panelWidth.getByLabel("Decrease document width", { exact: true })).toHaveCSS("outline-style", "solid");
+    for (const theme of ["light", "dark"]) {
+      await page.locator("html").evaluate((el, value) => el.setAttribute("data-theme", value), theme);
+      for (const name of ["Decrease document width", "Increase document width"]) {
+        const button = panelWidth.getByLabel(name, { exact: true });
+        await expect(button).toBeVisible();
+        const style = await button.evaluate((el) => {
+          const css = getComputedStyle(el), box = el.getBoundingClientRect();
+          return {
+            border: css.borderTopStyle, borderWidth: parseFloat(css.borderTopWidth),
+            color: css.color, background: css.backgroundColor,
+            weight: Number(css.fontWeight), width: box.width, height: box.height,
+          };
+        });
+        expect(style.border).toBe("solid");
+        expect(style.borderWidth).toBeGreaterThanOrEqual(1);
+        expect(style.background).not.toBe("rgba(0, 0, 0, 0)");
+        expect(style.color).not.toBe(style.background);
+        expect(style.weight).toBeGreaterThanOrEqual(600);
+        expect(style.width).toBeGreaterThanOrEqual(viewport.width < 640 ? 44 : 32);
+        expect(style.height).toBeGreaterThanOrEqual(viewport.width < 640 ? 44 : 32);
+      }
+    }
+    await page.keyboard.press("Escape");
+    await expect(panelWidth).toBeHidden();
+    await expect(page.locator("#btnMoreMenu")).toBeFocused();
+    if (viewport.width > 640) {
+      await page.locator("#sidebarResizeHandle").focus();
+      await page.keyboard.press("Home");
+    }
+    await page.locator("#btnMoreMenu").click();
+    await expect(panelWidth).toBeVisible();
+    const menuBox = await page.locator("#sidebarMoreMenu").boundingBox();
+    expect(menuBox.x).toBeGreaterThanOrEqual(0);
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(viewport.width);
+    expect(await page.locator("#sidebarMoreMenu").evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+    await panelWidth.getByLabel("Decrease document width", { exact: true }).click();
+    await expect(panelWidth.getByRole("status")).toHaveText("1700px");
+    await page.screenshot({ path: test.info().outputPath(`width-menu-${viewport.width}.png`) });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+}
+
+test("width controls live in More menus with distinct buttons at 1440px (CMH-WIDTH-02)", async ({ page }) => {
+  await checkWidthMenus(page, { width: 1440, height: 900 });
+});
+
+test("width controls live in More menus with distinct buttons at 375px (CMH-WIDTH-02)", async ({ page }) => {
+  await checkWidthMenus(page, { width: 375, height: 812 });
+});
+
+test("width menu keyboard focus survives both limits (CMH-WIDTH-02)", async ({ page }) => {
+  await openDoc(page);
+  await page.locator("#btnToggleSidebar").click();
+  await page.locator("#btnMoreMenu").click();
+  const group = page.locator("#sidebarMoreMenu .cm-document-width");
+  const decrease = group.getByLabel("Decrease document width", { exact: true });
+  const increase = group.getByLabel("Increase document width", { exact: true });
+  for (let i = 0; i < 9; i++) await decrease.click();
+  await decrease.focus();
+  await page.keyboard.press("Enter");
+  await expect(decrease).toBeDisabled();
+  await expect(increase).toBeFocused();
+  await expect(increase).toHaveAccessibleDescription("800px");
+  for (let i = 0; i < 21; i++) await increase.click();
+  await increase.focus();
+  await page.keyboard.press("Enter");
+  await expect(increase).toBeDisabled();
+  await expect(decrease).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.locator("#btnUtcTimes")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#btnMoreMenu")).toBeFocused();
 });
 
 test("flow templates default to a responsive 1800px body (CMH-WIDTH-01)", async ({ page }) => {
@@ -59,6 +161,7 @@ test("the garden demo demonstrates adjustable reading width (CMH-WIDTH-02)", asy
   await page.goto(fileUrl(path.join(EXAMPLES, "report-community-garden.html")));
   await ready(page);
   await awaitMermaidRendered(page);
+  await openToolbarMenu(page);
   await expect(page.locator("#commentRoot")).toContainText("Width");
   await expect(readout(page)).toHaveText("1800px");
   await minus(page).click();
@@ -77,12 +180,14 @@ test("width survives reload and is isolated by document identity (CMH-WIDTH-03)"
   await minus(page).click();
   await page.reload();
   await ready(page);
+  await openToolbarMenu(page);
   await expect(readout(page)).toHaveText("1700px");
   expect(await appWidth(page)).toBe(1700);
   await openDoc(page, { key: KEY + "-other" });
   await expect(readout(page)).toHaveText("1800px");
   await page.goto(fileUrl(first.html));
   await ready(page);
+  await openToolbarMenu(page);
   await expect(readout(page)).toHaveText("1700px");
 });
 
@@ -98,6 +203,7 @@ test("invalid saved widths are ignored and blocked storage does not break contro
   await expect(page.locator("#toast")).toContainText("Could not save");
   await page.reload();
   await ready(page);
+  await openToolbarMenu(page);
   await expect(readout(page)).toHaveText("1800px");
 });
 
@@ -105,9 +211,10 @@ test("width remains usable with TOC and sidebar and keeps the footer aligned (CM
   await openDoc(page, { headings: true });
   for (let i = 0; i < 10; i++) await minus(page).click();
   await page.locator("#btnToggleSidebar").click();
+  await page.locator("#btnMoreMenu").click();
   const panelControl = page.locator("#sidebar .cm-document-width");
   await expect(panelControl).toBeVisible();
-  await panelControl.getByRole("button", { name: "Increase document width" }).click();
+  await panelControl.getByLabel("Increase document width", { exact: true }).click();
   await expect(panelControl.getByRole("status")).toHaveText("900px");
   await expect.poll(() => page.evaluate(() => {
     const root = document.getElementById("commentRoot").getBoundingClientRect();
@@ -121,17 +228,19 @@ test("width remains usable with TOC and sidebar and keeps the footer aligned (CM
   await page.locator("#btnCloseSidebar").click();
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.locator("#btnToggleSidebar").click();
+  await page.locator("#btnMoreMenu").click();
   expect(await appWidth(page)).toBe(900);
-  await panelControl.getByRole("button", { name: "Decrease document width" }).click();
+  await panelControl.getByLabel("Decrease document width", { exact: true }).click();
   expect(await appWidth(page)).toBe(800);
   expect(await page.evaluate(() => {
     const root = document.getElementById("commentRoot").getBoundingClientRect();
     const footer = document.querySelector(".cm-footer").getBoundingClientRect();
     return Math.abs(root.left - footer.left) + Math.abs(root.right - footer.right);
   })).toBeLessThan(1);
-  await panelControl.getByRole("button", { name: "Increase document width" }).click();
+  await panelControl.getByLabel("Increase document width", { exact: true }).click();
   await page.locator("#btnCloseSidebar").click();
   await page.setViewportSize({ width: 375, height: 812 });
+  await openToolbarMenu(page);
   await expect(plus(page)).toBeVisible();
   await plus(page).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
@@ -191,10 +300,11 @@ test("width changes remeasure charts and dismiss stale hover tooltips (CMH-WIDTH
 test("panel-open relative widths refresh on resize and preference removal (CMH-WIDTH-04)", async ({ page }) => {
   await openDoc(page, { custom: "<style>body .app { max-width: 90%; }</style>" });
   await page.locator("#btnToggleSidebar").click();
+  await page.locator("#btnMoreMenu").click();
   const panelReadout = page.locator("#sidebar .cm-document-width").getByRole("status");
   await page.setViewportSize({ width: 1000, height: 900 });
   await expect(panelReadout).toHaveText("900px");
-  await page.locator("#sidebar .cm-document-width").getByRole("button", { name: "Decrease document width" }).click();
+  await page.locator("#sidebar .cm-document-width").getByLabel("Decrease document width", { exact: true }).click();
   await page.evaluate((key) => {
     localStorage.removeItem(key);
     window.dispatchEvent(new StorageEvent("storage", { key }));

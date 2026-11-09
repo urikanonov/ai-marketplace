@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
-<meta name="commentable-html-validated-hash" content="13nc0iw" />
+<meta name="commentable-html-validated-hash" content="17ys7wt" />
 <meta name="commentable-html-validated" content="2026-11-09T23:59:59Z" />
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.861.0" />
+<meta name="commentable-html-version" content="1.861.1" />
 <meta name="commentable-html-kind" content="plan" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.861.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.861.1","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Planning a Community Garden</title>
 
@@ -86,7 +86,7 @@ html.cmh-awaiting-style body { visibility: hidden; }
 
   <h1>Planning a Community Garden</h1>
   <p>This standalone plan is designed as a friendly review surface for every major commentable-html feature. Use the table of contents to jump through the plan, then try comments on prose, tables, KQL, a chart caption, images, Mermaid nodes, and a code diff.</p>
-  <p>Try <strong>Width - / +</strong> in the top toolbar to adjust the 1800px reading width. Your browser remembers the choice for this plan only, and the page still fits a smaller screen.</p>
+  <p>Try <strong>Width - / +</strong> in the toolbar's <strong>three-dot menu</strong> or the panel's <strong>More</strong> menu to adjust this plan's responsive 1800px reading width.</p>
 
   <nav class="cm-toc" aria-label="Table of contents">
     <div class="cm-toc-title">Contents</div>
@@ -792,23 +792,31 @@ padding-right: calc(var(--cm-sidebar-w, 400px) + max(2rem, calc((100vw - var(--c
 }
 }
 .cm-document-width {
-display: inline-flex; align-items: center; gap: 0.15rem; flex: none;
-color: var(--cp-text-soft); font-size: var(--cp-chrome-small-font);
+display: grid; grid-template-columns: 1fr auto auto auto; align-items: center; gap: 0.35rem; flex: none;
+padding: var(--cp-chrome-menu-item-y) var(--cp-chrome-action-x);
+color: var(--cp-text); font-size: var(--cp-chrome-body-font);
 }
-.cm-document-width output { min-width: 3.5rem; text-align: center; font-variant-numeric: tabular-nums; }
-.cm-toolbar .cm-document-width button,
-.cm-sidebar .cm-document-width button {
-display: inline-flex; align-items: center; justify-content: center;
-width: 1.8rem; height: 1.8rem; padding: 0; border: 0; border-radius: 0.4rem;
-background: transparent; color: var(--cp-text); font: inherit; font-size: 1rem; cursor: pointer;
+.cm-document-width > span { grid-column: 1 / -1; }
+.cm-document-width > button:first-of-type { grid-column: 2; }
+.cm-document-width output { min-width: 2.75rem; text-align: center; font-variant-numeric: tabular-nums; }
+.cm-toolbar-menu .cm-document-width button,
+.cm-sidebar .cm-sidebar-more-menu .cm-document-width button {
+display: inline-flex; align-items: center; justify-content: center; justify-self: center;
+box-sizing: border-box; flex: none; width: 2rem; height: 2rem;
+min-width: 32px; min-height: 32px; padding: 0; border: 1px solid var(--cp-accent); border-radius: 0.4rem;
+background: var(--cp-bg-elevated); color: var(--cp-accent);
+font: inherit; font-size: 1.125rem; font-weight: 700; cursor: pointer;
+text-align: center;
 }
-.cm-document-width button:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.cm-toolbar-menu .cm-document-width button:hover:not(:disabled),
+.cm-sidebar .cm-sidebar-more-menu .cm-document-width button:hover:not(:disabled) {
+background: var(--cp-accent); color: var(--cp-accent-fg);
+}
 .cm-document-width button:disabled { opacity: 0.4; cursor: default; }
-.cm-sidebar .cm-document-width { align-self: flex-end; }
 @media (max-width: 640px) {
 .cm-toolbar { max-width: calc(100vw - 2rem); box-sizing: border-box; flex-wrap: wrap; justify-content: flex-end; }
-.cm-toolbar .cm-document-width button,
-.cm-sidebar .cm-document-width button { min-width: 44px; min-height: 44px; }
+.cm-toolbar-menu .cm-document-width button,
+.cm-sidebar .cm-sidebar-more-menu .cm-document-width button { min-width: 44px; min-height: 44px; }
 }
 .cm-sidebar header {
 padding: var(--cp-chrome-header-y) var(--cp-chrome-header-x); border-bottom: 1px solid var(--cp-border);
@@ -1191,7 +1199,13 @@ box-shadow: var(--cp-shadow);
 }
 .cm-sidebar-export-menu[hidden] { display: none; }
 
-.cm-sidebar-more-menu { left: auto; right: 0; max-width: min(18rem, calc(var(--cm-sidebar-w, 25rem) - 4rem)); }
+.cm-sidebar-more-menu {
+left: auto; right: 0; max-width: min(18rem, calc(var(--cm-sidebar-w, 25rem) - 4rem));
+max-height: min(70vh, 28rem, calc(100vh - 12rem));
+}
+@media (max-width: 640px) {
+.cm-sidebar-more-menu { max-width: min(18rem, calc(60vw - 2rem)); }
+}
 
 .cm-sidebar .head-primary .cm-sidebar-export-menu { left: auto; right: 0; }
 
@@ -5186,7 +5200,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.861.0";
+const CMH_VERSION= "1.861.1";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -21225,7 +21239,7 @@ T('Navigation',
 '</ul>')+
 T('Reading aids',
 '<ul>'+
-(!isDeck?'<li><strong>Document width:</strong> new flow documents default to a responsive 1800px maximum. Use <strong>Width - / +</strong> in the top toolbar (or the comments panel) to adjust the maximum by 100px, from 800px to 3000px. Smaller screens still fit automatically. This browser remembers the choice for this document only; it does not change exports, print, or decks. Custom authored widths stay intact until you adjust them. If storage is blocked, the change lasts only for this session.</li>':'')+
+(!isDeck?'<li><strong>Document width:</strong> new flow documents default to a responsive 1800px maximum. Open the top toolbar\'s <strong>three-dot menu</strong> (or <strong>More</strong> in the expanded comments panel), then use <strong>Width - / +</strong> to adjust the maximum by 100px, from 800px to 3000px. Smaller screens still fit automatically. This browser remembers the choice for this document only; it does not change exports, print, or decks. Custom authored widths stay intact until you adjust them. If storage is blocked, the change lasts only for this session.</li>':'')+
 '<li><strong>Sortable tables:</strong> click a column header to sort (numeric-aware), cycling ascending, descending, original.</li>'+
 '<li><strong>Code, KQL and charts</strong> are framed for readability; every code block has an always-visible <em>Copy</em> button, and a KQL caption title copies the cluster name.</li>'+
 '<li><strong>Syntax highlighting</strong> covers 50+ language labels, including <code>json</code> and <code>jsonc</code> - a JSON property name is tinted apart from its value, and <code>//</code> or <code>/* */</code> comments read as comments.</li>'+
@@ -21387,9 +21401,14 @@ const override=value===null?"":selector+" { max-width: "+width+"px !important; }
 style.textContent= "@media screen { :root { --cm-doc-max-width: "+width+"px; --cm-toolbar-height: "+toolbarHeight+"px; } "
 +override+" }";
 groups.forEach(function(group){
+const focused=document.activeElement;
 group.output.textContent=Math.round(width)+"px";
+group.minus.setAttribute("aria-description",group.output.textContent);
+group.plus.setAttribute("aria-description",group.output.textContent);
 group.minus.disabled=width<=minimum;
 group.plus.disabled=width>=maximum;
+if(focused===group.minus&&group.minus.disabled)group.plus.focus();
+else if(focused===group.plus&&group.plus.disabled)group.minus.focus();
 });
 hideChartTooltip();
 root.querySelectorAll(CMH_CHART_DATA_SEL).forEach(function(canvas){
@@ -21417,6 +21436,10 @@ const el=document.createElement("button");
 el.type= "button";
 el.textContent=text;
 el.setAttribute("aria-label",name);
+if(host.getAttribute("role")=== "menu"){
+el.setAttribute("role","menuitem");
+el.tabIndex=-1;
+}
 el.title=name+" by 100px (800-3000px)";
 el.addEventListener("click",function(){change(direction);});
 cmhMarkLayerChrome(el);
@@ -21425,19 +21448,17 @@ return el;
 const minus=button("-","Decrease document width",-1);
 const output=document.createElement("output");
 output.setAttribute("role","status");
-output.setAttribute("aria-label","Document maximum width");
 const plus=button("+","Increase document width",1);
 group.append(label,minus,output,plus);
-host.appendChild(group);
+group.addEventListener("click",function(event){event.__cmhKeepMenuOpen=true;});
+host.insertBefore(group,cmhPreferenceRow(host,"utc-times"));
 groups.push({output,minus,plus});
 }
 const toolbarToggle=cmhEl("btnToggleSidebar");
 const toolbar=toolbarToggle&&toolbarToggle.closest(".cm-toolbar");
-addControls(toolbar);
+addControls(cmhLayerBlock(document,"toolbarMenu"));
 if(toolbar)toolbarHeight=toolbar.getBoundingClientRect().height;
-const sidebar=cmhLayerBlock(document,"sidebar");
-const header=sidebar&&sidebar.querySelector("header");
-addControls(header&&header.querySelector(".head-aux"));
+addControls(cmhLayerBlock(document,"sidebarMoreMenu"));
 apply(savedWidth());
 function refreshLayout(){
 const height=toolbar&&toolbar.getBoundingClientRect().height;
