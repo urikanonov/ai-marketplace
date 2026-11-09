@@ -4,6 +4,12 @@ Comment placement and review lifecycle are separate. Moving an anchor never hand
 answers a question or edits a message. Copy one thread or Copy selected is sufficient: the runtime
 relocates remaining browser-local comments without the agent knowing about them.
 
+## Contents
+
+- [Both review scenarios](#both-review-scenarios)
+- [Attachment and Detached](#attachment-and-detached)
+- [Compatibility](#compatibility)
+
 ## Both review scenarios
 
 When an agent handles only some comments, only those handled IDs are pruned. Unsent comments follow
