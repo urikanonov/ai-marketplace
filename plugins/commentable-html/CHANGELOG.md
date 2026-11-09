@@ -11,10 +11,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 - Distinguish blocked or unavailable comment storage in cloud previews from a full browser
   store. Keep the existing Manage storage recovery for genuine quota failures.
 - Show a small bottom-left information bubble when saving is unavailable. Its explanation
-  recommends downloading and opening the HTML locally, warns that changes are temporary,
-  and preserves Copy all and Export as Shareable as recovery options.
+  directs readers to the viewer's own Download command and opening the original HTML locally.
+  Make review changes and file exports read-only while storage is unavailable, since a
+  constrained viewer can silently block downloads too. Existing comments remain visible.
+  Retry unsaved review changes before lifting read-only mode when storage becomes available again.
+  If saved review data could not be read at startup, stay read-only until reloaded rather than
+  overwriting unread data during recovery.
+  Opening the information bubble dismisses the toast so its explanation stays readable on mobile.
+  The save-failure toast uses the same preview-aware explanation and local-download guidance.
+  If saving becomes unavailable during an edit, its failure
+  toasts dismiss 20 percent sooner: after 8 seconds for comments and 6.4 seconds for other edits.
 - Deliberately raise the runtime JS/CSS, embedded-assets and Shareable size ceilings to
-  774/158/975/993 KB for the storage capability check and accessible information popover.
+  781/158/983/1001 KB for the storage capability check, accessible information popover
+  and constrained-mode review/download guards.
   No dependency or rich-library payload is added.
 
 ## [1.860.0] - 2026-11-08

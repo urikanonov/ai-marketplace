@@ -406,6 +406,7 @@ function _cmhHeadingText(heading) {
 
 /* ----- mark / unmark ----- */
 function markSectionReviewed(heading) {
+  if (cmhReviewReadOnly()) return;
   if (!heading || !heading.id) return;
   reviewMarkers[heading.id] = {
     hash: _cmhHashForHeadingEl(heading),
@@ -427,6 +428,7 @@ function markSectionReviewed(heading) {
   refreshReviewUI();
 }
 function clearSectionReviewed(heading) {
+  if (cmhReviewReadOnly()) return;
   if (!heading || !heading.id) return;
   delete reviewMarkers[heading.id];
   // If the marker was baked into the document, tombstone it so a reload does not resurrect it.

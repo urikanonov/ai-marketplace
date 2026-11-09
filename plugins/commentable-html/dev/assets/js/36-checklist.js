@@ -189,6 +189,7 @@ function _clAfterChange() {
   _clHadChanges = has;
 }
 function _clCycleItem(item) {
+  if (cmhReviewReadOnly()) return;
   const cache = new Map();
   const next = _clNextState(_clItemState(item, cache));
   if (item.isBranch) _clDescendantLeaves(item).forEach((l) => _clSetLeaf(l, next));

@@ -462,6 +462,7 @@ function _cmhReleaseDownloadAnchor(url, a) {
   try { if (a) a.remove(); } catch (e) {}
 }
 function _downloadTextFile(text, filename, mime) {
+  cmhAssertDownloadAllowed();
   const blob = new Blob([text], { type: (mime || "text/plain") + ";charset=utf-8" });
   const url = URL.createObjectURL(blob);
   // Clean up on the way out of a throw, so a failed download leaves neither an unrevoked object URL

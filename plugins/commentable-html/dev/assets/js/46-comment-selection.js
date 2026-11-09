@@ -107,6 +107,7 @@ function selectedThreadIds() {
 
 let _cmClearSelectedBusy = false;
 function _cmDeleteSelectedThreads(ids) {
+  if (cmhReviewReadOnly()) return false;
   const drop = new Set(ids);
   if (typeof openEditComposers !== "undefined") {
     ids.forEach(function (id) {

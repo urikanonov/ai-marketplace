@@ -364,6 +364,7 @@ function _cmhDocComments(g) {
 // path: tombstone the embedded ids, drop from the in-memory array, remove highlights, persist, and
 // re-render the sidebar - mirroring the sidebar's own delete so nothing resurrects on reload.
 function _cmhDeleteCommentFromCurrent(id) {
+  if (cmhReviewReadOnly()) return cmhShowReadOnlyNotice();
   const dropIds = comments.filter(function (c) { return c && (c.id === id || c.parentId === id); })
     .map(function (c) { return c.id; });
   if (!dropIds.length) return;
@@ -490,7 +491,7 @@ function openStorageManager(opts) {
       let anyKey;
       _cmhPendingWrites.forEach(function (rec, key) { if (anyKey === undefined) anyKey = key; });
       const onlyComment = _cmhPendingWrites.size === 1 && _cmhPendingWrites.has(CMH_STORE_KEY);
-      showToast((onlyComment ? "Your comment is" : "Your edits are")
+      showToast(cmhReviewReadOnly() ? cmhStorageUnavailableMessage("Changes") : (onlyComment ? "Your comment is" : "Your edits are")
         + " still not saved - this browser's storage is full. Free space from Manage storage, or use "
         + "Copy all / Export as Shareable to keep it.",
         { alert: true, duration: 8000, action: cmhStorageAction(anyKey) });
@@ -860,6 +861,7 @@ function openStorageManager(opts) {
   // Inline row confirmation: swap the trigger for Confirm/Cancel in place (avoids nesting a second
   // modal + focus-trap conflict). Focus moves to Confirm; Cancel restores and refocuses the trigger.
   function inlineConfirm(triggerBtn, message, onConfirm) {
+    if (cmhReviewReadOnly()) return cmhShowReadOnlyNotice();
     const parent = triggerBtn.parentNode;
     if (!parent) return;
     const wrap = el("div", "cm-storage-confirm");
@@ -882,7 +884,10 @@ function openStorageManager(opts) {
       parent.replaceChild(triggerBtn, wrap);
       triggerBtn.focus();
     });
-    yes.addEventListener("click", function () { onConfirm(); });
+    yes.addEventListener("click", function () {
+      if (cmhReviewReadOnly()) return cmhShowReadOnlyNotice();
+      onConfirm();
+    });
     yes.focus();
   }
 
@@ -961,7 +966,7 @@ function setupStorageNotice() {
 }
 function cmhUpdateStorageNotice() {
   if (!_cmhStorageNoticeReady) return;
-  const unavailable = _cmhStorageIssue === "blocked" || _cmhStorageIssue === "unavailable";
+  const unavailable = cmhReviewReadOnly();
   if (!unavailable) {
     if (_cmhStorageNotice) _cmhStorageNotice.hidden = true;
     return;
@@ -982,7 +987,7 @@ function cmhUpdateStorageNotice() {
   button.setAttribute("aria-expanded", "false");
   button.setAttribute("aria-controls", "cmStorageNoticeDetails");
   button.setAttribute("aria-haspopup", "dialog");
-  button.innerHTML = '<span class="cm-storage-info-icon" aria-hidden="true">i</span><span>Comments not saved</span>';
+  button.innerHTML = '<span class="cm-storage-info-icon" aria-hidden="true">i</span><span>Read-only</span>';
   const details = document.createElement("div");
   details.id = "cmStorageNoticeDetails";
   details.className = "cm-storage-info-details";
@@ -990,18 +995,19 @@ function cmhUpdateStorageNotice() {
   details.tabIndex = -1;
   details.setAttribute("role", "dialog");
   details.setAttribute("aria-label", "Comment saving unavailable");
-  const preview = window.self !== window.top
-    || /(^|\.)(onedrive\.live\.com|onedrive\.cloud\.microsoft|sharepoint\.com)$/.test(location.hostname);
   const heading = document.createElement("strong");
-  heading.textContent = preview ? "Comments cannot be saved in this preview." : "Browser storage is unavailable.";
+  heading.textContent = cmhStorageUnavailableExplanation();
   const guidance = document.createElement("p");
-  guidance.textContent = "Download this HTML file and open it locally in your browser to leave comments that can be saved.";
+  guidance.textContent = "Download the original HTML using your viewer's Download button, "
+    + "then open it locally in your browser to leave comments.";
   const recovery = document.createElement("p");
-  recovery.textContent = "Comments and edits made here are temporary and will be lost on reload. "
-    + "Use Copy all or Export as Shareable to keep any changes before leaving.";
+  recovery.textContent = "Review changes and file exports are disabled because this environment cannot save changes "
+    + "and may also block downloads. Existing comments remain visible. If saving stopped after you made changes, "
+    + "keep this page open and copy those changes before leaving.";
   const privacy = document.createElement("p");
   privacy.className = "cm-storage-info-hint";
-  privacy.textContent = "If saving is still blocked locally, check your browser's privacy settings.";
+  privacy.textContent = "If saving is still blocked locally, check your browser's privacy settings. "
+    + "Reload after restoring access to safely load previously saved review data.";
   const closeButton = document.createElement("button");
   closeButton.type = "button";
   closeButton.className = "cm-storage-btn";
@@ -1013,6 +1019,7 @@ function cmhUpdateStorageNotice() {
   }
   button.addEventListener("click", function () {
     if (!details.hidden) { close(true); return; }
+    hideToast();
     details.hidden = false;
     button.setAttribute("aria-expanded", "true");
     details.focus({ preventScroll: true });

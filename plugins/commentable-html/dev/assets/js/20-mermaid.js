@@ -25,6 +25,10 @@ let _activeAdd = null;
 // the image wins over the wrapping link), deterministically and regardless of hover-event
 // order, so the reader ever sees exactly one button.
 function setActiveAdd(entry) {
+  if (cmhReviewReadOnly()) {
+    if (entry && entry.btn) entry.btn.hidden = true;
+    return false;
+  }
   const prev = _activeAdd;
   if (prev && prev.btn && prev.btn !== (entry && entry.btn)) {
     // The incoming target is an ANCESTOR of the active one AND that inner affordance is still

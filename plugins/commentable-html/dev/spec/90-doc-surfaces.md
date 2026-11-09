@@ -114,6 +114,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-STORE-15 | tutorial, help | deck |
 | CMH-STORE-17 | help | opt-out: storage-failure recovery is conditional on the viewer environment, not a showcase slide capability |
 | CMH-STORE-18 | help | opt-out: the conditional recovery bubble is demonstrated by desktop and mobile browser tests rather than a slide |
+| CMH-STORE-19 | help | opt-out: read-only protection depends on viewer storage restrictions and is exercised by browser tests rather than a normal showcase slide |
 | CMH-NOTE-04 | tutorial, help | deck |
 | CMH-NOTE-05 | tutorial | deck |
 | CMH-TABLE-01 | tutorial, help | deck |

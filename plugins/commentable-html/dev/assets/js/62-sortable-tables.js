@@ -573,6 +573,7 @@ let _clearAllBusy = false;
 // The post-confirmation clear-all steps, factored out so the storage manager's current-document
 // "Delete all comments" can reuse them after its own inline confirm (without nesting showConfirm).
 function performClearAll() {
+  if (cmhReviewReadOnly()) return;
   // Close any open edit composer first: after the array is cleared its Save would find nothing
   // and the common tail would close it silently, losing the reviewer's in-progress edit.
   if (typeof openEditComposers !== "undefined") {

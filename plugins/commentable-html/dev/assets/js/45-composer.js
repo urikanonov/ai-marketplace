@@ -91,6 +91,7 @@ function composerAnchorRect({ mode, range, comment, mermaid, diff, image, widget
 }
 
 function createComposerElement({ mode, range, quote, comment, mermaid, diff, image, widget, slide, link, tableColumn }) {
+  if (cmhReviewReadOnly()) { cmhShowReadOnlyNotice(); return null; }
   // When deck commenting is disabled ("off" present-only state) every "new-*" entry point
   // (selection, document, mermaid, image, diff, widget, heading) must be inert, not just the
   // text-selection popup. Editing is unreachable in off (it is only offered at zero comments),
@@ -446,6 +447,7 @@ function saveComposerElement(el) {
 }
 
 function saveComposerElementInner(el) {
+  if (cmhReviewReadOnly()) { cmhShowReadOnlyNotice(); return; }
   const ta = el.querySelector("textarea");
   const note = ta.value.trim();
   if (!note) {
