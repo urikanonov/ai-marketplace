@@ -10,7 +10,7 @@ const CMH_READ_ONLY_SELECTOR = [
   ".cmh-note-input", ".cmh-check", ".cmh-review-badge", ".cm-widget-reset",
   ".cmh-editable-table :is(button:not(.cmh-table-copy-draft),input,textarea,select,summary,.cmh-table-resize)",
   ".cmh-table-recovery button:not(.cmh-table-copy-draft)",
-  ".cmh-table-dialog :is(input,select,button[type=submit])",
+  ".cmh-table-dialog :is(input,textarea,select,button[type=submit])",
   ".cm-composer :is(input,textarea,select,button:not([data-act=cancel]))",
   ".cm-reply-input", ".cm-reply-compose button:not(.cm-reply-cancel)", ".cm-comment-popover-input",
   ".cm-comment-popover-edit button:not([data-act=edit-cancel])",
@@ -22,11 +22,19 @@ const _cmhReadOnlyControls = new Map();
 function cmhShowReadOnlyNotice() {
   showToast(CMH_READ_ONLY_MESSAGE, { alert: true, duration: 8000 });
 }
+function cmhIsReviewControl(el) {
+  if (cmhClickHitsLayerChrome(el) || _cmhClickIsInLayerEditor(el) || _cmhClickIsInPopover(el)) return true;
+  return ["sidebar", "contextMenu", "toolbarMenu"].some(function (id) {
+    const surface = cmhEl(id);
+    return surface && (root === document.body || !root.contains(surface)) && surface.contains(el);
+  });
+}
 function cmhRestrictReviewControls(node) {
   if (!node.querySelectorAll) return;
   const controls = [...node.querySelectorAll(CMH_READ_ONLY_SELECTOR)];
   if (node.matches && node.matches(CMH_READ_ONLY_SELECTOR)) controls.push(node);
   controls.forEach(function (el) {
+    if (!cmhIsReviewControl(el)) return;
     if (!_cmhReadOnlyControls.has(el)) {
       const saved = {};
       ["disabled", "readonly", "tabindex", "aria-disabled", "title"].forEach(function (name) {
@@ -79,7 +87,7 @@ function setupReadOnlyMode() {
   function block(e) {
     if (!cmhReviewReadOnly()) return;
     const control = e.target.closest && e.target.closest(CMH_READ_ONLY_SELECTOR);
-    if (!control) return;
+    if (!control || !cmhIsReviewControl(control)) return;
     const text = control.matches("textarea,input:not([type=checkbox]):not([type=radio]):not([type=button])");
     if (text) {
       if (e.type === "keydown") {

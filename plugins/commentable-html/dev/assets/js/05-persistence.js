@@ -254,6 +254,7 @@ function saveComments() {
   }
 }
 const CMH_DELETED_KEY = COMMENT_KEY + "::deleted";
+const _cmhDeletedThisSession = new Set();
 function _deletedEmbeddedIds() {
   try {
     const a = JSON.parse(localStorage.getItem(CMH_DELETED_KEY) || "[]");
@@ -266,12 +267,19 @@ function _tombstoneEmbedded(ids) {
   const emb = _embeddedCommentSig();
   const t = _deletedEmbeddedIds();
   let changed = false;
-  (ids || []).forEach(function (id) { if (id && emb.has(id) && !t.has(id)) { t.add(id); changed = true; } });
+  (ids || []).forEach(function (id) {
+    if (id && emb.has(id) && !t.has(id)) {
+      _cmhDeletedThisSession.add(id);
+      changed = true;
+    }
+  });
   if (!changed) return true;
   return cmhTrySetItem(CMH_DELETED_KEY, function () {
-    const saved = JSON.parse(localStorage.getItem(CMH_DELETED_KEY) || "[]");
+    const raw = localStorage.getItem(CMH_DELETED_KEY);
+    let saved = [];
+    try { saved = JSON.parse(raw || "[]"); } catch (e) { /* malformed markers are empty */ }
     const merged = new Set(Array.isArray(saved) ? saved.filter(id => SAFE_ID_RE.test(id)) : []);
-    t.forEach(id => merged.add(id));
+    _cmhDeletedThisSession.forEach(id => merged.add(id));
     return JSON.stringify([...merged]);
   }, "Deleted comment markers");
 }

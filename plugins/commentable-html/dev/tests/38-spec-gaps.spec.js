@@ -211,7 +211,10 @@ test("primary comment save failure stays usable but warns that persistence faile
 
   await addTextComment(page, "#commentRoot section p", "storage failure note", 0);
   await expect(page.locator(".cm-card")).toHaveCount(1);
-  await expect(page.locator("#toast")).toContainText("Comment NOT saved to this browser");
+  await expect(page.locator("#toast")).toContainText("Comment NOT saved");
+  await expect(page.locator("#toast")).toContainText("Review changes and file exports are now disabled");
+  await expect(page.locator("#btnSaveHtml")).toBeDisabled();
+  await expect(page.locator(".cm-card [data-act='edit']")).toBeDisabled();
 
   await page.reload();
   await ready(page);

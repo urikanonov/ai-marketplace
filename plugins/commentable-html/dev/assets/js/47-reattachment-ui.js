@@ -85,7 +85,8 @@ function cmhFinishReattachment(range) {
   const jump = card && card.querySelector('[data-act="jump"]');
   if (jump) { try { jump.focus({ preventScroll: true }); } catch (e) { jump.focus(); } }
   if (saved) showToast("Comment reattached.");
-  else showToast("Comment reattached in this session but NOT saved to this browser. Export as Shareable to keep it.",
+  else showToast(cmhReviewReadOnly() ? cmhStorageUnavailableMessage("Reattached comment")
+    : "Comment reattached in this session but NOT saved to this browser. Export as Shareable to keep it.",
     { alert: true, duration: 8000, action: cmhStorageAction(CMH_STORE_KEY) });
 }
 const _cmhReattachPopup = {

@@ -461,6 +461,7 @@ function openStorageManager(opts) {
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
+    if (tag === "button") cmhMarkLayerChrome(e);
     if (cls) e.className = cls;
     if (text != null) e.textContent = text; // ALWAYS textContent: labels/paths are untrusted
     return e;
@@ -983,7 +984,7 @@ function cmhUpdateStorageNotice() {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "cm-storage-info";
-  button.setAttribute("aria-label", "Comment saving unavailable");
+  button.setAttribute("aria-label", "Comment saving unavailable - Read-only");
   button.setAttribute("aria-expanded", "false");
   button.setAttribute("aria-controls", "cmStorageNoticeDetails");
   button.setAttribute("aria-haspopup", "dialog");

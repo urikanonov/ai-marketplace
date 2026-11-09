@@ -421,9 +421,10 @@ function markSectionReviewed(heading) {
   // A mark that could not be persisted would silently revert on reload; warn the reader (storage
   // full/blocked), matching clearSectionReviewed()'s un-review warning and saveComments()'s alert.
   if (!savedOk && typeof showToast === "function") {
-    showToast("Could not persist reviewing this section (browser storage full or blocked) - it "
+    showToast(cmhReviewReadOnly() ? cmhStorageUnavailableMessage("Section review")
+      : "Could not persist reviewing this section (browser storage full or blocked) - it "
       + "may not stick on reload. Use Export as Shareable to keep the change.",
-      { alert: true, duration: 8000, action: cmhStorageAction(REVIEW_KEY) });
+      { alert: true, duration: cmhReviewReadOnly() ? 6400 : 8000, action: cmhStorageAction(REVIEW_KEY) });
   }
   refreshReviewUI();
 }
@@ -444,9 +445,10 @@ function clearSectionReviewed(heading) {
   // A baked marker cleared without a durable tombstone/marker write would silently resurrect on
   // reload; warn the reader (storage full/blocked), matching saveComments()'s persistence alert.
   if (wasBaked && (!tombOk || !savedOk) && typeof showToast === "function") {
-    showToast("Could not persist un-reviewing this section (browser storage full or blocked) - it "
+    showToast(cmhReviewReadOnly() ? cmhStorageUnavailableMessage("Section review removal")
+      : "Could not persist un-reviewing this section (browser storage full or blocked) - it "
       + "may come back on reload. Use Export as Shareable to keep the change.",
-      { alert: true, duration: 8000, action: cmhStorageAction(REVIEW_DELETED_KEY) || cmhStorageAction(REVIEW_KEY) });
+      { alert: true, duration: cmhReviewReadOnly() ? 6400 : 8000, action: cmhStorageAction(REVIEW_DELETED_KEY) || cmhStorageAction(REVIEW_KEY) });
   }
   refreshReviewUI();
 }

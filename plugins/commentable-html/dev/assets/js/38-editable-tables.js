@@ -255,6 +255,7 @@ function _etColumnDialog(t, renameId, besideId, before = false) {
   header.querySelector("svg").removeAttribute("data-cmh-tip");
   form.append(header);
   function field(text, el) {
+    cmhMarkLayerChrome(el);
     const label = document.createElement("label");
     const caption = document.createElement("span");
     caption.textContent = text;
@@ -285,6 +286,7 @@ function _etColumnDialog(t, renameId, besideId, before = false) {
   const actions = document.createElement("div"); actions.className = "cmh-table-actions";
   const cancel = _etBtn("Cancel", () => dialog.close());
   const save = document.createElement("button"); save.type = "submit"; save.textContent = "Save"; save.className = "cmh-table-save";
+  cmhMarkLayerChrome(save);
   actions.append(save, cancel); form.append(actions); dialog.append(form);
   const previous = document.activeElement;
   let applied = false;

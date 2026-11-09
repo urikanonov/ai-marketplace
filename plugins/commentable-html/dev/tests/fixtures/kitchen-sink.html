@@ -5651,6 +5651,7 @@ return false;
 }
 }
 const CMH_DELETED_KEY=COMMENT_KEY+"::deleted";
+const _cmhDeletedThisSession=new Set();
 function _deletedEmbeddedIds(){
 try{
 const a=JSON.parse(localStorage.getItem(CMH_DELETED_KEY)||"[]");
@@ -5661,12 +5662,19 @@ function _tombstoneEmbedded(ids){
 const emb=_embeddedCommentSig();
 const t=_deletedEmbeddedIds();
 let changed=false;
-(ids||[]).forEach(function(id){if(id&&emb.has(id)&&!t.has(id)){t.add(id);changed=true;}});
+(ids||[]).forEach(function(id){
+if(id&&emb.has(id)&&!t.has(id)){
+_cmhDeletedThisSession.add(id);
+changed=true;
+}
+});
 if(!changed)return true;
 return cmhTrySetItem(CMH_DELETED_KEY,function(){
-const saved=JSON.parse(localStorage.getItem(CMH_DELETED_KEY)||"[]");
+const raw=localStorage.getItem(CMH_DELETED_KEY);
+let saved=[];
+try{saved=JSON.parse(raw||"[]");}catch(e){}
 const merged=new Set(Array.isArray(saved)?saved.filter(id=>SAFE_ID_RE.test(id)):[]);
-t.forEach(id=>merged.add(id));
+_cmhDeletedThisSession.forEach(id=>merged.add(id));
 return JSON.stringify([...merged]);
 },"Deleted comment markers");
 }
@@ -10650,6 +10658,7 @@ header.insertAdjacentHTML("beforeend",CMH_ICON_SVG);
 header.querySelector("svg").removeAttribute("data-cmh-tip");
 form.append(header);
 function field(text,el){
+cmhMarkLayerChrome(el);
 const label=document.createElement("label");
 const caption=document.createElement("span");
 caption.textContent=text;
@@ -10680,6 +10689,7 @@ form.append(error);
 const actions=document.createElement("div");actions.className= "cmh-table-actions";
 const cancel=_etBtn("Cancel",()=>dialog.close());
 const save=document.createElement("button");save.type= "submit";save.textContent= "Save";save.className= "cmh-table-save";
+cmhMarkLayerChrome(save);
 actions.append(save,cancel);form.append(actions);dialog.append(form);
 const previous=document.activeElement;
 let applied=false;
@@ -13329,7 +13339,8 @@ const card=listEl.querySelector('.cm-card[data-cid="'+c.id+'"]');
 const jump=card&&card.querySelector('[data-act="jump"]');
 if(jump){try{jump.focus({preventScroll:true});}catch(e){jump.focus();}}
 if(saved)showToast("Comment reattached.");
-else showToast("Comment reattached in this session but NOT saved to this browser. Export as Shareable to keep it.",
+else showToast(cmhReviewReadOnly()?cmhStorageUnavailableMessage("Reattached comment")
+:"Comment reattached in this session but NOT saved to this browser. Export as Shareable to keep it.",
 {alert:true,duration:8000,action:cmhStorageAction(CMH_STORE_KEY)});
 }
 const _cmhReattachPopup={
@@ -15019,6 +15030,7 @@ _popoverFormatOff=wireNoteFormatBar(formatBar,ta);
 ta.value=c.note==null?"":c.note;
 cmhAutogrow(ta,function(){_refitCommentPopover();});
 function doSave(){
+if(cmhReviewReadOnly()){cmhShowReadOnlyNotice();return;}
 const val=ta.value.trim();
 if(!val){
 ta.setAttribute("aria-invalid","true");
@@ -15066,6 +15078,10 @@ _cancelCommentPopoverEdit();
 ta.addEventListener("input",()=>{ta.removeAttribute("aria-invalid");ta.classList.remove("cm-invalid");});
 const onEditorKeydown=(e)=>{
 if(e.isComposing||isNoteComposing(ta))return;
+if(cmhReviewReadOnly()){
+if(e.key=== "Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();e.stopPropagation();cmhShowReadOnlyNotice();}
+return;
+}
 if(handleNoteFormatShortcut(e,ta))return;
 if(e.key=== "Enter"&&(e.ctrlKey||e.metaKey)){e.preventDefault();e.stopPropagation();doSave();}
 };
@@ -15124,10 +15140,10 @@ return;
 e.preventDefault();e.stopPropagation();
 closeCommentPopover();
 };
+document.addEventListener("keydown",_popoverKeydown,true);
 setTimeout(()=>{
 if(!commentPopover)return;
 document.addEventListener("click",_popoverDismiss,true);
-document.addEventListener("keydown",_popoverKeydown,true);
 _popoverArmed=true;
 },0);
 const editBtn=el.querySelector('[data-act="edit"]');
@@ -16212,6 +16228,7 @@ overlay.appendChild(box);
 document.body.appendChild(overlay);
 function el(tag,cls,text){
 const e=document.createElement(tag);
+if(tag=== "button")cmhMarkLayerChrome(e);
 if(cls)e.className=cls;
 if(text!=null)e.textContent=text;
 return e;
@@ -16642,7 +16659,7 @@ CMH_INJECTED_CHROME.add(wrap);
 const button=document.createElement("button");
 button.type= "button";
 button.className= "cm-storage-info";
-button.setAttribute("aria-label","Comment saving unavailable");
+button.setAttribute("aria-label","Comment saving unavailable - Read-only");
 button.setAttribute("aria-expanded","false");
 button.setAttribute("aria-controls","cmStorageNoticeDetails");
 button.setAttribute("aria-haspopup","dialog");
@@ -16716,7 +16733,7 @@ const CMH_READ_ONLY_SELECTOR=[
 ".cmh-note-input",".cmh-check",".cmh-review-badge",".cm-widget-reset",
 ".cmh-editable-table :is(button:not(.cmh-table-copy-draft),input,textarea,select,summary,.cmh-table-resize)",
 ".cmh-table-recovery button:not(.cmh-table-copy-draft)",
-".cmh-table-dialog :is(input,select,button[type=submit])",
+".cmh-table-dialog :is(input,textarea,select,button[type=submit])",
 ".cm-composer :is(input,textarea,select,button:not([data-act=cancel]))",
 ".cm-reply-input",".cm-reply-compose button:not(.cm-reply-cancel)",".cm-comment-popover-input",
 ".cm-comment-popover-edit button:not([data-act=edit-cancel])",
@@ -16728,11 +16745,19 @@ const _cmhReadOnlyControls=new Map();
 function cmhShowReadOnlyNotice(){
 showToast(CMH_READ_ONLY_MESSAGE,{alert:true,duration:8000});
 }
+function cmhIsReviewControl(el){
+if(cmhClickHitsLayerChrome(el)||_cmhClickIsInLayerEditor(el)||_cmhClickIsInPopover(el))return true;
+return["sidebar","contextMenu","toolbarMenu"].some(function(id){
+const surface=cmhEl(id);
+return surface&&(root===document.body||!root.contains(surface))&&surface.contains(el);
+});
+}
 function cmhRestrictReviewControls(node){
 if(!node.querySelectorAll)return;
 const controls=[...node.querySelectorAll(CMH_READ_ONLY_SELECTOR)];
 if(node.matches&&node.matches(CMH_READ_ONLY_SELECTOR))controls.push(node);
 controls.forEach(function(el){
+if(!cmhIsReviewControl(el))return;
 if(!_cmhReadOnlyControls.has(el)){
 const saved={};
 ["disabled","readonly","tabindex","aria-disabled","title"].forEach(function(name){
@@ -16785,7 +16810,7 @@ attributeFilter:["disabled","readonly","tabindex","aria-disabled"],
 function block(e){
 if(!cmhReviewReadOnly())return;
 const control=e.target.closest&&e.target.closest(CMH_READ_ONLY_SELECTOR);
-if(!control)return;
+if(!control||!cmhIsReviewControl(control))return;
 const text=control.matches("textarea,input:not([type=checkbox]):not([type=radio]):not([type=button])");
 if(text){
 if(e.type=== "keydown"){
@@ -22524,9 +22549,10 @@ const tomb=_deletedReviewIds();
 if(tomb.delete(heading.id))_saveDeletedReviewIds(tomb);
 const savedOk=saveReviewMarkers();
 if(!savedOk&&typeof showToast=== "function"){
-showToast("Could not persist reviewing this section (browser storage full or blocked) - it "
+showToast(cmhReviewReadOnly()?cmhStorageUnavailableMessage("Section review")
+:"Could not persist reviewing this section (browser storage full or blocked) - it "
 +"may not stick on reload. Use Export as Shareable to keep the change.",
-{alert:true,duration:8000,action:cmhStorageAction(REVIEW_KEY)});
+{alert:true,duration:cmhReviewReadOnly()?6400:8000,action:cmhStorageAction(REVIEW_KEY)});
 }
 refreshReviewUI();
 }
@@ -22544,9 +22570,10 @@ tombOk=_saveDeletedReviewIds(tomb);
 }
 const savedOk=saveReviewMarkers();
 if(wasBaked&&(!tombOk||!savedOk)&&typeof showToast=== "function"){
-showToast("Could not persist un-reviewing this section (browser storage full or blocked) - it "
+showToast(cmhReviewReadOnly()?cmhStorageUnavailableMessage("Section review removal")
+:"Could not persist un-reviewing this section (browser storage full or blocked) - it "
 +"may come back on reload. Use Export as Shareable to keep the change.",
-{alert:true,duration:8000,action:cmhStorageAction(REVIEW_DELETED_KEY)||cmhStorageAction(REVIEW_KEY)});
+{alert:true,duration:cmhReviewReadOnly()?6400:8000,action:cmhStorageAction(REVIEW_DELETED_KEY)||cmhStorageAction(REVIEW_KEY)});
 }
 refreshReviewUI();
 }

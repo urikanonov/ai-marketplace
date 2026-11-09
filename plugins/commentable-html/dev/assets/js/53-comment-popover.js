@@ -410,6 +410,7 @@ function _renderCommentPopoverEdit(c) {
   // the measured rect directly would leave those tracked coordinates stale.
   cmhAutogrow(ta, function () { _refitCommentPopover(); });
   function doSave() {
+    if (cmhReviewReadOnly()) { cmhShowReadOnlyNotice(); return; }
     const val = ta.value.trim();
     if (!val) {
       // Blank note: mark the field invalid (announced to screen readers) instead of silently
@@ -474,6 +475,10 @@ function _renderCommentPopoverEdit(c) {
   // dialog; the acts row is a sibling of the editor, so both get the handler.
   const onEditorKeydown = (e) => {
     if (e.isComposing || isNoteComposing(ta)) return;
+    if (cmhReviewReadOnly()) {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); cmhShowReadOnlyNotice(); }
+      return;
+    }
     if (handleNoteFormatShortcut(e, ta)) return;
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); doSave(); }
   };
@@ -562,11 +567,11 @@ function openCommentPopover(id, mark) {
     e.preventDefault(); e.stopPropagation();
     closeCommentPopover();
   };
-  // Register on the next tick so the opening click (on the bubble) does not immediately close it.
+  document.addEventListener("keydown", _popoverKeydown, true);
+  // Only defer click dismissal: the opening click must pass, but Escape must work immediately.
   setTimeout(() => {
     if (!commentPopover) return;
     document.addEventListener("click", _popoverDismiss, true);
-    document.addEventListener("keydown", _popoverKeydown, true);
     _popoverArmed = true;
   }, 0);
 

@@ -21,6 +21,10 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   The save-failure toast uses the same preview-aware explanation and local-download guidance.
   If saving becomes unavailable during an edit, its failure
   toasts dismiss 20 percent sooner: after 8 seconds for comments and 6.4 seconds for other edits.
+- Preserve every pending embedded-comment deletion during recovery, tolerate malformed deletion
+  markers without entering read-only mode, and protect open editor drafts and authored lookalike
+  controls. Include the visible Read-only label in the information button's accessible name.
+  Arm dialog keyboard dismissal immediately, including when a deck receives Escape just after opening.
 - Deliberately raise the runtime JS/CSS, embedded-assets and Shareable size ceilings to
   781/158/983/1001 KB for the storage capability check, accessible information popover
   and constrained-mode review/download guards.

@@ -635,9 +635,10 @@ test("competing startup diagnostics are aggregated so both remain visible (CMH-A
     await ready(page);
     await expect.poll(() => currentToast(page), { timeout: 15000 }).toContain("embeddedComments");
     const toast = await currentToast(page);
-    expect(toast).toContain("Comment NOT saved");
     expect(toast).toContain("reviewedSections");
     expect(toast).toContain("embeddedComments");
+    await expect(page.getByRole("button", { name: "Comment saving unavailable" })).toBeVisible();
+    await expect(page.locator("#btnSaveHtml")).toBeDisabled();
   } finally {
     releaseRequest();
     fs.rmSync(staged.dir, { recursive: true, force: true });

@@ -26,6 +26,155 @@ async function openManager(page) {
   await expect(page.locator(".cm-storage-manager")).toBeVisible();
 }
 
+test("pending embedded deletions accumulate and tolerate malformed saved markers (CMH-STORE-19)", async ({ page }) => {
+  page.on("dialog", dialog => dialog.accept());
+  const key = "cmh-pending-deletions";
+  const html = await open(page, { key });
+  const embedded = ["cfirstdelete", "cseconddelete"].map((id) => ({
+    id, anchorType: "document", quote: "", note: id, createdAt: "2026-01-01T00:00:00Z",
+  }));
+  fs.writeFileSync(html, fs.readFileSync(html, "utf8").replace(
+    /(<script[^>]*id="embeddedComments"[^>]*>)[\s\S]*?(<\/script>)/,
+    (_m, a, b) => a + JSON.stringify(embedded) + b));
+  await page.reload();
+  await ready(page);
+  await page.evaluate((k) => {
+    localStorage.setItem(k + "::deleted", "{malformed");
+  }, key);
+  await page.locator('.cm-card[data-cid="cfirstdelete"] [data-act="del"]').click();
+  await expect(page.locator("#btnSaveHtml")).toBeEnabled();
+  await page.reload();
+  await ready(page);
+  await expect(page.locator('.cm-card[data-cid="cfirstdelete"]')).toHaveCount(0);
+  // Restore both embedded threads so two failed deletes share one pending marker write.
+  await page.evaluate((k) => {
+    localStorage.removeItem(k + "::deleted");
+    localStorage.removeItem(k + "::z");
+  }, key);
+  await page.reload();
+  await ready(page);
+  await page.evaluate((k) => {
+    const bloat = "commentable-html:/reports/deletion-bloat.html::z";
+    localStorage.setItem(bloat, "\u0001z" + "x".repeat(200));
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (name, value) {
+      if ((name === k + "::deleted" || name === k + "::z") && localStorage.getItem(bloat) !== null) {
+        throw new DOMException("quota", "QuotaExceededError");
+      }
+      return original.call(this, name, value);
+    };
+  }, key);
+  for (const comment of embedded) {
+    await page.locator(`.cm-card[data-cid="${comment.id}"] [data-act="del"]`).click();
+  }
+  await openManager(page);
+  const bloatRow = page.locator(".cm-storage-row", { hasText: "deletion-bloat.html" });
+  await bloatRow.locator(".cm-storage-danger").click();
+  await bloatRow.locator(".cm-storage-danger", { hasText: "Confirm" }).click();
+  await page.reload();
+  await ready(page);
+  await expect(page.locator(".cm-card")).toHaveCount(0);
+  expect(await page.evaluate(k => JSON.parse(localStorage.getItem(k + "::deleted")).sort(), key))
+    .toEqual(embedded.map(c => c.id).sort());
+});
+
+test("storage loss preserves an open popover draft against keyboard saves (CMH-STORE-19)", async ({ page }) => {
+  await open(page);
+  await addTextComment(page, "#commentRoot p", "Original saved comment");
+  await page.locator("mark.cm-hl").hover();
+  await page.locator("#hlBubble").click();
+  const popover = page.locator(".cm-comment-popover");
+  await popover.locator('[data-act="edit"]').click();
+  await popover.locator("textarea").fill("Unsaved popover draft");
+  await page.evaluate(() => {
+    Storage.prototype.setItem = () => { throw new DOMException("Denied", "SecurityError"); };
+  });
+  await page.locator(".cmh-review-badge").click();
+  await expect(page.locator("body")).toHaveClass(/cm-review-read-only/);
+  await popover.locator('[data-act="edit-cancel"]').focus();
+  await page.keyboard.press("Control+Enter");
+  await expect(popover).toBeVisible();
+  await expect(popover.locator("textarea")).toHaveValue("Unsaved popover draft");
+  await expect(page.locator(".cm-card .note")).toHaveText("Original saved comment");
+  await popover.locator('[data-act="edit-cancel"]').click();
+  await expect(popover.locator("textarea")).toHaveCount(0);
+  await expect(popover.locator(".cm-comment-popover-note")).toHaveText("Original saved comment");
+});
+
+test("read-only restrictions leave authored lookalike controls usable (CMH-STORE-19)", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", {
+      get() { throw new DOMException("Denied", "SecurityError"); },
+    });
+  });
+  const { html } = stageContent(`<section><h2>Authored controls</h2><p>Reviewable text.</p>
+    <button id="host-badge" class="cmh-review-badge" style="position:static">Host action</button>
+    <button id="host-reset" class="cm-widget-reset" style="position:static">Host reset</button>
+    <textarea id="host-note" class="cmh-note-input">Host text</textarea></section>`);
+  await page.goto(fileUrl(html));
+  await ready(page);
+  for (const id of ["host-badge", "host-reset"]) {
+    await expect(page.locator("#" + id)).toBeEnabled();
+    await page.locator("#" + id).evaluate(el => el.addEventListener("click", () => { el.dataset.clicked = "yes"; }));
+    await page.locator("#" + id).click();
+    await expect(page.locator("#" + id)).toHaveAttribute("data-clicked", "yes");
+  }
+  await expect(page.locator("#host-note")).toBeEditable();
+  await page.locator("#host-note").fill("Authored edit still works");
+  await expect(page.locator("#host-note")).toHaveValue("Authored edit still works");
+  await expect(page.locator(".cmh-review-badge:not(#host-badge)")).toBeDisabled();
+});
+
+test("storage loss preserves an open column dialog without allowing edits (CMH-STORE-19)", async ({ page }) => {
+  const { html } = stageContent(`<section><h2>Review</h2>
+    <table data-cmh-table="actions" data-cmh-table-label="Actions">
+      <thead><tr><th data-cmh-column="task">Task</th></tr></thead>
+      <tbody><tr data-cmh-row="first"><td>Original task</td></tr></tbody>
+    </table></section>`);
+  await page.goto(fileUrl(html));
+  await ready(page);
+  await page.getByRole("button", { name: "Add column", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Add column", exact: true });
+  await dialog.getByLabel("Column name", { exact: true }).fill("Status");
+  await dialog.getByLabel("Column type").selectOption("choice");
+  const choices = dialog.getByLabel("Choices (one per line)");
+  await choices.fill("Open\nDone");
+  await page.evaluate(() => {
+    Storage.prototype.setItem = () => { throw new DOMException("Denied", "SecurityError"); };
+    document.querySelector(".cmh-review-badge").click();
+  });
+  await expect(page.locator("body")).toHaveClass(/cm-review-read-only/);
+  await expect(choices).not.toBeEditable();
+  await expect(choices).toHaveValue("Open\nDone");
+  await expect(dialog.getByLabel("Column name", { exact: true })).not.toBeEditable();
+  await expect(dialog.getByLabel("Column type")).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+});
+
+for (const action of ["mark", "unmark"]) {
+  test(`blocked section ${action} uses local-download guidance instead of disabled exports (CMH-STORE-19)`, async ({ page }) => {
+    const html = await open(page);
+    if (action === "unmark") {
+      await page.locator(".cmh-review-badge").click();
+      const markers = await page.evaluate(() => localStorage.getItem("cmh-store-cur::reviews"));
+      fs.writeFileSync(html, fs.readFileSync(html, "utf8").replace(
+        /(<script[^>]*id="reviewedSections"[^>]*>)[\s\S]*?(<\/script>)/,
+        (_m, a, b) => a + markers + b));
+      await page.reload();
+      await ready(page);
+    }
+    await page.evaluate(() => {
+      Storage.prototype.setItem = () => { throw new DOMException("Denied", "SecurityError"); };
+    });
+    await page.locator(".cmh-review-badge").click();
+    await expect(page.locator("#toast")).toContainText("file exports are now disabled");
+    await expect(page.locator("#toast")).toContainText("Download the original HTML");
+    await expect(page.locator("#toast")).not.toContainText("Export as Shareable");
+  });
+}
+
 test("unavailable storage makes review controls and file exports read-only (CMH-STORE-19)", async ({ page }) => {
   await denyExternalNetwork(page);
   await page.addInitScript(() => {
@@ -267,6 +416,7 @@ test("denied storage gives local-download guidance instead of a full-storage war
   await page.clock.runFor(1);
   await expect(page.locator("#toast")).not.toHaveClass(/\bshow\b/);
   await expect(info).toBeVisible();
+  await expect(info).toHaveAccessibleName("Comment saving unavailable - Read-only");
   await info.click();
   await expect(page.getByRole("dialog", { name: "Comment saving unavailable" })).toContainText("Download");
 });

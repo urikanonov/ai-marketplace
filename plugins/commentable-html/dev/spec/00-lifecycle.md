@@ -2,6 +2,9 @@
 
 commentable-html turns a standalone HTML artifact into a self-contained code-review surface. A reader can select text, code, diff lines, mermaid nodes or whole diagrams, headings, images, and charts, leave comments in the page, copy a machine-readable review bundle back to an agent, and let the agent mark processed comments handled in the same HTML file.
 
+For CMH-CORE-16, keyboard dismissal is active as soon as the dialog opens. Only outside-click
+dismissal is deferred past the opening click, so an immediate Escape also works in a deck.
+
 The core invariant is self-contained operation. Standalone mode embeds the CSS, state blocks, UI, and runtime in one file. NonShareable mode keeps the document-owned state inline but loads CSS and JS from local companion files in `dist/`; its export action rebuilds one shareable file so the review can travel without companions. The review layer is bundled into the document. Optional host features, such as mermaid rendering, Chart.js, tooltip libraries, and Run in Azure Data Explorer links, can load from a CDN and should be vendored, inlined, or captured with Export Offline when single-file zero-network shareability is required.
 
 Current UI label note: the authoritative action label is `Export as Shareable`. Some historical test names still say `Save comments`, `Save in HTML`, or `Export with embedded comments`.
