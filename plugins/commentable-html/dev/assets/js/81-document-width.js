@@ -44,9 +44,14 @@ function setupDocumentWidth() {
     style.textContent = "@media screen { :root { --cm-doc-max-width: " + width + "px; --cm-toolbar-height: " + toolbarHeight + "px; } "
       + override + " }";
     groups.forEach(function (group) {
+      const focused = document.activeElement;
       group.output.textContent = Math.round(width) + "px";
+      group.minus.setAttribute("aria-description", group.output.textContent);
+      group.plus.setAttribute("aria-description", group.output.textContent);
       group.minus.disabled = width <= minimum;
       group.plus.disabled = width >= maximum;
+      if (focused === group.minus && group.minus.disabled) group.plus.focus();
+      else if (focused === group.plus && group.plus.disabled) group.minus.focus();
     });
     hideChartTooltip();
     root.querySelectorAll(CMH_CHART_DATA_SEL).forEach(function (canvas) {
@@ -74,6 +79,10 @@ function setupDocumentWidth() {
       el.type = "button";
       el.textContent = text;
       el.setAttribute("aria-label", name);
+      if (host.getAttribute("role") === "menu") {
+        el.setAttribute("role", "menuitem");
+        el.tabIndex = -1;
+      }
       el.title = name + " by 100px (800-3000px)";
       el.addEventListener("click", function () { change(direction); });
       cmhMarkLayerChrome(el);
@@ -82,19 +91,17 @@ function setupDocumentWidth() {
     const minus = button("-", "Decrease document width", -1);
     const output = document.createElement("output");
     output.setAttribute("role", "status");
-    output.setAttribute("aria-label", "Document maximum width");
     const plus = button("+", "Increase document width", 1);
     group.append(label, minus, output, plus);
-    host.appendChild(group);
+    group.addEventListener("click", function (event) { event.__cmhKeepMenuOpen = true; });
+    host.insertBefore(group, cmhPreferenceRow(host, "utc-times"));
     groups.push({ output, minus, plus });
   }
   const toolbarToggle = cmhEl("btnToggleSidebar");
   const toolbar = toolbarToggle && toolbarToggle.closest(".cm-toolbar");
-  addControls(toolbar);
+  addControls(cmhLayerBlock(document, "toolbarMenu"));
   if (toolbar) toolbarHeight = toolbar.getBoundingClientRect().height;
-  const sidebar = cmhLayerBlock(document, "sidebar");
-  const header = sidebar && sidebar.querySelector("header");
-  addControls(header && header.querySelector(".head-aux"));
+  addControls(cmhLayerBlock(document, "sidebarMoreMenu"));
   apply(savedWidth());
   function refreshLayout() {
     const height = toolbar && toolbar.getBoundingClientRect().height;

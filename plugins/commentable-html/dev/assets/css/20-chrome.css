@@ -124,9 +124,14 @@ body.cm-has-footer .app { padding-bottom: 1.25rem; }
   box-shadow: var(--cp-shadow);
 }
 .cm-sidebar-export-menu[hidden] { display: none; }
-/* Anchored to its toggle's right edge, and capped to the panel so the longer Preferences labels
-   wrap instead of pushing the menu past the header ribbon at the sidebar's minimum width. */
-.cm-sidebar-more-menu { left: auto; right: 0; max-width: min(18rem, calc(var(--cm-sidebar-w, 25rem) - 4rem)); }
+/* Keep More left of Export; its mobile cap follows the ribbon toggle, not a saved pane width. */
+.cm-sidebar-more-menu {
+  left: auto; right: 0; max-width: min(18rem, calc(var(--cm-sidebar-w, 25rem) - 4rem));
+  max-height: min(70vh, 28rem, calc(100vh - 12rem));
+}
+@media (max-width: 640px) {
+  .cm-sidebar-more-menu { max-width: min(18rem, calc(60vw - 2rem)); }
+}
 /* In the primary row the Export button is the right-hand action, so its menu opens from the right
    edge (extending left into the sidebar) rather than off the right of the viewport. */
 .cm-sidebar .head-primary .cm-sidebar-export-menu { left: auto; right: 0; }
