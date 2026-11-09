@@ -39,7 +39,7 @@ function cmhAnchorIndex() {
     let block = byElement.get(el);
     if (!block) {
       let identified = el;
-      while (identified && identified !== root && !identified.id) identified = identified.parentElement;
+      while (identified && identified !== root && (!identified.id || !cmhAuthoredIds.has(identified.id))) identified = identified.parentElement;
       block = { el, start, end: length, id: identified && identified !== root && identified.id.length <= 1024 ? identified.id : "",
         tag: el.tagName.toLowerCase(), code: !!el.closest("pre"), heading: "" };
       blocks.push(block); byElement.set(el, block);
@@ -63,17 +63,31 @@ function cmhAnchorIndex() {
     if (!cmhAuthoredIds.has(el.id) || el.closest(".cm-skip") || seenIds.has(el.id)) continue;
     seenIds.add(el.id); identities.push(el.id.slice(0, 1024));
   }
-  return { text, blocks, nodes, revision: cmhAnchorHash(text) + ":" + cmhAnchorHash(JSON.stringify(identities)),
+  const stack = [], byId = new Map();
+  for (const block of blocks) {
+    while (stack.length && stack[stack.length - 1].end < block.end) stack.pop();
+    block.parent = stack.length ? stack[stack.length - 1] : null;
+    stack.push(block);
+    if (block.id) {
+      if (!byId.has(block.id)) byId.set(block.id, []);
+      byId.get(block.id).push(block);
+    }
+  }
+  const basis = cmhAnchorHash(JSON.stringify(blocks.map(b => [b.start, b.end, b.id, b.tag, b.code, b.heading])));
+  return { text, blocks, nodes, byId, basis, revision: cmhAnchorHash(text) + ":" + cmhAnchorHash(JSON.stringify(identities)),
     budget: CMH_ANCHOR_SCAN_BUDGET, matches: new Map() };
 }
 function cmhAnchorBlock(index, start, end) {
   // Nested containers may span other blocks; prefer the smallest enclosing block.
-  let found = null;
-  for (const block of index.blocks) {
-    if (block.start <= start && end <= block.end
-      && (!found || block.end - block.start < found.end - found.start)) found = block;
+  let lo = 0, hi = index.blocks.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (index.blocks[mid].start <= start) lo = mid + 1;
+    else hi = mid;
   }
-  return found;
+  let block = lo ? index.blocks[lo - 1] : null;
+  while (block && end > block.end) block = block.parent;
+  return block;
 }
 function cmhAnchorOriginal(c) {
   const original = { start: c.start, end: c.end };
@@ -105,23 +119,34 @@ function cmhCaptureTextAnchor(c, index) {
   const normalized = !(block && block.code || c.isCode);
   const prefix = index.text.slice(Math.max(block ? block.start : 0, start - CTX_PAD), start);
   const suffix = index.text.slice(end, Math.min(block ? block.end : index.text.length, end + CTX_PAD));
-  const unique = exact === undefined ? undefined : cmhAnchorUnique(index, exact, normalized);
+  const sameBasis = prior.normalizedEvidence === normalized;
+  const sameEvidence = sameBasis && prior.revision === index.revision && prior.basis === index.basis;
+  const sameSelection = sameEvidence && prior.exact === exact;
+  const unique = exact === undefined ? undefined : sameSelection && typeof prior.unique === "boolean"
+    ? prior.unique : cmhAnchorUnique(index, exact, normalized);
   const hits = exact === undefined ? null : index.matches.get((normalized ? "np" : "rp") + exact);
   const rawHits = exact === undefined ? null : index.matches.get("rp" + exact);
-  const identityUnique = !!(block && block.id && hits
+  const intact = exact === undefined ? null : cmhAnchorIntactBlock(index, prior, exact);
+  const identityUnique = !!(intact && intact.start === start && intact.end === end)
+    || !!(sameSelection && block && prior.block && block.id === prior.block.id && prior.identityUnique === true)
+    || !!(block && block.id && hits
     && rawHits && [hits, rawHits].every(list => list.filter(hit => hit.block && hit.block.id === block.id).length === 1));
+  // Quote uniqueness also proves its contiguous supersets.
   const blockUnique = block && from === block.start && to === block.end
-    ? cmhAnchorUnique(index, blockText, normalized, block.tag) : false;
-  const contextUnique = exact === undefined ? undefined : cmhAnchorUnique(index, prefix + exact + suffix, normalized);
-  const sameBasis = prior.normalizedEvidence === normalized;
-  c.cmAnchor = { ...prior, v: 1, revision: index.revision, start, end,
+    ? unique === true ? true : unique === undefined ? undefined
+      : sameEvidence && prior.block && prior.block.text === blockText && prior.block.tag === block.tag
+      && typeof prior.blockUnique === "boolean" ? prior.blockUnique : cmhAnchorUnique(index, blockText, normalized, block.tag)
+    : false;
+  const contextUnique = exact === undefined || unique === undefined ? undefined : unique === true ? true : sameSelection
+    && prior.prefix === prefix && prior.suffix === suffix && typeof prior.contextUnique === "boolean"
+    ? prior.contextUnique : cmhAnchorUnique(index, prefix + exact + suffix, normalized);
+  // An unchecked current uniqueness claim cannot inherit true from another revision/layout.
+  c.cmAnchor = { ...prior, v: 1, revision: index.revision, basis: index.basis, start, end,
     exact, normalizedEvidence: normalized,
-    unique: unique === undefined && sameBasis && prior.exact === exact ? prior.unique : unique,
-    identityUnique: unique === undefined && sameBasis && prior.exact === exact ? prior.identityUnique : identityUnique,
-    contextUnique: contextUnique === undefined && sameBasis && prior.exact === exact
-      && prior.prefix === prefix && prior.suffix === suffix ? prior.contextUnique : contextUnique,
-    blockUnique: blockUnique === undefined && sameBasis && prior.block && prior.block.text === blockText
-      ? prior.blockUnique : blockUnique,
+    unique: unique === undefined && exact !== undefined ? false : unique,
+    identityUnique,
+    contextUnique: contextUnique === undefined && exact !== undefined ? false : contextUnique,
+    blockUnique: blockUnique === undefined ? false : blockUnique,
     prefix, suffix,
     heading: block ? block.heading : "",
     code: block ? block.code : !!c.isCode,
@@ -145,7 +170,7 @@ function cmhAnchorMetadataValid(a) {
   for (const key of ["unique", "blockUnique", "identityUnique", "contextUnique", "normalizedEvidence", "discontiguous"]) {
     if (a[key] !== undefined && typeof a[key] !== "boolean") return false;
   }
-  for (const key of ["exact", "prefix", "suffix", "revision", "heading"]) {
+  for (const key of ["exact", "prefix", "suffix", "revision", "basis", "heading"]) {
     if (a[key] !== undefined && (typeof a[key] !== "string" || a[key].length >
       CMH_ANCHOR_SNAPSHOT)) return false;
   }
@@ -162,36 +187,51 @@ function cmhAnchorMetadataValid(a) {
   return true;
 }
 function cmhAnchorNormalize(text, code, mapping) {
-  let chunk = "", last = "", count = 0;
-  const chunks = [];
-  const starts = mapping ? new Uint32Array(text.length) : null;
-  const ends = mapping ? new Uint32Array(text.length) : null;
-  for (let i = 0; i < text.length; i++) {
-    const original = text[i];
-    let ch = original;
-    if (!code) {
-      if (/\s/.test(ch)) ch = " ";
-      else if (/[\u2018\u2019]/.test(ch)) ch = "'";
-      else if (/[\u201c\u201d]/.test(ch)) ch = '"';
-      else if (/[\u2013\u2014]/.test(ch)) ch = "-";
+  if (code || !/[^\S ]| {2}|[\u2018\u2019\u201c\u201d\u2013\u2014]/.test(text)) return { text, ends: null };
+  const normalized = text.replace(/\s+/g, " ").replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"').replace(/[\u2013\u2014]/g, "-");
+  let ends = null;
+  if (mapping && normalized.length !== text.length) {
+    const spaces = /\s{2,}/g;
+    const positions = [], deltas = [];
+    let match, pos = 0, omitted = 0;
+    while ((match = spaces.exec(text))) {
+      positions.push(match.index - omitted);
+      omitted += match[0].length - 1;
+      deltas.push(omitted);
+      if (positions.length > 4096) break;
     }
-    if (!code && ch === " " && last === " ") {
-      if (mapping) ends[count - 1] = i + 1;
-      continue;
+    const ArrayType = text.length <= 65535 ? Uint16Array : Uint32Array;
+    if (positions.length <= 4096 && positions.length * 2 <= normalized.length) return { text: normalized, ends: null,
+      positions: new ArrayType(positions), omitted: new ArrayType(deltas) };
+    ends = new ArrayType(normalized.length);
+    spaces.lastIndex = pos = omitted = 0;
+    while ((match = spaces.exec(text))) {
+      const at = match.index - omitted;
+      while (pos < at) { ends[pos] = pos + omitted + 1; pos++; }
+      ends[pos++] = match.index + match[0].length;
+      omitted += match[0].length - 1;
     }
-    chunk += ch; last = ch;
-    if (mapping) { starts[count] = i; ends[count] = i + 1; }
-    count++;
-    if (chunk.length >= 8192) { chunks.push(chunk); chunk = ""; }
+    while (pos < normalized.length) { ends[pos] = pos + omitted + 1; pos++; }
   }
-  chunks.push(chunk);
-  return { text: chunks.join(""), starts, ends };
+  return { text: normalized, ends };
+}
+function cmhAnchorOffset(map, pos) {
+  if (map.ends) return pos ? map.ends[pos - 1] : 0;
+  let lo = 0, hi = map.positions ? map.positions.length : 0;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (map.positions[mid] < pos) lo = mid + 1;
+    else hi = mid;
+  }
+  return pos + (lo ? map.omitted[lo - 1] : 0);
 }
 function cmhAnchorOccurrences(index, quote, code, normalized) {
   if (typeof quote !== "string" || quote.length > CMH_ANCHOR_SNAPSHOT) return null;
   const key = (normalized ? "n" : "r") + (code ? "c" : "p") + quote;
   if (index.matches.has(key)) return index.matches.get(key);
-  if (!quote || index.budget < index.text.length) return null;
+  if (!quote) return null;
+  if (index.budget < index.text.length) { index.exhausted = true; return null; }
   index.budget -= index.text.length;
   let text = index.text, map = null, needle = quote;
   if (normalized) {
@@ -203,8 +243,8 @@ function cmhAnchorOccurrences(index, quote, code, normalized) {
   let pos = 0, examined = 0;
   while (needle && (pos = text.indexOf(needle, pos)) !== -1) {
     if (examined++ >= CMH_ANCHOR_CANDIDATES) { index.matches.set(key, null); return null; }
-    const start = map ? map.starts[pos] : pos;
-    const end = map ? map.ends[pos + needle.length - 1] : pos + needle.length;
+    const start = map ? cmhAnchorOffset(map, pos) : pos;
+    const end = map ? cmhAnchorOffset(map, pos + needle.length) : pos + needle.length;
     const block = cmhAnchorBlock(index, start, end);
     if (!normalized || !(block && block.code)) hits.push({ start, end, block });
     pos++;
@@ -247,7 +287,7 @@ function cmhAnchorContextScore(index, hit, a, c) {
 function cmhAnchorChoose(index, hits, a, c, quote) {
   if (!hits || !hits.length) return null;
   const work = hits.length * (CTX_PAD * 8 + MAX_BLOCK_LEN * 6 + CMH_ANCHOR_SNAPSHOT * 2);
-  if (index.budget < work) return null;
+  if (index.budget < work) { index.exhausted = true; return null; }
   index.budget -= work;
   const ranked = hits.map(hit => ({ ...hit, evidence: cmhAnchorContextScore(index, hit, a, c) }))
     .sort((x, y) => y.evidence.score - x.evidence.score);
@@ -278,19 +318,23 @@ function cmhAnchorRepeatedSafe(a, evidence) {
 function cmhAnchorEditMap(oldText, newText, index) {
   // A bounded character alignment is used only for a small, locally identified block.
   const cells = (oldText.length + 1) * (newText.length + 1);
-  if (cells > 1000000 || index.budget < cells) return null;
+  if (cells > 1000000) return null;
+  if (index.budget < cells) { index.exhausted = true; return null; }
+  const limit = Math.max(3, Math.floor(Math.max(oldText.length, newText.length) * 0.2));
+  if (Math.abs(oldText.length - newText.length) > limit) return null;
   index.budget -= cells;
   const width = newText.length + 1;
-  const dp = new Uint32Array(cells);
+  const dp = new Uint32Array(cells).fill(limit + 1);
   for (let i = 0; i <= oldText.length; i++) dp[i * width] = i;
   for (let j = 0; j <= newText.length; j++) dp[j] = j;
   for (let i = 1; i <= oldText.length; i++) {
-    for (let j = 1; j <= newText.length; j++) dp[i * width + j] = Math.min(
+    const end = Math.min(newText.length, i + limit);
+    for (let j = Math.max(1, i - limit); j <= end; j++) dp[i * width + j] = Math.min(
       dp[(i - 1) * width + j] + 1, dp[i * width + j - 1] + 1,
       dp[(i - 1) * width + j - 1] + (oldText[i - 1] === newText[j - 1] ? 0 : 1));
   }
   const distance = dp[cells - 1];
-  if (distance > Math.max(3, Math.floor(Math.max(oldText.length, newText.length) * 0.2))) return null;
+  if (distance > limit) return null;
   const map = new Int32Array(oldText.length).fill(-1);
   let i = oldText.length, j = newText.length;
   while (i || j) {
@@ -314,7 +358,8 @@ function cmhAnchorFuzzy(index, a) {
   for (const block of blocks) {
     const cells = (old.text.length + 1) * (block.end - block.start + 1);
     const work = a.unique === false ? CTX_PAD * 8 + MAX_BLOCK_LEN * 6 + CMH_ANCHOR_SNAPSHOT * 2 : 0;
-    if (cells > 1000000 || index.budget < cells + work) continue;
+    if (cells > 1000000) continue;
+    if (index.budget < cells + work) { index.exhausted = true; continue; }
     index.budget -= work;
     const current = index.text.slice(block.start, block.end);
     const map = cmhAnchorEditMap(old.text, current, index);
@@ -382,7 +427,7 @@ function cmhAnchorFlanked(index, a) {
       if (!block || block.code || (a.block && a.block.id && block.id !== a.block.id)) continue;
       if (a.unique === false) {
         const work = CTX_PAD * 8 + MAX_BLOCK_LEN * 6 + CMH_ANCHOR_SNAPSHOT * 2;
-        if (index.budget < work) return null;
+        if (index.budget < work) { index.exhausted = true; return null; }
         index.budget -= work;
         if (!cmhAnchorRepeatedSafe(a, cmhAnchorContextScore(index, { start, end, block }, a, {}))) continue;
       }
@@ -401,29 +446,46 @@ function cmhAnchorFlanked(index, a) {
   }
   return candidates.length === 1 ? candidates[0] : null;
 }
+function cmhAnchorIntactBlock(index, a, quote) {
+  if (!a || !a.block || !a.block.id || a.block.from !== 0 || !a.block.text
+    || a.identityUnique !== true) return null;
+  const blocks = index.byId.get(a.block.id);
+  if (!blocks || blocks.length !== 1) return null;
+  const block = blocks[0], old = a.block;
+  if (block.tag !== old.tag || block.code !== a.code || block.end - block.start !== old.text.length
+    || index.text.slice(block.start, block.end) !== old.text) return null;
+  const start = block.start + old.start, end = block.start + old.end;
+  return index.text.slice(start, end) === quote ? { start, end, block } : null;
+}
 function cmhReattachComments() {
   const roots = comments.filter(cmhIsTextAnchor);
   if (!roots.length) return;
   const index = cmhAnchorIndex();
+  const recapture = [];
   let changed = false;
   for (const c of roots) {
+    index.exhausted = false;
     const prior = JSON.stringify([c.start, c.end, c.detached, c.cmAnchor]);
     const hasMetadata = c.cmAnchor != null, raw = hasMetadata ? c.cmAnchor : null;
     const valid = cmhAnchorMetadataValid(raw);
     const a = valid ? raw : null;
     const knownVersion = raw && typeof raw === "object" && !Array.isArray(raw) && raw.v === 1;
-    let hit = null;
+    let hit = null, verified = false;
     if (!index.limited && (!hasMetadata || valid || knownVersion)) {
       const quote = a && typeof a.exact === "string" && a.exact ? a.exact : typeof c.quote === "string" ? c.quote : "";
       if (a && !quote && a.revision === index.revision && a.end <= index.text.length)
         hit = { start: a.start, end: a.end };
       else if (a && a.revision === index.revision && a.start === c.start && a.end === c.end
         && Number.isInteger(c.start) && c.start >= 0 && c.end > c.start && c.end <= index.text.length
-        && index.text.slice(c.start, c.end) === quote) hit = { start: c.start, end: c.end };
+        && index.text.slice(c.start, c.end) === quote) {
+        hit = { start: c.start, end: c.end };
+        verified = a.basis === index.basis;
+      }
       else if (!quote && !hasMetadata && Number.isInteger(c.start) && Number.isInteger(c.end)
         && c.start >= 0 && c.end > c.start && c.end <= index.text.length) hit = { start: c.start, end: c.end };
       else if (quote) {
-        hit = cmhAnchorChoose(index, cmhAnchorOccurrences(index, quote, !!(a && a.code || c.isCode), false), a, c, quote);
+        hit = cmhAnchorIntactBlock(index, a, quote)
+          || cmhAnchorChoose(index, cmhAnchorOccurrences(index, quote, !!(a && a.code || c.isCode), false), a, c, quote);
         if (!hit && !(a && a.code || c.isCode)) hit = cmhAnchorChoose(index,
           cmhAnchorOccurrences(index, quote, false, true), a, c, quote);
         if (!hit && !(a && a.discontiguous)) hit = cmhAnchorFuzzy(index, a && a.block ? a : cmhAnchorLegacySelector(c));
@@ -434,15 +496,22 @@ function cmhReattachComments() {
       if (!a) c.cmAnchor = { ...(knownVersion ? raw : {}), v: 1,
         original: raw && raw.original || cmhAnchorOriginal(c) };
       c.start = hit.start; c.end = hit.end; c.detached = false;
-      cmhCaptureTextAnchor(c, index);
+      if (!verified) recapture.push(c);
       if (c.cmAnchor && c.cmAnchor.v === 1) delete c.cmAnchor.reason;
     } else if (a && a.discontiguous && c.start === undefined && c.end === undefined) {
       c.detached = true;
     } else if (!hasMetadata && c.start === undefined && c.end === undefined
       && typeof c.quote === "string" && /\.\.\.|\u2026/.test(c.quote)) {
       // Older sorted-table exports deliberately retain a discontiguous quote without offsets.
-    } else cmhDetachComment(c, index.limited ? "budget" : "unresolved");
+    } else cmhDetachComment(c, index.limited || index.exhausted ? "budget" : "unresolved");
     if (JSON.stringify([c.start, c.end, c.detached, c.cmAnchor]) !== prior) changed = true;
+  }
+  // Evidence refresh must not consume the budget before later roots can resolve.
+  recapture.sort((a, b) => !!a.cmAnchor?.identityUnique - !!b.cmAnchor?.identityUnique);
+  for (const c of recapture) {
+    const prior = JSON.stringify(c.cmAnchor);
+    cmhCaptureTextAnchor(c, index);
+    if (JSON.stringify(c.cmAnchor) !== prior) changed = true;
   }
   if (changed && !saveComments() && _cmhLastSaveQuota) {
     showStartupDiagnostic("Reattached comment locations NOT saved to this browser (storage full) "

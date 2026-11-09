@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.859.1<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.860.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -489,6 +489,19 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.860.0] - 2026-11-08</h3></div>
+            <div class="group-label">Changed</div>
+            <ul>
+              <li>Avoid rescanning evidence on verified unchanged reloads, guarded by an additive layout fingerprint. Recover intact uniquely identified blocks locally instead of exhausting full-document scan budgets.</li>
+              <li>Index nested block containment, skip already-normalized replacement passes, and normalize changed prose using native string operations and sparse or single-array offset maps, and restrict small-edit arithmetic to the admissible edit band. Ambiguity rules, code semantics, original evidence and older-runtime compatibility are retained.</li>
+              <li>Share immutable context/layout work during legacy backfill and scope highlight wrapping to selected subtrees with in-place split-node index updates, retaining skipped-text exclusion and the existing backfill cap. Broad highlights batch index updates linearly without changing wrapping order; failed-wrap cleanup still rebuilds its index.</li>
+              <li>Resolve every root before bounded evidence recapture, distinguish exhausted budgets, and never inherit unchecked uniqueness across changed revisions/layouts.</li>
+              <li>Reuse proven quote uniqueness for contiguous block/context evidence, prioritize roots without occurrence identity during recapture, and exclude generated IDs from block/layout evidence. Quote-only comments retain safe selectors across successive edits.</li>
+              <li>Add reproducible paired Chromium latency, work and allocation benchmarks with raw samples.</li>
+              <li>Deliberately raise JS, embedded-assets and Shareable ceilings by 5 KB for indexed recovery and adaptive mapping (766/965/985 KB). No dependency or rich-library payload is added.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.859.1] - 2026-11-08</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
@@ -497,6 +510,8 @@
               <li>Deliberately raise only the runtime JS ceiling from 760 KB to 761 KB for the shared link bubble and collision avoidance; all other component size ceilings remain unchanged.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.859.0] - 2026-11-08</h3></div>
             <ul>
@@ -510,8 +525,6 @@
               <li>Explain both revision scenarios, recovery and downgrade limits in the tutorial, Help and showcase.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.858.1] - 2026-10-31</h3></div>
             <div class="group-label">Changed</div>
@@ -570,14 +583,7 @@
               <li>Deliberately raise the CSS byte ceiling from 146000 to 148000 for the reading-width controls, responsive touch targets, and matching sidebar/footer layout.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.855.1] - 2026-10-30</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Copy all now counts checklist, note, and editable-table change cards in its success confirmation, matching the sidebar instead of reporting zero when no comments were written. Selected-only copying still counts only the selected comment threads.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">426 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">427 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

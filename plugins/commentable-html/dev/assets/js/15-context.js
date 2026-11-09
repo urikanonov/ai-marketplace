@@ -2,8 +2,7 @@
 const CTX_PAD = 80;
 const BLOCK_TAG_RE = /^(P|LI|TD|TH|H[1-6]|BLOCKQUOTE|PRE|DD|DT|FIGCAPTION|CAPTION|ARTICLE|SECTION|ASIDE)$/;
 const MAX_BLOCK_LEN = 280;
-function captureContext(start, end, range) {
-  if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.ctxCaptures = (window.__cmhPerf.ctxCaptures || 0) + 1;
+function cmhContextIndex() {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
     acceptNode(n) {
       if (n.nodeType === 1) {
@@ -55,6 +54,11 @@ function captureContext(start, end, range) {
     full += n.nodeValue;
     total += n.nodeValue.length;
   }
+  return { full, headings, boundaries };
+}
+function captureContext(start, end, range, index) {
+  if (typeof window !== "undefined" && window.__cmhPerf) window.__cmhPerf.ctxCaptures = (window.__cmhPerf.ctxCaptures || 0) + 1;
+  const { full, headings, boundaries } = index || cmhContextIndex();
   const withSeparators = (from, to) => {
     let out = "";
     for (let i = from; i < to; i++) {
@@ -133,9 +137,8 @@ function captureContext(start, end, range) {
     isCode, codeLanguage,
   };
 }
-// Bound the per-load context backfill so a flood of uncontexted comments cannot drive
-// captureContext() (a full-document walk each) unbounded on startup. Comments beyond the budget are
-// left uncontexted and backfilled on a later load; the cap is far above any real review's size.
+// Bound per-load context extraction, including occurrence scans, for legacy comments.
+// Comments beyond the budget are backfilled on a later load.
 const CMH_MAX_BACKFILL = 400;
 function backfillContext() {
   let changed = false;
@@ -143,7 +146,7 @@ function backfillContext() {
   // backfillContext() never mutates the DOM (captureContext only reads), so one text-node index is
   // valid for the whole pass and is reused across every rangeFromOffsets() lookup instead of
   // re-walking the document per comment.
-  const nodes = getTextNodes();
+  let nodes = null, index = null;
   for (const c of comments) {
     if (!cmhIsTextAnchor(c) || cmhIsDetached(c)) continue;
     const hasAll = c.section !== undefined && c.before !== undefined && c.after !== undefined &&
@@ -152,8 +155,10 @@ function backfillContext() {
     if (hasAll) continue;
     if (typeof c.start !== "number" || typeof c.end !== "number") continue;
     if (processed >= CMH_MAX_BACKFILL) break; // work budget: bound context capture per load
+    nodes = nodes || getTextNodes();
+    index = index || cmhContextIndex();
     const range = rangeFromOffsets(c.start, c.end, nodes);
-    const ctx = captureContext(c.start, c.end, range);
+    const ctx = captureContext(c.start, c.end, range, index);
     for (const key of Object.keys(ctx)) if (c[key] === undefined) c[key] = ctx[key];
     changed = true;
     processed++;
@@ -183,24 +188,61 @@ function rangeOverlapsHighlight(start, end) {
   }
   return false;
 }
-function wrapRangeWithMark(range, id) {
-  const nodes = getTextNodes();
+function wrapRangeWithMark(range, id, index) {
+  const common = range.commonAncestorContainer, nodes = [];
+  const accepts = n => root.contains(n) && acceptableTextNode(n);
+  if (common.nodeType === 3) {
+    if (accepts(common)) nodes.push(common);
+  } else {
+    const walker = document.createTreeWalker(common, NodeFilter.SHOW_TEXT, {
+      acceptNode: n => accepts(n) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+    });
+    let n;
+    while ((n = walker.nextNode())) nodes.push(n);
+  }
   const toWrap = nodes.filter(n => range.intersectsNode(n));
+  const updated = index && toWrap.length > 1 ? [] : null;
+  let first = -1, cursor = -1;
   toWrap.forEach(tn => {
     let s = 0, e = tn.nodeValue.length;
     if (tn === range.startContainer) s = range.startOffset;
     if (tn === range.endContainer)   e = range.endOffset;
     if (s >= e) return;
-    if (e < tn.nodeValue.length) tn.splitText(e);
+    const parts = index ? [tn] : null;
+    if (e < tn.nodeValue.length) {
+      const after = tn.splitText(e);
+      if (parts) parts.push(after);
+    }
     let target = tn;
-    if (s > 0) target = tn.splitText(s);
+    if (s > 0) {
+      target = tn.splitText(s);
+      if (parts) parts.splice(1, 0, target);
+    }
     const m = document.createElement("mark");
     m.className = "cm-hl";
     if (!(target.nodeValue || "").trim()) m.classList.add("cm-hl-gap");
     m.dataset.cid = id;
     target.parentNode.insertBefore(m, target);
     m.appendChild(target);
+    if (index) {
+      if (updated) {
+        if (first < 0) first = cursor = index.indexOf(tn);
+        while (cursor >= 0 && cursor < index.length && index[cursor] !== tn) updated.push(index[cursor++]);
+        if (cursor < 0 || cursor === index.length) throw new Error("Stale highlight text index");
+        updated.push(...parts); cursor++;
+      } else {
+        const at = index.indexOf(tn);
+        if (at < 0) throw new Error("Stale highlight text index");
+        index.splice(at, 1, ...parts);
+      }
+    }
   });
+  if (updated && first >= 0) {
+    const tail = index.slice(cursor);
+    index.length = first;
+    for (const n of updated) index.push(n);
+    for (const n of tail) index.push(n);
+  }
 }
 function unwrapMarks(id) {
   root.querySelectorAll(`mark.cm-hl[data-cid="${id}"]`).forEach(m => {

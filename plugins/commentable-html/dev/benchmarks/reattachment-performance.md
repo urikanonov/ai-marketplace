@@ -1,0 +1,206 @@
+# Local comment recovery performance
+
+Issue #1366 compares the delivered 1.859.0 runtime at
+`8bd2b3814f08d6c8d4d2dfddbe6437169c600053` with the 1.860.0 candidate,
+rebased onto the separately delivered 1.859.1 link-hover fix.
+The benchmark driver is `tests/benchmark-reattachment.mjs`. Measured samples,
+source hashes, allocation diagnostics and environment metadata are retained in
+`reattachment-results.json`.
+
+Final measurements include all review fixes at source checkpoint `ae78a3da6`.
+Baseline/current partials, shared helpers, driver and genuine Shareable templates
+were checked against their recorded SHA-256 hashes before retaining the results.
+
+## Method
+
+Chromium 153.0.8010.12, Node 26.13.0, Windows x64, AMD EPYC 7763, 16 visible
+logical CPUs. Baseline and candidate run serially in alternating order, without
+concurrent test suites or review agents during the final primary and repeat.
+Earlier exploratory runs, including a primary run overlapping a finishing
+read-only reviewer, are not mixed into the final retained distributions.
+This is a shared host, not an isolated
+performance laboratory; these results are not universal latency guarantees.
+
+The kernel comparison runs the original and candidate reattachment partials
+with the same offset/context helpers. Those helper paths are not the kernels
+being compared. Each runtime seeds its own selectors from identical original
+content outside timing. The raw `cold` field is a fresh-document first run after
+discarded-document seeding and a requested GC, not a cold isolate/process: the
+Page/context is reused and JIT/code caches can remain warm. Warm distributions contain
+25 samples after three warmups. An independent 15-sample repeat checks stability.
+DOM creation, IPC, selector seeding and instrumented profiling are not timed.
+Upgrade fixtures remove the additive layout basis.
+
+Whole-page measurements use the genuine original and freshly built candidate
+Shareable templates, not a hybrid runtime. Five fresh contexts per version,
+alternating order, measure navigation-to-runtime-ready, including parsing and
+startup. Native comments have real captured context; the separate legacy case
+omits it. Every persisted fixture root and attached highlight is counted, and
+HTTP(S) requests are denied. No whole-page warmup is claimed.
+
+All attachment offsets must be deterministic across samples. The insertion case
+intentionally attaches more comments without increasing its shared scan budget.
+Ambiguous duplicate deletion remains Detached. The driver records every raw
+latency sample, cold outcome, inclusive phase profile and typed-array byte count.
+Heap deltas after a requested GC are diagnostics, not peak memory, retained size,
+or process RSS. Profile times are inclusive and must not be added together.
+
+## Kernel results
+
+Warm median milliseconds from the 25-sample run:
+
+| Workload | Baseline | Candidate | Attachment outcome |
+| --- | ---: | ---: | --- |
+| Unchanged, 100 blocks / 20 comments | 1.9 | 0.3 | 20 / 20 in both |
+| Unchanged, 1000 blocks / 200 comments | 45.7 | 2.9 | 200 / 200 in both |
+| Unchanged, 3000 blocks / 500 comments | 188.6 | 9.5 | 500 / 500 in both |
+| Upgrade without layout basis, 500 comments | 191.3 | 35.0 | 500 / 500 in both |
+| Insertion, 3000 blocks / 30 comments | 180.7 | 28.5 | 11 -> 30 attached |
+| Mixed identity/quote-only insertion, 30 comments | 184.8 | 26.3 | 10 -> 30 attached |
+| Normalized revision, 30 comments | 54.6 | 15.8 | 27 -> 30 attached |
+| Small edits, 20 comments | 5.1 | 2.3 | 20 / 20 in both |
+| New selector capture, 3000 blocks | 166.9 | 15.6 | Correct offsets in both |
+| Index plus 1000 block lookups | 32.9 | 24.7 | Same containing blocks |
+| Eight near-cell-limit alignments | 28.9 | 15.0 | Same alignment |
+| Unsafe duplicate deletion | 5.1 | 1.5 | Detached in both |
+| Normalize 7.56 million source units | 1253.3 | 31.1 | Same text |
+| Normalize 7.5 million densely spaced units | 1163.9 | 151.6 | Same text / boundaries |
+
+The large unchanged resolver is about 20x faster; new capture is about 10x
+faster. These are kernel improvements, not whole-page speedups. Cold and p95
+values, which can differ materially from warmed kernels, are in the raw results.
+
+A final measured refinement removed four no-op replacement passes on already
+normalized prose: the near-limit candidate fell from an exploratory 112.4 ms
+to a final 31.1 ms, about 40x faster than the delivered baseline. Its fast detector still
+recognizes every whitespace/typography class folded by the existing normalizer.
+All roots now resolve before bounded recapture, so insertion, mixed identities
+and normalized revisions recover all 30 roots without increasing the 64m budget.
+
+Mapping allocations fall from 60,480,000 to zero bytes for length-preserving
+normalization, and from 60,000,000 to 27,000,000 bytes for dense whitespace
+collapses. Large capture/upgrade/insertion maps fall from about 8.49 MB to
+24,000 bytes through sparse change points. These figures exclude transient
+strings, DOM objects and edit matrices; they do not claim total memory fell by
+the same amount.
+
+## Whole-page results and bottleneck discovery
+
+Five-sample medians, milliseconds:
+
+| Native saved comments / source size | Baseline ready | Candidate ready |
+| --- | ---: | ---: |
+| 200 comments / about 296k source units | 1169.1 | 623.7 |
+| 100 comments / about 1.06m source units | 1521.2 | 619.7 |
+| 500 comments / about 1.06m source units | 6936.4 | 1162.0 |
+| 30 comments after insertion / about 1.06m units | 776.3 | 569.9 |
+| 30 mixed identity/quote-only comments after insertion | 747.5 | 561.0 |
+| 200 legacy missing-context comments / about 296k units | 9089.0 | 645.7 |
+| One broad highlight / 15000 marked text nodes | 877.5 | 833.9 |
+
+The original full-page probe exposed about eight seconds of legacy context
+backfill, overwhelming the resolver gains. Sharing one immutable context/layout
+scan removed that repeated DOM/style walk. Scoping wrapping to selected
+subtrees reduced highlight costs; updating split-node indexes in place removed
+the remaining repeated whole-document highlight walks. Failed-wrap cleanup
+still rebuilds its index, and historical context fields are never replaced.
+
+Native medium startup improved about 47%, native large startup about 59% at
+100 comments and 83% at 500 comments, and legacy startup about 93%.
+The 500-comment highlight phase fell from 5629.5 to 62.1 ms while restoring
+all 500 comments. Legacy context backfill fell from 7998.2 to 124.3 ms.
+Parsing, unrelated startup and sidebar/layout work
+remain in these totals, so a 20x resolver improvement does not imply a 20x page
+improvement. The repeated linear offset lookups, occurrence scans, full edit
+matrix allocation and browser rendering are deliberately still visible costs,
+not hidden behind a persistent DOM cache or relaxed limits.
+
+The broad fixture verifies exactly 15000 mark nodes and every attached root ID.
+Its approximately 5% startup improvement is modest: the highlight phase is
+97.0 -> 86.4 ms, while parsing/rendering dominate. A deterministic work guard,
+not this noisy small latency difference, proves linear index bookkeeping.
+
+The independent repeat measured large unchanged recovery at 190.9 -> 9.8 ms
+(19.5x) and near-limit normalization at 1226.3 -> 31.4 ms (39.1x).
+Absolute times varied, particularly the long normalization run, while the
+speedup ratios and attachment outcomes remained consistent. Raw repeated
+samples are retained rather than selecting only the fastest run.
+
+An early probe used invalid persisted IDs and loaded zero comments; its startup
+numbers were rejected. A later large missing-context baseline exceeded the
+60-second navigation budget. Neither failed probe is presented as a valid
+startup measurement. The corrected driver checks roots and highlights before
+accepting results.
+
+## Reproduce
+
+Run from a fresh worktree with existing development dependencies installed.
+Extract the baseline from the exact delivered commit, not current main:
+
+```powershell
+New-Item -ItemType Directory -Force tmp\reattachment-bench | Out-Null
+@'
+from pathlib import Path
+import subprocess
+for leaf, source in [
+    ("baseline.js", "assets/js/16-reattachment.js"),
+    ("baseline-shareable.html", "skill/dist/SHAREABLE.html"),
+]:
+    blob = "8bd2b3814:plugins/commentable-html/dev/" + source
+    Path(r"tmp\reattachment-bench").joinpath(leaf).write_bytes(
+        subprocess.check_output(["git", "show", blob]))
+'@ | python -
+python scripts\setup_dev.py --check
+python scripts\rebuild_all.py
+Set-Location plugins\commentable-html\dev
+node tests\benchmark-reattachment.mjs `
+  --baseline ..\..\..\tmp\reattachment-bench\baseline.js `
+  --baseline-template ..\..\..\tmp\reattachment-bench\baseline-shareable.html `
+  --output ..\..\..\tmp\reattachment-bench\results.json --samples 25
+node tests\benchmark-reattachment.mjs `
+  --baseline ..\..\..\tmp\reattachment-bench\baseline.js `
+  --output ..\..\..\tmp\reattachment-bench\repeat.json --samples 15
+```
+
+Use `--startup-only --filter unchanged-large-500` to isolate the 500-comment
+whole-page case. Baseline seeding captures real historical context outside the
+timed interval and can itself take considerably longer than optimized startup.
+Python's byte extraction preserves the exact baseline blobs, avoiding PowerShell
+text-pipeline newline/BOM conversions. Docker is needed only for pinned tutorial screenshot
+regeneration, not these benchmarks.
+
+## Safeguards
+
+Fourteen new red-first deterministic work/correctness tests cover evidence recapture,
+layout invalidation, block containment, identity/sparse/dense normalization,
+banded alignment, intact-block proof, shared context and highlight indexing,
+resolution-before-recapture, conservative unchecked uniqueness, budget refusal
+diagnostics, bypassing four no-op replacement passes on unchanged prose and
+linear index updates for broad multi-node highlights.
+Existing cases were also strengthened RED first for successive large mixed-ID
+revisions and generated-ID layout stability. Runtime-generated IDs are excluded
+from block evidence as well as the revision, and proven quote uniqueness derives
+contiguous block/context uniqueness without redundant source scans. Recapture
+prioritizes roots without historical occurrence identity.
+They assert work/allocation ceilings plus actual attachment/DOM correctness,
+not flaky wall-clock limits. The full recovery, export, storage, skipped-text,
+code and legacy-runtime regression suites remain required.
+
+The first independent review identified recapture starvation, unchecked
+cross-revision uniqueness and misleading budget diagnostics. Each was reproduced
+RED before its fix. Evidence reuse requires matching revision, layout basis and
+normalization, not revision alone: code/tag changes can alter eligible normalized
+occurrences without changing the source/identity revision.
+
+The second review found quadratic broad-highlight bookkeeping, inaccurate cold
+labeling, redundant recapture scans that lost evidence on the next revision, and
+generated-ID block/layout pollution. All were confirmed and fixed before these
+final measurements; independent follow-up reviewers accepted the fixes.
+
+Source limits (8m units), snapshots (4096), candidate count (128), shared scan
+budget (64m), fuzzy-block and alignment-cell limits are unchanged. No message,
+thread, historical evidence or foreign metadata is discarded. The additive
+layout basis does not require a new persisted format. Runtime/asset/Shareable
+size ceilings rise by 5000 bytes from current main;
+every rebuilt payload remains
+inside its enforced budget.

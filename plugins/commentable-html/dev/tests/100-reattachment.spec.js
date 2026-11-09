@@ -54,6 +54,344 @@ async function harness(page, html) {
   ` });
 }
 
+test("verified unchanged selectors avoid repeated evidence scans but detect layout changes (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, '<p id="stable">A sufficiently long selected passage.</p><p>Other prose.</p>');
+  const result = await page.evaluate(() => {
+    const c = anchorTest.add("selected passage");
+    const occurrences = cmhAnchorOccurrences;
+    let scans = 0;
+    cmhAnchorOccurrences = (...args) => { scans++; return occurrences(...args); };
+    try {
+      anchorTest.resolve();
+      const unchangedScans = scans;
+      anchorTest.set('<p id="stable">A sufficiently long selected passage.</p><pre>Other prose.</pre>');
+      anchorTest.resolve();
+      return { unchangedScans, layoutScans: scans - unchangedScans, c };
+    } finally { cmhAnchorOccurrences = occurrences; }
+  });
+  expect(result.unchangedScans).toBe(0);
+  expect(result.layoutScans).toBeGreaterThan(0);
+  expect(result.c).toMatchObject({ start: 20, detached: false });
+});
+
+test("legacy context backfill shares one immutable layout scan without replacing original fields (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<h2>Section</h2>" + "<p>Original context and selected review words.</p>".repeat(200));
+  const result = await page.evaluate(() => {
+    const text = anchorTest.text(), quote = "selected review";
+    const c = [0, 1, 2, 3].map((i) => {
+      const start = text.indexOf(quote, i * 43);
+      return { id: "c" + i, quote, start, end: start + quote.length };
+    });
+    const expected = c.map(item => captureContext(item.start, item.end, rangeFromOffsets(item.start, item.end)));
+    c[0].before = "Original historical context";
+    anchorTest.replace(c);
+    const style = window.getComputedStyle;
+    let reads = 0;
+    window.getComputedStyle = (...args) => { reads++; return style(...args); };
+    try {
+      backfillContext();
+      return { reads, expected, actual: c };
+    } finally { window.getComputedStyle = style; }
+  });
+  expect(result.reads).toBeLessThan(300);
+  for (let i = 0; i < result.actual.length; i++) {
+    expect(result.actual[i]).toMatchObject({ ...result.expected[i],
+      ...(i === 0 ? { before: "Original historical context" } : {}) });
+  }
+});
+
+test("highlight wrapping visits only the selected subtree while excluding skipped text (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<p>Other paragraph.</p>".repeat(200)
+    + '<p>Target <span class="cm-skip">private</span>selected review words.</p>');
+  const result = await page.evaluate(() => {
+    const text = anchorTest.text(), start = text.indexOf("selected review");
+    const range = rangeFromOffsets(start, start + "selected review".length);
+    const scan = getTextNodes;
+    let scans = 0;
+    getTextNodes = () => { scans++; return scan(); };
+    try {
+      wrapRangeWithMark(range, "cbenchmark");
+      return { scans, marks: [...root.querySelectorAll("mark.cm-hl")].map(el => el.textContent),
+        skipped: root.querySelector(".cm-skip").innerHTML };
+    } finally { getTextNodes = scan; }
+  });
+  expect(result.scans).toBe(0);
+  expect(result.marks).toEqual(["selected review"]);
+  expect(result.skipped).toBe("private");
+});
+
+test("highlight restoration updates split-node indexes without rescanning unrelated content (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<p>Other paragraph.</p>".repeat(200)
+    + '<p>abcdefghi<span class="cm-skip">private</span></p><p>Tail <b>bold</b>end</p>');
+  const result = await page.evaluate(() => {
+    ["ab", "cd", "fg", "iTail "].forEach(quote => anchorTest.add(quote));
+    const original = root.textContent, scan = getTextNodes;
+    let scans = 0;
+    getTextNodes = () => { scans++; return scan(); };
+    try {
+      anchorTest.restore();
+      return { scans, unchanged: root.textContent === original,
+        marks: [...root.querySelectorAll("mark.cm-hl")].map(el => [el.dataset.cid, el.textContent]),
+        skipped: root.querySelector(".cm-skip").innerHTML,
+        nested: root.querySelectorAll("mark.cm-hl mark.cm-hl").length };
+    } finally { getTextNodes = scan; }
+  });
+  expect(result.scans).toBe(1);
+  expect(result.unchanged).toBe(true);
+  expect(result.marks).toEqual([["c0", "ab"], ["c1", "cd"], ["c2", "fg"], ["c3", "i"], ["c3", "Tail "]]);
+  expect(result.skipped).toBe("private");
+  expect(result.nested).toBe(0);
+});
+
+test("broad highlights update many split nodes with linear index work (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<p>Unselected introduction.</p>" + Array.from({ length: 1000 }, (_, i) =>
+    `<p>Prefix selected ${i}<span class="cm-skip">private</span> suffix.</p>`).join("")
+    + "<p>Unselected ending.</p>");
+  const result = await page.evaluate(() => {
+    const text = anchorTest.text(), start = text.indexOf("selected 0"), end = text.lastIndexOf(" suffix.") + 4;
+    const range = rangeFromOffsets(start, end), nodes = getTextNodes();
+    let reads = 0, writes = 0;
+    const index = new Proxy(nodes, {
+      get(target, key) { if (/^\d+$/.test(String(key))) reads++; return Reflect.get(target, key); },
+      set(target, key, value) { if (/^\d+$/.test(String(key))) writes++; return Reflect.set(target, key, value); },
+    });
+    const count = nodes.length;
+    wrapRangeWithMark(range, "cbroad", index);
+    const actual = getTextNodes();
+    return { reads, writes, count,
+      sameNodes: nodes.length === actual.length && nodes.every((node, i) => node === actual[i]),
+      selected: [...root.querySelectorAll("mark.cm-hl")].map(el => el.textContent).join(""),
+      expected: text.slice(start, end), unchanged: anchorTest.text() === text,
+      skipped: [...root.querySelectorAll(".cm-skip")].every(el => el.innerHTML === "private") };
+  });
+  expect(result.reads + result.writes).toBeLessThan(result.count * 20);
+  expect(result.sameNodes).toBe(true);
+  expect(result.selected).toBe(result.expected);
+  expect(result.unchanged).toBe(true);
+  expect(result.skipped).toBe(true);
+});
+
+test("nested block lookup preserves smallest containment without scanning all blocks (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<section>Before <p>Inside <b>inline</b> text.</p> After</section>" + "<p>Tail.</p>".repeat(3000));
+  const result = await page.evaluate(() => {
+    const index = anchorTest.index(), blocks = index.blocks;
+    let reads = 0, correct = true;
+    index.blocks = new Proxy(blocks, { get(target, key) {
+      if (/^\d+$/.test(String(key))) reads++;
+      return Reflect.get(target, key);
+    } });
+    const pairs = [[0, 30], [9, 14], [22, 30], [0, index.text.length], [-1, 2]];
+    for (let i = 0; i < 100; i++) pairs.push([30 + i * 5, 35 + i * 5]);
+    for (const [start, end] of pairs) {
+      let expected = null;
+      for (const block of blocks) if (block.start <= start && end <= block.end
+        && (!expected || block.end - block.start < expected.end - expected.start)) expected = block;
+      if (cmhAnchorBlock(index, start, end) !== expected) correct = false;
+    }
+    return { reads, correct, queries: pairs.length };
+  });
+  expect(result.correct).toBe(true);
+  expect(result.reads).toBeLessThan(result.queries * 30);
+});
+
+test("normalized offsets avoid identity maps and redundant per-character arrays (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<p>Text</p>");
+  const result = await page.evaluate(() => {
+    const bytes = map => (map.starts?.byteLength || 0) + (map.ends?.byteLength || 0)
+      + (map.positions?.byteLength || 0) + (map.omitted?.byteLength || 0);
+    const plain = cmhAnchorNormalize("Plain prose \u201cquote\u201d and \u2014 dash.".repeat(1000), false, true);
+    const text = "A  \tB\u00a0 \nC".repeat(1000);
+    const collapsed = cmhAnchorNormalize(text, false, true);
+    const big = cmhAnchorNormalize(text.repeat(20), false, true);
+    const sparse = cmhAnchorNormalize(("x".repeat(9998) + "  ").repeat(100), false, true);
+    const boundaries = [text, text.repeat(20)].every(source => {
+      const map = cmhAnchorNormalize(source, false, true);
+      const points = [0, 1, 2, 3, map.text.length - 1, Math.floor(map.text.length / 2)];
+      return points.every(pos => cmhAnchorNormalize(source.slice(cmhAnchorOffset(map, pos),
+        cmhAnchorOffset(map, pos + 1)), false, false).text === map.text[pos]);
+    });
+    anchorTest.set("<p>A  \tB\u00a0 \nC \u201chello\u201d.</p>");
+    const hits = anchorTest.occurrences('B C "hello"');
+    return { plainBytes: bytes(plain), collapsedBytes: bytes(collapsed), bigBytes: bytes(big),
+      sparseBytes: bytes(sparse),
+      boundaries,
+      length: text.length, matches: hits.map(hit => anchorTest.text().slice(hit.start, hit.end)) };
+  });
+  expect(result.plainBytes).toBe(0);
+  expect(result.collapsedBytes).toBeLessThanOrEqual(result.length * 2);
+  expect(result.bigBytes).toBeLessThanOrEqual(result.length * 20 * 4);
+  expect(result.sparseBytes).toBeLessThanOrEqual(800);
+  expect(result.boundaries).toBe(true);
+  expect(result.matches).toEqual(["B\u00a0 \nC \u201chello\u201d"]);
+  const unicode = await page.evaluate(() => {
+    const spaces = [9, 10, 11, 12, 13, 32, 160, 5760, 8192, 8193, 8194, 8195, 8196,
+      8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288, 65279];
+    return spaces.every(value => {
+      const sep = String.fromCharCode(value).repeat(3);
+      const original = "\u4e2d\ud83d\ude00A" + sep + "B\u201cC\u201d" + sep;
+      anchorTest.set("<p></p>");
+      root.querySelector("p").textContent = original;
+      const matches = anchorTest.occurrences('A B"C"');
+      return matches.length === 1 && anchorTest.text().slice(matches[0].start, matches[0].end)
+        === "A" + sep + "B\u201cC\u201d"
+        && cmhAnchorNormalize(original, true, true).text === original;
+    });
+  });
+  expect(unicode).toBe(true);
+});
+
+test("already normalized prose avoids replacement passes while preserving whitespace and typography folding (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<p>Text</p>");
+  const result = await page.evaluate(() => {
+    const source = "Plain prose with single spaces and an emoji \ud83d\ude00.".repeat(1000);
+    const replace = String.prototype.replace;
+    let calls = 0, plain;
+    String.prototype.replace = function (...args) { calls++; return replace.apply(this, args); };
+    try { plain = cmhAnchorNormalize(source, false, true); }
+    finally { String.prototype.replace = replace; }
+    const spaces = [9, 10, 11, 12, 13, 160, 5760, 8192, 8193, 8194, 8195, 8196,
+      8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288, 65279];
+    return { calls, plain: plain.text === source && plain.ends === null,
+      whitespace: spaces.every(ch => cmhAnchorNormalize("A" + String.fromCharCode(ch) + "B", false, true).text === "A B"),
+      doubled: cmhAnchorNormalize("A  B", false, true).text,
+      typography: cmhAnchorNormalize("\u2018A\u2019 \u201cB\u201d \u2013 \u2014", false, true).text };
+  });
+  expect(result.calls).toBe(0);
+  expect(result.plain).toBe(true);
+  expect(result.whitespace).toBe(true);
+  expect(result.doubled).toBe("A B");
+  expect(result.typography).toBe("'A' \"B\" - -");
+});
+
+test("small-edit alignment bounds arithmetic to the admissible edit band (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<p>Text</p>");
+  const result = await page.evaluate(() => {
+    const old = "Context ".repeat(100), revised = old.slice(0, 400) + "z" + old.slice(401);
+    const index = anchorTest.index(), min = Math.min;
+    let cells = 0;
+    Math.min = (...args) => { cells++; return min(...args); };
+    try {
+      const map = cmhAnchorEditMap(old, revised, index);
+      return { cells, middle: map[400], first: map[0], last: map[799] };
+    } finally { Math.min = min; }
+  });
+  expect(result).toMatchObject({ middle: -1, first: 0, last: 799 });
+  expect(result.cells).toBeLessThan(300000);
+  const differential = await page.evaluate(() => {
+    function reference(a, b) {
+      const width = b.length + 1, dp = new Uint32Array((a.length + 1) * width);
+      for (let i = 0; i <= a.length; i++) dp[i * width] = i;
+      for (let j = 0; j <= b.length; j++) dp[j] = j;
+      for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+        dp[i * width + j] = Math.min(dp[(i - 1) * width + j] + 1, dp[i * width + j - 1] + 1,
+          dp[(i - 1) * width + j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (dp[dp.length - 1] > Math.max(3, Math.floor(Math.max(a.length, b.length) * 0.2))) return null;
+      const map = new Int32Array(a.length).fill(-1);
+      let i = a.length, j = b.length;
+      while (i || j) {
+        if (i && j && dp[i * width + j] === dp[(i - 1) * width + j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)) {
+          if (a[i - 1] === b[j - 1]) map[i - 1] = j - 1;
+          i--; j--;
+        } else if (i && dp[i * width + j] === dp[(i - 1) * width + j] + 1) i--;
+        else j--;
+      }
+      return [...map];
+    }
+    const words = ["", "a", "ababa", "abc".repeat(40)];
+    const mutations = text => [text, "x" + text, text + "x", text.slice(1),
+      text.slice(0, -1), text.slice(0, 10) + "zy" + text.slice(12), "z".repeat(text.length)];
+    return words.every(old => mutations(old).every(revised => {
+      const actual = cmhAnchorEditMap(old, revised, anchorTest.index());
+      return JSON.stringify(actual && [...actual]) === JSON.stringify(reference(old, revised));
+    }));
+  });
+  expect(differential).toBe(true);
+});
+
+test("resolving mixed identity and quote-only roots precedes bounded evidence recapture (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<p>Setup</p>");
+  const result = await page.evaluate(() => {
+    const paragraphs = Array.from({ length: 3000 }, (_, i) =>
+      `<p${i < 1000 && i % 100 === 0 ? ' id="stable' + i + '"' : ""}>Introduction ${i}. A selected review passage number ${i}. `
+        + "Context for careful review. ".repeat(10) + ` Conclusion ${i}.</p>`);
+    const html = paragraphs.join("");
+    anchorTest.set(html);
+    const index = anchorTest.index();
+    const roots = Array.from({ length: 30 }, (_, i) => {
+      const quote = `A selected review passage number ${i * 100}.`;
+      const start = index.text.indexOf(quote), c = { id: "c" + i, quote, start, end: start + quote.length };
+      index.budget = CMH_ANCHOR_SCAN_BUDGET;
+      cmhCaptureTextAnchor(c, index);
+      return c;
+    });
+    anchorTest.replace(roots);
+    anchorTest.set("<p>New introduction.</p>" + html);
+    anchorTest.resolve();
+    const first = roots.filter(c => !c.detached).length;
+    anchorTest.set("<p>Second introduction.</p>" + html);
+    anchorTest.resolve();
+    const text = anchorTest.text();
+    return { chars: text.length, first, attached: roots.filter(c => !c.detached).length,
+      correct: roots.every(c => text.slice(c.start, c.end) === c.quote) };
+  });
+  expect(result.chars).toBeGreaterThan(1000000);
+  expect(result.first).toBe(30);
+  expect(result.attached).toBe(30);
+  expect(result.correct).toBe(true);
+});
+
+test("unverified changed-revision uniqueness cannot authorize a later surviving duplicate (CMH-REATTACH-05)", async ({ page }) => {
+  const content = "Prefix with substantial context before chosen review phrase. Suffix with substantial context after.";
+  await harness(page, `<p id="original">${content}</p>`);
+  const result = await page.evaluate(content => {
+    const c = anchorTest.add("chosen review phrase");
+    const original = structuredClone(c.cmAnchor.original);
+    anchorTest.set(`<p id="original">${content}</p><p id="copy">${content}</p>`);
+    const index = anchorTest.index();
+    index.budget = 0;
+    cmhCaptureTextAnchor(c, index);
+    const captured = structuredClone(c.cmAnchor);
+    anchorTest.set(`<p id="copy">${content}</p>`);
+    anchorTest.resolve();
+    return { captured, original, c };
+  }, content);
+  expect(result.captured.unique).toBe(false);
+  expect(result.captured.original).toEqual(result.original);
+  expect(result.c.detached).toBe(true);
+});
+
+test("shared-budget refusals are distinguished from unresolved evidence (CMH-REATTACH-08)", async ({ page }) => {
+  await harness(page, "<p>A uniquely selected review passage with enough context.</p>");
+  const result = await page.evaluate(() => {
+    const c = anchorTest.add("selected review passage");
+    anchorTest.set("<p>Introduction.</p><p>A uniquely selected review passage with enough context.</p>");
+    const original = cmhAnchorIndex;
+    cmhAnchorIndex = () => { const index = original(); index.budget = 0; return index; };
+    try { anchorTest.resolve(); return c; }
+    finally { cmhAnchorIndex = original; }
+  });
+  expect(result.detached).toBe(true);
+  expect(result.cmAnchor.reason).toBe("budget");
+});
+
+test("intact uniquely identified blocks recover without whole-document quote scans (CMH-REATTACH-02)", async ({ page }) => {
+  await harness(page, '<p id="stable">The complete block retains its selected review passage.</p><p>Other text.</p>');
+  const result = await page.evaluate(() => {
+    anchorTest.add("selected review passage");
+    anchorTest.set('<p>Inserted introduction.</p><p id="stable">The complete block retains its selected review passage.</p><p>Other text.</p>');
+    const occurrences = cmhAnchorOccurrences;
+    let scans = 0;
+    cmhAnchorOccurrences = (...args) => { scans++; return occurrences(...args); };
+    try {
+      anchorTest.resolve();
+      return { scans, c: anchorTest.comments()[0], text: anchorTest.text() };
+    } finally { cmhAnchorOccurrences = occurrences; }
+  });
+  expect(result.scans).toBeLessThanOrEqual(6);
+  expect(result.c.start).toBe(result.text.indexOf("selected review passage"));
+  expect(result.c.detached).toBe(false);
+});
+
 test("reattaches all locally retained roots after long insertion (CMH-REATTACH-01)", async ({ page }) => {
   await harness(page, "<p>First actionable phrase.</p><p>A late reviewer question remains.</p>");
   const result = await page.evaluate(() => {
@@ -89,11 +427,34 @@ test("runtime-generated identities cannot detach unchanged duplicate text (CMH-R
   const result = await page.evaluate(() => {
     root.querySelector("nav").id = "cmhToc0";
     root.querySelector("h2").id = "generated-heading";
-    anchorTest.add("Repeated");
+    const c = anchorTest.add("Repeated"), basis = c.cmAnchor.basis;
     anchorTest.set("<nav>Repeated</nav><h2>Repeated</h2>");
-    return anchorTest.resolve()[0];
+    const occurrences = cmhAnchorOccurrences;
+    let scans = 0;
+    cmhAnchorOccurrences = (...args) => { scans++; return occurrences(...args); };
+    try { return { c: anchorTest.resolve()[0], scans, sameBasis: c.cmAnchor.basis === basis }; }
+    finally { cmhAnchorOccurrences = occurrences; }
   });
-  expect(result).toMatchObject({ start: 0, end: 8, detached: false });
+  expect(result.c).toMatchObject({ start: 0, end: 8, detached: false });
+  expect(result.scans).toBe(0);
+  expect(result.sameBasis).toBe(true);
+});
+
+test("runtime-generated block ids preserve authored ancestor evidence across heading edits (CMH-REATTACH-02)", async ({ page }) => {
+  const heading = "The introduction gives reliable context. The selected brown fox jumps over the lazy dog. The conclusion stays unchanged.";
+  await harness(page, `<section id="authored"><h2>${heading}</h2></section>`);
+  const result = await page.evaluate(heading => {
+    root.querySelector("h2").id = "generated-heading";
+    const c = anchorTest.add("selected brown fox");
+    const capturedId = c.cmAnchor.block.id;
+    anchorTest.set(`<p>New introduction.</p><section id="authored"><h2>${heading.replace("brown fox", "brown fast fox")}</h2></section>`);
+    anchorTest.resolve();
+    return { capturedId, c, selected: anchorTest.text().slice(c.start, c.end) };
+  }, heading);
+  expect(result.capturedId).toBe("authored");
+  expect(result.c.detached).toBe(false);
+  expect(result.selected).toBe("selected brown fast fox");
+  expect(result.c.quote).toBe("selected brown fox");
 });
 
 test("maps typography and prose whitespace to original offsets (CMH-REATTACH-03)", async ({ page }) => {

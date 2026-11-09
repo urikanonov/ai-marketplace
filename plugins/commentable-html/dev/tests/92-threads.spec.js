@@ -7,6 +7,7 @@ import {
   installClipboardCapture, ready, fileUrl, stageInline, lastCopied, openInline,
   clickSidebarExport, readDownload,
   clickClearAll, stageContent, openSearch,
+  routeMermaidLocal, awaitMermaidRendered,
 } from "./helpers.js";
 
 const IMG = "#commentRoot img.cm-img-commentable";
@@ -484,9 +485,12 @@ test.describe("collaboration: author attribution and threads", () => {
   });
 
   test("editing a ROOT comment edits IN the sidebar card without jumping to the anchor (CMH-THREAD-10)", async ({ page }) => {
+    await routeMermaidLocal(page);
     await openKitchenSink(page);
     await addTextComment(page, "#commentRoot section:nth-of-type(1) p", "original root note", 0);
     await openSidebarPanel(page);
+    // Sidebar resize can re-render diagrams and clamp bottom-of-document scroll.
+    await awaitMermaidRendered(page);
     // Park the document where the anchor is off-screen: the OLD behavior scrolled to the anchor
     // before opening a floating composer, so an unchanged scroll position proves it does not.
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));

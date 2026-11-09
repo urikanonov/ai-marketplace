@@ -4,6 +4,12 @@ Comment placement and review lifecycle are separate. Moving an anchor never hand
 answers a question or edits a message. Copy one thread or Copy selected is sufficient: the runtime
 relocates remaining browser-local comments without the agent knowing about them.
 
+## Contents
+
+- [Both review scenarios](#both-review-scenarios)
+- [Attachment and Detached](#attachment-and-detached)
+- [Compatibility](#compatibility)
+
 ## Both review scenarios
 
 When an agent handles only some comments, only those handled IDs are pruned. Unsent comments follow
@@ -52,6 +58,24 @@ rewrites can require manual selection. Very large review payloads remain subject
 the writer never compresses beyond its reader's 8-million-character bound. A reported unsaved
 session remains exportable; no message or foreign selector is silently discarded to fit.
 Automatic recovery warns at startup too if quota pressure prevents saving the refreshed locations.
+
+Verified unchanged positions also carry an additive layout `basis`: matching source/identity and
+layout fingerprints avoid rescanning historical evidence, while changes to code or block structure
+still refresh it. Runtime-generated heading/TOC IDs are excluded from block/layout evidence too;
+an authored ancestor remains eligible. An intact complete block with a unique current ID and historical occurrence
+identity can verify its selected text locally. Shared or changed blocks do not qualify for that
+shortcut. Normalization maps and block indexes are ephemeral, rebuilt from the displayed document,
+and never add a new storage format or relax the existing recovery limits.
+All roots resolve before current evidence is recaptured from the remaining shared budget.
+Recapture prioritizes roots without historical occurrence identity and derives contiguous
+block/context uniqueness from proven quote uniqueness instead of rescanning those supersets.
+Unchecked uniqueness is conservative across changed revision/layout evidence, so an exhausted
+capture cannot authorize a later surviving duplicate; an intact stable block can still prove
+its occurrence identity locally.
+Legacy context backfill shares an immutable per-pass text/layout scan without replacing
+historical fields. Highlight restoration updates its local text-node index when wrapping splits
+nodes, and rebuilds it after failed-wrap cleanup. Neither index is persisted or reused in a later
+capture/restore operation.
 
 ## Compatibility
 
