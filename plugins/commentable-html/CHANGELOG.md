@@ -4,6 +4,19 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.861.0] - 2026-11-09
+
+### Fixed
+
+- Distinguish blocked or unavailable comment storage in cloud previews from a full browser
+  store. Keep the existing Manage storage recovery for genuine quota failures.
+- Show a small bottom-left information bubble when saving is unavailable. Its explanation
+  recommends downloading and opening the HTML locally, warns that changes are temporary,
+  and preserves Copy all and Export as Shareable as recovery options.
+- Deliberately raise the runtime JS/CSS, embedded-assets and Shareable size ceilings to
+  774/158/975/993 KB for the storage capability check and accessible information popover.
+  No dependency or rich-library payload is added.
+
 ## [1.860.0] - 2026-11-08
 
 ### Changed

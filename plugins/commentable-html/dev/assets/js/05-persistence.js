@@ -8,6 +8,38 @@ function cmhIsQuotaError(e) {
     || e.name === "NS_ERROR_DOM_QUOTA_REACHED"
     || e.code === 22 || e.code === 1014;
 }
+let _cmhStorageIssue = null;
+function cmhProbeStorage() {
+  const key = "commentable-html::probe:" + Math.random().toString(36).slice(2);
+  localStorage.setItem(key, "1");
+  try {
+    if (localStorage.getItem(key) !== "1") throw new Error("Storage did not retain the probe");
+  } finally { localStorage.removeItem(key); }
+}
+function cmhStorageFailureKind(e) {
+  if (e && e.name === "SecurityError") return "blocked";
+  if (cmhIsQuotaError(e)) {
+    try {
+      if (localStorage.length > 0) return "quota";
+      // An empty store may reject a large value, or have no capacity at all (private previews).
+      cmhProbeStorage();
+      return "quota";
+    } catch (probeError) {
+      return probeError && probeError.name === "SecurityError" ? "blocked" : "unavailable";
+    }
+  }
+  return "unavailable";
+}
+function cmhSetStorageIssue(issue) {
+  _cmhStorageIssue = issue;
+  cmhUpdateStorageNotice();
+}
+function cmhStorageUnavailableMessage(what) {
+  return what + " NOT saved - browser storage is "
+    + (_cmhStorageIssue === "blocked" ? "blocked" : "unavailable")
+    + ". Download this HTML file and open it locally in your browser to leave comments. "
+    + "Changes here are temporary and will be lost on reload. Use Copy all or Export as Shareable to keep them.";
+}
 // Encode a comments JSON string for the modern slot: a framed lz-string payload when that is
 // SMALLER (in UTF-16 code units, which is what localStorage costs), else the plain JSON unchanged.
 function cmhEncodeStore(jsonStr) {
@@ -78,9 +110,13 @@ function cmhTrySetItem(key, produce, label) {
     if (value == null) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
     _cmhPendingWrites.delete(key);
+    cmhSetStorageIssue(null);
     return true;
   } catch (e) {
-    if (cmhIsQuotaError(e)) _cmhPendingWrites.set(key, { produce: produce, label: label || "data" });
+    const issue = cmhStorageFailureKind(e);
+    cmhSetStorageIssue(issue);
+    if (issue === "quota") _cmhPendingWrites.set(key, { produce: produce, label: label || "data" });
+    else _cmhPendingWrites.delete(key);
     return false;
   }
 }
@@ -93,13 +129,16 @@ function cmhRetryPendingWrites() {
       const v = rec.produce();
       if (v == null) localStorage.removeItem(key); else localStorage.setItem(key, v);
       _cmhPendingWrites.delete(key);
+      cmhSetStorageIssue(null);
       // A successful comment-slot retry also reclaims the legacy key (mirrors saveComments).
       if (key === CMH_STORE_KEY) { try { localStorage.removeItem(COMMENT_KEY); } catch (e) { /* best-effort */ } }
       if (done.indexOf(rec.label) === -1) done.push(rec.label);
     } catch (e) {
       // Still full: leave the entry pending for the next delete. A NON-quota failure (blocked/
       // corrupt) will never succeed on retry, so drop it rather than retrying forever.
-      if (!cmhIsQuotaError(e)) _cmhPendingWrites.delete(key);
+      const issue = cmhStorageFailureKind(e);
+      cmhSetStorageIssue(issue);
+      if (issue !== "quota") _cmhPendingWrites.delete(key);
     }
   });
   return done;
@@ -111,7 +150,7 @@ function cmhStorageFullToast(key, what) {
   const quota = _cmhPendingWrites.has(key);
   showToast(quota
     ? what + " could not be saved - this browser's storage is full. Free space from Manage storage."
-    : what + " NOT saved to this browser (storage full or blocked) - it will be lost on reload.",
+    : cmhStorageUnavailableMessage(what),
     { alert: true, duration: 8000, action: cmhStorageAction(key) });
 }
 // The "Manage storage" toast action object for a key whose write is pending after a quota failure
@@ -172,12 +211,15 @@ function saveComments() {
     // stays recoverable).
     localStorage.setItem(CMH_STORE_KEY, cmhEncodeStore(JSON.stringify(comments)));
     _cmhPendingWrites.delete(CMH_STORE_KEY);
+    cmhSetStorageIssue(null);
     try { localStorage.removeItem(COMMENT_KEY); } catch (e) { /* best-effort legacy reclaim */ }
     if (typeof cmhRegisterDocument === "function") cmhRegisterDocument();
     if (typeof _cmhResetQuotaEpisode === "function") _cmhResetQuotaEpisode();
     return true;
   } catch (e) {
-    if (cmhIsQuotaError(e)) {
+    const issue = cmhStorageFailureKind(e);
+    cmhSetStorageIssue(issue);
+    if (issue === "quota") {
       _cmhLastSaveQuota = true;
       // The comment is still in memory (visible in the list). Stash the exact write for retry; the
       // composer save opens the storage manager so the reviewer can free space and it is re-saved.
@@ -187,10 +229,10 @@ function saveComments() {
       });
       return false;
     }
-    // Blocked / private mode: keep the existing recovery-path warning.
-    const notify = _cmhStartupInProgress ? showStartupDiagnostic : showToast;
-    notify("Comment NOT saved to this browser (storage full or blocked) - it will be lost on "
-      + "reload. Use Copy all or Export as Shareable to keep it.", { alert: true, duration: 8000 });
+    _cmhPendingWrites.delete(CMH_STORE_KEY);
+    if (!_cmhStartupInProgress) {
+      showToast(cmhStorageUnavailableMessage("Comment"), { alert: true, duration: 10000 });
+    }
     return false;
   }
 }

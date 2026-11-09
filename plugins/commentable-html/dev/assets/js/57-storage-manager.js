@@ -950,3 +950,92 @@ window.__cmhStorageCodec = {
 // Register this document in the shared index on load so the manager can list it by name even before
 // the first comment is saved.
 try { cmhRegisterDocument(); } catch (e) { /* best-effort */ }
+let _cmhStorageNoticeReady = false;
+let _cmhStorageNotice = null;
+function setupStorageNotice() {
+  _cmhStorageNoticeReady = true;
+  try {
+    cmhProbeStorage();
+    cmhSetStorageIssue(null);
+  } catch (e) { cmhSetStorageIssue(cmhStorageFailureKind(e)); }
+}
+function cmhUpdateStorageNotice() {
+  if (!_cmhStorageNoticeReady) return;
+  const unavailable = _cmhStorageIssue === "blocked" || _cmhStorageIssue === "unavailable";
+  if (!unavailable) {
+    if (_cmhStorageNotice) _cmhStorageNotice.hidden = true;
+    return;
+  }
+  if (_cmhStorageNotice) {
+    _cmhStorageNotice.hidden = false;
+    return;
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "cm-skip cm-storage-notice";
+  _cmhStorageNotice = wrap;
+  cmhMarkLayerChrome(wrap);
+  CMH_INJECTED_CHROME.add(wrap);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "cm-storage-info";
+  button.setAttribute("aria-label", "Comment saving unavailable");
+  button.setAttribute("aria-expanded", "false");
+  button.setAttribute("aria-controls", "cmStorageNoticeDetails");
+  button.setAttribute("aria-haspopup", "dialog");
+  button.innerHTML = '<span class="cm-storage-info-icon" aria-hidden="true">i</span><span>Comments not saved</span>';
+  const details = document.createElement("div");
+  details.id = "cmStorageNoticeDetails";
+  details.className = "cm-storage-info-details";
+  details.hidden = true;
+  details.tabIndex = -1;
+  details.setAttribute("role", "dialog");
+  details.setAttribute("aria-label", "Comment saving unavailable");
+  const preview = window.self !== window.top
+    || /(^|\.)(onedrive\.live\.com|onedrive\.cloud\.microsoft|sharepoint\.com)$/.test(location.hostname);
+  const heading = document.createElement("strong");
+  heading.textContent = preview ? "Comments cannot be saved in this preview." : "Browser storage is unavailable.";
+  const guidance = document.createElement("p");
+  guidance.textContent = "Download this HTML file and open it locally in your browser to leave comments that can be saved.";
+  const recovery = document.createElement("p");
+  recovery.textContent = "Comments and edits made here are temporary and will be lost on reload. "
+    + "Use Copy all or Export as Shareable to keep any changes before leaving.";
+  const privacy = document.createElement("p");
+  privacy.className = "cm-storage-info-hint";
+  privacy.textContent = "If saving is still blocked locally, check your browser's privacy settings.";
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "cm-storage-btn";
+  closeButton.textContent = "Close";
+  function close(restoreFocus) {
+    details.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+    if (restoreFocus) button.focus({ preventScroll: true });
+  }
+  button.addEventListener("click", function () {
+    if (!details.hidden) { close(true); return; }
+    details.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    details.focus({ preventScroll: true });
+  });
+  closeButton.addEventListener("click", function () { close(true); });
+  document.addEventListener("pointerdown", function (e) {
+    if (!details.hidden && !wrap.contains(e.target)) close(false);
+  });
+  window.__cmhRegisterEscapePopup({
+    isOpen: function () { return !wrap.hidden && !details.hidden; },
+    close: function () { close(true); },
+  });
+  details.append(heading, guidance, recovery, privacy, closeButton);
+  wrap.append(button, details);
+  document.body.appendChild(wrap);
+  function position() {
+    const view = cmhViewportBox();
+    wrap.style.left = (view.left + 12) + "px";
+    wrap.style.bottom = Math.max(12, window.innerHeight - view.top - view.height + 12) + "px";
+    wrap.style.maxWidth = Math.max(0, view.width - 24) + "px";
+    details.style.maxWidth = Math.max(0, view.width - 24) + "px";
+    details.style.maxHeight = Math.max(0, view.height - 88) + "px";
+  }
+  cmhOnViewportChange(position);
+  position();
+}

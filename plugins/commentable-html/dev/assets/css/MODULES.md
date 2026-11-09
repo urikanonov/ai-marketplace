@@ -32,7 +32,7 @@ order the directory listing gives.
 | `88-discussions.css` | CMH-DISC | Question/command purpose selectors, discussion status, handoff indicators, and message labels. |
 | `88-rich-text.css` | CMH-RICH | Rich-text note inline elements (bold/italic/underline/strike/code/list/link) and the composer formatting toolbar. |
 | `88-threads.css` | CMH-AUTHOR, CMH-THREAD, CMH-RICH, CMH-GROW, CMH-RESP, CMH-PICK | Author pill, sidebar identity control, the thread root-entry / reply layout, the card's ONE unified action row (Reply / jump / edit / delete sharing the `cm-card-btn` pill), the compact side-pane variant of the formatting toolbar, the reply / edit actions row and its phone touch targets, and the reply input's font size and autogrow bounds. |
-| `89-storage.css` | CMH-STORE | Storage manager dialog (near-full-screen list, rows, inline confirm, empty state) and the toast action button. |
+| `89-storage.css` | CMH-STORE | Storage manager dialog (near-full-screen list, rows, inline confirm, empty state), toast action button, and bottom-left unavailable-storage information popover. |
 | `90-deck.css` | CMH-DECK, CMH-CODE | Deck profile (`data-cmh-mode="deck"`) overrides; deck theming of the code caption. |
 | `92-print.css` | CMH-PRINT | Print/PDF stylesheet for flat documents plus one-slide-per-page deck print flow. |
 | `95-reduced-motion.css` | CMH-A11Y | `prefers-reduced-motion` reset: clamps non-essential animations/transitions to near-zero. |

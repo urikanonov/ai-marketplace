@@ -726,7 +726,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.860.0";
+const CMH_VERSION= "1.861.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -1236,6 +1236,37 @@ return e.name=== "QuotaExceededError"
 ||e.name=== "NS_ERROR_DOM_QUOTA_REACHED"
 ||e.code===22||e.code===1014;
 }
+let _cmhStorageIssue=null;
+function cmhProbeStorage(){
+const key= "commentable-html::probe:"+Math.random().toString(36).slice(2);
+localStorage.setItem(key,"1");
+try{
+if(localStorage.getItem(key)!== "1")throw new Error("Storage did not retain the probe");
+}finally{localStorage.removeItem(key);}
+}
+function cmhStorageFailureKind(e){
+if(e&&e.name=== "SecurityError")return"blocked";
+if(cmhIsQuotaError(e)){
+try{
+if(localStorage.length>0)return"quota";
+cmhProbeStorage();
+return"quota";
+}catch(probeError){
+return probeError&&probeError.name=== "SecurityError"?"blocked":"unavailable";
+}
+}
+return"unavailable";
+}
+function cmhSetStorageIssue(issue){
+_cmhStorageIssue=issue;
+cmhUpdateStorageNotice();
+}
+function cmhStorageUnavailableMessage(what){
+return what+" NOT saved - browser storage is "
++(_cmhStorageIssue=== "blocked"?"blocked":"unavailable")
++". Download this HTML file and open it locally in your browser to leave comments. "
++"Changes here are temporary and will be lost on reload. Use Copy all or Export as Shareable to keep them.";
+}
 function cmhEncodeStore(jsonStr){
 if(jsonStr.length>CMH_MAX_STORE_CHARS)return jsonStr;
 try{
@@ -1281,9 +1312,13 @@ const value=produce();
 if(value==null)localStorage.removeItem(key);
 else localStorage.setItem(key,value);
 _cmhPendingWrites.delete(key);
+cmhSetStorageIssue(null);
 return true;
 }catch(e){
-if(cmhIsQuotaError(e))_cmhPendingWrites.set(key,{produce:produce,label:label||"data"});
+const issue=cmhStorageFailureKind(e);
+cmhSetStorageIssue(issue);
+if(issue=== "quota")_cmhPendingWrites.set(key,{produce:produce,label:label||"data"});
+else _cmhPendingWrites.delete(key);
 return false;
 }
 }
@@ -1294,10 +1329,13 @@ try{
 const v=rec.produce();
 if(v==null)localStorage.removeItem(key);else localStorage.setItem(key,v);
 _cmhPendingWrites.delete(key);
+cmhSetStorageIssue(null);
 if(key===CMH_STORE_KEY){try{localStorage.removeItem(COMMENT_KEY);}catch(e){}}
 if(done.indexOf(rec.label)===-1)done.push(rec.label);
 }catch(e){
-if(!cmhIsQuotaError(e))_cmhPendingWrites.delete(key);
+const issue=cmhStorageFailureKind(e);
+cmhSetStorageIssue(issue);
+if(issue!== "quota")_cmhPendingWrites.delete(key);
 }
 });
 return done;
@@ -1306,7 +1344,7 @@ function cmhStorageFullToast(key,what){
 const quota=_cmhPendingWrites.has(key);
 showToast(quota
 ?what+" could not be saved - this browser's storage is full. Free space from Manage storage."
-:what+" NOT saved to this browser (storage full or blocked) - it will be lost on reload.",
+:cmhStorageUnavailableMessage(what),
 {alert:true,duration:8000,action:cmhStorageAction(key)});
 }
 function cmhStorageAction(key){
@@ -1349,12 +1387,15 @@ cmhCaptureTextAnchor(c,index);
 try{
 localStorage.setItem(CMH_STORE_KEY,cmhEncodeStore(JSON.stringify(comments)));
 _cmhPendingWrites.delete(CMH_STORE_KEY);
+cmhSetStorageIssue(null);
 try{localStorage.removeItem(COMMENT_KEY);}catch(e){}
 if(typeof cmhRegisterDocument=== "function")cmhRegisterDocument();
 if(typeof _cmhResetQuotaEpisode=== "function")_cmhResetQuotaEpisode();
 return true;
 }catch(e){
-if(cmhIsQuotaError(e)){
+const issue=cmhStorageFailureKind(e);
+cmhSetStorageIssue(issue);
+if(issue=== "quota"){
 _cmhLastSaveQuota=true;
 _cmhPendingWrites.set(CMH_STORE_KEY,{
 produce:function(){return cmhEncodeStore(JSON.stringify(comments));},
@@ -1362,9 +1403,10 @@ label:"comment",
 });
 return false;
 }
-const notify=_cmhStartupInProgress?showStartupDiagnostic:showToast;
-notify("Comment NOT saved to this browser (storage full or blocked) - it will be lost on "
-+"reload. Use Copy all or Export as Shareable to keep it.",{alert:true,duration:8000});
+_cmhPendingWrites.delete(CMH_STORE_KEY);
+if(!_cmhStartupInProgress){
+showToast(cmhStorageUnavailableMessage("Comment"),{alert:true,duration:10000});
+}
 return false;
 }
 }
@@ -12299,6 +12341,95 @@ try{localStorage.removeItem(COMMENT_KEY);}catch(e){}
 },
 };
 try{cmhRegisterDocument();}catch(e){}
+let _cmhStorageNoticeReady=false;
+let _cmhStorageNotice=null;
+function setupStorageNotice(){
+_cmhStorageNoticeReady=true;
+try{
+cmhProbeStorage();
+cmhSetStorageIssue(null);
+}catch(e){cmhSetStorageIssue(cmhStorageFailureKind(e));}
+}
+function cmhUpdateStorageNotice(){
+if(!_cmhStorageNoticeReady)return;
+const unavailable=_cmhStorageIssue=== "blocked"||_cmhStorageIssue=== "unavailable";
+if(!unavailable){
+if(_cmhStorageNotice)_cmhStorageNotice.hidden=true;
+return;
+}
+if(_cmhStorageNotice){
+_cmhStorageNotice.hidden=false;
+return;
+}
+const wrap=document.createElement("div");
+wrap.className= "cm-skip cm-storage-notice";
+_cmhStorageNotice=wrap;
+cmhMarkLayerChrome(wrap);
+CMH_INJECTED_CHROME.add(wrap);
+const button=document.createElement("button");
+button.type= "button";
+button.className= "cm-storage-info";
+button.setAttribute("aria-label","Comment saving unavailable");
+button.setAttribute("aria-expanded","false");
+button.setAttribute("aria-controls","cmStorageNoticeDetails");
+button.setAttribute("aria-haspopup","dialog");
+button.innerHTML= '<span class="cm-storage-info-icon" aria-hidden="true">i</span><span>Comments not saved</span>';
+const details=document.createElement("div");
+details.id= "cmStorageNoticeDetails";
+details.className= "cm-storage-info-details";
+details.hidden=true;
+details.tabIndex=-1;
+details.setAttribute("role","dialog");
+details.setAttribute("aria-label","Comment saving unavailable");
+const preview=window.self!==window.top
+||/(^|\.)(onedrive\.live\.com|onedrive\.cloud\.microsoft|sharepoint\.com)$/.test(location.hostname);
+const heading=document.createElement("strong");
+heading.textContent=preview?"Comments cannot be saved in this preview.":"Browser storage is unavailable.";
+const guidance=document.createElement("p");
+guidance.textContent= "Download this HTML file and open it locally in your browser to leave comments that can be saved.";
+const recovery=document.createElement("p");
+recovery.textContent= "Comments and edits made here are temporary and will be lost on reload. "
++"Use Copy all or Export as Shareable to keep any changes before leaving.";
+const privacy=document.createElement("p");
+privacy.className= "cm-storage-info-hint";
+privacy.textContent= "If saving is still blocked locally, check your browser's privacy settings.";
+const closeButton=document.createElement("button");
+closeButton.type= "button";
+closeButton.className= "cm-storage-btn";
+closeButton.textContent= "Close";
+function close(restoreFocus){
+details.hidden=true;
+button.setAttribute("aria-expanded","false");
+if(restoreFocus)button.focus({preventScroll:true});
+}
+button.addEventListener("click",function(){
+if(!details.hidden){close(true);return;}
+details.hidden=false;
+button.setAttribute("aria-expanded","true");
+details.focus({preventScroll:true});
+});
+closeButton.addEventListener("click",function(){close(true);});
+document.addEventListener("pointerdown",function(e){
+if(!details.hidden&&!wrap.contains(e.target))close(false);
+});
+window.__cmhRegisterEscapePopup({
+isOpen:function(){return!wrap.hidden&&!details.hidden;},
+close:function(){close(true);},
+});
+details.append(heading,guidance,recovery,privacy,closeButton);
+wrap.append(button,details);
+document.body.appendChild(wrap);
+function position(){
+const view=cmhViewportBox();
+wrap.style.left=(view.left+12)+"px";
+wrap.style.bottom=Math.max(12,window.innerHeight-view.top-view.height+12)+"px";
+wrap.style.maxWidth=Math.max(0,view.width-24)+"px";
+details.style.maxWidth=Math.max(0,view.width-24)+"px";
+details.style.maxHeight=Math.max(0,view.height-88)+"px";
+}
+cmhOnViewportChange(position);
+position();
+}
 const _MD_SKIP_TAGS={SCRIPT:1,STYLE:1,NAV:1,NOSCRIPT:1,TEMPLATE:1};
 const _MD_ALERT={info:"NOTE",success:"TIP",warning:"WARNING",danger:"CAUTION"};
 function _mdCollapse(s){return String(s==null?"":s).replace(/\s+/g," ").trim();}
@@ -16473,6 +16604,7 @@ T('Managing storage',
 '<li><strong>Manage storage</strong> (in the sidebar&#39;s <em>More</em> menu, or the collapsed toolbar&#39;s overflow <kbd>...</kbd> menu) lists every document&#39;s stored data with its size, and lets you delete another document&#39;s data to free space. Your own comments are never uploaded - this only clears local browser storage.</li>'+
 '<li>The window shows a <strong>pie chart</strong> of how the browser storage is used - <em>This document</em>, <em>Other commentable-html documents</em>, <em>Other</em> site data, and the <em>Free</em> headroom - above a per-document <strong>table</strong> (Document, Comments, Size, Share, Actions) whose <em>Share</em> column is each document&#39;s percentage of commentable-html storage. Expand a row&#39;s <strong>Show comments</strong> to browse and delete individual comments.</li>'+
 '<li>If a comment cannot be saved because storage is full, the <strong>Manage storage</strong> window opens automatically; delete another document&#39;s data and your comment is saved.</li>'+
+'<li>If a preview (such as OneDrive) or browser privacy setting blocks storage, a bottom-left <strong>Comments not saved</strong> information bubble explains what to do. Download the HTML and open it locally to leave comments that can be saved. Changes in the blocked preview are temporary: use <strong>Copy all</strong> or <strong>Export as Shareable</strong> before leaving. A blocked or zero-capacity store is not reported as full.</li>'+
 '<li>Comments are stored compressed, so far more reviews fit before the space runs out.</li>'+
 '</ul>')+
 T('Self-contained and privacy',
@@ -19282,6 +19414,7 @@ setupScrollProgress();
 }
 setupTooltips();
 setupValidationBanner();
+setupStorageNotice();
 for(let cur=CMH_LAYER_SCRIPT;cur&&cur.parentNode;cur=cur.parentNode){
 for(let s=cur.nextSibling;s;s=s.nextSibling){
 if(s.nodeType===1)CMH_INJECTED_CHROME.add(s);
