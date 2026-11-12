@@ -4,6 +4,13 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.861.2] - 2026-11-11
+
+### Fixed
+
+- Keep disabled editable-table row-insertion handles hidden off hover or keyboard focus
+  on mouse devices, including after a saved-draft conflict. Preserve visible touch controls.
+
 ## [1.861.1] - 2026-11-09
 
 ### Changed
