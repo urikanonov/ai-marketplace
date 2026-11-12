@@ -224,7 +224,7 @@ jobs:
       # The shots entrypoint is a Python script (tools/shots_linux.py), so declare Python rather
       # than relying on the runner image happening to provide `python`.
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Install dependencies (no lifecycle scripts)
@@ -332,7 +332,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       # Several plugin Python tests are CROSS-ENGINE parity guards: they evaluate the exporter's
