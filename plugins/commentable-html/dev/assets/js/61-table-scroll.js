@@ -119,11 +119,12 @@ function _wrapTablesForScroll() {
     if (!t.parentNode) return;
     for (let ancestor = t.parentElement.closest("table"); ancestor;
       ancestor = ancestor.parentElement && ancestor.parentElement.closest("table")) {
-      if (pendingTables.has(ancestor)) return;
+      if (pendingTables.has(ancestor)) {
+        pending.push({ table: t });
+        return;
+      }
     }
     const wrap = document.createElement("div");
-    wrap.className = TABLE_SCROLL_CLASS;
-    wrap.setAttribute("data-cmh-wrap", "1");
     _carryLayoutItemStyles(t, wrap, parentDisplays);
     pending.push({ table: t, wrap: wrap, parent: t.parentElement });
     pendingTables.add(t);
@@ -132,11 +133,13 @@ function _wrapTablesForScroll() {
   // reads would force a style recalculation for every table in a large report.
   pending.forEach(function (item) {
     const t = item.table;
-    const wrap = item.wrap;
     // Reparenting an earlier table can synchronously detach another through custom-element hooks.
     if (!t.parentNode || t.hasAttribute("data-cm-part") || t.closest("." + TABLE_SCROLL_CLASS)) return;
+    const wrap = item.wrap || document.createElement("div");
+    wrap.className = TABLE_SCROLL_CLASS;
+    wrap.setAttribute("data-cmh-wrap", "1");
     if (t.parentElement !== item.parent) {
-      // Only a synchronous author callback can move a candidate during this pass.
+      // Author callbacks can move candidates or invalidate a deferred descendant's outer wrapper.
       wrap.style.cssText = "";
       _carryLayoutItemStyles(t, wrap, new Map());
     }

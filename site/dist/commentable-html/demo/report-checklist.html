@@ -17485,19 +17485,22 @@ if(t.hasAttribute("data-cm-part"))return;
 if(!t.parentNode)return;
 for(let ancestor=t.parentElement.closest("table");ancestor;
 ancestor=ancestor.parentElement&&ancestor.parentElement.closest("table")){
-if(pendingTables.has(ancestor))return;
+if(pendingTables.has(ancestor)){
+pending.push({table:t});
+return;
+}
 }
 const wrap=document.createElement("div");
-wrap.className=TABLE_SCROLL_CLASS;
-wrap.setAttribute("data-cmh-wrap","1");
 _carryLayoutItemStyles(t,wrap,parentDisplays);
 pending.push({table:t,wrap:wrap,parent:t.parentElement});
 pendingTables.add(t);
 });
 pending.forEach(function(item){
 const t=item.table;
-const wrap=item.wrap;
 if(!t.parentNode||t.hasAttribute("data-cm-part")||t.closest("."+TABLE_SCROLL_CLASS))return;
+const wrap=item.wrap||document.createElement("div");
+wrap.className=TABLE_SCROLL_CLASS;
+wrap.setAttribute("data-cmh-wrap","1");
 if(t.parentElement!==item.parent){
 wrap.style.cssText= "";
 _carryLayoutItemStyles(t,wrap,new Map());

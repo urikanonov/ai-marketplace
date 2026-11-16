@@ -183,15 +183,21 @@ for (const part of [false, true]) {
         }
       });
     }, part);
+    const nested = part
+      ? '<table id="deferred-inner"><tr><td style="min-width:800px">Nested</td></tr></table>' : "";
     await gotoContent(page, `<h1>Moved candidate</h1><style>
       #destination { display:grid; grid-template-columns:100px 100px }
       #destination > table { grid-column:2; order:9 }
+      #moving[data-cm-part] { width:100px; table-layout:fixed }
       </style><table><tr><td><move-later-table>Trigger</move-later-table></td></tr></table>
-      <table id="moving"><tr><td>Moved</td></tr></table><section id="destination"></section>`,
+      <table id="moving"><tr><td>Moved${nested}</td></tr></table><section id="destination"></section>`,
     `cmh-table-batch-move-${part}`, 1000);
     if (part) {
       await expect(page.locator("#destination > table[data-cm-part]")).toHaveCount(1);
-      await expect(page.locator("#destination .cmh-table-scroll")).toHaveCount(0);
+      const innerWrap = page.locator("#moving .cmh-table-scroll");
+      await expect(innerWrap).toHaveCount(1);
+      await expect(innerWrap.locator("#deferred-inner")).toHaveCount(1);
+      await expect(innerWrap).toHaveAttribute("tabindex", "0");
     } else {
       const wrap = page.locator("#destination > .cmh-table-scroll");
       await expect(wrap).toHaveCount(1);
