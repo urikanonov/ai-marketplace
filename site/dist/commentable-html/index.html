@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.861.2<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.861.3<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -489,12 +489,21 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.861.3] - 2026-11-15</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Batch table-scroll placement and geometry reads before DOM and accessibility writes, avoiding per-table style recalculation stalls in table-heavy reports. Preserve flex/grid placement, nested and late tables, draggable parts, keyboard access, and comment anchors.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.861.2] - 2026-11-11</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Keep disabled editable-table row-insertion handles hidden off hover or keyboard focus on mouse devices, including after a saved-draft conflict. Preserve visible touch controls.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.861.1] - 2026-11-09</h3></div>
             <div class="group-label">Changed</div>
@@ -503,8 +512,6 @@
               <li>Make the minus and plus buttons bold and accent-outlined, with contrasting surfaces, visible keyboard focus, and phone-sized touch targets.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.861.0] - 2026-11-09</h3></div>
             <div class="group-label">Fixed</div>
@@ -550,18 +557,7 @@
               <li>Explain both revision scenarios, recovery and downgrade limits in the tutorial, Help and showcase.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.858.1] - 2026-10-31</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Expand the existing release-readiness example into the Dynamic Controls demo with independent checklists, editable notes and a text/numeric/choice follow-up table, retaining its URL and key.</li>
-              <li>Start the follow-up table at readable authored column widths without a permanent table-width floor, so resizing, Autofit and column removal can shrink it through export/reopen.</li>
-              <li>Align the website demo tab, tutorial, companion prompt and authoring references with the combined Copy all and export flow; keep the dedicated notes and table playgrounds.</li>
-              <li>Add the AI discussion walkthrough and align website, Help, README, showcase and author reference with the Ask AI / Request edit labels and remembered reply purpose.</li>
-              <li>Correct the checklist apply-tool path in Copy all and include table edits in Help&#x27;s pending-count and partial-copy descriptions.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">430 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">431 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

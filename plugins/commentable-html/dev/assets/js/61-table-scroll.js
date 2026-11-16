@@ -50,8 +50,12 @@ var TABLE_SCROLL_A11Y = [
 // on the way out the stale value would look like an author edit and be preserved permanently.
 const _tableScrollOwnedValues = new WeakMap();
 function _syncTableScrollState() {
-  root.querySelectorAll("." + TABLE_SCROLL_CLASS).forEach(function (wrap) {
-    const scrolls = wrap.scrollWidth > wrap.clientWidth + 1;
+  const states = Array.from(root.querySelectorAll("." + TABLE_SCROLL_CLASS), function (wrap) {
+    return { wrap: wrap, scrolls: wrap.scrollWidth > wrap.clientWidth + 1 };
+  });
+  states.forEach(function (state) {
+    const wrap = state.wrap;
+    const scrolls = state.scrolls;
     const mine = _tableScrollOwnedValues.get(wrap) || {};
     if (scrolls) {
       const owned = [];
@@ -71,7 +75,8 @@ function _syncTableScrollState() {
       _tableScrollOwnedValues.set(wrap, mine);
       // Always stamped while scrolling, even when the author supplied every attribute themselves and
       // the owned list is empty, because the focus-ring rule keys off the attribute's presence.
-      wrap.setAttribute("data-cmh-scroll-a11y", owned.join(" "));
+      const stamp = owned.join(" ");
+      if (wrap.getAttribute("data-cmh-scroll-a11y") !== stamp) wrap.setAttribute("data-cmh-scroll-a11y", stamp);
     } else if (wrap.hasAttribute("data-cmh-scroll-a11y")) {
       Object.keys(mine).forEach(function (name) {
         // Only take back a value still equal to the one we wrote: an author who overwrote it since
@@ -96,13 +101,14 @@ let _tableScrollResizeObserver = null;
 // Wrap every author table not already in a scroll box, then (re)observe the boxes. Safe to re-run:
 // the guards make it a no-op once everything is wrapped and observing an element twice is a no-op.
 function _wrapTablesForScroll() {
-  // A wrapper WE created and that has since been emptied (its table was moved away - a table used
-  // directly as a draggable widget part, say) is dead weight carrying margins, so it is pruned. Only
-  // our own: an author's `<div class="cmh-table-scroll">` may be an intentionally empty mount point
-  // that a later author script fills, and deleting it would break them.
+  // Prune before measuring: an emptied sibling can still affect positional placement selectors.
+  // Only prune our own wrappers; an author's empty wrapper may be a late-script mount point.
   root.querySelectorAll("." + TABLE_SCROLL_CLASS + "[data-cmh-wrap]").forEach(function (wrap) {
     if (!wrap.querySelector("table")) wrap.remove();
   });
+  const pending = [];
+  const pendingTables = new Set();
+  const parentDisplays = new Map();
   root.querySelectorAll("table").forEach(function (t) {
     // A table already inside a scroll box - authored that way, or the INNER table of a nested pair
     // whose outer table is wrapped - is left alone, so wrappers never nest.
@@ -111,10 +117,29 @@ function _wrapTablesForScroll() {
     // it would put a box between the part and the slot it is dropped into.
     if (t.hasAttribute("data-cm-part")) return;
     if (!t.parentNode) return;
+    for (let ancestor = t.parentElement.closest("table"); ancestor;
+      ancestor = ancestor.parentElement && ancestor.parentElement.closest("table")) {
+      if (pendingTables.has(ancestor)) return;
+    }
     const wrap = document.createElement("div");
     wrap.className = TABLE_SCROLL_CLASS;
     wrap.setAttribute("data-cmh-wrap", "1");
-    _carryLayoutItemStyles(t, wrap);
+    _carryLayoutItemStyles(t, wrap, parentDisplays);
+    pending.push({ table: t, wrap: wrap, parent: t.parentElement });
+    pendingTables.add(t);
+  });
+  // Read every placement while wrappers are detached: a connected write between computed-style
+  // reads would force a style recalculation for every table in a large report.
+  pending.forEach(function (item) {
+    const t = item.table;
+    const wrap = item.wrap;
+    // Reparenting an earlier table can synchronously detach another through custom-element hooks.
+    if (!t.parentNode || t.hasAttribute("data-cm-part") || t.closest("." + TABLE_SCROLL_CLASS)) return;
+    if (t.parentElement !== item.parent) {
+      // Only a synchronous author callback can move a candidate during this pass.
+      wrap.style.cssText = "";
+      _carryLayoutItemStyles(t, wrap, new Map());
+    }
     t.parentNode.insertBefore(wrap, t);
     wrap.appendChild(t);
   });
@@ -134,10 +159,14 @@ var TABLE_SCROLL_ITEM_PROPS = [
   "order", "grid-column", "grid-row", "align-self", "justify-self",
   "flex-grow", "flex-shrink", "flex-basis",
 ];
-function _carryLayoutItemStyles(table, wrap) {
+function _carryLayoutItemStyles(table, wrap, parentDisplays) {
   const parent = table.parentElement;
   if (!parent || typeof getComputedStyle !== "function") return;
-  const display = getComputedStyle(parent).display;
+  let display = parentDisplays.get(parent);
+  if (display === undefined) {
+    display = getComputedStyle(parent).display;
+    parentDisplays.set(parent, display);
+  }
   if (!/(^|\s)(inline-)?(flex|grid)$/.test(display)) return;
   const cs = getComputedStyle(table);
   TABLE_SCROLL_ITEM_PROPS.forEach(function (prop) {

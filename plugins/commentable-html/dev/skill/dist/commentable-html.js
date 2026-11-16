@@ -726,7 +726,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.861.2";
+const CMH_VERSION= "1.861.3";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -13170,8 +13170,12 @@ var TABLE_SCROLL_A11Y=[
 ];
 const _tableScrollOwnedValues=new WeakMap();
 function _syncTableScrollState(){
-root.querySelectorAll("."+TABLE_SCROLL_CLASS).forEach(function(wrap){
-const scrolls=wrap.scrollWidth>wrap.clientWidth+1;
+const states=Array.from(root.querySelectorAll("."+TABLE_SCROLL_CLASS),function(wrap){
+return{wrap:wrap,scrolls:wrap.scrollWidth>wrap.clientWidth+1};
+});
+states.forEach(function(state){
+const wrap=state.wrap;
+const scrolls=state.scrolls;
 const mine=_tableScrollOwnedValues.get(wrap)||{};
 if(scrolls){
 const owned=[];
@@ -13189,7 +13193,8 @@ mine[name]=want;
 owned.push(name);
 });
 _tableScrollOwnedValues.set(wrap,mine);
-wrap.setAttribute("data-cmh-scroll-a11y",owned.join(" "));
+const stamp=owned.join(" ");
+if(wrap.getAttribute("data-cmh-scroll-a11y")!==stamp)wrap.setAttribute("data-cmh-scroll-a11y",stamp);
 }else if(wrap.hasAttribute("data-cmh-scroll-a11y")){
 Object.keys(mine).forEach(function(name){
 if(wrap.getAttribute(name)!==mine[name])return;
@@ -13213,14 +13218,32 @@ function _wrapTablesForScroll(){
 root.querySelectorAll("."+TABLE_SCROLL_CLASS+"[data-cmh-wrap]").forEach(function(wrap){
 if(!wrap.querySelector("table"))wrap.remove();
 });
+const pending=[];
+const pendingTables=new Set();
+const parentDisplays=new Map();
 root.querySelectorAll("table").forEach(function(t){
 if(t.closest("."+TABLE_SCROLL_CLASS))return;
 if(t.hasAttribute("data-cm-part"))return;
 if(!t.parentNode)return;
+for(let ancestor=t.parentElement.closest("table");ancestor;
+ancestor=ancestor.parentElement&&ancestor.parentElement.closest("table")){
+if(pendingTables.has(ancestor))return;
+}
 const wrap=document.createElement("div");
 wrap.className=TABLE_SCROLL_CLASS;
 wrap.setAttribute("data-cmh-wrap","1");
-_carryLayoutItemStyles(t,wrap);
+_carryLayoutItemStyles(t,wrap,parentDisplays);
+pending.push({table:t,wrap:wrap,parent:t.parentElement});
+pendingTables.add(t);
+});
+pending.forEach(function(item){
+const t=item.table;
+const wrap=item.wrap;
+if(!t.parentNode||t.hasAttribute("data-cm-part")||t.closest("."+TABLE_SCROLL_CLASS))return;
+if(t.parentElement!==item.parent){
+wrap.style.cssText= "";
+_carryLayoutItemStyles(t,wrap,new Map());
+}
 t.parentNode.insertBefore(wrap,t);
 wrap.appendChild(t);
 });
@@ -13234,10 +13257,14 @@ var TABLE_SCROLL_ITEM_PROPS=[
 "order","grid-column","grid-row","align-self","justify-self",
 "flex-grow","flex-shrink","flex-basis",
 ];
-function _carryLayoutItemStyles(table,wrap){
+function _carryLayoutItemStyles(table,wrap,parentDisplays){
 const parent=table.parentElement;
 if(!parent||typeof getComputedStyle!== "function")return;
-const display=getComputedStyle(parent).display;
+let display=parentDisplays.get(parent);
+if(display===undefined){
+display=getComputedStyle(parent).display;
+parentDisplays.set(parent,display);
+}
 if(!/(^|\s)(inline-)?(flex|grid)$/.test(display))return;
 const cs=getComputedStyle(table);
 TABLE_SCROLL_ITEM_PROPS.forEach(function(prop){
