@@ -4,6 +4,14 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.861.3] - 2026-11-15
+
+### Fixed
+
+- Batch table-scroll placement and geometry reads before DOM and accessibility writes,
+  avoiding per-table style recalculation stalls in table-heavy reports. Preserve flex/grid
+  placement, nested and late tables, draggable parts, keyboard access, and comment anchors.
+
 ## [1.861.2] - 2026-11-11
 
 ### Fixed
