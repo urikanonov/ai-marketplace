@@ -28,6 +28,146 @@ test.afterEach(() => {
   }
 });
 
+test.describe("diff selection copy", () => {
+  const LONG = "SELECT  alpha, beta FROM source WHERE enabled = true; ".repeat(8);
+  const DOC = [
+    "@@ -1,5 +1,6 @@",
+    "-old first",
+    "-",
+    "-old last",
+    "+new first",
+    "+",
+    "+new extra",
+    "+new last",
+    " shared context",
+    " " + LONG,
+  ].join("\n");
+
+  test.beforeEach(async ({ page }) => {
+    await denyExternalNetwork(page);
+    await page.goto(fileUrl(docWithDiff(DOC)));
+    await ready(page);
+    await page.evaluate(() => {
+      document.addEventListener("copy", (event) => {
+        window.__selectionCopy = {
+          text: event.clipboardData.getData("text/plain"),
+          types: [...event.clipboardData.types],
+          handled: event.defaultPrevented,
+        };
+      });
+    });
+  });
+
+  async function copySelection(page, start, end, reverse = false) {
+    return page.evaluate(({ start, end, reverse }) => {
+      function boundary(point) {
+        const el = document.querySelectorAll(point.selector)[point.index || 0];
+        if (point.offset === null) return [el, el.childNodes.length];
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let node, offset = point.offset;
+        while ((node = walker.nextNode())) {
+          if (offset <= node.length) return [node, offset];
+          offset -= node.length;
+        }
+        throw new Error("selection boundary exceeds text");
+      }
+      const a = boundary(start), b = boundary(end);
+      const selection = window.getSelection();
+      selection.setBaseAndExtent(...(reverse ? b : a), ...(reverse ? a : b));
+      window.__selectionCopy = null;
+      if (!document.execCommand("copy")) throw new Error("native copy failed");
+      return window.__selectionCopy;
+    }, { start, end, reverse });
+  }
+
+  test("copying either diff side preserves only its source lines and partial endpoints (CMH-DIFF-12)", async ({ page }) => {
+    for (const side of ["old", "new"]) {
+      for (const reverse of [false, true]) {
+        const selector = `.cmh-dl[data-side="${side}"] .cmh-dl-code`;
+        const last = side === "old" ? 2 : 3;
+        const copied = await copySelection(page,
+          { selector, index: 0, offset: 4 },
+          { selector, index: last, offset: 6 }, reverse);
+        expect(copied).toEqual({
+          text: side === "old" ? "first\n\nold la" : "first\n\nnew extra\nnew la",
+          types: ["text/plain"],
+          handled: true,
+        });
+      }
+    }
+    const copied = await copySelection(page,
+      { selector: '.cmh-dl[data-side="new"] .cmh-dl-gutter', offset: 0 },
+      { selector: '.cmh-dl[data-side="new"]', index: 4, offset: null });
+    expect(copied.text).toBe("new first\n\nnew extra\nnew last\nshared context");
+    const selector = '.cmh-dl[data-side="new"] .cmh-dl-code';
+    expect((await copySelection(page,
+      { selector, index: 2, offset: 0 },
+      { selector, index: 3, offset: 0 })).text).toBe("new extra\n");
+    expect((await copySelection(page,
+      { selector, index: 2, offset: 9 },
+      { selector, index: 3, offset: 8 })).text).toBe("\nnew last");
+  });
+
+  test("copying wrapped diff text adds no visual-wrap newlines and keeps real newlines (CMH-DIFF-12)", async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 900 });
+    for (const side of ["old", "new"]) {
+      const selector = `.cmh-dl-ctx[data-side="${side}"] .cmh-dl-code`;
+      const height = await page.locator(selector).nth(1).evaluate((el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        return range.getBoundingClientRect().height;
+      });
+      const lineHeight = await page.locator(selector).nth(1).evaluate((el) => parseFloat(getComputedStyle(el).lineHeight));
+      expect(height).toBeGreaterThan(lineHeight * 2);
+      expect((await copySelection(page,
+        { selector, index: 1, offset: 0 },
+        { selector, index: 1, offset: LONG.length })).text).toBe(LONG);
+      expect((await copySelection(page,
+        { selector, index: 0, offset: 0 },
+        { selector, index: 1, offset: LONG.length })).text).toBe("shared context\n" + LONG);
+    }
+    await page.locator(".cmh-diff-toggle").click();
+    const selector = ".cmh-diff-inline .cmh-dl-code";
+    expect((await copySelection(page,
+      { selector, index: 1, offset: 0 },
+      { selector, index: 3, offset: 8 })).text).toBe("old first\n\nold last");
+  });
+
+  test("diff copying leaves ordinary selections and focused text fields alone (CMH-DIFF-12)", async ({ page }) => {
+    expect((await copySelection(page,
+      { selector: "#commentRoot p", offset: 0 },
+      { selector: "#commentRoot p", offset: 5 })).handled).toBe(false);
+    const selector = '.cmh-dl-add .cmh-dl-code';
+    await copySelection(page, { selector, offset: 0 }, { selector, offset: 3 });
+    const copied = await page.evaluate(() => {
+      const input = document.createElement("textarea");
+      input.value = "editor text";
+      document.body.appendChild(input);
+      input.focus();
+      input.select();
+      document.execCommand("copy");
+      input.remove();
+      return window.__selectionCopy;
+    });
+    expect(copied.handled).toBe(false);
+    const editableCopy = await page.evaluate(() => {
+      const editor = document.createElement("div");
+      editor.contentEditable = "true";
+      editor.textContent = "rich editor text";
+      document.body.appendChild(editor);
+      editor.focus();
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      document.execCommand("copy");
+      editor.remove();
+      return window.__selectionCopy;
+    });
+    expect(editableCopy.handled).toBe(false);
+  });
+});
+
 // Hover a diff line and attach a comment through the "+ comment" affordance.
 async function addDiffComment(page, lineSelector, note) {
   await page.evaluate((sel) => {

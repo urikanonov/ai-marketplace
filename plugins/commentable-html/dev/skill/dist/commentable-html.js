@@ -726,7 +726,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.862.0";
+const CMH_VERSION= "1.862.1";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -4067,6 +4067,46 @@ function _closestDiffCode(node){
 const el=node&&(node.nodeType===1?node:node.parentElement);
 return el&&el.closest?el.closest(".cmh-dl-code"):null;
 }
+function copyDiffSelection(event){
+if(event.defaultPrevented||!event.clipboardData)return;
+const active=document.activeElement;
+if(active&&active.matches("input, textarea"))return;
+const selection=window.getSelection();
+if(!selection||selection.isCollapsed||selection.rangeCount!==1)return;
+const range=selection.getRangeAt(0);
+const rowFor=(node)=>{
+const el=node.nodeType===1?node:node.parentElement;
+return el&&el.closest(".cmh-dl");
+};
+const first=rowFor(range.startContainer),last=rowFor(range.endContainer);
+if(!first||!last||first.dataset.side!==last.dataset.side)return;
+const host=first.closest(".cmh-diff-host");
+const block=diffBlocks.find(b=>b.host===host);
+if(!block||block.tooBig||last.closest(".cmh-diff-host")!==host)return;
+const lines=[];
+host.querySelectorAll(".cmh-dl[data-line-key]").forEach((row)=>{
+if(row.dataset.side!==first.dataset.side)return;
+const line=block.lines[Number(row.dataset.lineKey)];
+if(!diffLineCommentable(line))return;
+const code=row.querySelector(".cmh-dl-code");
+if(!code||!range.intersectsNode(code))return;
+const part=document.createRange();
+part.selectNodeContents(code);
+if(range.compareBoundaryPoints(Range.START_TO_START,part)>0){
+part.setStart(range.startContainer,range.startOffset);
+}
+if(range.compareBoundaryPoints(Range.END_TO_END,part)<0){
+part.setEnd(range.endContainer,range.endOffset);
+}
+if(!part.collapsed){
+lines.push(line.text.length?part.toString():"");
+}
+});
+if(!lines.length)return;
+event.clipboardData.setData("text/plain",lines.join("\n"));
+event.preventDefault();
+}
+document.addEventListener("copy",copyDiffSelection);
 function diffSelectionInfo(block){
 const sel=window.getSelection();
 if(!sel||sel.isCollapsed||!sel.rangeCount)return null;
