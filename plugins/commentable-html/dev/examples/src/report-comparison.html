@@ -1,22 +1,97 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
+<meta name="commentable-html-validated-hash" content="1u8yp0g" />
+<meta name="commentable-html-validated" content="2026-11-17T15:10:08Z" />
+<meta name="commentable-html-created" content="2026-11-17T00:00:00Z" />
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="commentable-html-version" content="1.862.0" />
 <meta name="commentable-html-kind" content="report" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 3h18v14H9l-6 4z' fill='%23a5265e'/%3E%3C/svg%3E" />
-<title>Before and after: prepared results</title>
-<script type="module">
-  const mermaid = (await import("https://cdn.jsdelivr.net/npm/mermaid@12.2.0/dist/mermaid.esm.min.mjs")).default;
-  mermaid.initialize({ startOnLoad: true });
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.862.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
+<title>Prepared results comparison</title>
+
+<!-- Clawpilot theme detection (paste FIRST, before any other script) -->
+<script>
+  (() => {
+    const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+    // Default to light. ?clawpilotTheme=dark forces dark; ?clawpilotTheme=auto follows the OS.
+    const theme =
+      param === "auto"
+        ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+        : (param || "light");
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
 </script>
+
+<!-- ============================================================
+     BEGIN: commentable-html - FIRST PAINT
+     ============================================================
+     Non-content machinery, safe to skip. The layer stylesheet lives at the END of
+     the document (authored content comes first in source order), so this hides the
+     body until that stylesheet has been parsed and the one-line reveal script right
+     after it runs. The page canvas is painted here too - the theme background is one
+     of the tokens that stylesheet carries, so without it a dark-theme document would
+     flash white before the reveal. Scripting-off documents never set the class, so
+     nothing can stay hidden; a DOMContentLoaded listener and a timeout reveal the
+     document even if the stylesheet never arrives.
+-->
+<style id="cmhFirstPaintGuard">
+html.cmh-awaiting-style { background: #f7f4ef; color-scheme: light; }
+html.cmh-awaiting-style[data-theme="dark"] { background: #3d3b3a; color-scheme: dark; }
+html.cmh-awaiting-style body { visibility: hidden; }
+</style>
+<script>
+  (() => {
+    const d = document.documentElement;
+    d.classList.add("cmh-awaiting-style");
+    const reveal = () => d.classList.remove("cmh-awaiting-style");
+    window.__cmhRevealDocument = reveal;
+    document.addEventListener("DOMContentLoaded", reveal);
+    setTimeout(reveal, 3000);
+  })();
+</script>
+<!-- END: commentable-html - FIRST PAINT -->
 </head>
+
 <body>
+
+<!-- commentable-html machinery (non-content): a parse-state terminator, and the only thing the
+     layer puts before the authored content. A <script> in the HEAD whose bytes open a script-data
+     escape (`<!--` then `<script`) leaves the tokenizer in an escaped state that swallows
+     everything after it as script text until the next `</script>` - which, with the content first,
+     would be the authored document itself. The end tag inside this CSS comment is those bytes: the
+     escaped state ends here, before the content, and a browser parsing normally sees only an empty
+     stylesheet (`<style>` is raw text, so the bytes are a comment, not markup). -->
+<style>/* </script> */</style>
+
+<!-- ============================================================
+     Per-document content (NOT one of the five pasteable regions).
+     This block is the only place you customize per document. Set:
+       data-comment-key   - unique localStorage key for this doc
+       data-doc-label     - human-readable name used in copy
+       data-doc-source    - source filename written into the Copy bundle
+                            and into the agent-instructions block,
+                            so the agent knows which file to edit
+                            (directory components are always stripped).
+     The five BEGIN/END: commentable-html regions (all of them inside
+     the MACHINERY fence below this content) stay byte-for-byte
+     identical across docs, so upgrades are a clean replace. This
+     wrapper is intentionally NOT marked with the commentable-html
+     marker format - it is per-document content, not a template-owned
+     region.
+-->
 <div class="app">
-<main id="commentRoot" data-cmh-content-root data-comment-key="prepared-results-comparison" data-doc-label="Prepared results comparison" data-doc-source="report-comparison.html">
+<main id="commentRoot" data-cmh-content-root="" data-comment-key="prepared-results-comparison" data-doc-label="Prepared results comparison" data-doc-source="report-comparison.html" data-generated="2026-11-17T00:00:00Z">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
+
 <h1>Before and after: prepared results</h1>
+<div class="cmh-doc-stats cm-skip" data-cmh-doc-stats="1" role="note" aria-label="Document overview: 0 sections, 79 words, about 1 min read">
+<span class="cmh-doc-stat"><strong>0</strong> sections</span>
+<span class="cmh-doc-stat"><strong>79</strong> words</span>
+<span class="cmh-doc-stat">~<strong>1</strong> min read</span>
+</div>
 <p>Compare the two paths at readable size. On a narrow screen, scroll the comparison sideways.
 Hover a node or focus a diagram and press Enter to leave a comment.</p>
 <div class="cmh-diagram-comparison" tabindex="0" role="region" aria-label="Before and after processing flows">
@@ -64,10 +139,109 @@ flowchart TB
 </div>
 <p>The diagrams share column widths and label scale, not artificial spacer nodes or fixed heights.
 Their different numbers of steps naturally produce different heights.</p>
+
 <!-- END: commentable-html - CONTENT -->
 </main>
 </div>
+<!-- End of per-document content -->
+
+<!-- ============================================================
+     BEGIN: commentable-html - MACHINERY
+     ============================================================
+     EVERYTHING BELOW THIS MARKER IS NON-CONTENT MACHINERY, NOT AUTHORED PROSE:
+     the layer stylesheet, the comment-UI markup, the saved comment state, the
+     optional loaders, the vendored rich-content payload, any per-document
+     bootstrap that has to run after the layer, and the runtime. A reader
+     - human or machine - that wants this document's content has already read all of
+     it above, and can stop here: the matching END marker is the last thing in the
+     body. Each block below repeats that note and carries its own BEGIN/END markers.
+-->
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
+<noscript id="cmhPrintNoScript" class="cmh-print-noscript" aria-label="Review comments print fallback">
+  <h2>Review comments</h2>
+  <p>JavaScript is disabled, so live comment data cannot be materialized into this printout. Enable JavaScript and print again to include current comments, or export to Markdown from a JavaScript-enabled session.</p>
+</noscript>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <style>
+/* ============================================================
+   Clawpilot theme variables (required by the comment layer)
+   ============================================================ */
+:root {
+  color-scheme: light;
+  --cp-bg: #f7f4ef;
+  --cp-bg-elevated: #fcfbf8;
+  --cp-surface: #ffffff;
+  --cp-surface-soft: #f5f5f5;
+  --cp-border: #dedede;
+  --cp-border-strong: #919191;
+  --cp-text: #242424;
+  --cp-text-muted: #5c5c5c;
+  --cp-text-soft: #6f6f6f;
+  --cp-accent: #b11f4b;
+  --cp-accent-hover: #9a1a41;
+  --cp-accent-soft: rgba(177, 31, 75, 0.08);
+  --cp-accent-fg: #ffffff;
+  --cp-success: #16a34a;
+  --cp-danger: #dc2626;
+  --cp-warning: #f59e0b;
+  --cp-danger-soft: rgba(220, 38, 38, 0.08);
+  --cp-warning-soft: rgba(245, 158, 11, 0.10);
+  --cp-success-soft: rgba(22, 163, 74, 0.10);
+  --cp-link: #0078d4;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+  --cp-panel-strong: rgba(255, 255, 255, 0.96);
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --cp-bg: #3d3b3a;
+  --cp-bg-elevated: #343231;
+  --cp-surface: #292929;
+  --cp-surface-soft: #2e2e2e;
+  --cp-border: #474747;
+  --cp-border-strong: #5f5f5f;
+  --cp-text: #dedede;
+  --cp-text-muted: #919191;
+  --cp-text-soft: #b0b0b0;
+  --cp-accent: #fd8ea1;
+  --cp-accent-hover: #fb7b91;
+  --cp-accent-soft: rgba(253, 142, 161, 0.14);
+  --cp-accent-fg: #1a1a1a;
+  --cp-success: #4ade80;
+  --cp-danger: #f87171;
+  --cp-warning: #fbbf24;
+  --cp-danger-soft: rgba(248, 113, 113, 0.15);
+  --cp-warning-soft: rgba(251, 191, 36, 0.16);
+  --cp-success-soft: rgba(74, 222, 128, 0.16);
+  --cp-link: #4da6ff;
+  --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+  --cp-panel-strong: rgba(41, 41, 41, 0.96);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--cp-bg);
+  color: var(--cp-text);
+  line-height: 1.55;
+  font-size: 15px;
+}
+code, kbd, .mono { font-family: Consolas, "Courier New", Courier, monospace; font-size: 0.92em; }
+
+/* Demo page chrome. Replace with your own. */
+.app { max-width: 1800px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+.app h1 { margin: 0 0 0.5rem; }
+/* Section cards + heading reset are shipped by the layer (#commentRoot > section),
+   so the demo chrome no longer needs to style sections. */
+.app p { color: var(--cp-text); }
+.app pre.mermaid {
+  background: var(--cp-bg-elevated); border: 1px solid var(--cp-border);
+  border-radius: 10px; padding: 1rem; margin: 1rem 0;
+  overflow-x: auto; text-align: center; font-size: 0.85rem; line-height: 1.4;
+}
+
 /* ============================================================
    BEGIN: commentable-html - CSS
    ============================================================ */
@@ -75,19 +249,93 @@ Their different numbers of steps naturally produce different heights.</p>
    END: commentable-html - CSS
    ============================================================ */
 </style>
-<!-- BEGIN: commentable-html - HANDLED IDS -->
-<script id="handledCommentIds" type="application/json">[]</script>
+<!-- Per-document style slot. The layer stylesheet above is the LAST layer rule to be
+     parsed, so a per-document <style> belongs HERE (right after it) rather than in <head>:
+     at equal specificity the later rule wins, and a <style> left in the head would now lose
+     to the layer. This is the one author-owned slot inside the fence. -->
+<!-- commentable-html machinery (non-content): reveal the body now
+     that the layer stylesheet above has been parsed (see FIRST PAINT in the head). -->
+<script>
+  if (window.__cmhRevealDocument) window.__cmhRevealDocument();
+</script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
+<!-- ============================================================
+     BEGIN: commentable-html - HANDLED IDS
+     ============================================================
+     The agent appends every processed comment id to this JSON
+     array. On the next page load the IDs are removed from
+     localStorage, dropped from the live list, and filtered out
+     of any Copy or Export as Shareable so handled comments cannot
+     come back through a stale clipboard or blob.
+
+     Append-only. Duplicates tolerated. Order does not matter.
+     This block is the ONLY one the agent ever edits during a
+     review cycle - the other regions stay byte-identical.
+-->
+<script type="application/json" id="handledCommentIds">
+[]
+</script>
 <!-- END: commentable-html - HANDLED IDS -->
-<!-- BEGIN: commentable-html - EMBEDDED COMMENTS -->
-<script id="embeddedComments" type="application/json">[]</script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
+<!-- ============================================================
+     BEGIN: commentable-html - EMBEDDED COMMENTS
+     ============================================================
+     Optional in-HTML snapshot of the comments array, so the file
+     is self-contained for sharing. The "Export as Shareable" button in
+     the toolbar writes the current comments here and downloads a
+     fresh copy of the file (named <stem>-shareable.html); replace
+     the original with it to make the comments stick.
+
+     On load, the layer merges this list with the localStorage
+     copy by id. For each id present in both, the entry with the
+     later updatedAt (fallback createdAt) wins. The merged set
+     is then written back to localStorage so reloads converge.
+
+     Hand-edit only if you know what you are doing. Normal flow:
+     click "Export as Shareable" in the toolbar.
+-->
+<script type="application/json" id="embeddedComments">
+[]
+</script>
+<!-- Section-review markers (a dedicated store, kept out of the comments array and the
+     Copy-all bundle). Shareable/Offline export bakes the reviewed sections here so the
+     markers travel; Plain export strips this whole region. On load the layer merges this
+     with the localStorage copy and recomputes each section's state from its content hash. -->
+<script type="application/json" id="reviewedSections">
+{}
+</script>
 <!-- END: commentable-html - EMBEDDED COMMENTS -->
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - COMMENT UI
      ============================================================ -->
 <!-- END: commentable-html - COMMENT UI -->
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
+<!-- Mermaid loader (BUILD-OWNED). tools/build.py re-emits the canonical shell-baked loader
+     from assets/template.shell.html into every example on each build (CMH-MMD-09), so this
+     block is a placeholder only - edit the loader in the shell template, not here; an edit
+     here has no effect on the built example. -->
+<script type="module">
+  // Placeholder; build.py overwrites this with the canonical off-screen loader (CMH-MMD-07/08).
+  if (document.querySelector("pre.mermaid, div.mermaid")) {
+    await import("https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.esm.min.mjs");
+  }
+</script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
+<script type="application/json" id="cmhVendoredRichLibs">{"encoding":"gzip+base64","mermaidUrl":"https://cdn.jsdelivr.net/npm/mermaid@12.2.0/dist/mermaid.min.js","mermaidIntegrity":"sha384-8xUhuLNMjW/cI2Dacg3DR4WliYznvIg0LVG1stctThKD/YVrJFI9TNCFxft5NYgp","mermaidLicense":"The MIT License (MIT)\n\nCopyright (c) 2014 - 2022 Knut Sveidqvist\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE."}</script>
+
+<!-- commentable-html machinery (non-content; generated layer or per-document bootstrap) - skip to the END marker below. -->
 <!-- ============================================================
      BEGIN: commentable-html - JS
      ============================================================ -->
 <!-- END: commentable-html - JS -->
+
+<!-- END: commentable-html - MACHINERY -->
+
 </body>
 </html>

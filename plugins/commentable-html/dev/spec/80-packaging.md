@@ -6,7 +6,7 @@ The seven-document measurements in CMH-SIZE-04 record the original decision's
 baseline. The current pinned corpus also includes `report-editable-table.html`:
 class attributes occupy about 0.31 percent of it, and deleting them saves less
 than 1 KB gzipped. It also includes `report-comparison.html`: class attributes occupy
-about 0.28 percent of it, and deleting them saves about 0.4 KB gzipped. All nine
+about 0.29 percent of it, and deleting them saves about 0.5 KB gzipped. All nine
 documents run through the same unchanged class-budget and load-bearing-hazard tripwires.
 
 | Feature id | Behavior | Covering tests |
