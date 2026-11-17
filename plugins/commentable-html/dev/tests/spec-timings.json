@@ -98,6 +98,7 @@
   "74-links.spec.js": 29834,
   "74-preview-highlight.spec.js": 4807,
   "75-add-affordance.spec.js": 3551,
+  "76-diagram-comparison.spec.js": 4779,
   "76-diagram-gallery.spec.js": 29998,
   "76-render-while-hidden.spec.js": 1313,
   "77-chart-hidpi.spec.js": 4929,
