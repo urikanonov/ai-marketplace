@@ -4,6 +4,16 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.862.1] - 2026-11-17
+
+### Fixed
+
+- Copy selected diff text from only its selected side, without line numbers or diff markers.
+  Preserve source line breaks, blank lines, spacing, and partial selections without adding
+  newlines for visual wrapping. Ordinary document and text-field copying stay unchanged.
+- Raise the runtime, asset-loader, and shareable-template byte ceilings by 3000 bytes each
+  to accommodate the source-aware diff clipboard handler.
+
 ## [1.862.0] - 2026-11-17
 
 ### Added

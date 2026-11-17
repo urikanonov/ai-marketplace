@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.862.0<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.862.1<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -490,6 +490,14 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.862.1] - 2026-11-17</h3></div>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Copy selected diff text from only its selected side, without line numbers or diff markers. Preserve source line breaks, blank lines, spacing, and partial selections without adding newlines for visual wrapping. Ordinary document and text-field copying stay unchanged.</li>
+              <li>Raise the runtime, asset-loader, and shareable-template byte ceilings by 3000 bytes each to accommodate the source-aware diff clipboard handler.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.862.0] - 2026-11-17</h3></div>
             <div class="group-label">Added</div>
             <ul>
@@ -497,6 +505,8 @@
               <li>Document compact SVG-to-Mermaid conversion without spacer nodes or forced equal heights. Raise the CSS byte ceiling by 2 KB, lazy assets by 3 KB, and core/SHAREABLE by 1 KB each, for the comparison layout and shared-scale sizing alongside the current print cache.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.861.4] - 2026-11-17</h3></div>
             <div class="group-label">Fixed</div>
@@ -504,8 +514,6 @@
               <li>Refresh the single-page print cache only when content or screen geometry changes instead of repeatedly reflowing unchanged reports during startup. Preserve asynchronous chart and diagram sizing, early printing, print/cancel cleanup, and table/code scroll positions during refreshes.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.861.3] - 2026-11-15</h3></div>
             <div class="group-label">Fixed</div>
@@ -538,20 +546,7 @@
               <li>Deliberately raise the runtime JS/CSS, embedded-assets and Shareable size ceilings to 781/158/983/1001 KB for the storage capability check, accessible information popover and constrained-mode review/download guards. No dependency or rich-library payload is added.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.860.0] - 2026-11-08</h3></div>
-            <div class="group-label">Changed</div>
-            <ul>
-              <li>Avoid rescanning evidence on verified unchanged reloads, guarded by an additive layout fingerprint. Recover intact uniquely identified blocks locally instead of exhausting full-document scan budgets.</li>
-              <li>Index nested block containment, skip already-normalized replacement passes, and normalize changed prose using native string operations and sparse or single-array offset maps, and restrict small-edit arithmetic to the admissible edit band. Ambiguity rules, code semantics, original evidence and older-runtime compatibility are retained.</li>
-              <li>Share immutable context/layout work during legacy backfill and scope highlight wrapping to selected subtrees with in-place split-node index updates, retaining skipped-text exclusion and the existing backfill cap. Broad highlights batch index updates linearly without changing wrapping order; failed-wrap cleanup still rebuilds its index.</li>
-              <li>Resolve every root before bounded evidence recapture, distinguish exhausted budgets, and never inherit unchecked uniqueness across changed revisions/layouts.</li>
-              <li>Reuse proven quote uniqueness for contiguous block/context evidence, prioritize roots without occurrence identity during recapture, and exclude generated IDs from block/layout evidence. Quote-only comments retain safe selectors across successive edits.</li>
-              <li>Add reproducible paired Chromium latency, work and allocation benchmarks with raw samples.</li>
-              <li>Deliberately raise JS, embedded-assets and Shareable ceilings by 5 KB for indexed recovery and adaptive mapping (766/965/985 KB). No dependency or rich-library payload is added.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">433 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">434 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>
