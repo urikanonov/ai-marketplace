@@ -4,6 +4,17 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.862.0] - 2026-11-17
+
+### Added
+
+- Opt-in side-by-side Mermaid comparisons keep equal, readable-width columns, shared label scale, and natural
+  diagram heights instead of the gallery's thumbnail height. Narrow screens scroll the
+  comparison horizontally; existing galleries and standalone diagrams are unchanged.
+- Document compact SVG-to-Mermaid conversion without spacer nodes or forced equal heights.
+  Raise the CSS byte ceiling by 2 KB, lazy assets by 3 KB, and core/SHAREABLE by 1 KB
+  each, for the comparison layout and shared-scale sizing alongside the current print cache.
+
 ## [1.861.4] - 2026-11-17
 
 ### Fixed

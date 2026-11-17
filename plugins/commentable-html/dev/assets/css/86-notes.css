@@ -91,7 +91,8 @@
   border: 1px solid var(--cp-border, #bcd2ff); border-radius: 6px;
   cursor: pointer;
 }
-#commentRoot .cmh-note-fold::before { content: "\2212"; }          /* minus: expanded */
+/* minus: expanded */
+#commentRoot .cmh-note-fold::before { content: "\2212"; }
 #commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-fold::before { content: "+"; }
 /* Hover fills with the accent and repaints the glyph in the accent's own foreground token - the
    pairing 00-base.css already uses for a filled accent control. Filling with `var(--cp-accent)`

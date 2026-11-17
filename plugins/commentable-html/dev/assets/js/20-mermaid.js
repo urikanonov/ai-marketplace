@@ -92,11 +92,14 @@ var MERMAID_HOST_TOKENS = (typeof CMH_MERMAID_SEL === "string" ? CMH_MERMAID_SEL
 var GALLERY_CARD_SEL = MERMAID_HOST_TOKENS.map(function (s) {
   return ".cmh-diagram-gallery > " + s;
 }).concat([".cmh-diagram-gallery > figure"]).join(", ");
+var COMPARISON_HOST_SEL = MERMAID_HOST_TOKENS.map(function (s) {
+  return ".cmh-diagram-comparison > " + s + ", .cmh-diagram-comparison > figure > " + s;
+}).join(", ");
 // The generic clip/scroll containers a floating control is clamped to, outside a gallery card. Built
 // from the same normalized tokens: a literal `pre.mermaid` here left a standalone `div.mermaid` host
 // unrecognised, and its Add button escaped the host's box (issue #769).
 var CLIP_CONTAINER_SEL = MERMAID_HOST_TOKENS
-  .concat([CMH_CHART_FIGURE_SEL, "table", ".cmh-diff-raw"]).filter(Boolean).join(", ");
+  .concat([CMH_CHART_FIGURE_SEL, "table", ".cmh-diff-raw", ".cmh-diagram-comparison"]).filter(Boolean).join(", ");
 // Both container vocabularies in one selector, so one walk finds every recognised box: the gallery
 // CARD shapes (a direct child of `.cmh-diagram-gallery`, which includes a plain `<figure>` wrapper
 // that the generic list does not name) and the generic clip/scroll containers. Every list is
@@ -250,6 +253,23 @@ function updateMermaidWidthClass(host) {
   // Print-only marker, kept in sync on every pass (including for the gallery/deck hosts that return
   // early below) so it can never go stale against the rendered SVG.
   updateMermaidTallClass(host);
+  // Comparison columns own their SVG width on every screen size, including phones.
+  if (!IS_DECK && host.matches(COMPARISON_HOST_SEL) &&
+      (typeof window.matchMedia !== "function" || window.matchMedia("screen").matches)) {
+    host.classList.remove("cmh-diagram-wide", "cmh-diagram-scroll-fade", "cmh-diagram-narrow");
+    host.style.removeProperty("--cmh-diagram-cap");
+    const group = host.closest(".cmh-diagram-comparison");
+    const peers = Array.from(group.querySelectorAll(CMH_MERMAID_SEL)).filter((el) =>
+      el.matches(COMPARISON_HOST_SEL) && el.closest(".cmh-diagram-comparison") === group);
+    const widths = peers.map(mermaidIntrinsicWidth), widest = Math.max(0, ...widths);
+    // Fit the widest graph, then give its peers the SAME scale, not independently enlarged labels.
+    peers.forEach((el, i) => {
+      const scale = String(widest && widths[i] ? widths[i] / widest : 1);
+      if (el.style.getPropertyValue("--cmh-comparison-scale") !== scale)
+        el.style.setProperty("--cmh-comparison-scale", scale);
+    });
+    return;
+  }
   // A diagram inside a .cmh-diagram-gallery card is sized by CSS (fixed height + aspect-derived width;
   // the card hugs it). Match the EXACT card hosts the CSS sizes (a direct-child mermaid, or a mermaid
   // inside a direct-child figure), not any descendant, so a mermaid in a stray wrapper keeps normal
