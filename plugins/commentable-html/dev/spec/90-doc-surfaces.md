@@ -64,6 +64,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 
 | Feature id | Doc surface | Deck |
 | --- | --- | --- |
+| CMH-PRINT-10 | opt-out: background print-cache scheduling and startup performance, with no new reader action | opt-out: print-cache correctness and performance, not a feature needing a slide |
 | CMH-REATTACH-01 | tutorial, help | deck |
 | CMH-REATTACH-02 | tutorial, help | deck |
 | CMH-REATTACH-03 | tutorial, help | deck |

@@ -417,10 +417,12 @@ function setupSinglePagePrint() {
   // the page spills. Measuring HERE instead (charts/mermaid settled, no print pipeline) is reliable,
   // and apply() uses the cache. The appendix is added at print time (synchronous DOM, safe then).
   function computeAndCache() {
-    if (measuring || inPrintMedia()) return;
+    if (measuring || applied || inPrintMedia()) return;
     measuring = true;
     ensureStyle();
     const prev = styleEl.textContent;
+    const scrolled = Array.from(root.querySelectorAll(".cmh-table-scroll,.cmh-editable-table-scroll,pre"))
+      .filter(el => el.scrollLeft || el.scrollTop).map(el => [el, el.scrollLeft, el.scrollTop]);
     try {
       styleEl.textContent = measureCss();
       void document.documentElement.offsetHeight;
@@ -429,39 +431,51 @@ function setupSinglePagePrint() {
       const h = measureHeight();
       if (w > 0 && h > 0) { cachedW = w; cachedH = h; }
     } catch (e) { /* keep the last good cache */ }
-    finally { styleEl.textContent = prev; measuring = false; }
+    finally {
+      styleEl.textContent = prev;
+      scrolled.forEach(([el, x, y]) => { el.scrollLeft = x; el.scrollTop = y; });
+      measuring = false;
+    }
   }
 
-  // Refresh the cache when the layout can change: initial progressive settle (charts/mermaid render
-  // async over the first few seconds), window resize, and a ResizeObserver on chart canvases (which
-  // settle asynchronously). computeAndCache measures at the NATURAL (un-narrowed) width, where the
-  // canvas cap in measureCss (max-width:100%) is a no-op because a canvas already fits its container -
-  // so no canvas is resized and observing canvases cannot loop on our own measurement. The width
-  // narrowing that scales canvases (layoutAtWidthCss) only runs synchronously inside apply() at print
-  // time, not here.
+  // Cache once, then only when content or geometry changes. Observe screen geometry, not repeated
+  // settle timers: unchanged reports must not keep paying for a print-layout reflow. Measurement
+  // restores its stylesheet synchronously, before ResizeObserver sees the final screen layout.
   let rafId = 0;
   function scheduleCache() {
-    if (rafId) return;
+    if (rafId || applied || inPrintMedia()) return;
     const raf = window.requestAnimationFrame || function (f) { return setTimeout(f, 32); };
     rafId = raf(function () { rafId = 0; computeAndCache(); });
   }
-  [0, 250, 700, 1500, 3000].forEach(function (t) { setTimeout(scheduleCache, t); });
+  scheduleCache();
   window.addEventListener("resize", function () { if (!inPrintMedia()) scheduleCache(); });
+  let observeCanvases = function () {};
   if (window.ResizeObserver) {
     try {
       const ro = new ResizeObserver(function () { scheduleCache(); });
-      const observeCanvases = function () {
+      ro.observe(root);
+      observeCanvases = function () {
         const cs = root.querySelectorAll(".chart-wrap canvas");
         for (let i = 0; i < cs.length; i++) { try { ro.observe(cs[i]); } catch (e) { /* ignore */ } }
       };
       observeCanvases();
-      // Refresh the cache on any content mutation while not printing too, so late-inserted content
-      // (a Mermaid SVG rendered after the last settle timer, lazy content) updates cachedH - not just
-      // an observed canvas resize. scheduleCache is rAF-debounced, and computeAndCache mutates only a
-      // <head> <style> (not #commentRoot), so this never loops on our own measurement.
-      const mo = new MutationObserver(function () { observeCanvases(); if (!inPrintMedia()) scheduleCache(); });
-      mo.observe(root, { childList: true, subtree: true });
     } catch (e) { /* observers are best-effort */ }
+  }
+  if (window.MutationObserver) {
+    const mo = new MutationObserver(function (records) {
+      if (applied || inPrintMedia()) return;
+      // The body-root fallback includes our stylesheet; its own writes are not content changes.
+      const changed = records.some(function (record) {
+        if (styleEl && (record.target === styleEl || styleEl.contains(record.target))) return false;
+        if (record.type !== "childList") return true;
+        return [].some.call(record.addedNodes, function (n) { return n !== styleEl; })
+          || [].some.call(record.removedNodes, function (n) { return n !== styleEl; });
+      });
+      if (!changed) return;
+      observeCanvases();
+      scheduleCache();
+    });
+    mo.observe(root, { childList: true, subtree: true, characterData: true, attributes: true });
   }
 
   function apply() {
@@ -541,6 +555,7 @@ function setupSinglePagePrint() {
   function clear() {
     applied = false;
     if (styleEl) styleEl.textContent = "";
+    scheduleCache();
   }
 
   window.addEventListener("beforeprint", apply);
@@ -551,7 +566,7 @@ function setupSinglePagePrint() {
     // before the print pipeline finishes rasterizing, which would drop the @page/pins mid-render and
     // spill the page; `afterprint` is the reliable teardown signal.
     const query = window.matchMedia("print");
-    const onChange = function (event) { if (event.matches) apply(); };
+    const onChange = function (event) { if (event.matches) apply(); else scheduleCache(); };
     if (query.addEventListener) query.addEventListener("change", onChange);
     else if (query.addListener) query.addListener(onChange);
     if (query.matches) apply();
