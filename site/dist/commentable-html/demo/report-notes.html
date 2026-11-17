@@ -2,12 +2,12 @@
 <html lang="en" data-theme="light">
 <head>
 <meta name="commentable-html-validated-hash" content="9g9c6h" />
-<meta name="commentable-html-validated" content="2026-11-15T23:59:59Z" />
+<meta name="commentable-html-validated" content="2026-11-17T23:59:59Z" />
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.861.3" />
+<meta name="commentable-html-version" content="1.861.4" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.861.3","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.861.4","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Design review sign-off</title>
 
@@ -81,7 +81,7 @@ html.cmh-awaiting-style body { visibility: hidden; }
      content, not a template-owned region.
 -->
 <div class="app">
-<main data-generated="2026-11-15" id="commentRoot" data-cmh-content-root data-comment-key="commentable-html-notes-demo" data-doc-label="Design review sign-off" data-doc-source="report-notes.html">
+<main data-generated="2026-11-17" id="commentRoot" data-cmh-content-root data-comment-key="commentable-html-notes-demo" data-doc-label="Design review sign-off" data-doc-source="report-notes.html">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
 <h1 id="top">Design review sign-off</h1>
@@ -4909,7 +4909,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.861.3";
+const CMH_VERSION= "1.861.4";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -22192,10 +22192,12 @@ return"html,body,.app{width:"+cw+"px !important;max-width:none !important;"
 +"max-width:"+cw+"px !important;width:min(100%,"+cw+"px) !important}";
 }
 function computeAndCache(){
-if(measuring||inPrintMedia())return;
+if(measuring||applied||inPrintMedia())return;
 measuring=true;
 ensureStyle();
 const prev=styleEl.textContent;
+const scrolled=Array.from(root.querySelectorAll(".cmh-table-scroll,.cmh-editable-table-scroll,pre"))
+.filter(el=>el.scrollLeft||el.scrollTop).map(el=>[el,el.scrollLeft,el.scrollTop]);
 try{
 styleEl.textContent=measureCss();
 void document.documentElement.offsetHeight;
@@ -22204,27 +22206,46 @@ const w=Math.max(colW,root.scrollWidth);
 const h=measureHeight();
 if(w>0&&h>0){cachedW=w;cachedH=h;}
 }catch(e){}
-finally{styleEl.textContent=prev;measuring=false;}
+finally{
+styleEl.textContent=prev;
+scrolled.forEach(([el,x,y])=>{el.scrollLeft=x;el.scrollTop=y;});
+measuring=false;
+}
 }
 let rafId=0;
 function scheduleCache(){
-if(rafId)return;
+if(rafId||applied||inPrintMedia())return;
 const raf=window.requestAnimationFrame||function(f){return setTimeout(f,32);};
 rafId=raf(function(){rafId=0;computeAndCache();});
 }
-[0,250,700,1500,3000].forEach(function(t){setTimeout(scheduleCache,t);});
+scheduleCache();
 window.addEventListener("resize",function(){if(!inPrintMedia())scheduleCache();});
+let observeCanvases=function(){};
 if(window.ResizeObserver){
 try{
 const ro=new ResizeObserver(function(){scheduleCache();});
-const observeCanvases=function(){
+ro.observe(root);
+observeCanvases=function(){
 const cs=root.querySelectorAll(".chart-wrap canvas");
 for(let i=0;i<cs.length;i++){try{ro.observe(cs[i]);}catch(e){}}
 };
 observeCanvases();
-const mo=new MutationObserver(function(){observeCanvases();if(!inPrintMedia())scheduleCache();});
-mo.observe(root,{childList:true,subtree:true});
 }catch(e){}
+}
+if(window.MutationObserver){
+const mo=new MutationObserver(function(records){
+if(applied||inPrintMedia())return;
+const changed=records.some(function(record){
+if(styleEl&&(record.target===styleEl||styleEl.contains(record.target)))return false;
+if(record.type!== "childList")return true;
+return[].some.call(record.addedNodes,function(n){return n!==styleEl;})
+||[].some.call(record.removedNodes,function(n){return n!==styleEl;});
+});
+if(!changed)return;
+observeCanvases();
+scheduleCache();
+});
+mo.observe(root,{childList:true,subtree:true,characterData:true,attributes:true});
 }
 function apply(){
 if(applied)return;
@@ -22264,12 +22285,13 @@ styleEl.textContent= "";
 function clear(){
 applied=false;
 if(styleEl)styleEl.textContent= "";
+scheduleCache();
 }
 window.addEventListener("beforeprint",apply);
 window.addEventListener("afterprint",clear);
 if(window.matchMedia){
 const query=window.matchMedia("print");
-const onChange=function(event){if(event.matches)apply();};
+const onChange=function(event){if(event.matches)apply();else scheduleCache();};
 if(query.addEventListener)query.addEventListener("change",onChange);
 else if(query.addListener)query.addListener(onChange);
 if(query.matches)apply();
