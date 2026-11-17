@@ -726,7 +726,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.861.4";
+const CMH_VERSION= "1.862.0";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -2470,8 +2470,11 @@ var MERMAID_HOST_TOKENS=(typeof CMH_MERMAID_SEL=== "string"?CMH_MERMAID_SEL:"")
 var GALLERY_CARD_SEL=MERMAID_HOST_TOKENS.map(function(s){
 return".cmh-diagram-gallery > "+s;
 }).concat([".cmh-diagram-gallery > figure"]).join(", ");
+var COMPARISON_HOST_SEL=MERMAID_HOST_TOKENS.map(function(s){
+return".cmh-diagram-comparison > "+s+", .cmh-diagram-comparison > figure > "+s;
+}).join(", ");
 var CLIP_CONTAINER_SEL=MERMAID_HOST_TOKENS
-.concat([CMH_CHART_FIGURE_SEL,"table",".cmh-diff-raw"]).filter(Boolean).join(", ");
+.concat([CMH_CHART_FIGURE_SEL,"table",".cmh-diff-raw",".cmh-diagram-comparison"]).filter(Boolean).join(", ");
 var CLIP_CHAIN_SEL=[GALLERY_CARD_SEL,CLIP_CONTAINER_SEL].filter(Boolean).join(", ");
 function _clipsItsContent(el){
 if(typeof getComputedStyle!== "function")return true;
@@ -2567,6 +2570,21 @@ const NARROW_ENTER=0.82,NARROW_EXIT=0.90,NARROW_CAP=1.4;
 function updateMermaidWidthClass(host){
 if(!host)return;
 updateMermaidTallClass(host);
+if(!IS_DECK&&host.matches(COMPARISON_HOST_SEL)&&
+(typeof window.matchMedia!== "function"||window.matchMedia("screen").matches)){
+host.classList.remove("cmh-diagram-wide","cmh-diagram-scroll-fade","cmh-diagram-narrow");
+host.style.removeProperty("--cmh-diagram-cap");
+const group=host.closest(".cmh-diagram-comparison");
+const peers=Array.from(group.querySelectorAll(CMH_MERMAID_SEL)).filter((el)=>
+el.matches(COMPARISON_HOST_SEL)&&el.closest(".cmh-diagram-comparison")===group);
+const widths=peers.map(mermaidIntrinsicWidth),widest=Math.max(0,...widths);
+peers.forEach((el,i)=>{
+const scale=String(widest&&widths[i]?widths[i]/widest:1);
+if(el.style.getPropertyValue("--cmh-comparison-scale")!==scale)
+el.style.setProperty("--cmh-comparison-scale",scale);
+});
+return;
+}
 const isGalleryHost=host.matches&&host.matches(".cmh-diagram-gallery > .mermaid, .cmh-diagram-gallery > figure > .mermaid");
 if(isGalleryHost){
 if(typeof requestAnimationFrame=== "function")requestAnimationFrame(()=>markGalleryCardScrollable(host));
@@ -17930,7 +17948,7 @@ function setupSinglePagePrint(){
 if(IS_DECK||setupSinglePagePrint._done)return;
 setupSinglePagePrint._done=true;
 function hasBlockStackingContainer(){
-if(root.querySelector(".visual-grid, .cmh-diagram-gallery"))return true;
+if(root.querySelector(".visual-grid, .cmh-diagram-gallery, .cmh-diagram-comparison"))return true;
 const widgets=root.querySelectorAll("[data-cm-widget]");
 for(let i=0;i<widgets.length;i++){
 const d=getComputedStyle(widgets[i]).display;

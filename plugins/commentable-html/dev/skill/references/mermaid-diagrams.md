@@ -9,6 +9,7 @@ The layer adds structural commenting to rendered mermaid diagrams inside `#comme
 - [How it behaves at runtime](#how-it-behaves-at-runtime)
 - [Diagram width and dense layouts](#diagram-width-and-dense-layouts)
 - [A gallery of several diagrams (use `.cmh-diagram-gallery`)](#a-gallery-of-several-diagrams-use-cmh-diagram-gallery)
+- [Preserve a side-by-side comparison](#preserve-a-side-by-side-comparison)
 - [Mermaid loader and CDN-fallback guidance](#mermaid-loader-and-cdn-fallback-guidance)
 
 ## Recommended markup
@@ -78,6 +79,65 @@ Keep `cm-skip` on gallery diagrams you do not want individually commentable. Do 
 Put diagram CONTAINERS directly inside the gallery: a `<pre class="mermaid">`, a `<div class="mermaid">`, or a `<figure>` is framed as a card (a stray `<table>` or list is left alone, not forced into the layout). To caption a diagram, wrap it in a `<figure>` with a `<figcaption>` - the figure hugs the diagram with the caption centred below (a caption longer than a narrow diagram wraps to a readable, bounded width with the diagram centred above it, rather than either stretching the card to the caption's full length or towering into a tiny-width vertical strip), and if the diagram is wide enough to scroll horizontally the caption stays PINNED in view (it does not scroll off with the diagram) so the label is never lost. This gallery is for DIAGRAMS - put charts (a `figure.chart`) in the separate chart gallery (`.visual-grid`), not here, so each keeps its own framing. Every diagram is shown WHOLE at readable size in a hugging card whose DIAGRAM height is uniform across the row (a captioned figure's total height also includes its caption), so nothing is clipped, slivered, or tiny; a diagram too wide for the card scrolls horizontally at full height rather than being crushed, and an overflowing card is keyboard-focusable so a keyboard-only user can scroll it with the arrow keys. On phones each diagram expands to full width, and print stacks them one per column at natural size. The whole-diagram "Comment on diagram" button is clip-aware, so it stays clamped inside the card.
 
 Because the gallery gives every diagram the SAME fixed height, it suits diagrams of roughly comparable, moderate aspect ratios (the common case: a handful of flowcharts, a state machine, a pie, a gantt). An EXTREME-tall diagram (for example a long vertical flowchart or a many-step sequence with a very high height-to-width ratio) is scaled down to that fixed height and can become small; such a diagram reads better OUTSIDE the gallery, as a normal standalone `<pre class="mermaid">` where the layer lets it take its full height and scroll. Keep gallery members to a sensible aspect; place an oversized one on its own.
+
+## Preserve a side-by-side comparison
+
+When converting two tall SVG flows into Mermaid, use `.cmh-diagram-comparison`, NOT the
+fixed-height gallery. Each column stays at least 30rem wide, fills an equal share of the
+available width, and lets its SVG take its natural height. The widest graph fills its
+column; its peers use the same scale so matching labels do not balloon in the simpler graph.
+The columns remain side by side
+on phones with a local horizontal scrollbar instead of shrinking the labels or widening
+the whole page. Give the scroll region a keyboard tab stop and an accessible name:
+
+```html
+<div class="cmh-diagram-comparison" tabindex="0" role="region" aria-label="Before and after flows">
+  <figure>
+    <figcaption><strong>Before</strong></figcaption>
+    <pre class="mermaid cm-skip">flowchart TB
+      A["Request"] --> B["Read"] --> C["Prepare"] --> D["Return"]</pre>
+  </figure>
+  <figure>
+    <figcaption><strong>After</strong></figcaption>
+    <pre class="mermaid cm-skip">flowchart TB
+      A["Request"] --> B["Check cache"]
+      B -->|miss| C["Read and prepare"]
+      C --> D["Return"]
+      B -->|hit| D</pre>
+  </figure>
+</div>
+```
+
+Keep the original document's usable content width when retrofitting; the comparison uses
+the space it is given. Direct `pre.mermaid` / `div.mermaid` children also work without a
+figure. Do not combine comparison and gallery classes. This helper is for flow documents,
+not deck slides; print falls back to natural stacked figures.
+
+Mermaid preserves graph semantics, not an SVG's hand-positioned coordinates. Keep the
+original top-to-bottom direction for a vertical comparison, use short node/edge labels,
+wrap long method names onto separate lines, set a generous `flowchart.wrappingWidth` for
+long labels, and tune `flowchart.nodeSpacing` /
+`flowchart.rankSpacing` together for both diagrams when necessary. For technical labels,
+SVG text avoids HTML-label reflow; put the same front matter before each flowchart:
+
+```yaml
+---
+config:
+  look: classic
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 420
+    nodeSpacing: 24
+    rankSpacing: 28
+---
+```
+
+Keep explicit `<br/>` breaks between the short description and its method name.
+Do not add invisible spacer nodes, long dash edges, fixed SVG heights, minimum card/host
+heights, or blank ranks to force identical
+node positions: they introduce odd internal gaps or tiny text. Different step counts can
+produce different heights; top alignment is intentional. If exact row-by-row alignment
+is mandatory, retain the original SVG rather than promising pixel-identical Mermaid.
 
 ## Mermaid loader and CDN-fallback guidance
 

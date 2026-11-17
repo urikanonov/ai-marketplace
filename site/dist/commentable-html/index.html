@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.861.4<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.862.0<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -400,6 +400,7 @@
           <button class="demo-tab" type="button" role="tab" id="demo-tab-garden" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-community-garden.html" data-file="report-community-garden.html" data-label="Community Garden Plan">Community Garden Plan</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-triage" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-triage.html" data-file="report-triage.html" data-label="Triage Board">Triage Board</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-metrics" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-metrics.html" data-file="report-metrics.html" data-label="Visuals Matrix">Visuals Matrix</button>
+          <button class="demo-tab" type="button" role="tab" id="demo-tab-comparison" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-comparison.html" data-file="report-comparison.html" data-label="Diagram Comparison">Diagram Comparison</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-showcase" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/deck-showcase.html" data-file="deck-showcase.html" data-label="Showcase Deck">Showcase Deck</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-checklist" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-checklist.html" data-file="report-checklist.html" data-label="Dynamic Controls">Dynamic Controls</button>
           <button class="demo-tab" type="button" role="tab" id="demo-tab-tables" aria-selected="false" aria-controls="demo-panel" tabindex="-1" data-demo="demo/report-editable-table.html" data-file="report-editable-table.html" data-label="Editable Tables">Editable Tables</button>
@@ -489,12 +490,22 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.862.0] - 2026-11-17</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Opt-in side-by-side Mermaid comparisons keep equal, readable-width columns, shared label scale, and natural diagram heights instead of the gallery&#x27;s thumbnail height. Narrow screens scroll the comparison horizontally; existing galleries and standalone diagrams are unchanged.</li>
+              <li>Document compact SVG-to-Mermaid conversion without spacer nodes or forced equal heights. Raise the CSS byte ceiling by 2 KB, lazy assets by 3 KB, and core/SHAREABLE by 1 KB each, for the comparison layout and shared-scale sizing alongside the current print cache.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.861.4] - 2026-11-17</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Refresh the single-page print cache only when content or screen geometry changes instead of repeatedly reflowing unchanged reports during startup. Preserve asynchronous chart and diagram sizing, early printing, print/cancel cleanup, and table/code scroll positions during refreshes.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.861.3] - 2026-11-15</h3></div>
             <div class="group-label">Fixed</div>
@@ -502,8 +513,6 @@
               <li>Batch table-scroll placement and geometry reads before DOM and accessibility writes, avoiding per-table style recalculation stalls in table-heavy reports. Preserve flex/grid placement, nested and late tables, draggable parts, keyboard access, and comment anchors.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.861.2] - 2026-11-11</h3></div>
             <div class="group-label">Fixed</div>
@@ -542,16 +551,7 @@
               <li>Deliberately raise JS, embedded-assets and Shareable ceilings by 5 KB for indexed recovery and adaptive mapping (766/965/985 KB). No dependency or rich-library payload is added.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.859.1] - 2026-11-08</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Show the orange Open comment bubble when hovering or clicking a commented link, so its existing comment can be edited in place. Keep it clear of the link&#x27;s Add Comment button, including at viewport edges and in short tables, without changing link navigation or adding further comments.</li>
-              <li>In narrow, short tables, reposition both hover controls when they fit together. When space cannot fit both, prioritize Add Comment and hide the orange bubble until space becomes available; existing comments remain editable through the sidebar.</li>
-              <li>Deliberately raise only the runtime JS ceiling from 760 KB to 761 KB for the shared link bubble and collision avoidance; all other component size ceilings remain unchanged.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">432 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">433 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

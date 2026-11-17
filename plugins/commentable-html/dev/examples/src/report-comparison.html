@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="commentable-html-version" content="1.862.0" />
+<meta name="commentable-html-kind" content="report" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 3h18v14H9l-6 4z' fill='%23a5265e'/%3E%3C/svg%3E" />
+<title>Before and after: prepared results</title>
+<script type="module">
+  const mermaid = (await import("https://cdn.jsdelivr.net/npm/mermaid@12.2.0/dist/mermaid.esm.min.mjs")).default;
+  mermaid.initialize({ startOnLoad: true });
+</script>
+</head>
+<body>
+<div class="app">
+<main id="commentRoot" data-cmh-content-root data-comment-key="prepared-results-comparison" data-doc-label="Prepared results comparison" data-doc-source="report-comparison.html">
+<!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
+<h1>Before and after: prepared results</h1>
+<p>Compare the two paths at readable size. On a narrow screen, scroll the comparison sideways.
+Hover a node or focus a diagram and press Enter to leave a comment.</p>
+<div class="cmh-diagram-comparison" tabindex="0" role="region" aria-label="Before and after processing flows">
+  <figure>
+    <figcaption><strong>Before: cache raw data</strong><br />A raw hit still needs preparation.</figcaption>
+    <pre class="mermaid cm-skip">---
+config:
+  look: classic
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 420
+    nodeSpacing: 24
+    rankSpacing: 28
+---
+flowchart TB
+  A["Request a window"] --> B["Check raw cache"]
+  B -->|miss| C["Read missing data"]
+  C --> D["Merge and cache raw data"]
+  D --> E["Prepare sequence"]
+  B -->|hit| E
+  E --> F["Return fresh result"]</pre>
+  </figure>
+  <figure>
+    <figcaption><strong>After: cache prepared data too</strong><br />A prepared hit reuses the result.</figcaption>
+    <pre class="mermaid cm-skip">---
+config:
+  look: classic
+  flowchart:
+    htmlLabels: false
+    wrappingWidth: 420
+    nodeSpacing: 24
+    rankSpacing: 28
+---
+flowchart TB
+  A["Request a window"] --> B["Check prepared cache"]
+  B -->|miss| C["Check raw cache"]
+  C -->|miss| D["Read missing data"]
+  D --> E["Merge and cache raw data"]
+  E --> F["Prepare sequence"]
+  C -->|hit| F
+  F --> G["Cache prepared result"]
+  G --> H["Return shared result"]
+  B -->|hit| H</pre>
+  </figure>
+</div>
+<p>The diagrams share column widths and label scale, not artificial spacer nodes or fixed heights.
+Their different numbers of steps naturally produce different heights.</p>
+<!-- END: commentable-html - CONTENT -->
+</main>
+</div>
+<style>
+/* ============================================================
+   BEGIN: commentable-html - CSS
+   ============================================================ */
+/* ============================================================
+   END: commentable-html - CSS
+   ============================================================ */
+</style>
+<!-- BEGIN: commentable-html - HANDLED IDS -->
+<script id="handledCommentIds" type="application/json">[]</script>
+<!-- END: commentable-html - HANDLED IDS -->
+<!-- BEGIN: commentable-html - EMBEDDED COMMENTS -->
+<script id="embeddedComments" type="application/json">[]</script>
+<!-- END: commentable-html - EMBEDDED COMMENTS -->
+<!-- ============================================================
+     BEGIN: commentable-html - COMMENT UI
+     ============================================================ -->
+<!-- END: commentable-html - COMMENT UI -->
+<!-- ============================================================
+     BEGIN: commentable-html - JS
+     ============================================================ -->
+<!-- END: commentable-html - JS -->
+</body>
+</html>

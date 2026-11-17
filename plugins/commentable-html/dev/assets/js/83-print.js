@@ -214,14 +214,14 @@ function setupSinglePagePrint() {
   // Single-page sizing is reliable only when the PRINT layout matches the ON-SCREEN layout, because
   // Chromium locks the print @page size to a measurement taken at `beforeprint` (in screen media,
   // before print media activates). A multi-column gallery (`.visual-grid`), a diagram gallery
-  // (`.cmh-diagram-gallery`, which block-stacks and drops its per-card height cap for print), or a
-  // grid/flex widget (a kanban board) reflows grid->block for print (92-print.css) and async-resizes
+  // (`.cmh-diagram-gallery`, which block-stacks and drops its per-card height cap for print),
+  // comparison, or grid/flex widget (a kanban board) reflows grid->block for print and async-resizes
   // its charts/diagrams, so its printed height differs from - and cannot be reliably measured before -
   // the @page lock. Leave a document that contains such a container on normal pagination (its content
   // is never clipped; it just spans standard pages). Prose, tables, inline charts, standalone
   // diagrams, code, KQL, and diffs all keep the single-page treatment.
   function hasBlockStackingContainer() {
-    if (root.querySelector(".visual-grid, .cmh-diagram-gallery")) return true;
+    if (root.querySelector(".visual-grid, .cmh-diagram-gallery, .cmh-diagram-comparison")) return true;
     const widgets = root.querySelectorAll("[data-cm-widget]");
     for (let i = 0; i < widgets.length; i++) {
       const d = getComputedStyle(widgets[i]).display;
