@@ -111,6 +111,9 @@ Insert after and Remove; Escape or clicking outside closes it. Populated deletio
 requires confirmation. Undo/Redo restore edits and structure within the session;
 their hover/focus tooltips describe the next operation, including a pending cell edit.
 Toolbar and menu actions have decorative icons without changing accessible names.
+Header sort, comment and menu controls stay grouped at the inline end. In narrow
+columns they wrap below the title instead of crowding its text; the title can wrap
+beside the grip without changing the saved column width.
 On hover-capable devices, boundary + appears only near a border in the # column, not while
 hovering data cells or the middle of a row number. Keyboard focus also reveals it; touch
 controls remain visible. Boundary + inserts before the target model row; bottom New appends. Both clear view sorting and

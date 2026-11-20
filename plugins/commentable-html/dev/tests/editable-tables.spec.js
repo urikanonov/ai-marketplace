@@ -429,6 +429,48 @@ test("sort and column menu stay grouped at the header end (CMH-TABLE-19)", async
   await expect(page.locator(".cm-composer").last()).toBeVisible();
 });
 
+test("narrow headers separate readable titles from controls in both directions (CMH-TABLE-19)", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await open(page, DOC.replace("Discussion item</th>", "Updated</th>")
+    .replace('data-cmh-column="question"', 'data-cmh-column="question" data-cmh-width="150"')
+    .replace('data-cmh-column="owner"', 'data-cmh-column="owner" data-cmh-width="96"')
+    .replace('data-cmh-column="status"', 'data-cmh-column="status" data-cmh-width="360"'));
+  for (const width of [1600, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    for (const direction of ["ltr", "rtl"]) {
+      await table(page).evaluate((el, dir) => el.dir = dir, direction);
+      const headers = await table(page).locator("thead th[data-cmh-column]").evaluateAll(items => items.map(th => {
+        const bounds = th.getBoundingClientRect();
+        const title = th.querySelector(".cmh-table-title");
+        const range = document.createRange();
+        range.selectNodeContents(title);
+        const text = [...range.getClientRects()].map(r => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }));
+        const controls = [...th.querySelectorAll(".cmh-table-drag, .cmh-sort-ctrl, .cmh-table-column-comment, summary")]
+          .map(el => el.getBoundingClientRect()).map(r => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }));
+        return { id: th.dataset.cmhColumn, label: title.textContent, left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom, text, controls };
+      }));
+      for (const header of headers) {
+        expect(header.right - header.left).toBeCloseTo({ question: 150, owner: 96, status: 360 }[header.id], 0);
+        if (header.label === "Updated") expect(header.text, `${width}px ${direction}: Updated stays on one line`).toHaveLength(1);
+        for (const rect of [...header.text, ...header.controls]) {
+          expect(rect.left).toBeGreaterThanOrEqual(header.left - 1);
+          expect(rect.right).toBeLessThanOrEqual(header.right + 1);
+          expect(rect.top).toBeGreaterThanOrEqual(header.top - 1);
+          expect(rect.bottom).toBeLessThanOrEqual(header.bottom + 1);
+        }
+        const rects = [...header.text, ...header.controls];
+        for (let i = 0; i < rects.length; i++) {
+          for (const other of rects.slice(i + 1)) {
+            const overlapX = Math.min(rects[i].right, other.right) - Math.max(rects[i].left, other.left);
+            const overlapY = Math.min(rects[i].bottom, other.bottom) - Math.max(rects[i].top, other.top);
+            expect(overlapX > 1 && overlapY > 1, `${header.label}: title and controls must not overlap`).toBe(false);
+          }
+        }
+      }
+    }
+  }
+});
+
 test("column border resizing tracks width through history persistence and export (CMH-TABLE-20)", async ({ page }) => {
   const staged = await open(page);
   const header = table(page).locator('[data-cmh-column="question"]');
