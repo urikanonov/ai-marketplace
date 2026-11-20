@@ -471,6 +471,22 @@ test("narrow headers separate readable titles from controls in both directions (
   }
 });
 
+test("printed narrow headers reclaim hidden control space for their titles (CMH-TABLE-19)", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await open(page, DOC.replace("Discussion item</th>", "Updated</th>")
+    .replace('data-cmh-column="question"', 'data-cmh-column="question" data-cmh-width="96"'));
+  await page.emulateMedia({ media: "print" });
+  const header = table(page).locator('[data-cmh-column="question"]');
+  await expect(header.locator(".cmh-table-drag")).toBeHidden();
+  await expect(header.locator(".cmh-table-column-comment")).toBeHidden();
+  const lines = await header.locator(".cmh-table-title").evaluate(el => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return range.getClientRects().length;
+  });
+  expect(lines).toBe(1);
+});
+
 test("column border resizing tracks width through history persistence and export (CMH-TABLE-20)", async ({ page }) => {
   const staged = await open(page);
   const header = table(page).locator('[data-cmh-column="question"]');
