@@ -4,6 +4,15 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.863.1] - 2026-11-20
+
+### Fixed
+
+- Keep narrow editable-table headers readable by wrapping grouped sort, comment and menu
+  controls below the title instead of squeezing its text or overflowing adjacent columns.
+  Preserve authored widths, wide-header alignment and both inline directions; printed titles
+  retain the full cell width when controls are hidden.
+
 ## [1.863.0] - 2026-11-20
 
 ### Changed

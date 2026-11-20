@@ -5,9 +5,9 @@
 <meta name="commentable-html-validated" content="2026-11-20T23:59:59Z" />
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.863.0" />
+<meta name="commentable-html-version" content="1.863.1" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.863.0","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.863.1","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>NYC Taxi 2014 Report</title>
 
@@ -2447,12 +2447,13 @@ box-shadow: inset var(--cmh-table-drop-edge) 0 var(--cp-accent), inset 0 0 0 999
 :is(#commentRoot, body) .cmh-editable-table :is(.cmh-table-drop-before, .cmh-table-drop-after)[data-cids] {
 box-shadow: inset var(--cmh-table-drop-edge) 0 var(--cp-accent), inset 0 -3px var(--cp-warning), inset 0 0 0 9999px var(--cp-accent-soft);
 }
-.cmh-table-header { display: flex; align-items: center; gap: 4px; min-width: 0; cursor: grab; }
+.cmh-table-header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; cursor: grab; }
 .cmh-editable-table .cmh-table-column-comment { display: inline-flex; padding: 4px; border-color: transparent; background: transparent; color: inherit; }
 .cmh-editable-table .cmh-table-column-comment:hover { background: var(--cp-accent-soft); color: var(--cp-accent); }
-.cmh-table-header .cmh-table-title { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: start; }
+.cmh-table-header .cmh-table-title { flex: 1 1 auto; min-width: 0; max-width: calc(100% - 28px); overflow-wrap: anywhere; text-align: start; }
 .cmh-table-header .cmh-table-drag { flex-shrink: 0; }
 .cmh-table-header-actions { display: inline-flex; align-items: center; gap: 4px; margin-inline-start: auto; flex-shrink: 0; }
+.cmh-table-header-actions .cmh-sort-ctrl { margin-left: 0; }
 .cmh-table-sized :is(textarea, select, input) { min-width: 0; }
 .cmh-table-resize { position: absolute; inset-block: 0; inset-inline-end: -4px; width: 8px; z-index: 1; cursor: col-resize; touch-action: none; }
 .cmh-table-resize:is(:hover, :focus-visible) { background: var(--cp-accent-soft); outline: 2px solid var(--cp-accent); }
@@ -2530,7 +2531,7 @@ background: var(--cp-surface, #fff); color: var(--cp-text, #242424); border: 1px
 .cmh-editable-table textarea, .cmh-editable-table select, .cmh-editable-table input, .cmh-table-resize, .cmh-table-add-bottom, .cmh-table-cell-comment,
 .cmh-editable-table tr > :first-child, .cmh-editable-table tr > :last-child { display: none !important; }
 .cmh-table-print-value { display: block !important; }
-.cmh-editable-table .cmh-table-title { text-decoration: none; box-shadow: none; outline: 0; }
+.cmh-editable-table .cmh-table-title { max-width: none; text-decoration: none; box-shadow: none; outline: 0; }
 .cmh-editable-table-scroll { overflow: visible; }
 }
 
@@ -5158,7 +5159,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.863.0";
+const CMH_VERSION= "1.863.1";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
