@@ -1,5 +1,212 @@
 import { test, expect } from "@playwright/test";
-import { ready, stageContent, stageDeck, fileUrl } from "./helpers.js";
+import { ready, stageContent, stageDeck, fileUrl, denyExternalNetwork, addTextComment, storedComments } from "./helpers.js";
+
+test.beforeEach(async ({ page }) => { await denyExternalNetwork(page); });
+
+test("table wrapping batches placement reads before connected writes at startup and on arrival (CMH-RESP-17)", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__tablePlacementReads = [];
+    const original = window.getComputedStyle;
+    window.getComputedStyle = function (...args) {
+      if (new Error().stack.includes("_carryLayoutItemStyles")) {
+        window.__tablePlacementReads.push(document.querySelectorAll("#commentRoot .cmh-table-scroll").length);
+      }
+      return original.apply(this, args);
+    };
+  });
+  const tables = Array.from({ length: 12 }, (_, i) =>
+    `<table style="order:${i + 1};grid-column:2 / 4"><tbody><tr><td>Table ${i}</td></tr></tbody></table>`).join("");
+  const content = `<h1>Batch</h1><section>${tables}</section>` +
+    `<section style="display:flex;flex-wrap:wrap">${tables}</section>` +
+    `<section style="display:grid;grid-template-columns:repeat(4,100px)">${tables}</section>`;
+  await gotoContent(page, content, "cmh-table-placement-batch", 1000);
+  const reads = await page.evaluate(() => window.__tablePlacementReads);
+  expect(reads.length, "one display read per parent plus placement reads for flex/grid tables").toBe(27);
+  expect([...new Set(reads)], "every style read precedes the first connected wrapper").toEqual([0]);
+  await expect(page.locator("#commentRoot .cmh-table-scroll")).toHaveCount(36);
+  const placements = await page.locator("#commentRoot > section").evaluateAll((sections) =>
+    sections.slice(1).map((section) => [...section.children].map((wrap) => ({
+      order: getComputedStyle(wrap).order, column: getComputedStyle(wrap).gridColumn,
+    }))));
+  for (const section of placements) {
+    expect(section.map((p) => p.order)).toEqual(Array.from({ length: 12 }, (_, i) => String(i + 1)));
+    expect(section.every((p) => p.column === "2 / 4")).toBe(true);
+  }
+  await page.evaluate((html) => {
+    window.__tablePlacementReads = [];
+    const host = document.createElement("section");
+    host.innerHTML = html;
+    document.getElementById("commentRoot").appendChild(host);
+  }, content);
+  await expect(page.locator("#commentRoot .cmh-table-scroll")).toHaveCount(72);
+  expect(await page.evaluate(() => [...new Set(window.__tablePlacementReads)]),
+    "late tables use the same read-before-write pass").toEqual([36]);
+  await page.evaluate(() => {
+    const parent = document.querySelector("#commentRoot > section");
+    parent.style.display = "grid";
+    parent.insertAdjacentHTML("beforeend", '<table style="order:99"><tr><td>Changed parent</td></tr></table>');
+  });
+  await expect(page.locator("#commentRoot .cmh-table-scroll")).toHaveCount(73);
+  expect(await page.locator("#commentRoot > section").first().locator(".cmh-table-scroll").last()
+    .evaluate((wrap) => getComputedStyle(wrap).order), "parent display caching is local to one pass").toBe("99");
+});
+
+test("table scroll measurements precede accessibility writes across each pass (CMH-RESP-17)", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__tableScrollEvents = [];
+    for (const name of ["scrollWidth", "clientWidth"]) {
+      const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, name);
+      Object.defineProperty(Element.prototype, name, {
+        ...descriptor,
+        get() {
+          if (this.classList.contains("cmh-table-scroll") && new Error().stack.includes("_syncTableScrollState")) {
+            window.__tableScrollEvents.push({ type: name, first: this === document.querySelector("#commentRoot .cmh-table-scroll") });
+          }
+          return descriptor.get.call(this);
+        },
+      });
+    }
+    for (const name of ["setAttribute", "removeAttribute"]) {
+      const original = Element.prototype[name];
+      Element.prototype[name] = function (...args) {
+        if (this.classList.contains("cmh-table-scroll") && new Error().stack.includes("_syncTableScrollState")) {
+          window.__tableScrollEvents.push({ type: "write" });
+        }
+        return original.apply(this, args);
+      };
+    }
+  });
+  await gotoContent(page, `<h1>Geometry</h1>` + Array.from({ length: 8 }, () =>
+    `<table><tbody><tr><td>${UNBREAKABLE}</td></tr></tbody></table>`).join(""),
+  "cmh-table-geometry-batch", 900);
+  await expect(page.locator("#commentRoot .cmh-table-scroll[tabindex='0']")).toHaveCount(8);
+  await page.locator("#commentRoot td").evaluateAll((cells) => cells.forEach((cell) => { cell.textContent = "short"; }));
+  await expect(page.locator("#commentRoot .cmh-table-scroll[tabindex]")).toHaveCount(0);
+  const events = await page.evaluate(() => window.__tableScrollEvents);
+  let reads = 0, writes = 0, passes = 0;
+  for (const event of events) {
+    if (event.type === "scrollWidth" && event.first) {
+      reads = 0;
+      writes = 0;
+      passes++;
+    }
+    if (event.type === "write") {
+      expect(reads, "all wrapper dimensions are read before any accessibility mutation").toBe(16);
+      writes++;
+    } else {
+      expect(writes, "a pass never measures another wrapper after mutating accessibility").toBe(0);
+      reads++;
+    }
+  }
+  expect(passes).toBeGreaterThan(0);
+  expect(events.some((e) => e.type === "write")).toBe(true);
+});
+
+test("batched wrapping skips nested work and preserves draggable parts and comment anchors (CMH-RESP-17)", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__tableStyleReads = [];
+    const original = window.getComputedStyle;
+    window.getComputedStyle = function (element, ...rest) {
+      if (new Error().stack.includes("_carryLayoutItemStyles")) window.__tableStyleReads.push(element.id);
+      return original.call(this, element, ...rest);
+    };
+  });
+  await gotoContent(page, `<h1>Nested</h1><section id="outer-parent" style="display:grid">` +
+    `<table id="outer"><tbody><tr><td id="anchor">Persistent table text</td><td>` +
+    `<table id="inner"><tbody><tr><td>Nested</td></tr></tbody></table>` +
+    `</td></tr></tbody></table></section>` +
+    `<table id="part" data-cm-part="piece"><tbody><tr><td id="inner-parent">` +
+    `<table id="part-inner"><tbody><tr><td>Part content</td></tr></tbody></table>` +
+    `</td></tr></tbody></table>` +
+    `<div class="cmh-table-scroll"><table id="authored"><tbody><tr><td>Authored</td></tr></tbody></table></div>`,
+  "cmh-table-batch-nested", 1000);
+  expect(await page.evaluate(() => window.__tableStyleReads)).toEqual(["outer-parent", "outer", "inner-parent"]);
+  await expect(page.locator("#commentRoot .cmh-table-scroll")).toHaveCount(3);
+  await expect(page.locator("#commentRoot .cmh-table-scroll .cmh-table-scroll")).toHaveCount(0);
+  expect(await page.locator("#part").evaluate((t) => t.parentElement.id)).toBe("commentRoot");
+  await addTextComment(page, "#anchor", "Retain this table anchor");
+  const before = await storedComments(page);
+  await page.reload();
+  await ready(page);
+  await expect(page.locator("#anchor mark.cm-hl")).toHaveText("ersistent table text");
+  const after = await storedComments(page);
+  expect(before).toHaveLength(1);
+  expect(before[0].start).toEqual(expect.any(Number));
+  expect(before[0].end).toBeGreaterThan(before[0].start);
+  expect(after.map(({ start, end }) => ({ start, end }))).toEqual(before.map(({ start, end }) => ({ start, end })));
+});
+
+test("replacement tables measure positional placement after emptied wrappers are pruned (CMH-RESP-17)", async ({ page }) => {
+  await gotoContent(page, `<h1>Replacement</h1><style>
+    #replacement-grid { display:grid; grid-template-columns:100px 100px }
+    #replacement-grid > :nth-child(even) { grid-column:2 }
+    </style><section id="replacement-grid"><table><tr><td>Old</td></tr></table></section>`,
+  "cmh-table-replacement-batch", 1000);
+  await page.evaluate(() => {
+    const grid = document.getElementById("replacement-grid");
+    grid.querySelector("table").remove();
+    grid.insertAdjacentHTML("beforeend", "<table><tr><td>Replacement</td></tr></table>");
+  });
+  const wrap = page.locator("#replacement-grid > .cmh-table-scroll");
+  await expect(wrap).toHaveCount(1);
+  expect(await wrap.evaluate((w) => getComputedStyle(w).gridColumnStart)).toBe("auto");
+});
+
+test("a lifecycle callback removing a pending table does not abort startup (CMH-RESP-17)", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.addInitScript(() => {
+    customElements.define("remove-later-table", class extends HTMLElement {
+      disconnectedCallback() { document.getElementById("victim")?.remove(); }
+    });
+  });
+  const staged = stageContent(`<h1>Lifecycle</h1>
+    <table><tr><td><remove-later-table>Trigger</remove-later-table></td></tr></table>
+    <table id="victim"><tr><td>Removed by callback</td></tr></table>`,
+  { key: "cmh-table-batch-lifecycle" });
+  await page.goto(fileUrl(staged.html));
+  expect(errors, "wrapping tolerates candidates detached by synchronous lifecycle reactions").toEqual([]);
+  await ready(page);
+  await expect(page.locator("#victim")).toHaveCount(0);
+  await expect(page.locator("#commentRoot .cmh-table-scroll")).toHaveCount(1);
+});
+
+for (const part of [false, true]) {
+  test(`a lifecycle callback moving a pending table preserves ${part ? "draggable eligibility" : "destination placement"} (CMH-RESP-17)`, async ({ page }) => {
+    await page.addInitScript((isPart) => {
+      customElements.define("move-later-table", class extends HTMLElement {
+        disconnectedCallback() {
+          const table = document.getElementById("moving");
+          if (!table) return;
+          if (isPart) table.setAttribute("data-cm-part", "moving-piece");
+          document.getElementById("destination").appendChild(table);
+        }
+      });
+    }, part);
+    const nested = part
+      ? '<table id="deferred-inner"><tr><td style="min-width:800px">Nested</td></tr></table>' : "";
+    await gotoContent(page, `<h1>Moved candidate</h1><style>
+      #destination { display:grid; grid-template-columns:100px 100px }
+      #destination > table { grid-column:2; order:9 }
+      #moving[data-cm-part] { width:100px; table-layout:fixed }
+      </style><table><tr><td><move-later-table>Trigger</move-later-table></td></tr></table>
+      <table id="moving"><tr><td>Moved${nested}</td></tr></table><section id="destination"></section>`,
+    `cmh-table-batch-move-${part}`, 1000);
+    if (part) {
+      await expect(page.locator("#destination > table[data-cm-part]")).toHaveCount(1);
+      const innerWrap = page.locator("#moving .cmh-table-scroll");
+      await expect(innerWrap).toHaveCount(1);
+      await expect(innerWrap.locator("#deferred-inner")).toHaveCount(1);
+      await expect(innerWrap).toHaveAttribute("tabindex", "0");
+    } else {
+      const wrap = page.locator("#destination > .cmh-table-scroll");
+      await expect(wrap).toHaveCount(1);
+      expect(await wrap.evaluate((w) => ({
+        column: getComputedStyle(w).gridColumnStart, order: getComputedStyle(w).order,
+      }))).toEqual({ column: "2", order: "9" });
+    }
+  });
+}
 
 // CMH-RESP-10: a wide table must not break words mid-token.
 //

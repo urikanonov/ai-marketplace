@@ -470,16 +470,16 @@ test("plugin page renders version, features, changelog, and demo", async ({ page
 });
 
 
-test("demo has one safe full-screen button and an eight-option slider (SITE-DEMO-01)", async ({ page }) => {
+test("demo has one safe full-screen button and a nine-option slider (SITE-DEMO-01)", async ({ page }) => {
   await page.goto("/commentable-html/", { waitUntil: "domcontentloaded" });
   const fs = page.locator("#demo-fullscreen");
   await expect(fs).toHaveCount(1);
   await expect(fs).toHaveAttribute("target", "_blank");
   expect((await fs.getAttribute("rel")) || "").toContain("noopener");
   await expect(fs).toHaveAccessibleName(/full screen.*new tab/i);
-  await expect(page.locator(".demo-tab")).toHaveCount(8);
+  await expect(page.locator(".demo-tab")).toHaveCount(9);
   await expect(page.locator(".demo-tab.active")).toHaveText(/Taxi/i);
-  for (const id of ["#demo-tab-taxi", "#demo-tab-showcase", "#demo-tab-garden", "#demo-tab-triage", "#demo-tab-metrics", "#demo-tab-checklist", "#demo-tab-tables", "#demo-tab-notes"]) {
+  for (const id of ["#demo-tab-taxi", "#demo-tab-showcase", "#demo-tab-garden", "#demo-tab-triage", "#demo-tab-metrics", "#demo-tab-comparison", "#demo-tab-checklist", "#demo-tab-tables", "#demo-tab-notes"]) {
     await expect(page.locator(id)).toBeVisible();
   }
 });

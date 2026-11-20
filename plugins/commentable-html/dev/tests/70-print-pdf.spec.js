@@ -514,11 +514,16 @@ test("CMH-PRINT-06: an eligible flat document prints as a single continuous no-b
   // NORMAL PAGINATION (its grid->block print reflow + async chart resize cannot be measured before
   // Chromium locks the @page), so it must NOT be collapsed to a single page. Content is complete on
   // standard pages, not clipped.
-  for (const name of ["report-metrics.html", "report-triage.html"]) {
+  for (const name of ["report-metrics.html", "report-triage.html", "report-comparison.html"]) {
     const report = await analyzePdf(await renderSinglePagePdf(page, path.join(EXAMPLES, name)));
     expect(report.pages.length, `${name} (block-stacking container) stays on normal pagination`).toBeGreaterThan(1);
     for (let i = 0; i < report.pages.length; i++) {
       expect(report.pages[i].width, `${name} page ${i + 1} is standard portrait paper`).toBeLessThan(report.pages[i].height);
+    }
+    if (name === "report-comparison.html") {
+      expect(report.pages[0].height).toBeCloseTo(792, 0);
+      expect(report.text).toContain("Return fresh result");
+      expect(report.text).toContain("Return shared result");
     }
   }
 

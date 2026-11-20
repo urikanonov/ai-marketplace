@@ -891,6 +891,47 @@ function _closestDiffCode(node) {
   const el = node && (node.nodeType === 1 ? node : node.parentElement);
   return el && el.closest ? el.closest(".cmh-dl-code") : null;
 }
+function copyDiffSelection(event) {
+  if (event.defaultPrevented || !event.clipboardData) return;
+  const active = document.activeElement;
+  if (active && active.matches("input, textarea")) return;
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount !== 1) return;
+  const range = selection.getRangeAt(0);
+  const rowFor = (node) => {
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    return el && el.closest(".cmh-dl");
+  };
+  const first = rowFor(range.startContainer), last = rowFor(range.endContainer);
+  if (!first || !last || first.dataset.side !== last.dataset.side) return;
+  const host = first.closest(".cmh-diff-host");
+  const block = diffBlocks.find(b => b.host === host);
+  if (!block || block.tooBig || last.closest(".cmh-diff-host") !== host) return;
+  const lines = [];
+  host.querySelectorAll(".cmh-dl[data-line-key]").forEach((row) => {
+    if (row.dataset.side !== first.dataset.side) return;
+    const line = block.lines[Number(row.dataset.lineKey)];
+    if (!diffLineCommentable(line)) return;
+    const code = row.querySelector(".cmh-dl-code");
+    if (!code || !range.intersectsNode(code)) return;
+    const part = document.createRange();
+    part.selectNodeContents(code);
+    if (range.compareBoundaryPoints(Range.START_TO_START, part) > 0) {
+      part.setStart(range.startContainer, range.startOffset);
+    }
+    if (range.compareBoundaryPoints(Range.END_TO_END, part) < 0) {
+      part.setEnd(range.endContainer, range.endOffset);
+    }
+    if (!part.collapsed) {
+      // Empty logical lines render a non-breaking-space placeholder, not source text.
+      lines.push(line.text.length ? part.toString() : "");
+    }
+  });
+  if (!lines.length) return;
+  event.clipboardData.setData("text/plain", lines.join("\n"));
+  event.preventDefault();
+}
+document.addEventListener("copy", copyDiffSelection);
 // If the current selection is inside a single diff line's code, return its line
 // info plus the sub-range (subStart, subEnd) and quoted substring; else null.
 function diffSelectionInfo(block) {

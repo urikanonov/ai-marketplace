@@ -4,6 +4,50 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.862.1] - 2026-11-17
+
+### Fixed
+
+- Copy selected diff text from only its selected side, without line numbers or diff markers.
+  Preserve source line breaks, blank lines, spacing, and partial selections without adding
+  newlines for visual wrapping. Ordinary document and text-field copying stay unchanged.
+- Raise the runtime, asset-loader, and shareable-template byte ceilings by 3000 bytes each
+  to accommodate the source-aware diff clipboard handler.
+
+## [1.862.0] - 2026-11-17
+
+### Added
+
+- Opt-in side-by-side Mermaid comparisons keep equal, readable-width columns, shared label scale, and natural
+  diagram heights instead of the gallery's thumbnail height. Narrow screens scroll the
+  comparison horizontally; existing galleries and standalone diagrams are unchanged.
+- Document compact SVG-to-Mermaid conversion without spacer nodes or forced equal heights.
+  Raise the CSS byte ceiling by 2 KB, lazy assets by 3 KB, and core/SHAREABLE by 1 KB
+  each, for the comparison layout and shared-scale sizing alongside the current print cache.
+
+## [1.861.4] - 2026-11-17
+
+### Fixed
+
+- Refresh the single-page print cache only when content or screen geometry changes instead of
+  repeatedly reflowing unchanged reports during startup. Preserve asynchronous chart and diagram
+  sizing, early printing, print/cancel cleanup, and table/code scroll positions during refreshes.
+
+## [1.861.3] - 2026-11-15
+
+### Fixed
+
+- Batch table-scroll placement and geometry reads before DOM and accessibility writes,
+  avoiding per-table style recalculation stalls in table-heavy reports. Preserve flex/grid
+  placement, nested and late tables, draggable parts, keyboard access, and comment anchors.
+
+## [1.861.2] - 2026-11-11
+
+### Fixed
+
+- Keep disabled editable-table row-insertion handles hidden off hover or keyboard focus
+  on mouse devices, including after a saved-draft conflict. Preserve visible touch controls.
+
 ## [1.861.1] - 2026-11-09
 
 ### Changed

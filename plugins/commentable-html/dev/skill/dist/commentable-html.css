@@ -1368,6 +1368,35 @@ font-variant-numeric: tabular-nums;
 }
 
 #commentRoot .cmh-diagram-gallery { margin: 1rem 0; }
+
+@media screen {
+#commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison {
+display: grid; grid-auto-flow: column; grid-auto-columns: minmax(30rem, 1fr);
+align-items: start; gap: 1.25rem; margin: 1rem 0; max-width: 100%;
+overflow-x: auto;
+}
+#commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > figure,
+#commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > pre.mermaid,
+#commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > div.mermaid {
+min-width: 0; margin: 0; padding: 1rem; box-sizing: border-box;
+border: 1px solid var(--cp-border); border-radius: 12px;
+background: var(--cp-surface-soft);
+}
+#commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > figure > .mermaid {
+margin: 0; padding: 0; border: 0; min-width: 0;
+}
+#commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > figure > figcaption {
+margin: 0 0 0.75rem;
+}
+#commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > pre.mermaid > svg,
+#commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > div.mermaid > svg,
+#commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > figure > pre.mermaid > svg,
+#commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > figure > div.mermaid > svg {
+display: block; width: calc(100% * var(--cmh-comparison-scale, 1)) !important; height: auto !important;
+margin-inline: auto;
+max-width: none !important; max-height: none !important;
+}
+}
 @media screen and (min-width: 481px) {
 #commentRoot .cmh-diagram-gallery {
 display: flex; flex-wrap: wrap; gap: 1rem;
@@ -1868,7 +1897,8 @@ background: var(--cp-accent-soft, #e6efff);
 border: 1px solid var(--cp-border, #bcd2ff); border-radius: 6px;
 cursor: pointer;
 }
-#commentRoot .cmh-note-fold::before { content: "\2212"; } 
+
+#commentRoot .cmh-note-fold::before { content: "\2212"; }
 #commentRoot .cmh-note-ready.cmh-note-collapsed .cmh-note-fold::before { content: "+"; }
 
 #commentRoot .cmh-note-fold:hover {
@@ -1988,6 +2018,9 @@ display: inline-flex; align-items: center; justify-content: center; width: 24px;
 border: 1px solid var(--cp-accent); border-radius: 50%; background: var(--cp-surface); color: var(--cp-accent); opacity: 0;
 }
 .cmh-editable-table .cmh-table-row-insert:is(:hover, :focus-visible) { opacity: 1; }
+@media (hover: hover) {
+.cmh-editable-table .cmh-table-row-insert:disabled:not(:hover):not(:focus-visible) { opacity: 0; }
+}
 .cmh-editable-table tr:has(.cmh-table-row-insert:is(:hover, :focus-visible)) > :is(th, td) { box-shadow: inset 0 2px var(--cp-accent); }
 .cmh-editable-table .cmh-table-add-bottom { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; border-color: transparent; background: transparent; color: var(--cp-accent); }
 .cmh-editable-table .cmh-table-add-bottom:hover { background: var(--cp-accent-soft); }

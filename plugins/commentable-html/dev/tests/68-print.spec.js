@@ -49,6 +49,173 @@ function stagePrintDeck(slidesHtml, { key, source = "deck-print.html" }) {
   return staged;
 }
 
+async function recordPrintMeasurements(page) {
+  await denyExternalNetwork(page);
+  await page.addInitScript(() => {
+    window.__printMeasurements = 0;
+    const descriptor = Object.getOwnPropertyDescriptor(Node.prototype, "textContent");
+    Object.defineProperty(Node.prototype, "textContent", {
+      ...descriptor,
+      set(value) {
+        if (this.nodeName === "STYLE" && this.id === "cmhPrintSinglePage"
+          && String(value).startsWith(".cmh-print-comments")) window.__printMeasurements++;
+        descriptor.set.call(this, value);
+      },
+    });
+  });
+}
+
+test("CMH-PRINT-10: unchanged table-heavy startup bounds print-layout measurements", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const tables = [[3, 5], [15, 10], [532, 16], [2, 6]].map(([rows, columns]) =>
+    "<table><thead><tr>"
+    + Array.from({ length: columns }, (_, c) => `<th>Field ${c + 1}</th>`).join("")
+    + "</tr></thead><tbody>"
+    + Array.from({ length: rows }, (_, r) => "<tr>"
+      + Array.from({ length: columns }, (_, c) => `<td>Generic item ${r + 1} value ${c + 1}</td>`).join("")
+      + "</tr>").join("")
+    + "</tbody></table>").join("");
+  const staged = stagePrintContent("<h1>Static tables</h1><section><h2>Items</h2>"
+    + tables + "</section>", { key: "cmh-print-static-tables" });
+  try {
+    await recordPrintMeasurements(page);
+    await page.goto(fileUrl(staged.html), { waitUntil: "load" });
+    await ready(page);
+    const snapshot = () => page.locator("#commentRoot").evaluate((root) => ({
+      rows: [...root.querySelectorAll("table")].map((table) => table.tBodies[0].rows.length),
+      text: [...root.querySelectorAll("th,td")].map((cell) => cell.textContent),
+      wrappers: root.querySelectorAll(".cmh-table-scroll").length,
+      height: document.documentElement.scrollHeight,
+    }));
+    const initial = await snapshot();
+    expect(initial.rows).toEqual([3, 15, 532, 2]);
+    expect(initial.wrappers).toBe(4);
+    // Cover the complete former warmup window, not a wall-clock performance threshold.
+    await page.waitForTimeout(3500);
+    expect(await page.evaluate(() => window.__printMeasurements)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.__printMeasurements)).toBeLessThanOrEqual(2);
+    expect(await snapshot()).toEqual(initial);
+    expect(page.__external).toEqual([]);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-PRINT-10: print cache follows late text, layout and canvas changes without looping", async ({ page }) => {
+  const staged = stagePrintContent('<section><h2>Dynamic content</h2><p id="late">Short text.</p>'
+    + '<div class="chart-wrap"><canvas width="200" height="100"></canvas></div></section>',
+  { key: "cmh-print-cache-invalidation" });
+  try {
+    await recordPrintMeasurements(page);
+    await page.goto(fileUrl(staged.html), { waitUntil: "load" });
+    await ready(page);
+    await expect.poll(() => page.evaluate(() => window.__printMeasurements)).toBeGreaterThan(0);
+    await page.waitForTimeout(3500);
+    for (const change of [
+      () => { document.getElementById("late").firstChild.data = "Other text."; },
+      () => { document.getElementById("late").style.paddingBottom = "200px"; },
+      () => {
+        const style = document.createElement("style");
+        style.textContent = ".chart-wrap canvas{height:300px !important}";
+        document.head.appendChild(style);
+      },
+    ]) {
+      const before = await page.evaluate(() => window.__printMeasurements);
+      await page.evaluate(change);
+      await expect.poll(() => page.evaluate(() => window.__printMeasurements)).toBeGreaterThan(before);
+    }
+    const beforeResize = await page.evaluate(() => window.__printMeasurements);
+    await page.setViewportSize({ width: 900, height: 800 });
+    await expect.poll(() => page.evaluate(() => window.__printMeasurements)).toBeGreaterThan(beforeResize);
+    await page.waitForTimeout(300);
+    const settled = await page.evaluate(() => window.__printMeasurements);
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.__printMeasurements)).toBe(settled);
+    await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+    expect(await page.locator("#cmhPrintSinglePage").textContent()).toContain("@page{size:");
+    await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+    await expect(page.locator("#cmhPrintSinglePage")).toHaveText("");
+    expect(page.__external).toEqual([]);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-PRINT-10: body fallback without ResizeObserver never measures its own stylesheet", async ({ page }) => {
+  const staged = stagePrintContent("<h1>Body fallback</h1><p>Printable content.</p>",
+    { key: "cmh-print-body-fallback" });
+  fs.writeFileSync(staged.html, fs.readFileSync(staged.html, "utf8")
+    .replace('id="commentRoot"', 'id="authoredRoot"'));
+  try {
+    await recordPrintMeasurements(page);
+    await page.addInitScript(() => { window.ResizeObserver = undefined; });
+    await page.goto(fileUrl(staged.html), { waitUntil: "load" });
+    await ready(page);
+    await expect.poll(() => page.evaluate(() => window.__printMeasurements)).toBeGreaterThan(0);
+    await page.waitForTimeout(300);
+    const settled = await page.evaluate(() => window.__printMeasurements);
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.__printMeasurements)).toBe(settled);
+    expect(settled).toBeLessThanOrEqual(2);
+    const before = await page.evaluate(() => window.__printMeasurements);
+    await page.evaluate(() => { document.querySelector("#authoredRoot p").firstChild.data = "Updated content."; });
+    await expect.poll(() => page.evaluate(() => window.__printMeasurements)).toBeGreaterThan(before);
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
+test("CMH-PRINT-10: cancelling an early print resumes cache warming without ResizeObserver", async ({ page }) => {
+  const staged = stagePrintContent("<h1>Early print</h1><p>Printable content.</p>",
+    { key: "cmh-print-early-cancel" });
+  try {
+    await recordPrintMeasurements(page);
+    await page.addInitScript(() => {
+      window.ResizeObserver = undefined;
+      window.__cacheCallbacks = [];
+      const matchMedia = window.matchMedia.bind(window);
+      const listeners = [];
+      const printMedia = { matches: false, addEventListener: (_, listener) => listeners.push(listener),
+        addListener: (listener) => listeners.push(listener) };
+      window.matchMedia = (query) => query === "print" ? printMedia : matchMedia(query);
+      window.__setPrintMedia = (matches) => {
+        printMedia.matches = matches;
+        listeners.forEach((listener) => listener({ matches }));
+      };
+      const raf = window.requestAnimationFrame.bind(window);
+      window.requestAnimationFrame = (callback) => {
+        if (String(callback).includes("computeAndCache")) {
+          window.__cacheCallbacks.push(callback);
+          return 999999;
+        }
+        return raf(callback);
+      };
+    });
+    await page.goto(fileUrl(staged.html), { waitUntil: "load" });
+    await ready(page);
+    const result = await page.evaluate(() => {
+      const before = window.__printMeasurements;
+      window.dispatchEvent(new Event("beforeprint"));
+      const sized = document.getElementById("cmhPrintSinglePage").textContent.includes("@page{size:");
+      window.__setPrintMedia(true);
+      window.__cacheCallbacks.splice(0).forEach((callback) => callback(performance.now()));
+      const during = window.__printMeasurements;
+      window.dispatchEvent(new Event("afterprint"));
+      window.__setPrintMedia(false);
+      const queued = window.__cacheCallbacks.length;
+      window.__cacheCallbacks.splice(0).forEach((callback) => callback(performance.now()));
+      return { before, sized, during, queued, after: window.__printMeasurements };
+    });
+    expect(result.before).toBe(0);
+    expect(result.sized).toBe(true);
+    expect(result.queued).toBe(1);
+    expect(result.after).toBeGreaterThan(result.during);
+    expect(await page.locator("#cmhPrintSinglePage").textContent()).toBe("");
+  } finally {
+    fs.rmSync(staged.dir, { recursive: true, force: true });
+  }
+});
+
 test("CMH-PRINT-01: flat print hides runtime chrome, expands content, and materializes comments", async ({ page }) => {
   const content = `
     <header class="cmh-lede"><h1>Print contract</h1><p>Flat documents should print as content.</p></header>

@@ -198,6 +198,35 @@ html[data-theme="dark"] #commentRoot tbody tr:nth-child(even) td { background: r
    so the layer's own diagram flow and wide-diagram scroll (CMH-RESP-01/09) are left intact there and
    the JS disable is gated to match. Print stacks it to a single column (see 92-print.css). */
 #commentRoot .cmh-diagram-gallery { margin: 1rem 0; }
+/* Comparisons preserve readable, equal-width columns rather than the gallery's fixed height. */
+@media screen {
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison {
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(30rem, 1fr);
+    align-items: start; gap: 1.25rem; margin: 1rem 0; max-width: 100%;
+    overflow-x: auto;
+  }
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > figure,
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > pre.mermaid,
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > div.mermaid {
+    min-width: 0; margin: 0; padding: 1rem; box-sizing: border-box;
+    border: 1px solid var(--cp-border); border-radius: 12px;
+    background: var(--cp-surface-soft);
+  }
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > figure > .mermaid {
+    margin: 0; padding: 0; border: 0; min-width: 0;
+  }
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > figure > figcaption {
+    margin: 0 0 0.75rem;
+  }
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > pre.mermaid > svg,
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > div.mermaid > svg,
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > figure > pre.mermaid > svg,
+  #commentRoot:not([data-cmh-mode="deck"]) .cmh-diagram-comparison > figure > div.mermaid > svg {
+    display: block; width: calc(100% * var(--cmh-comparison-scale, 1)) !important; height: auto !important;
+    margin-inline: auto;
+    max-width: none !important; max-height: none !important;
+  }
+}
 @media screen and (min-width: 481px) {
   #commentRoot .cmh-diagram-gallery {
     display: flex; flex-wrap: wrap; gap: 1rem;

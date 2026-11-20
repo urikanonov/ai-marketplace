@@ -127,12 +127,14 @@
           <li>Click the floating <strong>Add Comment</strong> button on the node and save a note. The node gets a colored ring and the comment attaches to that node, so it survives edits to the rest of the diagram.</li>
           <li>You can also comment on gantt bars, sequence-diagram messages, and subgraphs the same way, or hover an empty part of a diagram to comment on the whole thing.</li>
           </ol>
+          <p>For tall before/after flows, ask the agent to use the <strong>side-by-side comparison</strong> layout (<code>.cmh-diagram-comparison</code>), as in <a href="../demo/report-comparison.html">the comparison demo</a>. It keeps equal, readable-width columns and natural diagram heights; on a phone, focus the comparison and use the arrow keys or swipe to scroll sideways. The ordinary gallery is for compact diagrams, not tall flow comparisons. Converting SVG to Mermaid preserves the flow, not exact hand-positioned coordinates; avoid invisible spacer nodes and forced heights.</p>
           <h3>9. Comment on a diff line</h3>
           <ol>
           <li>In <strong>Risks and Mitigations</strong>, find the <code>watering_schedule.py</code> diff.</li>
           <li>Hover the added line <code>+ if rainfall_mm &gt;= 8:</code> and click the floating <strong>Add Comment</strong> button to comment on the whole line.</li>
           <li>Or select a substring within a single diff line and click <strong>Add Comment</strong> to comment on only that region.</li>
           <li>Use the diff header button to switch between views: it reads <strong>To inline view</strong> while side-by-side and <strong>To side-by-side view</strong> while inline. Your comments stay attached either way.</li>
+          <li>To copy the text itself, select within either side and use your browser&#x27;s <strong>Copy</strong>. Only that side&#x27;s selected text is copied, without line numbers or diff markers. Original line breaks stay intact; visual wrapping adds no newlines.</li>
           </ol>
           <p><img src="assets/garden-04-diff.png?v=e5027b13ba20" alt="The unified diff block with the view toggle and a syntax-highlight toggle" loading="lazy" /></p>
           <h3>10. Work a review checklist</h3>

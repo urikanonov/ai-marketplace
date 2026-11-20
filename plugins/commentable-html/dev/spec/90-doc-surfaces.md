@@ -64,7 +64,11 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 
 | Feature id | Doc surface | Deck |
 | --- | --- | --- |
+| CMH-DIFF-12 | tutorial | opt-out: clipboard correctness fix for the existing diff demo, not a new presentation feature |
+| CMH-PRINT-10 | opt-out: background print-cache scheduling and startup performance, with no new reader action | opt-out: print-cache correctness and performance, not a feature needing a slide |
 | CMH-REATTACH-01 | tutorial, help | deck |
+| CMH-COMPARE-01 | tutorial | deck |
+| CMH-DEMO-COMPARE-01 | tutorial | deck |
 | CMH-REATTACH-02 | tutorial, help | deck |
 | CMH-REATTACH-03 | tutorial, help | deck |
 | CMH-REATTACH-04 | tutorial, help | deck |
@@ -230,6 +234,7 @@ entry here. A `Doc surface` value is a comma-separated subset of `tutorial`, `si
 | CMH-OFFLINE-09 | opt-out: an internal consistency fix that makes the runtime and the strict validator read one contradictory document shape the same way; the shape is only reachable by hand-authoring a reserved layer attribute, so a reader has no new capability to learn | opt-out: a validator and mode-resolution invariant with nothing to demonstrate on a slide - every legitimate document keeps the badge and the export it already had |
 | CMH-RESP-10 | opt-out: a rendering-correctness fix; a reader sees a table that is no longer broken, with nothing new to learn | opt-out: a layout fix with nothing to demonstrate on a slide |
 | CMH-RESP-11 | opt-out: a layout-containment fix; a wide table scrolls in its box exactly as it already did on a phone, so there is no new capability to document | opt-out: a layout fix with nothing to demonstrate on a slide |
+| CMH-RESP-17 | opt-out: an internal startup-performance invariant; existing tables and controls behave identically without a new reader capability | opt-out: batched startup work has no new interaction to demonstrate |
 | CMH-RESP-12 | opt-out: a placement-correctness fix to floating controls that already promised to respect a clipped container (CMH-RESP-02); the reader sees a bubble that no longer strays over unrelated content, with nothing new to learn or do | opt-out: a placement fix with nothing to demonstrate on a slide - the control behaves exactly as a viewer already expects it to |
 | CMH-RESP-13 | opt-out: a mobile touch-target sizing invariant for composers the tutorial and help already document - the reviewer sees the same Cancel / Save row, only large enough to hit with a thumb | opt-out: control sizing on a phone, with nothing new to demonstrate on a slide |
 | CMH-RESP-14 | opt-out: a mobile touch-target sizing invariant for a Reply button and an identity row the tutorial and help already document - the reviewer sees the same controls, only large enough to hit with a thumb | opt-out: control sizing on a phone, with nothing new to demonstrate on a slide |

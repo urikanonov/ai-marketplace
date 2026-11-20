@@ -83,12 +83,20 @@ Mermaid diagrams render when you open the file in a modern browser. If one does 
 3. Click the floating **Add Comment** button on the node and save a note. The node gets a colored ring and the comment attaches to that node, so it survives edits to the rest of the diagram.
 4. You can also comment on gantt bars, sequence-diagram messages, and subgraphs the same way, or hover an empty part of a diagram to comment on the whole thing.
 
+For tall before/after flows, ask the agent to use the **side-by-side comparison** layout
+(`.cmh-diagram-comparison`), as in [the comparison demo](../examples/report-comparison.html).
+It keeps equal, readable-width columns and natural diagram heights; on a phone, focus the
+comparison and use the arrow keys or swipe to scroll sideways. The ordinary gallery is
+for compact diagrams, not tall flow comparisons. Converting SVG to Mermaid preserves the
+flow, not exact hand-positioned coordinates; avoid invisible spacer nodes and forced heights.
+
 ## 9. Comment on a diff line
 
 1. In **Risks and Mitigations**, find the `watering_schedule.py` diff.
 2. Hover the added line `+ if rainfall_mm >= 8:` and click the floating **Add Comment** button to comment on the whole line.
 3. Or select a substring within a single diff line and click **Add Comment** to comment on only that region.
 4. Use the diff header button to switch between views: it reads **To inline view** while side-by-side and **To side-by-side view** while inline. Your comments stay attached either way.
+5. To copy the text itself, select within either side and use your browser's **Copy**. Only that side's selected text is copied, without line numbers or diff markers. Original line breaks stay intact; visual wrapping adds no newlines.
 
 ![The unified diff block with the view toggle and a syntax-highlight toggle](assets/garden-04-diff.png)
 

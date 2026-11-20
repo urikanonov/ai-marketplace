@@ -33,6 +33,7 @@ Put a unified diff as the text content of a `pre` or `div` with `class="cmh-diff
 4. Hovering a changed or context line shows **Add Comment**; clicking it or pressing <kbd>Enter</kbd> on a focused line comments the whole line. Selecting a region within one diff line comments just that substring.
 5. Saving anchors the comment to `(diffIndex, lineKey)` plus `(subStart, subEnd)` for region comments. Highlights survive layout toggles, reload, copy, and **Export as Shareable**.
 6. **Copy all** emits each diff comment with `Anchor: diff <label>, <added|removed|context> line <n>` and the quote as a fenced diff block.
+7. Normal browser **Copy** within one diff side copies only the selected source text, without line numbers, diff markers, or the opposite side. Actual line breaks and blank lines are preserved; visual wrapping adds no newlines.
 
 ### When to use it
 

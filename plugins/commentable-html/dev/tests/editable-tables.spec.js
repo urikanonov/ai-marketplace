@@ -273,6 +273,58 @@ test("row-boundary plus appears only near number-column borders (CMH-TABLE-18)",
   await expect(table(page).locator("tbody tr")).toHaveCount(3);
 });
 
+test("disabled row-insertion handles stay hidden off hover after a saved-draft conflict (CMH-TABLE-18)", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 900 });
+  await open(page);
+  await cell(page).fill("Saved draft");
+  await page.evaluate(() => {
+    const key = "cmh-table-test::tables";
+    const saved = JSON.parse(localStorage.getItem(key));
+    saved.tables[0].from.rows[0].cells[0] = "Different baseline";
+    localStorage.setItem(key, JSON.stringify(saved));
+  });
+  await page.reload();
+  await ready(page);
+  await page.mouse.move(0, 0);
+  const handles = table(page).locator(".cmh-table-row-insert");
+  await expect(handles).toHaveCount(2);
+  for (const handle of await handles.all()) {
+    await expect(handle).toBeDisabled();
+    await expect(handle).not.toBeFocused();
+    // Opacity-zero controls still count as visible to Playwright.
+    await expect(handle).toHaveCSS("opacity", "0");
+  }
+  await expect(action(page, "Add row")).toHaveCSS("opacity", "0.5");
+  const insert = handles.last();
+  await insert.hover();
+  await expect(insert).toHaveCSS("opacity", "1");
+  await page.mouse.move(0, 0);
+  await expect(insert).toHaveCSS("opacity", "0");
+  await page.getByRole("button", { name: "Discard saved draft", exact: true }).click();
+  await page.locator(".cm-modal").getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(table(page).locator(".cmh-table-row-insert").last()).toBeEnabled();
+  await expect(table(page).locator(".cmh-table-row-insert").last()).toHaveCSS("opacity", "0");
+});
+
+test.describe("touch row-insertion controls", () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
+
+  test("touch row-insertion handles remain visible when editing is disabled (CMH-TABLE-18)", async ({ page }) => {
+    await open(page);
+    expect(await page.evaluate(() => matchMedia("(hover: none)").matches)).toBe(true);
+    const handles = table(page).locator(".cmh-table-row-insert");
+    await expect(handles).toHaveCount(2);
+    for (const handle of await handles.all()) await expect(handle).toHaveCSS("opacity", "1");
+    await page.evaluate(() => localStorage.setItem("cmh-table-test::tables", "{malformed saved draft"));
+    await page.reload();
+    await ready(page);
+    for (const handle of await handles.all()) {
+      await expect(handle).toBeDisabled();
+      await expect(handle).toHaveCSS("opacity", "0.5");
+    }
+  });
+});
+
 test("column headers highlight on hover and comment only through their icon (CMH-TABLE-14)", async ({ page }) => {
   await open(page);
   const header = table(page).locator('[data-cmh-column="owner"]');
