@@ -11,11 +11,11 @@ import path from "path";
 // crafted unified diff, so setupDiffLayer parses exactly what we want. Every temp
 // file is tracked and removed in afterEach so a failing assertion never leaks one.
 const _tempDocs = [];
-function docWithDiff(diffText, label = "probe.sql") {
+function docWithDiff(diffText, label = "probe.sql", lang = "") {
   const tpl = fs.readFileSync(INLINE, "utf8");
   const replaced = tpl.replace(
     /<pre class="cmh-diff"[\s\S]*?<\/pre>/,
-    `<pre class="cmh-diff" data-diff-label="${label}">${diffText}</pre>`);
+    `<pre class="cmh-diff" data-diff-label="${label}" data-diff-lang="${lang}">${diffText}</pre>`);
   const out = path.join(os.tmpdir(), "cmh-diff-probe-" + Date.now() + "-" + Math.random().toString(36).slice(2) + ".html");
   fs.writeFileSync(out, replaced);
   _tempDocs.push(out);
@@ -133,6 +133,92 @@ test.describe("diff selection copy", () => {
       { selector, index: 3, offset: 8 })).text).toBe("old first\n\nold last");
   });
 
+  test("copying prose diffs joins wrapped source lines but preserves paragraphs (CMH-DIFF-12)", async ({ page }) => {
+    const prose = [
+      "@@ -1,5 +1,5 @@",
+      "-The old scenario is",
+      "-already running.",
+      "-",
+      "-Another old",
+      "-paragraph.",
+      "+The flagship scenario is",
+      "+already in production.",
+      "+",
+      "+Another revised",
+      "+paragraph.",
+    ].join("\n");
+    for (const [label, lang] of [["Hybrid User Story", "text"], ["story.txt", ""]]) {
+      await page.goto(fileUrl(docWithDiff(prose, label, lang)));
+      await ready(page);
+      await page.evaluate(() => {
+        document.addEventListener("copy", (event) => {
+          window.__selectionCopy = { text: event.clipboardData.getData("text/plain") };
+        });
+      });
+      for (const reverse of [false, true]) {
+        const selector = '.cmh-dl[data-side="new"] .cmh-dl-code';
+        expect((await copySelection(page,
+          { selector, offset: 4 },
+          { selector, index: 4, offset: 4 }, reverse)).text)
+          .toBe("flagship scenario is already in production.\n\nAnother revised para");
+      }
+      await page.locator(".cmh-diff-toggle").click();
+      const selector = ".cmh-dl-add .cmh-dl-code";
+      expect((await copySelection(page,
+        { selector, offset: 4 },
+        { selector, index: 4, offset: 4 })).text)
+        .toBe("flagship scenario is already in production.\n\nAnother revised para");
+      await page.locator(".cmh-diff-toggle").click();
+    }
+  });
+
+  test("dragging a split diff selects only the visible chosen side (CMH-DIFF-12)", async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    const newSide = '.cmh-dl[data-side="new"] .cmh-dl-code';
+    await copySelection(page,
+      { selector: newSide, offset: 1 },
+      { selector: newSide, index: 3, offset: 1 });
+    await expect(page.locator(".cmh-diff-host")).toHaveAttribute("data-cmh-selection-side", "new");
+    for (const side of ["old", "new"]) {
+      for (const reverse of [false, true]) {
+        const selector = `.cmh-dl[data-side="${side}"] .cmh-dl-code`;
+        await page.locator(selector).first().scrollIntoViewIfNeeded();
+        const points = await page.locator(selector).evaluateAll((els, last) => [els[0], els[last]].map((el) => {
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          const text = walker.nextNode();
+          const range = document.createRange();
+          range.setStart(text, 1);
+          range.setEnd(text, 2);
+          const rect = range.getBoundingClientRect();
+          return { x: rect.left, y: rect.top + rect.height / 2 };
+        }), side === "old" ? 2 : 3);
+        const [start, end] = reverse ? points.reverse() : points;
+        await page.mouse.move(start.x, start.y);
+        await page.mouse.down();
+        await page.mouse.move(end.x, end.y, { steps: 12 });
+        await page.mouse.up();
+        const other = side === "old" ? "new" : "old";
+        await expect.poll(() => page.evaluate(() => window.getSelection().toString())).not.toContain(other + " ");
+        expect(await page.evaluate(() => window.getSelection().toString())).toContain("first");
+      }
+    }
+  });
+
+  test("diff context-menu gestures preserve the existing selection for copying (CMH-DIFF-12)", async ({ page }) => {
+    const selector = '.cmh-dl[data-side="old"] .cmh-dl-code';
+    for (const gesture of [{ button: 0, ctrlKey: true }, { button: 2 }, { button: 0, shiftKey: true }]) {
+      await copySelection(page, { selector, offset: 0 }, { selector, offset: 6 });
+      await expect(page.locator(".cmh-diff-host")).toHaveAttribute("data-cmh-selection-side", "old");
+      await page.locator(selector).first().dispatchEvent("pointerdown", gesture);
+      expect(await page.evaluate(() => window.getSelection().toString())).toBe("old fi");
+      const copied = await page.evaluate(() => {
+        document.execCommand("copy");
+        return window.__selectionCopy.text;
+      });
+      expect(copied).toBe("old fi");
+    }
+  });
+
   test("diff copying leaves ordinary selections and focused text fields alone (CMH-DIFF-12)", async ({ page }) => {
     expect((await copySelection(page,
       { selector: "#commentRoot p", offset: 0 },
@@ -165,6 +251,60 @@ test.describe("diff selection copy", () => {
       return window.__selectionCopy;
     });
     expect(editableCopy.handled).toBe(false);
+  });
+
+  test("whole-side copy buttons copy before and after source in either layout (CMH-DIFF-13)", async ({ page }) => {
+    await installClipboardCapture(page);
+    await page.reload();
+    await ready(page);
+    for (const inline of [false, true]) {
+      if (inline) await page.locator(".cmh-diff-toggle").click();
+      for (const [label, expected] of [
+        ["Copy before", "old first\n\nold last\nshared context\n" + LONG],
+        ["Copy after", "new first\n\nnew extra\nnew last\nshared context\n" + LONG],
+      ]) {
+        await page.getByRole("button", { name: label, exact: true }).click();
+        await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe(expected);
+      }
+    }
+  });
+
+  test("whole-side prose buttons retain paragraphs and handle an empty side (CMH-DIFF-13)", async ({ page }) => {
+    await installClipboardCapture(page);
+    const prose = "@@ -0,0 +1,5 @@\n+First wrapped\n+paragraph.\n+\n+Second wrapped\n+paragraph.";
+    await page.goto(fileUrl(docWithDiff(prose, "prose.txt")));
+    await ready(page);
+    await page.getByRole("button", { name: "Copy before", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe("");
+    await page.getByRole("button", { name: "Copy after", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.__copied.at(-1)))
+      .toBe("First wrapped paragraph.\n\nSecond wrapped paragraph.");
+  });
+
+  test("diff copy controls remain usable on narrow screens and raw diffs (CMH-DIFF-13)", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 900 });
+    const buttons = page.locator(".cmh-diff-bar button");
+    await expect(buttons).toHaveCount(4);
+    const boxes = await buttons.evaluateAll((els) => els.map((el) => {
+      const box = el.getBoundingClientRect();
+      const bar = el.closest(".cmh-diff-bar").getBoundingClientRect();
+      return { left: box.left, right: box.right, top: box.top, bottom: box.bottom,
+        barLeft: bar.left, barRight: bar.right };
+    }));
+    for (const box of boxes) {
+      expect(box.left).toBeGreaterThanOrEqual(box.barLeft);
+      expect(box.right).toBeLessThanOrEqual(box.barRight);
+    }
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i], b = boxes[j];
+        expect(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top).toBe(true);
+      }
+    }
+    await page.goto(fileUrl(docWithDiff("@@ -1 +1 @@\n" + "+large\n".repeat(2001))));
+    await ready(page);
+    await expect(page.getByRole("button", { name: "Copy before", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Copy after", exact: true })).toBeDisabled();
   });
 });
 

@@ -96,7 +96,8 @@ flow, not exact hand-positioned coordinates; avoid invisible spacer nodes and fo
 2. Hover the added line `+ if rainfall_mm >= 8:` and click the floating **Add Comment** button to comment on the whole line.
 3. Or select a substring within a single diff line and click **Add Comment** to comment on only that region.
 4. Use the diff header button to switch between views: it reads **To inline view** while side-by-side and **To side-by-side view** while inline. Your comments stay attached either way.
-5. To copy the text itself, select within either side and use your browser's **Copy**. Only that side's selected text is copied, without line numbers or diff markers. Original line breaks stay intact; visual wrapping adds no newlines.
+5. To copy the text itself, select within either side and use your browser's **Copy**. Only that side is highlighted and copied, without line numbers or diff markers. Code keeps source line breaks; explicit plain-text prose joins wrapped source lines while keeping paragraph separators.
+6. Use **Copy before** or **Copy after** to copy every source line supplied for that side, including shared context, in either view. These buttons do not reconstruct file content omitted from the diff and are disabled for oversized raw diffs.
 
 ![The unified diff block with the view toggle and a syntax-highlight toggle](assets/garden-04-diff.png)
 

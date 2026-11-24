@@ -517,6 +517,11 @@ test("CMH-DECK-13: showcase deck code, KQL, and diff blocks keep readable contra
     await expect(page.locator(".slide.active .cmh-dl-add .cmh-dl-code").first()).toBeVisible();
     expect(await effectiveContrast(page, ".slide.active .cmh-dl-add .cmh-dl-code")).toBeGreaterThanOrEqual(4.5);
     expect(await effectiveContrast(page, ".slide.active .cmh-dl-del .cmh-dl-code")).toBeGreaterThanOrEqual(4.5);
+    for (const position of [1, 2]) {
+      const selector = `.slide.active .cmh-diff-copy:nth-of-type(${position})`;
+      await expect(page.locator(selector)).toBeVisible();
+      expect(await effectiveContrast(page, selector)).toBeGreaterThanOrEqual(4.5);
+    }
 
     await showSlideWith(page, ".slide pre code.language-python");
     const codeTokenSelectors = [

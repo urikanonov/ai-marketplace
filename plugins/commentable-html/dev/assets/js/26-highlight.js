@@ -51,6 +51,7 @@ const _EXT_LANG = {
   // Both highlighters fully support these, but without an entry here a diff labelled
   // config.xml or page.html inferred no language and rendered monochrome.
   html: "html", htm: "html", xml: "xml", dart: "dart",
+  txt: "text",
 };
 function inferDiffLang(el, label) {
   const explicit = (el.getAttribute("data-diff-lang") || "").trim().toLowerCase();
@@ -706,6 +707,21 @@ function renderDiffBlock(block) {
   label.className = "cmh-diff-label";
   label.textContent = block.label || "diff";
   bar.appendChild(label);
+  [["del", "before"], ["add", "after"]].forEach(([type, side]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "cmh-diff-copy";
+    cmhMarkLayerChrome(button);
+    button.textContent = "Copy " + side;
+    button.disabled = tooBig;
+    button.title = tooBig ? "Whole-side copying is unavailable for large raw diffs."
+      : "Copy all " + side + "-side source lines provided by this diff";
+    button.addEventListener("click", () => {
+      const lines = block.lines.filter(ln => ln.type === "ctx" || ln.type === type).map(ln => ln.text);
+      copyPlain(diffCopyText(block, lines), "Copied " + side + " text to clipboard.");
+    });
+    bar.appendChild(button);
+  });
   let toggle = null;
   if (!tooBig) {
     toggle = document.createElement("button");
@@ -891,6 +907,27 @@ function _closestDiffCode(node) {
   const el = node && (node.nodeType === 1 ? node : node.parentElement);
   return el && el.closest ? el.closest(".cmh-dl-code") : null;
 }
+function updateDiffSelectionSide() {
+  const selection = window.getSelection();
+  const first = selection && _closestDiffCode(selection.anchorNode);
+  const last = selection && _closestDiffCode(selection.focusNode);
+  const row = first && first.closest(".cmh-dl");
+  const endRow = last && last.closest(".cmh-dl");
+  const host = row && row.closest(".cmh-diff-host");
+  const sameSide = selection && !selection.isCollapsed && selection.rangeCount === 1
+    && row && endRow && row.dataset.side === endRow.dataset.side
+    && endRow.closest(".cmh-diff-host") === host;
+  diffBlocks.forEach((block) => {
+    if (sameSide && block.host === host) block.host.dataset.cmhSelectionSide = row.dataset.side;
+    else delete block.host.dataset.cmhSelectionSide;
+  });
+}
+document.addEventListener("selectionchange", updateDiffSelectionSide);
+function diffCopyText(block, lines) {
+  const text = lines.join("\n");
+  return /^(text|plaintext|plain|prose)$/.test(block.lang)
+    ? text.replace(/(\S)[ \t]*\n[ \t]*(?=\S)/g, "$1 ") : text;
+}
 function copyDiffSelection(event) {
   if (event.defaultPrevented || !event.clipboardData) return;
   const active = document.activeElement;
@@ -928,7 +965,7 @@ function copyDiffSelection(event) {
     }
   });
   if (!lines.length) return;
-  event.clipboardData.setData("text/plain", lines.join("\n"));
+  event.clipboardData.setData("text/plain", diffCopyText(block, lines));
   event.preventDefault();
 }
 document.addEventListener("copy", copyDiffSelection);
@@ -989,6 +1026,11 @@ function attachDiffHostHandlers(block) {
   const host = block.host;
   if (host._cmDiffAttached) return;
   host._cmDiffAttached = true;
+  host.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || e.shiftKey || e.ctrlKey) return;
+    if (host.dataset.cmhSelectionSide) window.getSelection().removeAllRanges();
+    delete host.dataset.cmhSelectionSide;
+  });
   host.addEventListener("mousemove", (e) => {
     const el = e.target.closest && e.target.closest(".cmh-dl");
     if (!el || !host.contains(el) || el.classList.contains("cmh-dl-full") || el.classList.contains("cmh-dl-spacer")) return;
