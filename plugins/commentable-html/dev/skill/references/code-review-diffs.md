@@ -33,8 +33,15 @@ Put a unified diff as the text content of a `pre` or `div` with `class="cmh-diff
 4. Hovering a changed or context line shows **Add Comment**; clicking it or pressing <kbd>Enter</kbd> on a focused line comments the whole line. Selecting a region within one diff line comments just that substring.
 5. Saving anchors the comment to `(diffIndex, lineKey)` plus `(subStart, subEnd)` for region comments. Highlights survive layout toggles, reload, copy, and **Export as Shareable**.
 6. **Copy all** emits each diff comment with `Anchor: diff <label>, <added|removed|context> line <n>` and the quote as a fenced diff block.
-7. Normal browser **Copy** within one diff side copies only the selected source text, without line numbers, diff markers, or the opposite side. Actual line breaks and blank lines are preserved; visual wrapping adds no newlines.
+7. Selecting text within one side highlights only that side, even when the selection spans several rows. Normal browser **Copy** copies only the selected source text, without line numbers, diff markers, or the opposite side. Code and unclassified diffs preserve source line breaks and blank lines; visual wrapping adds no newlines.
+8. For prose, use `diff_block.py --lang text` (or `data-diff-lang="text"`). Plain-text `.txt` labels also select prose copying. Consecutive nonblank source lines copy with a space between them, while blank paragraph separators and partial selection endpoints survive. Explicit `plain`, `plaintext`, and `prose` language labels behave the same way. Code and Markdown diffs keep their source formatting; an unknown language is never guessed to be prose.
 
 ### When to use it
+
+Use **Copy before** or **Copy after** in the diff header to copy all source lines supplied
+for that side, including shared context, in either layout. The buttons follow the same
+prose/code formatting policy as selected-text copying and can copy an empty side.
+They do not reconstruct original-file lines omitted from a partial diff. On oversized
+raw diffs the buttons are disabled; header controls wrap on narrow screens.
 
 Use a diff block whenever the artifact is a code review or a plan whose change is best shown as a before/after. For non-diff before/after values, prefer a normal two-column table.

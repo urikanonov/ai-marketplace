@@ -91,7 +91,7 @@
           <a class="btn" href="#install">Install</a>
         </div>
         <div class="hero-identity">
-          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.863.1<!-- END:version --></span></a>
+          <a class="eyebrow spaced identity" href="https://github.com/urikanonov/ai-marketplace/tree/main/plugins/commentable-html"><img class="hero-logo" src="../assets/commentable-html.svg" alt="Commentable HTML logo" /> Commentable HTML <span class="badge version"><!-- BEGIN:version -->v1.863.2<!-- END:version --></span></a>
           <span class="gh-star">
             <a class="github-button" href="https://github.com/urikanonov/ai-marketplace" data-color-scheme="no-preference: light; light: light; dark: light;" data-icon="octicon-star" data-size="large" data-show-count="true" aria-label="Star urikanonov/ai-marketplace on GitHub">Star</a>
           </span>
@@ -490,12 +490,27 @@
         <div class="changelog">
           <!-- BEGIN:changelog -->
           <div class="release">
+            <div class="rel-head"><h3>[1.863.2] - 2026-11-24</h3></div>
+            <div class="group-label">Added</div>
+            <ul>
+              <li>Add Copy before and Copy after buttons to diff headers in either layout, including shared context and the same prose/code formatting as native copy. Copy only the lines supplied by the diff; disable whole-side copying for oversized raw diffs and wrap narrow headers.</li>
+              <li>Raise the JS, combined-assets, and Shareable byte ceilings by 1000 bytes each for these controls. Measured output: 785284, 989125, and 1005726 bytes respectively.</li>
+            </ul>
+            <div class="group-label">Fixed</div>
+            <ul>
+              <li>Visibly select only the chosen column when dragging across split-diff rows, not just when copying the selection.</li>
+              <li>Copy explicitly plain-text prose diffs without hard-wrap line breaks while preserving paragraph separators and partial endpoints. Code and unclassified diffs retain source formatting. Use <code>--lang text</code> for prose, or label a plain-text diff with <code>.txt</code>.</li>
+            </ul>
+          </div>
+          <div class="release">
             <div class="rel-head"><h3>[1.863.1] - 2026-11-20</h3></div>
             <div class="group-label">Fixed</div>
             <ul>
               <li>Keep narrow editable-table headers readable by wrapping grouped sort, comment and menu controls below the title instead of squeezing its text or overflowing adjacent columns. Preserve authored widths, wide-header alignment and both inline directions; printed titles retain the full cell width when controls are hidden.</li>
             </ul>
           </div>
+          <details class="older-releases">
+            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.863.0] - 2026-11-20</h3></div>
             <div class="group-label">Changed</div>
@@ -504,8 +519,6 @@
               <li>Update the development dependency lodash-es to patched 4.18.1.</li>
             </ul>
           </div>
-          <details class="older-releases">
-            <summary>Show 5 older releases</summary>
           <div class="release">
             <div class="rel-head"><h3>[1.862.1] - 2026-11-17</h3></div>
             <div class="group-label">Fixed</div>
@@ -536,14 +549,7 @@
               <li>Batch table-scroll placement and geometry reads before DOM and accessibility writes, avoiding per-table style recalculation stalls in table-heavy reports. Preserve flex/grid placement, nested and late tables, draggable parts, keyboard access, and comment anchors.</li>
             </ul>
           </div>
-          <div class="release">
-            <div class="rel-head"><h3>[1.861.2] - 2026-11-11</h3></div>
-            <div class="group-label">Fixed</div>
-            <ul>
-              <li>Keep disabled editable-table row-insertion handles hidden off hover or keyboard focus on mouse devices, including after a saved-draft conflict. Preserve visible touch controls.</li>
-            </ul>
-          </div>
-            <p class="changelog-more">436 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
+            <p class="changelog-more">437 earlier releases in the <a href="https://github.com/urikanonov/ai-marketplace/blob/main/plugins/commentable-html/CHANGELOG.md">full changelog on GitHub</a>.</p>
           </details>
           <!-- END:changelog -->
         </div>

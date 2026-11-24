@@ -2,13 +2,13 @@
 <html lang="en" data-theme="light">
 <head>
 <meta name="commentable-html-validated-hash" content="1u8yp0g" />
-<meta name="commentable-html-validated" content="2026-11-20T23:59:59Z" />
+<meta name="commentable-html-validated" content="2026-11-24T23:59:59Z" />
 <meta name="commentable-html-created" content="2026-11-17T00:00:00Z" />
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="commentable-html-version" content="1.863.1" />
+<meta name="commentable-html-version" content="1.863.2" />
 <meta name="commentable-html-kind" content="report" />
-<script type="application/json" id="commentableHtmlLayer">{"version":"1.863.1","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
+<script type="application/json" id="commentableHtmlLayer">{"version":"1.863.2","mode":"shareable","regions":["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"]}</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M3%205a2%202%200%200%201%202-2h14a2%202%200%200%201%202%202v9a2%202%200%200%201-2%202H9l-4.5%203.5A1%201%200%200%201%203%2019.7V5z'%20fill='%23a5265e'/%3E%3Crect%20x='6'%20y='7'%20width='12'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3Crect%20x='6'%20y='10.5'%20width='8'%20height='1.8'%20rx='.9'%20fill='%23fff'/%3E%3C/svg%3E" />
 <title>Prepared results comparison</title>
 
@@ -83,7 +83,7 @@ html.cmh-awaiting-style body { visibility: hidden; }
      region.
 -->
 <div class="app">
-<main id="commentRoot" data-cmh-content-root="" data-comment-key="prepared-results-comparison" data-doc-label="Prepared results comparison" data-doc-source="report-comparison.html" data-generated="2026-11-20">
+<main id="commentRoot" data-cmh-content-root="" data-comment-key="prepared-results-comparison" data-doc-label="Prepared results comparison" data-doc-source="report-comparison.html" data-generated="2026-11-24">
 <!-- BEGIN: commentable-html - CONTENT (agent edits ONLY between these markers) -->
 
 <h1>Before and after: prepared results</h1>
@@ -1418,21 +1418,23 @@ border: 1px solid var(--cp-border); border-radius: 10px; overflow: hidden;
 background: var(--cp-surface); font-size: 0.82rem;
 }
 .cmh-diff-bar {
-display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem;
 padding: 0.45rem 0.7rem; background: var(--cp-surface-soft);
 border-bottom: 1px solid var(--cp-border);
 }
 .cmh-diff-label {
+flex: 1 1 10rem; min-width: 0;
 font-family: Consolas, "Courier New", Courier, monospace;
 font-size: 0.8rem; color: var(--cp-text); font-weight: 600;
 overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.cmh-diff-toggle, .cmh-diff-hltoggle {
+.cmh-diff-toggle, .cmh-diff-hltoggle, .cmh-diff-copy {
 flex: none; background: var(--cp-surface); border: 1px solid var(--cp-border);
 color: var(--cp-text); border-radius: 999px; padding: 0.22rem 0.7rem;
 font-family: inherit; font-size: 0.76rem; cursor: pointer;
 }
-.cmh-diff-toggle:hover, .cmh-diff-hltoggle:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cmh-diff-toggle:hover, .cmh-diff-hltoggle:hover, .cmh-diff-copy:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cmh-diff-copy:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .cmh-diff-hltoggle[aria-pressed="true"] { background: rgba(45, 164, 78, 0.16); border-color: rgba(45, 164, 78, 0.55); }
 .cmh-diff-hltoggle[aria-pressed="false"] { background: rgba(209, 36, 47, 0.14); border-color: rgba(209, 36, 47, 0.5); }
@@ -1444,6 +1446,10 @@ font-family: Consolas, "Courier New", Courier, monospace; line-height: 1.5;
 .cmh-diff-split .cmh-diff-body { display: grid; grid-template-columns: 1fr 1fr; }
 .cmh-diff-split .cmh-dl[data-side="old"] { border-right: 1px solid var(--cp-border); }
 .cmh-diff-split .cmh-dl-full { grid-column: 1 / -1; }
+.cmh-diff-host[data-cmh-selection-side="old"] .cmh-diff-split .cmh-dl[data-side="new"],
+.cmh-diff-host[data-cmh-selection-side="new"] .cmh-diff-split .cmh-dl[data-side="old"] {
+-webkit-user-select: none; user-select: none;
+}
 .cmh-diff-pane { min-width: 0; }
 .cmh-diff-raw .cmh-diff-body { display: block; }
 .cmh-diff-toobig { padding: 0.4rem 0.7rem; font-family: inherit; font-size: 0.78rem; color: var(--cp-warning); background: var(--cp-surface-soft); border-bottom: 1px solid var(--cp-border); }
@@ -4968,7 +4974,7 @@ const CMH_SUBKEY_SUFFIXES=[
 ];
 const CMH_INDEX_KEY= "commentable-html::index";
 const SAFE_ID_RE=/^c[a-z0-9]{6,63}$/;
-const CMH_VERSION= "1.863.1";
+const CMH_VERSION= "1.863.2";
 const CMH_REGION_NAMES=["CSS","HANDLED IDS","EMBEDDED COMMENTS","COMMENT UI","JS"];
 const CMH_ICON_SVG=(
 '<svg class="cm-brand-icon" viewBox="0 0 24 24" width="16" height="16" role="img" focusable="false"'
@@ -7620,6 +7626,7 @@ hs:"haskell",ex:"elixir",exs:"elixir",ps1:"powershell",bat:"batch",cmd:"batch",
 groovy:"groovy",gradle:"groovy",pl:"perl",r:"r",m:"objectivec",mm:"objectivec",
 md:"markdown",markdown:"markdown",mdown:"markdown",mkd:"markdown",
 html:"html",htm:"html",xml:"xml",dart:"dart",
+txt:"text",
 };
 function inferDiffLang(el,label){
 const explicit=(el.getAttribute("data-diff-lang")||"").trim().toLowerCase();
@@ -8149,6 +8156,21 @@ const label=document.createElement("span");
 label.className= "cmh-diff-label";
 label.textContent=block.label||"diff";
 bar.appendChild(label);
+[["del","before"],["add","after"]].forEach(([type,side])=>{
+const button=document.createElement("button");
+button.type= "button";
+button.className= "cmh-diff-copy";
+cmhMarkLayerChrome(button);
+button.textContent= "Copy "+side;
+button.disabled=tooBig;
+button.title=tooBig?"Whole-side copying is unavailable for large raw diffs."
+:"Copy all "+side+"-side source lines provided by this diff";
+button.addEventListener("click",()=>{
+const lines=block.lines.filter(ln=>ln.type=== "ctx"||ln.type===type).map(ln=>ln.text);
+copyPlain(diffCopyText(block,lines),"Copied "+side+" text to clipboard.");
+});
+bar.appendChild(button);
+});
 let toggle=null;
 if(!tooBig){
 toggle=document.createElement("button");
@@ -8309,6 +8331,27 @@ function _closestDiffCode(node){
 const el=node&&(node.nodeType===1?node:node.parentElement);
 return el&&el.closest?el.closest(".cmh-dl-code"):null;
 }
+function updateDiffSelectionSide(){
+const selection=window.getSelection();
+const first=selection&&_closestDiffCode(selection.anchorNode);
+const last=selection&&_closestDiffCode(selection.focusNode);
+const row=first&&first.closest(".cmh-dl");
+const endRow=last&&last.closest(".cmh-dl");
+const host=row&&row.closest(".cmh-diff-host");
+const sameSide=selection&&!selection.isCollapsed&&selection.rangeCount===1
+&&row&&endRow&&row.dataset.side===endRow.dataset.side
+&&endRow.closest(".cmh-diff-host")===host;
+diffBlocks.forEach((block)=>{
+if(sameSide&&block.host===host)block.host.dataset.cmhSelectionSide=row.dataset.side;
+else delete block.host.dataset.cmhSelectionSide;
+});
+}
+document.addEventListener("selectionchange",updateDiffSelectionSide);
+function diffCopyText(block,lines){
+const text=lines.join("\n");
+return/^(text|plaintext|plain|prose)$/.test(block.lang)
+?text.replace(/(\S)[ \t]*\n[ \t]*(?=\S)/g,"$1 "):text;
+}
 function copyDiffSelection(event){
 if(event.defaultPrevented||!event.clipboardData)return;
 const active=document.activeElement;
@@ -8345,7 +8388,7 @@ lines.push(line.text.length?part.toString():"");
 }
 });
 if(!lines.length)return;
-event.clipboardData.setData("text/plain",lines.join("\n"));
+event.clipboardData.setData("text/plain",diffCopyText(block,lines));
 event.preventDefault();
 }
 document.addEventListener("copy",copyDiffSelection);
@@ -8404,6 +8447,11 @@ function attachDiffHostHandlers(block){
 const host=block.host;
 if(host._cmDiffAttached)return;
 host._cmDiffAttached=true;
+host.addEventListener("pointerdown",(e)=>{
+if(e.button!==0||e.shiftKey)return;
+if(host.dataset.cmhSelectionSide)window.getSelection().removeAllRanges();
+delete host.dataset.cmhSelectionSide;
+});
 host.addEventListener("mousemove",(e)=>{
 const el=e.target.closest&&e.target.closest(".cmh-dl");
 if(!el||!host.contains(el)||el.classList.contains("cmh-dl-full")||el.classList.contains("cmh-dl-spacer"))return;

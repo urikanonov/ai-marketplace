@@ -1170,21 +1170,23 @@ border: 1px solid var(--cp-border); border-radius: 10px; overflow: hidden;
 background: var(--cp-surface); font-size: 0.82rem;
 }
 .cmh-diff-bar {
-display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem;
 padding: 0.45rem 0.7rem; background: var(--cp-surface-soft);
 border-bottom: 1px solid var(--cp-border);
 }
 .cmh-diff-label {
+flex: 1 1 10rem; min-width: 0;
 font-family: Consolas, "Courier New", Courier, monospace;
 font-size: 0.8rem; color: var(--cp-text); font-weight: 600;
 overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.cmh-diff-toggle, .cmh-diff-hltoggle {
+.cmh-diff-toggle, .cmh-diff-hltoggle, .cmh-diff-copy {
 flex: none; background: var(--cp-surface); border: 1px solid var(--cp-border);
 color: var(--cp-text); border-radius: 999px; padding: 0.22rem 0.7rem;
 font-family: inherit; font-size: 0.76rem; cursor: pointer;
 }
-.cmh-diff-toggle:hover, .cmh-diff-hltoggle:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cmh-diff-toggle:hover, .cmh-diff-hltoggle:hover, .cmh-diff-copy:hover { border-color: var(--cp-accent); color: var(--cp-accent); }
+.cmh-diff-copy:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .cmh-diff-hltoggle[aria-pressed="true"] { background: rgba(45, 164, 78, 0.16); border-color: rgba(45, 164, 78, 0.55); }
 .cmh-diff-hltoggle[aria-pressed="false"] { background: rgba(209, 36, 47, 0.14); border-color: rgba(209, 36, 47, 0.5); }
@@ -1196,6 +1198,10 @@ font-family: Consolas, "Courier New", Courier, monospace; line-height: 1.5;
 .cmh-diff-split .cmh-diff-body { display: grid; grid-template-columns: 1fr 1fr; }
 .cmh-diff-split .cmh-dl[data-side="old"] { border-right: 1px solid var(--cp-border); }
 .cmh-diff-split .cmh-dl-full { grid-column: 1 / -1; }
+.cmh-diff-host[data-cmh-selection-side="old"] .cmh-diff-split .cmh-dl[data-side="new"],
+.cmh-diff-host[data-cmh-selection-side="new"] .cmh-diff-split .cmh-dl[data-side="old"] {
+-webkit-user-select: none; user-select: none;
+}
 .cmh-diff-pane { min-width: 0; }
 .cmh-diff-raw .cmh-diff-body { display: block; }
 .cmh-diff-toobig { padding: 0.4rem 0.7rem; font-family: inherit; font-size: 0.78rem; color: var(--cp-warning); background: var(--cp-surface-soft); border-bottom: 1px solid var(--cp-border); }

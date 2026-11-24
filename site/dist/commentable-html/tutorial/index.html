@@ -134,7 +134,8 @@
           <li>Hover the added line <code>+ if rainfall_mm &gt;= 8:</code> and click the floating <strong>Add Comment</strong> button to comment on the whole line.</li>
           <li>Or select a substring within a single diff line and click <strong>Add Comment</strong> to comment on only that region.</li>
           <li>Use the diff header button to switch between views: it reads <strong>To inline view</strong> while side-by-side and <strong>To side-by-side view</strong> while inline. Your comments stay attached either way.</li>
-          <li>To copy the text itself, select within either side and use your browser&#x27;s <strong>Copy</strong>. Only that side&#x27;s selected text is copied, without line numbers or diff markers. Original line breaks stay intact; visual wrapping adds no newlines.</li>
+          <li>To copy the text itself, select within either side and use your browser&#x27;s <strong>Copy</strong>. Only that side is highlighted and copied, without line numbers or diff markers. Code keeps source line breaks; explicit plain-text prose joins wrapped source lines while keeping paragraph separators.</li>
+          <li>Use <strong>Copy before</strong> or <strong>Copy after</strong> to copy every source line supplied for that side, including shared context, in either view. These buttons do not reconstruct file content omitted from the diff and are disabled for oversized raw diffs.</li>
           </ol>
           <p><img src="assets/garden-04-diff.png?v=e5027b13ba20" alt="The unified diff block with the view toggle and a syntax-highlight toggle" loading="lazy" /></p>
           <h3>10. Work a review checklist</h3>

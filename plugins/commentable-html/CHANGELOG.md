@@ -4,6 +4,24 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.863.2] - 2026-11-24
+
+### Added
+
+- Add Copy before and Copy after buttons to diff headers in either layout, including shared
+  context and the same prose/code formatting as native copy. Copy only the lines supplied
+  by the diff; disable whole-side copying for oversized raw diffs and wrap narrow headers.
+- Raise the JS, combined-assets, and Shareable byte ceilings by 1000 bytes each for these
+  controls. Measured output: 785284, 989125, and 1005726 bytes respectively.
+
+### Fixed
+
+- Visibly select only the chosen column when dragging across split-diff rows, not
+  just when copying the selection.
+- Copy explicitly plain-text prose diffs without hard-wrap line breaks while preserving
+  paragraph separators and partial endpoints. Code and unclassified diffs retain source
+  formatting. Use `--lang text` for prose, or label a plain-text diff with `.txt`.
+
 ## [1.863.1] - 2026-11-20
 
 ### Fixed
