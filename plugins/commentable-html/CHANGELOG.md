@@ -12,15 +12,18 @@ All notable changes to the `commentable-html` plugin are documented here. The fo
   context and the same prose/code formatting as native copy. Copy only the lines supplied
   by the diff; disable whole-side copying for oversized raw diffs and wrap narrow headers.
 - Raise the JS, combined-assets, and Shareable byte ceilings by 1000 bytes each for these
-  controls. Measured output: 785284, 989125, and 1005726 bytes respectively.
+  controls. Measured output: 785295, 989197, and 1005795 bytes respectively.
 
 ### Fixed
 
 - Visibly select only the chosen column when dragging across split-diff rows, not
-  just when copying the selection.
+  just when copying the selection. Preserve right-click, macOS Ctrl-click, and Shift
+  selection gestures.
 - Copy explicitly plain-text prose diffs without hard-wrap line breaks while preserving
   paragraph separators and partial endpoints. Code and unclassified diffs retain source
   formatting. Use `--lang text` for prose, or label a plain-text diff with `.txt`.
+- Keep the new copy buttons readable in light-theme decks and the showcase caption
+  within its fixed-stage slide.
 
 ## [1.863.1] - 2026-11-20
 

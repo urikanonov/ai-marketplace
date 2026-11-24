@@ -4200,7 +4200,7 @@ const host=block.host;
 if(host._cmDiffAttached)return;
 host._cmDiffAttached=true;
 host.addEventListener("pointerdown",(e)=>{
-if(e.button!==0||e.shiftKey)return;
+if(e.button!==0||e.shiftKey||e.ctrlKey)return;
 if(host.dataset.cmhSelectionSide)window.getSelection().removeAllRanges();
 delete host.dataset.cmhSelectionSide;
 });

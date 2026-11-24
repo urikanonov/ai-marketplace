@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
-<meta name="commentable-html-validated-hash" content="g0ob9q" />
+<meta name="commentable-html-validated-hash" content="1tk0ue3" />
 <meta name="commentable-html-validated" content="2026-11-24T23:59:59Z" />
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -821,7 +821,7 @@ StormEvents
 <span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">summarize</span> Events <span class="cmh-kql-op">=</span> <span class="cmh-kql-kw">count</span><span class="cmh-kql-op">(</span><span class="cmh-kql-op">)</span> <span class="cmh-kql-kw">by</span> EventType
 <span class="cmh-kql-op">|</span> <span class="cmh-kql-kw">top</span> <span class="cmh-kql-num">5</span> <span class="cmh-kql-kw">by</span> Events <span class="cmh-kql-kw">desc</span></code></pre>
 </figure>
-        <p>The diff offers inline or side-by-side view, with Copy before and Copy after for all supplied source lines on either side. Code and KQL get line rows, copy buttons, and language-aware Copy all output.</p>
+        <p>Copy before and Copy after copy all supplied diff lines in either view. Code and KQL keep line rows and language-aware Copy all.</p>
       </div>
     </div>
   </div>
@@ -3912,6 +3912,7 @@ color: var(--cmh-deck-code-text);
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-toggle,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-copy,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-hltoggle {
 background: var(--cmh-deck-code-bg);
 border-color: var(--cmh-deck-code-border);
@@ -9390,7 +9391,7 @@ const host=block.host;
 if(host._cmDiffAttached)return;
 host._cmDiffAttached=true;
 host.addEventListener("pointerdown",(e)=>{
-if(e.button!==0||e.shiftKey)return;
+if(e.button!==0||e.shiftKey||e.ctrlKey)return;
 if(host.dataset.cmhSelectionSide)window.getSelection().removeAllRanges();
 delete host.dataset.cmhSelectionSide;
 });

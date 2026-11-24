@@ -165,6 +165,7 @@ body.cmh-deck-comments-off #headingAddBtn {
 }
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-view,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-toggle,
+#commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-copy,
 #commentRoot[data-cmh-mode="deck"] .slide .cmh-diff-hltoggle {
   background: var(--cmh-deck-code-bg);
   border-color: var(--cmh-deck-code-border);

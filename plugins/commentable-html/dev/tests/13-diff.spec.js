@@ -204,6 +204,21 @@ test.describe("diff selection copy", () => {
     }
   });
 
+  test("diff context-menu gestures preserve the existing selection for copying (CMH-DIFF-12)", async ({ page }) => {
+    const selector = '.cmh-dl[data-side="old"] .cmh-dl-code';
+    for (const gesture of [{ button: 0, ctrlKey: true }, { button: 2 }, { button: 0, shiftKey: true }]) {
+      await copySelection(page, { selector, offset: 0 }, { selector, offset: 6 });
+      await expect(page.locator(".cmh-diff-host")).toHaveAttribute("data-cmh-selection-side", "old");
+      await page.locator(selector).first().dispatchEvent("pointerdown", gesture);
+      expect(await page.evaluate(() => window.getSelection().toString())).toBe("old fi");
+      const copied = await page.evaluate(() => {
+        document.execCommand("copy");
+        return window.__selectionCopy.text;
+      });
+      expect(copied).toBe("old fi");
+    }
+  });
+
   test("diff copying leaves ordinary selections and focused text fields alone (CMH-DIFF-12)", async ({ page }) => {
     expect((await copySelection(page,
       { selector: "#commentRoot p", offset: 0 },

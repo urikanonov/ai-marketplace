@@ -494,12 +494,13 @@
             <div class="group-label">Added</div>
             <ul>
               <li>Add Copy before and Copy after buttons to diff headers in either layout, including shared context and the same prose/code formatting as native copy. Copy only the lines supplied by the diff; disable whole-side copying for oversized raw diffs and wrap narrow headers.</li>
-              <li>Raise the JS, combined-assets, and Shareable byte ceilings by 1000 bytes each for these controls. Measured output: 785284, 989125, and 1005726 bytes respectively.</li>
+              <li>Raise the JS, combined-assets, and Shareable byte ceilings by 1000 bytes each for these controls. Measured output: 785295, 989197, and 1005795 bytes respectively.</li>
             </ul>
             <div class="group-label">Fixed</div>
             <ul>
-              <li>Visibly select only the chosen column when dragging across split-diff rows, not just when copying the selection.</li>
+              <li>Visibly select only the chosen column when dragging across split-diff rows, not just when copying the selection. Preserve right-click, macOS Ctrl-click, and Shift selection gestures.</li>
               <li>Copy explicitly plain-text prose diffs without hard-wrap line breaks while preserving paragraph separators and partial endpoints. Code and unclassified diffs retain source formatting. Use <code>--lang text</code> for prose, or label a plain-text diff with <code>.txt</code>.</li>
+              <li>Keep the new copy buttons readable in light-theme decks and the showcase caption within its fixed-stage slide.</li>
             </ul>
           </div>
           <div class="release">
